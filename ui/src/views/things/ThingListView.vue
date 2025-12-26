@@ -25,13 +25,38 @@ const {
   prevPage,
 } = usePagination<Thing>('things', 20)
 
-// Search
+// Search query (client-side filtering)
 const searchQuery = ref('')
 
-// Computed filter
-const filter = computed(() => {
-  if (!searchQuery.value.trim()) return undefined
-  return `name ~ "${searchQuery.value}"`
+/**
+ * Filtered things based on client-side search
+ * Searches in: name, description, code, type name, location name
+ */
+const filteredThings = computed(() => {
+  const query = searchQuery.value.toLowerCase().trim()
+  
+  // No search query - return all things
+  if (!query) return things.value
+  
+  // Filter client-side
+  return things.value.filter(thing => {
+    // Search in name
+    if (thing.name?.toLowerCase().includes(query)) return true
+    
+    // Search in description
+    if (thing.description?.toLowerCase().includes(query)) return true
+    
+    // Search in code
+    if (thing.code?.toLowerCase().includes(query)) return true
+    
+    // Search in type name
+    if (thing.expand?.type?.name?.toLowerCase().includes(query)) return true
+    
+    // Search in location name
+    if (thing.expand?.location?.name?.toLowerCase().includes(query)) return true
+    
+    return false
+  })
 })
 
 // Column configuration for responsive list
@@ -66,17 +91,20 @@ const columns: Column<Thing>[] = [
 
 /**
  * Load things from API
- * Backend automatically filters by current organization
+ * Backend automatically filters by current organization via API rules
  */
 async function loadThings() {
-  await load(filter.value, '-created', 'type,location')
+  // Only pass expand - backend handles org filtering via API rules
+  await load({ 
+    expand: 'type,location' 
+  })
 }
 
 /**
- * Handle search input
+ * Handle row/card click - navigate to detail view
  */
-function handleSearch() {
-  loadThings()
+function handleRowClick(thing: Thing) {
+  router.push(`/things/${thing.id}`)
 }
 
 /**
@@ -95,12 +123,17 @@ async function handleDelete(thing: Thing) {
 }
 
 /**
- * Handle organization change
+ * Handle organization change event
  */
 function handleOrgChange() {
+  // Reset search when org changes
+  searchQuery.value = ''
   loadThings()
 }
 
+/**
+ * Initialize on mount
+ */
 onMounted(() => {
   loadThings()
   window.addEventListener('organization-changed', handleOrgChange)
@@ -131,11 +164,16 @@ onUnmounted(() => {
     <div class="form-control">
       <input 
         v-model="searchQuery"
-        @input="handleSearch"
         type="text"
-        placeholder="Search things..."
+        placeholder="Search things by name, code, type, or location..."
         class="input input-bordered w-full"
       />
+      <label v-if="searchQuery && filteredThings.length < things.length" class="label">
+        <span class="label-text-alt">
+          Showing {{ filteredThings.length }} of {{ things.length }} things
+          (searching current page only)
+        </span>
+      </label>
     </div>
     
     <!-- Loading State -->
@@ -149,39 +187,54 @@ onUnmounted(() => {
         <span class="text-6xl">📦</span>
         <h3 class="text-xl font-bold mt-4">No things found</h3>
         <p class="text-base-content/70 mt-2">
-          {{ searchQuery ? 'Try a different search term' : 'Create your first thing to get started' }}
+          Create your first thing to get started
         </p>
-        <router-link v-if="!searchQuery" to="/things/new" class="btn btn-primary mt-4">
+        <router-link to="/things/new" class="btn btn-primary mt-4">
           Create Thing
         </router-link>
       </div>
     </BaseCard>
     
+    <!-- No Search Results -->
+    <BaseCard v-else-if="filteredThings.length === 0">
+      <div class="text-center py-12">
+        <span class="text-6xl">🔍</span>
+        <h3 class="text-xl font-bold mt-4">No matching things</h3>
+        <p class="text-base-content/70 mt-2">
+          Try a different search term
+        </p>
+        <button @click="searchQuery = ''" class="btn btn-ghost mt-4">
+          Clear Search
+        </button>
+      </div>
+    </BaseCard>
+    
     <!-- Responsive List -->
     <BaseCard v-else :no-padding="true">
-      <ResponsiveList :items="things" :columns="columns" :loading="loading">
-        <!-- Custom cell for name (with description) -->
+      <ResponsiveList 
+        :items="filteredThings" 
+        :columns="columns" 
+        :loading="loading"
+        @row-click="handleRowClick"
+      >
+        <!-- Custom cell for name (with description) - no longer a link -->
         <template #cell-name="{ item }">
-          <router-link 
-            :to="`/things/${item.id}`" 
-            class="link link-hover font-medium"
-          >
-            {{ item.name || 'Unnamed' }}
-          </router-link>
-          <div v-if="item.description" class="text-sm text-base-content/60 line-clamp-1">
-            {{ item.description }}
+          <div>
+            <div class="font-medium">
+              {{ item.name || 'Unnamed' }}
+            </div>
+            <div v-if="item.description" class="text-sm text-base-content/60 line-clamp-1">
+              {{ item.description }}
+            </div>
           </div>
         </template>
         
-        <!-- Custom mobile card for name (make it prominent) -->
+        <!-- Custom mobile card for name (make it prominent) - no longer a link -->
         <template #card-name="{ item }">
           <div>
-            <router-link 
-              :to="`/things/${item.id}`" 
-              class="link link-hover font-semibold text-base"
-            >
+            <div class="font-semibold text-base">
               {{ item.name || 'Unnamed' }}
-            </router-link>
+            </div>
             <div v-if="item.description" class="text-sm text-base-content/60 mt-1">
               {{ item.description }}
             </div>
@@ -215,7 +268,7 @@ onUnmounted(() => {
           <span v-else class="text-base-content/40">-</span>
         </template>
         
-        <!-- Actions -->
+        <!-- Actions - @click.stop is handled in ResponsiveList -->
         <template #actions="{ item }">
           <router-link 
             :to="`/things/${item.id}/edit`" 
@@ -232,8 +285,8 @@ onUnmounted(() => {
         </template>
       </ResponsiveList>
       
-      <!-- Pagination -->
-      <div class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
+      <!-- Pagination (only show when not searching) -->
+      <div v-if="!searchQuery" class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
         <span class="text-sm text-base-content/70 text-center sm:text-left">
           Showing {{ things.length }} of {{ totalItems }} things
         </span>
@@ -241,7 +294,7 @@ onUnmounted(() => {
           <button 
             class="join-item btn btn-sm"
             :disabled="page === 1 || loading"
-            @click="prevPage(filter, '-created', 'type,location')"
+            @click="prevPage({ expand: 'type,location' })"
           >
             «
           </button>
@@ -251,11 +304,22 @@ onUnmounted(() => {
           <button 
             class="join-item btn btn-sm"
             :disabled="page === totalPages || loading"
-            @click="nextPage(filter, '-created', 'type,location')"
+            @click="nextPage({ expand: 'type,location' })"
           >
             »
           </button>
         </div>
+      </div>
+      
+      <!-- Search active message (when paginated) -->
+      <div v-else class="p-4 border-t border-base-300 text-center">
+        <p class="text-sm text-base-content/60">
+          Searching within current page. 
+          <button @click="searchQuery = ''" class="link link-primary text-sm">
+            Clear search
+          </button>
+          to browse all pages.
+        </p>
       </div>
     </BaseCard>
   </div>

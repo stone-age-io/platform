@@ -6,7 +6,11 @@
  * Provides consistent UX across all list views.
  * 
  * Usage:
- *   <ResponsiveList :items="things" :columns="columns">
+ *   <ResponsiveList 
+ *     :items="things" 
+ *     :columns="columns"
+ *     @row-click="handleRowClick"
+ *   >
  *     <template #actions="{ item }">
  *       <button @click="edit(item)">Edit</button>
  *     </template>
@@ -25,9 +29,16 @@ interface Props {
   items: T[]
   columns: Column<T>[]
   loading?: boolean
+  clickable?: boolean // Make rows/cards clickable
 }
 
-defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  clickable: true // Default to clickable
+})
+
+const emit = defineEmits<{
+  'row-click': [item: T]
+}>()
 
 /**
  * Get nested property from object using dot notation
@@ -35,6 +46,15 @@ defineProps<Props>()
  */
 function get(obj: any, path: string): any {
   return path.split('.').reduce((acc, part) => acc?.[part], obj)
+}
+
+/**
+ * Handle row/card click
+ */
+function handleClick(item: T) {
+  if (props.clickable) {
+    emit('row-click', item)
+  }
 }
 </script>
 
@@ -52,13 +72,18 @@ function get(obj: any, path: string): any {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="item in items" :key="item.id" class="hover">
+          <tr 
+            v-for="item in items" 
+            :key="item.id" 
+            :class="{ 'hover cursor-pointer': clickable }"
+            @click="handleClick(item)"
+          >
             <td v-for="col in columns" :key="col.key" :class="col.class">
               <slot :name="`cell-${col.key}`" :item="item" :value="get(item, col.key)">
                 {{ col.format ? col.format(get(item, col.key), item) : get(item, col.key) || '-' }}
               </slot>
             </td>
-            <td v-if="$slots.actions">
+            <td v-if="$slots.actions" @click.stop>
               <div class="flex justify-end gap-2">
                 <slot name="actions" :item="item" />
               </div>
@@ -73,7 +98,11 @@ function get(obj: any, path: string): any {
       <div 
         v-for="item in items" 
         :key="item.id"
-        class="card bg-base-100 border border-base-300"
+        :class="[
+          'card bg-base-100 border border-base-300',
+          { 'cursor-pointer hover:shadow-md transition-shadow': clickable }
+        ]"
+        @click="handleClick(item)"
       >
         <div class="card-body p-4">
           <!-- Card content from columns -->
@@ -93,7 +122,7 @@ function get(obj: any, path: string): any {
           </div>
           
           <!-- Actions in mobile card -->
-          <div v-if="$slots.actions" class="flex gap-2 mt-4 pt-4 border-t border-base-300">
+          <div v-if="$slots.actions" class="flex gap-2 mt-4 pt-4 border-t border-base-300" @click.stop>
             <slot name="actions" :item="item" />
           </div>
         </div>

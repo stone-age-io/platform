@@ -113,7 +113,7 @@ export interface Location extends BaseRecord {
   parent?: string // Parent Location ID
   coordinates?: {
     lat: number
-    lng: number
+    lon: number  // NOTE: PocketBase uses 'lon' not 'lng'
   }
   metadata?: Record<string, any>
 }

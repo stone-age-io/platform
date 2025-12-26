@@ -13,7 +13,7 @@ import type { BaseRecord } from '@/types/pocketbase'
  *     usePagination<Thing>('things', 20)
  *   
  *   onMounted(() => {
- *     load('organization = "abc123"', '-created')
+ *     load({ expand: 'type,location' })
  *   })
  */
 export function usePagination<T extends BaseRecord>(
@@ -44,23 +44,36 @@ export function usePagination<T extends BaseRecord>(
   
   /**
    * Load a page of data
-   * @param filter - PocketBase filter string
-   * @param sort - PocketBase sort string
-   * @param expand - Relations to expand
+   * @param options - PocketBase query options
    */
-  async function load(filter?: string, sort?: string, expand?: string) {
+  async function load(options?: {
+    filter?: string
+    sort?: string
+    expand?: string
+  }) {
     loading.value = true
     error.value = null
     
     try {
+      // Build options object, only including defined values
+      const queryOptions: Record<string, any> = {}
+      
+      if (options?.filter) {
+        queryOptions.filter = options.filter
+      }
+      
+      if (options?.sort) {
+        queryOptions.sort = options.sort
+      }
+      
+      if (options?.expand) {
+        queryOptions.expand = options.expand
+      }
+      
       const result = await pb.collection(collectionName).getList<T>(
         page.value, 
         perPage, 
-        {
-          filter,
-          sort,
-          expand,
-        }
+        queryOptions
       )
       
       items.value = result.items
@@ -77,20 +90,28 @@ export function usePagination<T extends BaseRecord>(
   /**
    * Go to next page
    */
-  async function nextPage(filter?: string, sort?: string, expand?: string) {
+  async function nextPage(options?: {
+    filter?: string
+    sort?: string
+    expand?: string
+  }) {
     if (hasMore.value) {
       page.value++
-      await load(filter, sort, expand)
+      await load(options)
     }
   }
   
   /**
    * Go to previous page
    */
-  async function prevPage(filter?: string, sort?: string, expand?: string) {
+  async function prevPage(options?: {
+    filter?: string
+    sort?: string
+    expand?: string
+  }) {
     if (hasPrev.value) {
       page.value--
-      await load(filter, sort, expand)
+      await load(options)
     }
   }
   
@@ -99,13 +120,15 @@ export function usePagination<T extends BaseRecord>(
    */
   async function goToPage(
     pageNum: number, 
-    filter?: string, 
-    sort?: string, 
-    expand?: string
+    options?: {
+      filter?: string
+      sort?: string
+      expand?: string
+    }
   ) {
     if (pageNum >= 1 && pageNum <= totalPages.value) {
       page.value = pageNum
-      await load(filter, sort, expand)
+      await load(options)
     }
   }
   
