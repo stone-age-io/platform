@@ -1,0 +1,33 @@
+# config.yaml
+
+tenancy:
+  organizations_collection: "organizations"
+  memberships_collection: "memberships"
+  invites_collection: "invites"
+  invite_expiry_days: 7
+  log_to_console: false
+
+nats:
+  account_collection_name: "nats_accounts"
+  user_collection_name: "nats_users"
+  role_collection_name: "nats_roles"
+  operator_name: "stone-age.io"
+  server_url: "nats://localhost:4422"
+  log_to_console: false
+  # Default limits for new organizations
+  default_limits:
+    max_connections: 10
+    max_subscriptions: 50
+    max_payload: 1048576
+
+nebula:
+  ca_collection_name: "nebula_ca"
+  network_collection_name: "nebula_networks"
+  host_collection_name: "nebula_hosts"
+  log_to_console: false
+  # Default validity
+  default_ca_validity_years: 10
+
+audit:
+  collection_name: "audit_logs"
+  log_console: false
