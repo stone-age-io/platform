@@ -45,12 +45,12 @@ const breadcrumbs = computed(() => {
   const path: { id: string; name: string }[] = []
   if (!location.value) return path
 
-  path.unshift({ id: location.value.id, name: location.value.name })
+  path.unshift({ id: location.value.id, name: location.value.name || 'Unnamed'  })
 
   let current = location.value
   while (current.expand?.parent) {
     current = current.expand.parent as Location
-    path.unshift({ id: current.id, name: current.name })
+    path.unshift({ id: current.id, name: current.name || 'Unnamed' })
   }
 
   return path
