@@ -125,14 +125,49 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/nats/NatsAccountListView.vue'),
       },
       {
+        path: 'nats/accounts/:id',
+        name: 'NatsAccountDetail',
+        component: () => import('@/views/nats/NatsAccountDetailView.vue'),
+      },
+      {
         path: 'nats/users',
         name: 'NatsUsers',
         component: () => import('@/views/nats/NatsUserListView.vue'),
       },
       {
+        path: 'nats/users/new',
+        name: 'NatsUserNew',
+        component: () => import('@/views/nats/NatsUserFormView.vue'),
+      },
+      {
+        path: 'nats/users/:id',
+        name: 'NatsUserDetail',
+        component: () => import('@/views/nats/NatsUserDetailView.vue'),
+      },
+      {
+        path: 'nats/users/:id/edit',
+        name: 'NatsUserEdit',
+        component: () => import('@/views/nats/NatsUserFormView.vue'),
+      },
+      {
         path: 'nats/roles',
         name: 'NatsRoles',
         component: () => import('@/views/nats/NatsRoleListView.vue'),
+      },
+      {
+        path: 'nats/roles/new',
+        name: 'NatsRoleNew',
+        component: () => import('@/views/nats/NatsRoleFormView.vue'),
+      },
+      {
+        path: 'nats/roles/:id',
+        name: 'NatsRoleDetail',
+        component: () => import('@/views/nats/NatsRoleDetailView.vue'),
+      },
+      {
+        path: 'nats/roles/:id/edit',
+        name: 'NatsRoleEdit',
+        component: () => import('@/views/nats/NatsRoleFormView.vue'),
       },
       
       // Nebula
@@ -146,14 +181,49 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/nebula/NebulaCAListView.vue'),
       },
       {
+        path: 'nebula/cas/:id',
+        name: 'NebulaCADetail',
+        component: () => import('@/views/nebula/NebulaCADetailView.vue'),
+      },
+      {
         path: 'nebula/networks',
         name: 'NebulaNetworks',
         component: () => import('@/views/nebula/NebulaNetworkListView.vue'),
       },
       {
+        path: 'nebula/networks/new',
+        name: 'NebulaNetworkNew',
+        component: () => import('@/views/nebula/NebulaNetworkFormView.vue'),
+      },
+      {
+        path: 'nebula/networks/:id',
+        name: 'NebulaNetworkDetail',
+        component: () => import('@/views/nebula/NebulaNetworkDetailView.vue'),
+      },
+      {
+        path: 'nebula/networks/:id/edit',
+        name: 'NebulaNetworkEdit',
+        component: () => import('@/views/nebula/NebulaNetworkFormView.vue'),
+      },
+      {
         path: 'nebula/hosts',
         name: 'NebulaHosts',
         component: () => import('@/views/nebula/NebulaHostListView.vue'),
+      },
+      {
+        path: 'nebula/hosts/new',
+        name: 'NebulaHostNew',
+        component: () => import('@/views/nebula/NebulaHostFormView.vue'),
+      },
+      {
+        path: 'nebula/hosts/:id',
+        name: 'NebulaHostDetail',
+        component: () => import('@/views/nebula/NebulaHostDetailView.vue'),
+      },
+      {
+        path: 'nebula/hosts/:id/edit',
+        name: 'NebulaHostEdit',
+        component: () => import('@/views/nebula/NebulaHostFormView.vue'),
       },
       
       // Audit Logs
