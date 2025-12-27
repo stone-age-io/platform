@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useUIStore } from '@/stores/ui'
 import { useToast } from '@/composables/useToast'
 import { pb } from '@/utils/pb'
+import type { User } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 
 const authStore = useAuthStore()
@@ -77,11 +78,12 @@ async function updateProfile() {
     // Update in PocketBase
     const updatedUser = await pb.collection('users').update(authStore.user.id, formData)
     
-    // Update local store
-    authStore.user = updatedUser
+    // Update local store with type assertion
+    authStore.user = updatedUser as unknown as User
     
     // Refresh preview from server URL to ensure consistency
     if (updatedUser.avatar) {
+      // We can use the updatedUser record directly for the file URL
       avatarPreview.value = pb.files.getUrl(updatedUser, updatedUser.avatar)
     }
     
