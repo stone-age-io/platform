@@ -13,10 +13,10 @@ const authStore = useAuthStore()
 const menuItems = computed(() => {
   const items = [
     { label: 'Dashboard', icon: '📊', path: '/' },
-    { label: 'Things', icon: '📦', path: '/things' },
+    { label: 'Map', icon: '🗺️', path: '/map' },
     { label: 'Edges', icon: '🔌', path: '/edges' },
     { label: 'Locations', icon: '📍', path: '/locations' },
-    { label: 'Map', icon: '🗺️', path: '/map' },
+    { label: 'Things', icon: '📦', path: '/things' },
     { 
       label: 'NATS', 
       icon: '📡', 
