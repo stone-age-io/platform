@@ -62,33 +62,47 @@ const isActive = (path: string) => {
 async function handleOrgChange(orgId: string) {
   if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
   await authStore.switchOrganization(orgId)
+  closeDrawer()
 }
 
 async function handleLogout() {
   await authStore.logout()
+  closeDrawer()
   router.push('/login')
 }
 
 function getAvatarUrl() {
   if (!authStore.user?.avatar) return null
-  return pb.files.getUrl(authStore.user, authStore.user.avatar, { thumb: '100x100', token: pb.authStore.token })
+  return pb.files.getUrl(authStore.user, authStore.user.avatar, { 
+    thumb: '100x100',
+    token: pb.authStore.token 
+  })
+}
+
+/**
+ * Close the mobile drawer by unchecking the control checkbox.
+ * Safe to call on desktop (has no visual effect as drawer is persistent).
+ */
+function closeDrawer() {
+  const drawer = document.getElementById('sidebar-drawer') as HTMLInputElement
+  if (drawer) drawer.checked = false
 }
 </script>
 
 <template>
   <aside class="bg-base-100 w-72 min-h-screen flex flex-col border-r border-base-300">
     <!-- SECTION 1: Logo (Sticky Top) -->
-    <div class="p-4 flex items-center gap-3">
+    <!-- Added router-link wrapper for logo to go home + close drawer -->
+    <router-link to="/" class="p-4 flex items-center gap-3 hover:opacity-80 transition-opacity" @click="closeDrawer">
       <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 256 256" class="flex-shrink-0 text-primary">
         <path d="M128,0 C57.343,0 0,57.343 0,128 C0,198.657 57.343,256 128,256 C198.657,256 256,198.657 256,128 C256,57.343 198.657,0 128,0 z M128,28 C181.423,28 224.757,71.334 224.757,124.757 C224.757,139.486 221.04,153.32 214.356,165.42 C198.756,148.231 178.567,138.124 162.876,124.331 C155.723,124.214 128.543,124.043 113.254,124.043 C113.254,147.334 113.254,172.064 113.254,190.513 C100.456,179.347 94.543,156.243 94.543,156.243 C83.432,147.065 31.243,124.757 31.243,124.757 C31.243,71.334 74.577,28 128,28 z" fill="currentColor"/>
       </svg>
-      <span class="font-bold text-lg tracking-tight">Stone-Age.io</span>
-    </div>
+      <span class="font-bold text-lg tracking-tight text-base-content">Stone-Age.io</span>
+    </router-link>
 
     <!-- SECTION 2: Organization Switcher -->
     <div class="px-3 pb-2">
       <div class="dropdown w-full">
-        <!-- Removed 'transition-colors' to fix theme switching lag -->
         <div 
           tabindex="0" 
           role="button" 
@@ -100,7 +114,6 @@ function getAvatarUrl() {
             </div>
             <span class="truncate">{{ authStore.currentOrg?.name || 'Select Org' }}</span>
           </div>
-          <!-- Chevron -->
           <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 256 256" class="opacity-50"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" fill="currentColor"/></svg>
         </div>
         
@@ -119,11 +132,10 @@ function getAvatarUrl() {
             </a>
           </li>
           
-          <!-- Replaced DaisyUI 'divider' class with simple border to remove gray block -->
           <li class="border-t border-base-200 my-1"></li>
           
           <li>
-            <router-link to="/organization/invitations" class="text-xs">
+            <router-link to="/organization/invitations" class="text-xs" @click="closeDrawer">
               + New Organization
             </router-link>
           </li>
@@ -145,6 +157,7 @@ function getAvatarUrl() {
               <router-link 
                 :to="child.path"
                 :class="{ 'active': isActive(child.path) }"
+                @click="closeDrawer"
               >
                 {{ child.label }}
               </router-link>
@@ -157,6 +170,7 @@ function getAvatarUrl() {
           v-else
           :to="item.path"
           :class="{ 'active': isActive(item.path) }"
+          @click="closeDrawer"
         >
           <span class="text-lg opacity-80 w-6 text-center">{{ item.icon }}</span>
           <span class="font-medium">{{ item.label }}</span>
@@ -167,7 +181,6 @@ function getAvatarUrl() {
     <!-- SECTION 4: User Profile & Actions -->
     <div class="p-3 border-t border-base-300">
       <div class="dropdown dropdown-top w-full">
-        <!-- Removed 'transition-colors' -->
         <div 
           tabindex="0" 
           role="button" 
@@ -190,7 +203,7 @@ function getAvatarUrl() {
         
         <ul tabindex="0" class="dropdown-content z-[1] menu p-2 shadow-xl bg-base-100 rounded-box w-full border border-base-300 mb-2">
           <li>
-            <router-link to="/settings">
+            <router-link to="/settings" @click="closeDrawer">
               <span class="w-5 text-center">⚙️</span> Settings
             </router-link>
           </li>
@@ -201,7 +214,6 @@ function getAvatarUrl() {
             </a>
           </li>
           
-          <!-- Replaced divider here too -->
           <li class="border-t border-base-200 my-1"></li>
           
           <li>
