@@ -17,13 +17,22 @@ const isEdit = computed(() => !!userId)
 
 // Form data
 const formData = ref({
+  // Identity
   nats_username: '',
   description: '',
+  
+  // Auth
+  email: '',
+  password: '',
+  passwordConfirm: '',
+  
+  // Permissions
   account_id: '',
   role_id: '',
+  
+  // Options
   bearer_token: false,
   active: true,
-  regenerate: false,
 })
 
 // Relation options
@@ -54,17 +63,11 @@ async function loadOptions() {
     accounts.value = accountsResult
     roles.value = rolesResult
     
-    // Auto-select default role if creating new user
+    // Auto-select defaults
     if (!isEdit.value) {
       const defaultRole = roles.value.find(r => r.is_default)
-      if (defaultRole) {
-        formData.value.role_id = defaultRole.id
-      }
-      
-      // Auto-select first account if only one exists
-      if (accounts.value.length === 1) {
-        formData.value.account_id = accounts.value[0].id
-      }
+      if (defaultRole) formData.value.role_id = defaultRole.id
+      if (accounts.value.length === 1) formData.value.account_id = accounts.value[0].id
     }
   } catch (err: any) {
     toast.error('Failed to load form options')
@@ -87,11 +90,13 @@ async function loadUser() {
     formData.value = {
       nats_username: user.nats_username,
       description: user.description || '',
+      email: user.email,
+      password: '',
+      passwordConfirm: '',
       account_id: user.account_id,
       role_id: user.role_id,
       bearer_token: user.bearer_token || false,
       active: user.active || true,
-      regenerate: false,
     }
   } catch (err: any) {
     toast.error('Failed to load NATS user')
@@ -105,28 +110,41 @@ async function loadUser() {
  * Handle form submission
  */
 async function handleSubmit() {
+  // Validation: Create mode requires password
+  if (!isEdit.value && !formData.value.password) {
+    toast.error('Password is required for new users')
+    return
+  }
+  
+  if (formData.value.password && formData.value.password !== formData.value.passwordConfirm) {
+    toast.error('Passwords do not match')
+    return
+  }
+
   loading.value = true
   
   try {
     const data: any = {
       nats_username: formData.value.nats_username,
       description: formData.value.description || null,
+      email: formData.value.email,
       account_id: formData.value.account_id,
       role_id: formData.value.role_id,
       bearer_token: formData.value.bearer_token,
       active: formData.value.active,
     }
+
+    // Only send password if entered
+    if (formData.value.password) {
+      data.password = formData.value.password
+      data.passwordConfirm = formData.value.passwordConfirm
+    }
     
     if (isEdit.value) {
-      // Update existing user
-      data.regenerate = formData.value.regenerate
       await pb.collection('nats_users').update(userId!, data)
       toast.success('NATS user updated')
     } else {
-      // Create new user
-      // IMPORTANT: Frontend must set organization
       data.organization = authStore.currentOrgId
-      
       await pb.collection('nats_users').create(data)
       toast.success('NATS user created')
     }
@@ -158,7 +176,7 @@ onMounted(() => {
         </ul>
       </div>
       <h1 class="text-3xl font-bold">
-        {{ isEdit ? 'Edit NATS User' : 'Create NATS User' }}
+        {{ isEdit ? 'Edit NATS User' : 'Provision NATS User' }}
       </h1>
     </div>
     
@@ -169,9 +187,10 @@ onMounted(() => {
     
     <!-- Form -->
     <form v-else @submit.prevent="handleSubmit" class="space-y-6">
-      <BaseCard title="Basic Information">
+      
+      <!-- Identity -->
+      <BaseCard title="Identity">
         <div class="space-y-4">
-          <!-- Username -->
           <div class="form-control">
             <label class="label">
               <span class="label-text">NATS Username *</span>
@@ -191,7 +210,6 @@ onMounted(() => {
             </label>
           </div>
           
-          <!-- Description -->
           <div class="form-control">
             <label class="label">
               <span class="label-text">Description</span>
@@ -205,11 +223,58 @@ onMounted(() => {
           </div>
         </div>
       </BaseCard>
-      
-      <!-- Account & Role -->
-      <BaseCard title="Account & Permissions">
+
+      <!-- Authentication -->
+      <BaseCard title="Authentication">
         <div class="space-y-4">
-          <!-- Account -->
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text">Email (Unique Identity) *</span>
+            </label>
+            <input 
+              v-model="formData.email"
+              type="email" 
+              placeholder="device-uuid@nats.local"
+              class="input input-bordered"
+              required
+            />
+            <label class="label">
+              <span class="label-text-alt">Unique email used for PocketBase authentication record.</span>
+            </label>
+          </div>
+          
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Password {{ isEdit ? '(Optional)' : '*' }}</span>
+              </label>
+              <input 
+                v-model="formData.password"
+                type="password" 
+                class="input input-bordered"
+                :required="!isEdit"
+                minlength="8"
+              />
+            </div>
+            
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Confirm Password {{ isEdit ? '(Optional)' : '*' }}</span>
+              </label>
+              <input 
+                v-model="formData.passwordConfirm"
+                type="password" 
+                class="input input-bordered"
+                :required="!!formData.password"
+              />
+            </div>
+          </div>
+        </div>
+      </BaseCard>
+      
+      <!-- Permissions -->
+      <BaseCard title="Account & Permissions">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div class="form-control">
             <label class="label">
               <span class="label-text">NATS Account *</span>
@@ -220,14 +285,8 @@ onMounted(() => {
                 {{ account.name }}
               </option>
             </select>
-            <label class="label">
-              <span class="label-text-alt">
-                The NATS account this user belongs to
-              </span>
-            </label>
           </div>
           
-          <!-- Role -->
           <div class="form-control">
             <label class="label">
               <span class="label-text">Role *</span>
@@ -239,19 +298,29 @@ onMounted(() => {
                 <span v-if="role.is_default"> (Default)</span>
               </option>
             </select>
-            <label class="label">
-              <span class="label-text-alt">
-                Defines permissions for this user
-              </span>
-            </label>
           </div>
         </div>
       </BaseCard>
       
-      <!-- Options -->
-      <BaseCard title="Options">
+      <!-- Security Options -->
+      <BaseCard title="Security Settings">
         <div class="space-y-4">
-          <!-- Bearer Token -->
+          <div class="form-control">
+            <label class="label cursor-pointer justify-start gap-4">
+              <input 
+                v-model="formData.active"
+                type="checkbox" 
+                class="toggle toggle-success"
+              />
+              <span class="label-text">
+                <span class="font-medium">Active Status</span>
+                <span class="block text-sm text-base-content/70">
+                  Allow this user to authenticate and connect
+                </span>
+              </span>
+            </label>
+          </div>
+
           <div class="form-control">
             <label class="label cursor-pointer justify-start gap-4">
               <input 
@@ -261,42 +330,8 @@ onMounted(() => {
               />
               <span class="label-text">
                 <span class="font-medium">Enable Bearer Token</span>
-                <span class="block text-sm text-base-content/70 mt-1">
-                  Allow authentication using bearer token
-                </span>
-              </span>
-            </label>
-          </div>
-          
-          <!-- Active -->
-          <div class="form-control">
-            <label class="label cursor-pointer justify-start gap-4">
-              <input 
-                v-model="formData.active"
-                type="checkbox" 
-                class="checkbox"
-              />
-              <span class="label-text">
-                <span class="font-medium">Active</span>
-                <span class="block text-sm text-base-content/70 mt-1">
-                  User can authenticate and use NATS
-                </span>
-              </span>
-            </label>
-          </div>
-          
-          <!-- Regenerate (edit only) -->
-          <div v-if="isEdit" class="form-control">
-            <label class="label cursor-pointer justify-start gap-4">
-              <input 
-                v-model="formData.regenerate"
-                type="checkbox" 
-                class="checkbox checkbox-warning"
-              />
-              <span class="label-text">
-                <span class="font-medium text-warning">Regenerate Credentials</span>
-                <span class="block text-sm text-base-content/70 mt-1">
-                  Generate new JWT and credentials. This will invalidate existing credentials.
+                <span class="block text-sm text-base-content/70">
+                  Generate a long-lived bearer token for simplified auth
                 </span>
               </span>
             </label>
@@ -320,7 +355,7 @@ onMounted(() => {
           :disabled="loading"
         >
           <span v-if="loading" class="loading loading-spinner"></span>
-          <span v-else>{{ isEdit ? 'Update' : 'Create' }} User</span>
+          <span v-else>{{ isEdit ? 'Update' : 'Provision' }} User</span>
         </button>
       </div>
     </form>

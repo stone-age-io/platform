@@ -17,14 +17,21 @@ const isEdit = computed(() => !!hostId)
 
 // Form data
 const formData = ref({
+  // Identity
   hostname: '',
+  email: '',
+  password: '',
+  passwordConfirm: '',
+  
+  // Network
   network_id: '',
-  groups: '', // Managed as comma-separated string for input
+  groups: '', // Managed as string for input
+  overlay_ip: '',
+  
+  // Config
   is_lighthouse: false,
   public_host_port: '',
-  overlay_ip: '', // Read-only mostly
   active: true,
-  regenerate: false, // For edit mode only
 })
 
 // Relation options
@@ -35,7 +42,7 @@ const loading = ref(false)
 const loadingOptions = ref(true)
 
 /**
- * Load available networks
+ * Load options (networks)
  */
 async function loadOptions() {
   loadingOptions.value = true
@@ -58,7 +65,7 @@ async function loadOptions() {
 }
 
 /**
- * Load existing host for editing
+ * Load existing host
  */
 async function loadHost() {
   if (!hostId) return
@@ -73,13 +80,15 @@ async function loadHost() {
     
     formData.value = {
       hostname: host.hostname,
+      email: host.email,
+      password: '',
+      passwordConfirm: '',
       network_id: host.network_id,
       groups: groupsStr,
+      overlay_ip: host.overlay_ip || '',
       is_lighthouse: host.is_lighthouse || false,
       public_host_port: host.public_host_port || '',
-      overlay_ip: host.overlay_ip || '',
-      active: host.active ?? true, // Default to true if undefined
-      regenerate: false,
+      active: host.active ?? true,
     }
   } catch (err: any) {
     toast.error('Failed to load Nebula host')
@@ -93,6 +102,17 @@ async function loadHost() {
  * Handle form submission
  */
 async function handleSubmit() {
+  // Validation: Create mode requires password
+  if (!isEdit.value && !formData.value.password) {
+    toast.error('Password is required for new hosts')
+    return
+  }
+  
+  if (formData.value.password && formData.value.password !== formData.value.passwordConfirm) {
+    toast.error('Passwords do not match')
+    return
+  }
+
   loading.value = true
   
   try {
@@ -104,11 +124,18 @@ async function handleSubmit() {
 
     const data: any = {
       hostname: formData.value.hostname,
+      email: formData.value.email,
       network_id: formData.value.network_id,
       groups: groupsArray,
       is_lighthouse: formData.value.is_lighthouse,
       public_host_port: formData.value.public_host_port || null,
       active: formData.value.active,
+    }
+    
+    // Only send password if entered
+    if (formData.value.password) {
+      data.password = formData.value.password
+      data.passwordConfirm = formData.value.passwordConfirm
     }
     
     // Only send overlay_ip if explicitly set (usually backend handles this)
@@ -117,14 +144,10 @@ async function handleSubmit() {
     }
     
     if (isEdit.value) {
-      // Update existing host
-      data.regenerate = formData.value.regenerate
       await pb.collection('nebula_hosts').update(hostId!, data)
       toast.success('Nebula host updated')
     } else {
-      // Create new host
       data.organization = authStore.currentOrgId
-      
       await pb.collection('nebula_hosts').create(data)
       toast.success('Nebula host created')
     }
@@ -167,9 +190,10 @@ onMounted(() => {
     
     <!-- Form -->
     <form v-else @submit.prevent="handleSubmit" class="space-y-6">
+      
+      <!-- Identity -->
       <BaseCard title="Identity">
         <div class="space-y-4">
-          <!-- Hostname -->
           <div class="form-control">
             <label class="label">
               <span class="label-text">Hostname *</span>
@@ -187,7 +211,60 @@ onMounted(() => {
               </span>
             </label>
           </div>
+        </div>
+      </BaseCard>
+
+      <!-- Authentication -->
+      <BaseCard title="Authentication">
+        <div class="space-y-4">
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text">Email (Identity) *</span>
+            </label>
+            <input 
+              v-model="formData.email"
+              type="email" 
+              placeholder="host-uuid@nebula.local"
+              class="input input-bordered"
+              required
+            />
+            <label class="label">
+              <span class="label-text-alt">Unique email used for PocketBase authentication record.</span>
+            </label>
+          </div>
           
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Password {{ isEdit ? '(Optional)' : '*' }}</span>
+              </label>
+              <input 
+                v-model="formData.password"
+                type="password" 
+                class="input input-bordered"
+                :required="!isEdit"
+                minlength="8"
+              />
+            </div>
+            
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Confirm Password {{ isEdit ? '(Optional)' : '*' }}</span>
+              </label>
+              <input 
+                v-model="formData.passwordConfirm"
+                type="password" 
+                class="input input-bordered"
+                :required="!!formData.password"
+              />
+            </div>
+          </div>
+        </div>
+      </BaseCard>
+      
+      <!-- Network Configuration -->
+      <BaseCard title="Network Configuration">
+        <div class="space-y-4">
           <!-- Network -->
           <div class="form-control">
             <label class="label">
@@ -218,48 +295,6 @@ onMounted(() => {
               </span>
             </label>
           </div>
-        </div>
-      </BaseCard>
-      
-      <!-- Network Configuration -->
-      <BaseCard title="Network Configuration">
-        <div class="space-y-4">
-          <!-- Is Lighthouse -->
-          <div class="form-control">
-            <label class="label cursor-pointer justify-start gap-4">
-              <input 
-                v-model="formData.is_lighthouse"
-                type="checkbox" 
-                class="checkbox checkbox-primary"
-              />
-              <span class="label-text">
-                <span class="font-medium">Is Lighthouse</span>
-                <span class="block text-sm text-base-content/70 mt-1">
-                  This host will serve as a lighthouse for other nodes to find each other.
-                  Requires a static public IP/Port.
-                </span>
-              </span>
-            </label>
-          </div>
-
-          <!-- Public IP/Port (Conditional) -->
-          <div v-if="formData.is_lighthouse" class="form-control pl-8 border-l-2 border-base-300">
-            <label class="label">
-              <span class="label-text">Public Host:Port *</span>
-            </label>
-            <input 
-              v-model="formData.public_host_port"
-              type="text" 
-              placeholder="1.2.3.4:4242 or my.domain.com:4242"
-              class="input input-bordered font-mono"
-              :required="formData.is_lighthouse"
-            />
-            <label class="label">
-              <span class="label-text-alt">
-                The publicly accessible address of this lighthouse
-              </span>
-            </label>
-          </div>
 
           <!-- Overlay IP (Read-onlyish) -->
           <div class="form-control">
@@ -280,39 +315,58 @@ onMounted(() => {
           </div>
         </div>
       </BaseCard>
-      
-      <!-- Options -->
-      <BaseCard title="Lifecycle">
+
+      <!-- Lighthouse Settings -->
+      <BaseCard title="Role & Status">
         <div class="space-y-4">
+          <!-- Is Lighthouse -->
+          <div class="form-control">
+            <label class="label cursor-pointer justify-start gap-4">
+              <input 
+                v-model="formData.is_lighthouse"
+                type="checkbox" 
+                class="checkbox checkbox-primary"
+              />
+              <span class="label-text">
+                <span class="font-medium">Is Lighthouse</span>
+                <span class="block text-sm text-base-content/70 mt-1">
+                  This host will serve as a lighthouse for other nodes. Requires a static public IP.
+                </span>
+              </span>
+            </label>
+          </div>
+
+          <!-- Public IP/Port (Conditional) -->
+          <div v-if="formData.is_lighthouse" class="form-control pl-8 border-l-2 border-base-300">
+            <label class="label">
+              <span class="label-text">Public Host:Port *</span>
+            </label>
+            <input 
+              v-model="formData.public_host_port"
+              type="text" 
+              placeholder="1.2.3.4:4242"
+              class="input input-bordered font-mono"
+              :required="formData.is_lighthouse"
+            />
+            <label class="label">
+              <span class="label-text-alt">
+                The publicly accessible address of this lighthouse
+              </span>
+            </label>
+          </div>
+
           <!-- Active -->
           <div class="form-control">
             <label class="label cursor-pointer justify-start gap-4">
               <input 
                 v-model="formData.active"
                 type="checkbox" 
-                class="checkbox"
+                class="toggle toggle-success"
               />
               <span class="label-text">
-                <span class="font-medium">Active</span>
-                <span class="block text-sm text-base-content/70 mt-1">
-                  Disable to revoke access without deleting the record
-                </span>
-              </span>
-            </label>
-          </div>
-          
-          <!-- Regenerate (edit only) -->
-          <div v-if="isEdit" class="form-control">
-            <label class="label cursor-pointer justify-start gap-4">
-              <input 
-                v-model="formData.regenerate"
-                type="checkbox" 
-                class="checkbox checkbox-warning"
-              />
-              <span class="label-text">
-                <span class="font-medium text-warning">Regenerate Certificate</span>
-                <span class="block text-sm text-base-content/70 mt-1">
-                  Create a new certificate/key pair. You will need to re-download the config.
+                <span class="font-medium">Active Status</span>
+                <span class="block text-sm text-base-content/70">
+                  Allow this host to connect to the network
                 </span>
               </span>
             </label>

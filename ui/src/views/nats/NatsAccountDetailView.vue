@@ -3,7 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
-import { formatDate } from '@/utils/format'
+import { formatDate, formatBytes } from '@/utils/format'
 import type { NatsAccount } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 
@@ -13,6 +13,8 @@ const toast = useToast()
 
 const account = ref<NatsAccount | null>(null)
 const loading = ref(true)
+const rotating = ref(false)
+const showRotateModal = ref(false)
 
 const accountId = route.params.id as string
 
@@ -21,7 +23,6 @@ const accountId = route.params.id as string
  */
 async function loadAccount() {
   loading.value = true
-  
   try {
     account.value = await pb.collection('nats_accounts').getOne<NatsAccount>(accountId)
   } catch (err: any) {
@@ -33,23 +34,46 @@ async function loadAccount() {
 }
 
 /**
- * Format limit value
+ * Format limit values (-1 means Unlimited)
  */
-function formatLimit(value?: number) {
+function formatLimit(value?: number, isBytes = false) {
   if (value === undefined || value === null) return 'Not set'
   if (value === -1) return 'Unlimited'
-  return value.toLocaleString()
+  return isBytes ? formatBytes(value) : value.toLocaleString()
 }
 
 /**
- * Copy to clipboard
+ * Copy helper
  */
 async function copyToClipboard(text: string, label: string) {
   try {
     await navigator.clipboard.writeText(text)
-    toast.success(`${label} copied to clipboard`)
+    toast.success(`${label} copied`)
   } catch (err) {
-    toast.error('Failed to copy to clipboard')
+    toast.error('Failed to copy')
+  }
+}
+
+/**
+ * Trigger Key Rotation
+ */
+async function confirmRotateKeys() {
+  if (!account.value) return
+  
+  rotating.value = true
+  try {
+    // Setting rotate_keys to true triggers the backend hook
+    await pb.collection('nats_accounts').update(account.value.id, {
+      rotate_keys: true
+    })
+    
+    toast.success('Keys rotated successfully')
+    showRotateModal.value = false
+    await loadAccount()
+  } catch (err: any) {
+    toast.error(err.message || 'Failed to rotate keys')
+  } finally {
+    rotating.value = false
   }
 }
 
@@ -77,167 +101,173 @@ onMounted(() => {
         <div class="flex flex-col sm:flex-row justify-between items-start gap-4">
           <div class="flex items-center gap-3">
             <h1 class="text-3xl font-bold break-words">{{ account.name }}</h1>
-            <span 
-              class="badge"
-              :class="account.active ? 'badge-success' : 'badge-error'"
-            >
-              {{ account.active ? 'Active' : 'Inactive' }}
-            </span>
+            <div class="flex items-center gap-1.5 px-3 py-1 bg-base-200 rounded-full">
+              <span class="w-2 h-2 rounded-full" :class="account.active ? 'bg-success' : 'bg-error'"></span>
+              <span class="text-xs font-medium">{{ account.active ? 'Active' : 'Inactive' }}</span>
+            </div>
           </div>
+          <!-- No Actions needed in header for NATS Account since it's system managed -->
         </div>
       </div>
       
-      <!-- Alert -->
-      <div class="alert alert-info">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-        <span>NATS Accounts are automatically managed by the system. To use this account, create NATS Users.</span>
-      </div>
-      
-      <!-- Details Grid -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- Basic Info -->
-        <BaseCard title="Basic Information">
-          <dl class="space-y-4">
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">Name</dt>
-              <dd class="mt-1 text-sm">{{ account.name }}</dd>
-            </div>
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">Description</dt>
-              <dd class="mt-1 text-sm">{{ account.description || '-' }}</dd>
-            </div>
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">Status</dt>
-              <dd class="mt-1">
-                <span 
-                  class="badge"
-                  :class="account.active ? 'badge-success' : 'badge-error'"
-                >
-                  {{ account.active ? 'Active' : 'Inactive' }}
-                </span>
-              </dd>
-            </div>
-          </dl>
-        </BaseCard>
+      <!-- Content Grid -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         
-        <!-- Connection Limits -->
-        <BaseCard title="Connection Limits">
-          <dl class="space-y-4">
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">Max Connections</dt>
-              <dd class="mt-1">
-                <code class="text-sm">{{ formatLimit(account.max_connections) }}</code>
-              </dd>
+        <!-- Left Column: Info & Limits -->
+        <div class="space-y-6">
+          
+          <!-- Basic Info -->
+          <BaseCard title="Basic Information">
+            <dl class="space-y-4">
+              <div>
+                <dt class="text-sm font-medium text-base-content/70">Description</dt>
+                <dd class="mt-1 text-sm">{{ account.description || '-' }}</dd>
+              </div>
+              <div>
+                <dt class="text-sm font-medium text-base-content/70">Created</dt>
+                <dd class="mt-1 text-sm">{{ formatDate(account.created) }}</dd>
+              </div>
+              <div>
+                <dt class="text-sm font-medium text-base-content/70">Last Updated</dt>
+                <dd class="mt-1 text-sm">{{ formatDate(account.updated) }}</dd>
+              </div>
+            </dl>
+          </BaseCard>
+
+          <!-- Resource Limits -->
+          <BaseCard title="Resource Limits">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              
+              <!-- Connectivity -->
+              <div class="space-y-3">
+                <h4 class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Connectivity</h4>
+                <div>
+                  <dt class="text-xs text-base-content/70">Connections</dt>
+                  <dd class="font-mono text-sm font-medium">{{ formatLimit(account.max_connections) }}</dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-base-content/70">Subscriptions</dt>
+                  <dd class="font-mono text-sm font-medium">{{ formatLimit(account.max_subscriptions) }}</dd>
+                </div>
+              </div>
+
+              <!-- Data -->
+              <div class="space-y-3">
+                <h4 class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Data</h4>
+                <div>
+                  <dt class="text-xs text-base-content/70">Max Payload</dt>
+                  <dd class="font-mono text-sm font-medium">{{ formatLimit(account.max_payload, true) }}</dd>
+                </div>
+                <div>
+                  <dt class="text-xs text-base-content/70">Total Data</dt>
+                  <dd class="font-mono text-sm font-medium">{{ formatLimit(account.max_data, true) }}</dd>
+                </div>
+              </div>
+
+              <!-- JetStream -->
+              <div class="space-y-3 sm:col-span-2 border-t border-base-200 pt-3">
+                <h4 class="text-xs font-bold text-base-content/50 uppercase tracking-wider">JetStream Storage</h4>
+                <div class="grid grid-cols-2 gap-6">
+                  <div>
+                    <dt class="text-xs text-base-content/70">Memory</dt>
+                    <dd class="font-mono text-sm font-medium">{{ formatLimit(account.max_jetstream_memory_storage, true) }}</dd>
+                  </div>
+                  <div>
+                    <dt class="text-xs text-base-content/70">Disk</dt>
+                    <dd class="font-mono text-sm font-medium">{{ formatLimit(account.max_jetstream_disk_storage, true) }}</dd>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">Max Subscriptions</dt>
-              <dd class="mt-1">
-                <code class="text-sm">{{ formatLimit(account.max_subscriptions) }}</code>
-              </dd>
-            </div>
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">Max Payload</dt>
-              <dd class="mt-1">
-                <code class="text-sm">{{ formatLimit(account.max_payload) }} bytes</code>
-              </dd>
-            </div>
-          </dl>
-        </BaseCard>
+          </BaseCard>
+        </div>
         
-        <!-- Data Limits -->
-        <BaseCard title="Data Limits">
-          <dl class="space-y-4">
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">Max Data</dt>
-              <dd class="mt-1">
-                <code class="text-sm">{{ formatLimit(account.max_data) }} bytes</code>
-              </dd>
-            </div>
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">Max JetStream Disk Storage</dt>
-              <dd class="mt-1">
-                <code class="text-sm">{{ formatLimit(account.max_jetstream_disk_storage) }} bytes</code>
-              </dd>
-            </div>
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">Max JetStream Memory Storage</dt>
-              <dd class="mt-1">
-                <code class="text-sm">{{ formatLimit(account.max_jetstream_memory_storage) }} bytes</code>
-              </dd>
-            </div>
-          </dl>
-        </BaseCard>
-        
-        <!-- Keys -->
-        <BaseCard title="Account Keys">
-          <dl class="space-y-4">
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">Public Key</dt>
-              <dd class="mt-1 flex items-center gap-2">
-                <code class="text-xs break-all">{{ account.public_key || 'Not generated' }}</code>
+        <!-- Right Column: Security -->
+        <div class="space-y-6">
+          <BaseCard>
+            <template #header>
+              <div class="flex justify-between items-center mb-4">
+                <h3 class="card-title text-base">Security & Keys</h3>
                 <button 
-                  v-if="account.public_key"
-                  @click="copyToClipboard(account.public_key, 'Public key')"
-                  class="btn btn-ghost btn-xs"
-                  title="Copy to clipboard"
+                  @click="showRotateModal = true" 
+                  class="btn btn-sm btn-outline btn-warning"
+                  title="Rotate Account Keys"
                 >
-                  📋
+                  <span class="text-lg">🔄</span>
+                  Rotate Keys
                 </button>
-              </dd>
+              </div>
+            </template>
+
+            <div class="space-y-6">
+              <!-- Public Key -->
+              <div>
+                <div class="flex justify-between items-center mb-1">
+                  <div class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Account Public Key</div>
+                  <button @click="copyToClipboard(account.public_key!, 'Public Key')" class="btn btn-ghost btn-xs">Copy</button>
+                </div>
+                <div class="bg-base-200 p-3 rounded-lg font-mono text-xs break-all border border-base-300">
+                  {{ account.public_key || 'Not Generated' }}
+                </div>
+              </div>
+
+              <!-- Signing Key -->
+              <div>
+                <div class="flex justify-between items-center mb-1">
+                  <div class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Signing Public Key</div>
+                  <button @click="copyToClipboard(account.signing_public_key!, 'Signing Key')" class="btn btn-ghost btn-xs">Copy</button>
+                </div>
+                <div class="bg-base-200 p-3 rounded-lg font-mono text-xs break-all border border-base-300">
+                  {{ account.signing_public_key || 'Not Generated' }}
+                </div>
+              </div>
+
+              <!-- JWT -->
+              <div>
+                <div class="flex justify-between items-center mb-1">
+                  <div class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Account JWT</div>
+                  <button @click="copyToClipboard(account.jwt!, 'JWT')" class="btn btn-ghost btn-xs">Copy</button>
+                </div>
+                <div class="bg-base-200 p-3 rounded-lg font-mono text-xs break-all max-h-32 overflow-y-auto border border-base-300">
+                  {{ account.jwt || 'Not Generated' }}
+                </div>
+              </div>
             </div>
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">Signing Public Key</dt>
-              <dd class="mt-1 flex items-center gap-2">
-                <code class="text-xs break-all">{{ account.signing_public_key || 'Not generated' }}</code>
-                <button 
-                  v-if="account.signing_public_key"
-                  @click="copyToClipboard(account.signing_public_key, 'Signing public key')"
-                  class="btn btn-ghost btn-xs"
-                  title="Copy to clipboard"
-                >
-                  📋
-                </button>
-              </dd>
-            </div>
-          </dl>
-        </BaseCard>
-        
-        <!-- JWT -->
-        <BaseCard v-if="account.jwt" title="Account JWT" class="lg:col-span-2">
-          <div class="flex items-start gap-2">
-            <div class="flex-1 bg-base-200 p-4 rounded font-mono text-xs overflow-x-auto break-all">
-              {{ account.jwt }}
-            </div>
-            <button 
-              @click="copyToClipboard(account.jwt!, 'JWT')"
-              class="btn btn-ghost btn-sm"
-              title="Copy to clipboard"
-            >
-              📋
-            </button>
-          </div>
-        </BaseCard>
-        
-        <!-- System Info -->
-        <BaseCard title="System Information">
-          <dl class="space-y-4">
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">ID</dt>
-              <dd class="mt-1">
-                <code class="text-xs">{{ account.id }}</code>
-              </dd>
-            </div>
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">Created</dt>
-              <dd class="mt-1 text-sm">{{ formatDate(account.created) }}</dd>
-            </div>
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">Last Updated</dt>
-              <dd class="mt-1 text-sm">{{ formatDate(account.updated) }}</dd>
-            </div>
-          </dl>
-        </BaseCard>
+          </BaseCard>
+        </div>
       </div>
     </template>
+
+    <!-- Rotate Modal -->
+    <dialog class="modal" :class="{ 'modal-open': showRotateModal }">
+      <div class="modal-box">
+        <h3 class="font-bold text-lg text-warning">Rotate Account Keys?</h3>
+        <p class="py-4">
+          This will generate new signing keys and update the Account JWT. 
+          <br><br>
+          <strong>Warning:</strong> Existing users may need to have their credentials updated if they rely on the old signing key chain, although account rotation is generally designed to be non-disruptive if operators are updated.
+        </p>
+        <div class="modal-action">
+          <button 
+            class="btn" 
+            @click="showRotateModal = false"
+            :disabled="rotating"
+          >
+            Cancel
+          </button>
+          <button 
+            class="btn btn-warning" 
+            @click="confirmRotateKeys"
+            :disabled="rotating"
+          >
+            <span v-if="rotating" class="loading loading-spinner"></span>
+            Rotate Keys
+          </button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button @click="showRotateModal = false">close</button>
+      </form>
+    </dialog>
   </div>
 </template>

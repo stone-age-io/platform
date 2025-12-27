@@ -13,6 +13,8 @@ const toast = useToast()
 
 const user = ref<NatsUser | null>(null)
 const loading = ref(true)
+const regenerating = ref(false)
+const showRegenerateModal = ref(false)
 
 const userId = route.params.id as string
 
@@ -21,7 +23,6 @@ const userId = route.params.id as string
  */
 async function loadUser() {
   loading.value = true
-  
   try {
     user.value = await pb.collection('nats_users').getOne<NatsUser>(userId, {
       expand: 'account_id,role_id',
@@ -51,22 +52,38 @@ async function handleDelete() {
 }
 
 /**
- * Copy to clipboard
+ * Trigger Regeneration
  */
-async function copyToClipboard(text: string, label: string) {
+async function confirmRegenerate() {
+  if (!user.value) return
+
+  regenerating.value = true
   try {
-    await navigator.clipboard.writeText(text)
-    toast.success(`${label} copied to clipboard`)
-  } catch (err) {
-    toast.error('Failed to copy to clipboard')
+    await pb.collection('nats_users').update(user.value.id, { regenerate: true })
+    toast.success('Credentials regenerated')
+    showRegenerateModal.value = false
+    await loadUser()
+  } catch (err: any) {
+    toast.error(err.message || 'Failed to regenerate credentials')
+  } finally {
+    regenerating.value = false
   }
 }
 
-/**
- * Download credentials file
- */
+async function copyToClipboard(text: string, label: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    toast.success(`${label} copied`)
+  } catch (err) {
+    toast.error('Failed to copy')
+  }
+}
+
 function downloadCredsFile() {
-  if (!user.value?.creds_file) return
+  if (!user.value?.creds_file) {
+    toast.error('No credentials file available')
+    return
+  }
   
   const blob = new Blob([user.value.creds_file], { type: 'text/plain' })
   const url = URL.createObjectURL(blob)
@@ -78,7 +95,7 @@ function downloadCredsFile() {
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
   
-  toast.success('Credentials file downloaded')
+  toast.success('Credentials downloaded')
 }
 
 onMounted(() => {
@@ -105,12 +122,6 @@ onMounted(() => {
         <div class="flex flex-col sm:flex-row justify-between items-start gap-4">
           <div class="flex items-center gap-3">
             <h1 class="text-3xl font-bold font-mono break-words">{{ user.nats_username }}</h1>
-            <span 
-              class="badge"
-              :class="user.active ? 'badge-success' : 'badge-error'"
-            >
-              {{ user.active ? 'Active' : 'Inactive' }}
-            </span>
           </div>
           <div class="flex gap-2 w-full sm:w-auto">
             <router-link :to="`/nats/users/${user.id}/edit`" class="btn btn-primary flex-1 sm:flex-initial">
@@ -124,147 +135,169 @@ onMounted(() => {
       </div>
       
       <!-- Details Grid -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- Basic Info -->
-        <BaseCard title="Basic Information">
-          <dl class="space-y-4">
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">Username</dt>
-              <dd class="mt-1">
-                <code class="text-sm">{{ user.nats_username }}</code>
-              </dd>
-            </div>
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">Description</dt>
-              <dd class="mt-1 text-sm">{{ user.description || '-' }}</dd>
-            </div>
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">Account</dt>
-              <dd class="mt-1">
-                <router-link 
-                  v-if="user.expand?.account_id"
-                  :to="`/nats/accounts/${user.account_id}`"
-                  class="link link-hover"
-                >
-                  {{ user.expand.account_id.name }}
-                </router-link>
-                <span v-else>-</span>
-              </dd>
-            </div>
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">Role</dt>
-              <dd class="mt-1">
-                <router-link 
-                  v-if="user.expand?.role_id"
-                  :to="`/nats/roles/${user.role_id}`"
-                  class="link link-hover"
-                >
-                  {{ user.expand.role_id.name }}
-                </router-link>
-                <span v-else>-</span>
-              </dd>
-            </div>
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">Status</dt>
-              <dd class="mt-1">
-                <span 
-                  class="badge"
-                  :class="user.active ? 'badge-success' : 'badge-error'"
-                >
-                  {{ user.active ? 'Active' : 'Inactive' }}
-                </span>
-              </dd>
-            </div>
-          </dl>
-        </BaseCard>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         
-        <!-- Authentication -->
-        <BaseCard title="Authentication">
-          <dl class="space-y-4">
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">Bearer Token</dt>
-              <dd class="mt-1">
-                <span class="badge" :class="user.bearer_token ? 'badge-success' : 'badge-ghost'">
-                  {{ user.bearer_token ? 'Enabled' : 'Disabled' }}
-                </span>
-              </dd>
-            </div>
-            <div v-if="user.jwt_expires_at">
-              <dt class="text-sm font-medium text-base-content/70">JWT Expires</dt>
-              <dd class="mt-1 text-sm">{{ formatDate(user.jwt_expires_at) }}</dd>
-            </div>
-            <div v-if="user.public_key">
-              <dt class="text-sm font-medium text-base-content/70">Public Key</dt>
-              <dd class="mt-1 flex items-center gap-2">
-                <code class="text-xs break-all flex-1">{{ user.public_key }}</code>
-                <button 
-                  @click="copyToClipboard(user.public_key!, 'Public key')"
-                  class="btn btn-ghost btn-xs"
-                  title="Copy to clipboard"
-                >
-                  📋
-                </button>
-              </dd>
-            </div>
-          </dl>
-        </BaseCard>
+        <!-- Left Column: Identity -->
+        <div class="space-y-6">
+          <BaseCard title="Identity & Permissions">
+            <dl class="space-y-4">
+              <div>
+                <dt class="text-sm font-medium text-base-content/70">Description</dt>
+                <dd class="mt-1 text-sm">{{ user.description || '-' }}</dd>
+              </div>
+              
+              <div>
+                <dt class="text-sm font-medium text-base-content/70">Email (Identity)</dt>
+                <dd class="mt-1 text-sm">{{ user.email }}</dd>
+              </div>
+              
+              <div>
+                <dt class="text-sm font-medium text-base-content/70">Account</dt>
+                <dd class="mt-1">
+                  <router-link 
+                    v-if="user.expand?.account_id"
+                    :to="`/nats/accounts/${user.account_id}`"
+                    class="link link-primary hover:no-underline"
+                  >
+                    📡 {{ user.expand.account_id.name }}
+                  </router-link>
+                  <span v-else class="text-sm text-base-content/40">-</span>
+                </dd>
+              </div>
+              
+              <div>
+                <dt class="text-sm font-medium text-base-content/70">Role</dt>
+                <dd class="mt-1">
+                  <router-link 
+                    v-if="user.expand?.role_id"
+                    :to="`/nats/roles/${user.role_id}`"
+                    class="link link-primary hover:no-underline"
+                  >
+                    🎭 {{ user.expand.role_id.name }}
+                  </router-link>
+                  <span v-else class="text-sm text-base-content/40">-</span>
+                </dd>
+              </div>
+
+              <div>
+                <dt class="text-sm font-medium text-base-content/70">Created</dt>
+                <dd class="mt-1 text-sm">{{ formatDate(user.created) }}</dd>
+              </div>
+            </dl>
+          </BaseCard>
+        </div>
         
-        <!-- JWT -->
-        <BaseCard v-if="user.jwt" title="User JWT" class="lg:col-span-2">
-          <div class="flex items-start gap-2">
-            <div class="flex-1 bg-base-200 p-4 rounded font-mono text-xs overflow-x-auto break-all">
-              {{ user.jwt }}
+        <!-- Right Column: Security -->
+        <div class="space-y-6">
+          <BaseCard>
+            <template #header>
+              <div class="flex justify-between items-center mb-4">
+                <h3 class="card-title text-base">Security & Credentials</h3>
+                <div class="flex gap-2">
+                  <button 
+                    v-if="user.creds_file"
+                    @click="downloadCredsFile"
+                    class="btn btn-sm btn-outline"
+                  >
+                    <span class="text-lg">📥</span>
+                    .creds
+                  </button>
+                  <button 
+                    @click="showRegenerateModal = true" 
+                    class="btn btn-sm btn-outline btn-error"
+                    title="Regenerate credentials"
+                  >
+                    <span class="text-lg">🔄</span>
+                  </button>
+                </div>
+              </div>
+            </template>
+
+            <div class="space-y-6">
+              <!-- Status Indicators -->
+              <div class="grid grid-cols-2 gap-4">
+                <div class="bg-base-200 rounded-lg p-2 border border-base-300">
+                  <span class="text-xs text-base-content/50 uppercase block mb-1">Status</span>
+                  <div class="flex items-center gap-1.5" v-if="user.active">
+                    <span class="w-2 h-2 rounded-full bg-success"></span>
+                    <span class="font-medium text-sm">Active</span>
+                  </div>
+                  <div class="flex items-center gap-1.5" v-else>
+                    <span class="w-2 h-2 rounded-full bg-error"></span>
+                    <span class="font-medium text-sm">Inactive</span>
+                  </div>
+                </div>
+                
+                <div class="bg-base-200 rounded-lg p-2 border border-base-300">
+                  <span class="text-xs text-base-content/50 uppercase block mb-1">Bearer Token</span>
+                  <div class="flex items-center gap-1.5">
+                    <span class="font-medium text-sm">{{ user.bearer_token ? 'Enabled' : 'Disabled' }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- JWT Expiry -->
+              <div v-if="user.jwt_expires_at">
+                <dt class="text-xs font-bold text-base-content/50 uppercase tracking-wider mb-1">JWT Expires</dt>
+                <dd class="text-sm">{{ formatDate(user.jwt_expires_at) }}</dd>
+              </div>
+
+              <!-- Public Key -->
+              <div v-if="user.public_key">
+                <div class="flex justify-between items-center mb-1">
+                  <div class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Public Key</div>
+                  <button @click="copyToClipboard(user.public_key!, 'Public Key')" class="btn btn-ghost btn-xs">Copy</button>
+                </div>
+                <div class="bg-base-200 p-3 rounded-lg font-mono text-xs break-all border border-base-300">
+                  {{ user.public_key }}
+                </div>
+              </div>
+
+              <!-- JWT -->
+              <div v-if="user.jwt">
+                <div class="flex justify-between items-center mb-1">
+                  <div class="text-xs font-bold text-base-content/50 uppercase tracking-wider">User JWT</div>
+                  <button @click="copyToClipboard(user.jwt!, 'JWT')" class="btn btn-ghost btn-xs">Copy</button>
+                </div>
+                <div class="bg-base-200 p-3 rounded-lg font-mono text-xs break-all max-h-32 overflow-y-auto border border-base-300">
+                  {{ user.jwt }}
+                </div>
+              </div>
             </div>
-            <button 
-              @click="copyToClipboard(user.jwt!, 'JWT')"
-              class="btn btn-ghost btn-sm"
-              title="Copy to clipboard"
-            >
-              📋
-            </button>
-          </div>
-        </BaseCard>
-        
-        <!-- Credentials File -->
-        <BaseCard v-if="user.creds_file" title="Credentials File" class="lg:col-span-2">
-          <div class="flex items-center justify-between gap-4">
-            <div>
-              <p class="text-sm">
-                Download the credentials file to authenticate with NATS
-              </p>
-              <p class="text-xs text-base-content/60 mt-1">
-                File: <code>{{ user.nats_username }}.creds</code>
-              </p>
-            </div>
-            <button 
-              @click="downloadCredsFile"
-              class="btn btn-primary btn-sm"
-            >
-              📥 Download
-            </button>
-          </div>
-        </BaseCard>
-        
-        <!-- System Info -->
-        <BaseCard title="System Information">
-          <dl class="space-y-4">
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">ID</dt>
-              <dd class="mt-1">
-                <code class="text-xs">{{ user.id }}</code>
-              </dd>
-            </div>
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">Created</dt>
-              <dd class="mt-1 text-sm">{{ formatDate(user.created) }}</dd>
-            </div>
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">Last Updated</dt>
-              <dd class="mt-1 text-sm">{{ formatDate(user.updated) }}</dd>
-            </div>
-          </dl>
-        </BaseCard>
+          </BaseCard>
+        </div>
       </div>
     </template>
+
+    <!-- Regenerate Modal -->
+    <dialog class="modal" :class="{ 'modal-open': showRegenerateModal }">
+      <div class="modal-box">
+        <h3 class="font-bold text-lg text-warning">Regenerate Credentials?</h3>
+        <p class="py-4">
+          This will invalidate the existing credentials immediately. Any device using the current 
+          <code>.creds</code> file will lose connectivity until updated with the new file.
+        </p>
+        <div class="modal-action">
+          <button 
+            class="btn" 
+            @click="showRegenerateModal = false"
+            :disabled="regenerating"
+          >
+            Cancel
+          </button>
+          <button 
+            class="btn btn-error" 
+            @click="confirmRegenerate"
+            :disabled="regenerating"
+          >
+            <span v-if="regenerating" class="loading loading-spinner"></span>
+            Regenerate
+          </button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button @click="showRegenerateModal = false">close</button>
+      </form>
+    </dialog>
   </div>
 </template>
