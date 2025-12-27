@@ -71,7 +71,7 @@ async function handleLogout() {
 
 function getAvatarUrl() {
   if (!authStore.user?.avatar) return null
-  return pb.files.getUrl(authStore.user, authStore.user.avatar, { thumb: '100x100' })
+  return pb.files.getUrl(authStore.user, authStore.user.avatar, { thumb: '100x100', token: pb.authStore.token })
 }
 </script>
 

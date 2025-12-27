@@ -36,7 +36,7 @@ function initProfile() {
     
     // Set initial avatar preview if exists
     if (authStore.user.avatar) {
-      avatarPreview.value = pb.files.getUrl(authStore.user, authStore.user.avatar)
+      avatarPreview.value = pb.files.getUrl(authStore.user, authStore.user.avatar, { token: pb.authStore.token })
     }
   }
 }
@@ -84,7 +84,7 @@ async function updateProfile() {
     // Refresh preview from server URL to ensure consistency
     if (updatedUser.avatar) {
       // We can use the updatedUser record directly for the file URL
-      avatarPreview.value = pb.files.getUrl(updatedUser, updatedUser.avatar)
+      avatarPreview.value = pb.files.getUrl(updatedUser, updatedUser.avatar, { token: pb.authStore.token })
     }
     
     toast.success('Profile updated successfully')
