@@ -4,7 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
-import type { Thing, ThingType, Location } from '@/types/pocketbase'
+import type { Thing, ThingType, Location, NatsUser, NebulaHost } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 
 const router = useRouter()
@@ -17,37 +17,55 @@ const isEdit = computed(() => !!thingId)
 
 // Form data
 const formData = ref({
+  // Basic
   name: '',
   description: '',
   code: '',
   type: '',
   location: '',
+  
+  // Auth
+  email: '',
+  password: '',
+  passwordConfirm: '',
+  
+  // Infrastructure
+  nats_user: '',
+  nebula_host: '',
+  
+  // Meta
   metadata: '',
 })
 
 // Relation options
 const thingTypes = ref<ThingType[]>([])
 const locations = ref<Location[]>([])
+const natsUsers = ref<NatsUser[]>([])
+const nebulaHosts = ref<NebulaHost[]>([])
 
 // State
 const loading = ref(false)
 const loadingOptions = ref(true)
 
 /**
- * Load form options (types and locations)
- * Backend automatically filters these by organization
+ * Load form options (types, locations, nats users, nebula hosts)
+ * Backend automatically filters these by organization via API rules
  */
 async function loadOptions() {
   loadingOptions.value = true
   
   try {
-    const [typesResult, locationsResult] = await Promise.all([
+    const [typesRes, locsRes, natsRes, nebulaRes] = await Promise.all([
       pb.collection('thing_types').getFullList<ThingType>({ sort: 'name' }),
       pb.collection('locations').getFullList<Location>({ sort: 'name' }),
+      pb.collection('nats_users').getFullList<NatsUser>({ sort: 'nats_username' }),
+      pb.collection('nebula_hosts').getFullList<NebulaHost>({ sort: 'hostname' }),
     ])
     
-    thingTypes.value = typesResult
-    locations.value = locationsResult
+    thingTypes.value = typesRes
+    locations.value = locsRes
+    natsUsers.value = natsRes
+    nebulaHosts.value = nebulaRes
   } catch (err: any) {
     toast.error('Failed to load form options')
   } finally {
@@ -72,6 +90,16 @@ async function loadThing() {
       code: thing.code || '',
       type: thing.type || '',
       location: thing.location || '',
+      
+      // Auth (email only, password hidden)
+      email: thing.email,
+      password: '',
+      passwordConfirm: '',
+      
+      // Infra
+      nats_user: thing.nats_user || '',
+      nebula_host: thing.nebula_host || '',
+      
       metadata: thing.metadata ? JSON.stringify(thing.metadata, null, 2) : '',
     }
   } catch (err: any) {
@@ -87,7 +115,6 @@ async function loadThing() {
  */
 function validateMetadata(): boolean {
   if (!formData.value.metadata.trim()) return true
-  
   try {
     JSON.parse(formData.value.metadata)
     return true
@@ -103,6 +130,17 @@ function validateMetadata(): boolean {
 async function handleSubmit() {
   if (!validateMetadata()) return
   
+  // Validation: Create mode requires password
+  if (!isEdit.value && !formData.value.password) {
+    toast.error('Password is required for new things')
+    return
+  }
+  
+  if (formData.value.password && formData.value.password !== formData.value.passwordConfirm) {
+    toast.error('Passwords do not match')
+    return
+  }
+  
   loading.value = true
   
   try {
@@ -112,18 +150,24 @@ async function handleSubmit() {
       code: formData.value.code || null,
       type: formData.value.type || null,
       location: formData.value.location || null,
+      email: formData.value.email,
+      nats_user: formData.value.nats_user || null,
+      nebula_host: formData.value.nebula_host || null,
       metadata: formData.value.metadata ? JSON.parse(formData.value.metadata) : null,
     }
     
+    // Only send password if it was entered
+    if (formData.value.password) {
+      data.password = formData.value.password
+      data.passwordConfirm = formData.value.passwordConfirm
+    }
+    
     if (isEdit.value) {
-      // Update existing thing
       await pb.collection('things').update(thingId!, data)
       toast.success('Thing updated')
     } else {
-      // Create new thing
-      // IMPORTANT: Frontend must set organization
+      // Frontend must set organization on create
       data.organization = authStore.currentOrgId
-      
       await pb.collection('things').create(data)
       toast.success('Thing created')
     }
@@ -155,7 +199,7 @@ onMounted(() => {
         </ul>
       </div>
       <h1 class="text-3xl font-bold">
-        {{ isEdit ? 'Edit Thing' : 'Create Thing' }}
+        {{ isEdit ? 'Edit Thing' : 'Provision Thing' }}
       </h1>
     </div>
     
@@ -166,9 +210,10 @@ onMounted(() => {
     
     <!-- Form -->
     <form v-else @submit.prevent="handleSubmit" class="space-y-6">
+      
+      <!-- Basic Information -->
       <BaseCard title="Basic Information">
         <div class="space-y-4">
-          <!-- Name -->
           <div class="form-control">
             <label class="label">
               <span class="label-text">Name *</span>
@@ -176,13 +221,12 @@ onMounted(() => {
             <input 
               v-model="formData.name"
               type="text" 
-              placeholder="Enter thing name"
+              placeholder="e.g. Sensor-01"
               class="input input-bordered"
               required
             />
           </div>
           
-          <!-- Description -->
           <div class="form-control">
             <label class="label">
               <span class="label-text">Description</span>
@@ -190,48 +234,134 @@ onMounted(() => {
             <textarea 
               v-model="formData.description"
               class="textarea textarea-bordered"
-              rows="3"
+              rows="2"
               placeholder="Optional description"
             ></textarea>
           </div>
           
-          <!-- Code -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Code</span>
-            </label>
-            <input 
-              v-model="formData.code"
-              type="text" 
-              placeholder="Optional code/identifier"
-              class="input input-bordered font-mono"
-            />
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Code / ID</span>
+              </label>
+              <input 
+                v-model="formData.code"
+                type="text" 
+                placeholder="Unique Identifier"
+                class="input input-bordered font-mono"
+              />
+            </div>
+            
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Type</span>
+              </label>
+              <select v-model="formData.type" class="select select-bordered">
+                <option value="">Select Type...</option>
+                <option v-for="t in thingTypes" :key="t.id" :value="t.id">
+                  {{ t.name }}
+                </option>
+              </select>
+            </div>
           </div>
-          
-          <!-- Type -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Type</span>
-            </label>
-            <select v-model="formData.type" class="select select-bordered">
-              <option value="">Select a type (optional)</option>
-              <option v-for="type in thingTypes" :key="type.id" :value="type.id">
-                {{ type.name }}
-              </option>
-            </select>
-          </div>
-          
-          <!-- Location -->
+
           <div class="form-control">
             <label class="label">
               <span class="label-text">Location</span>
             </label>
             <select v-model="formData.location" class="select select-bordered">
-              <option value="">Select a location (optional)</option>
-              <option v-for="location in locations" :key="location.id" :value="location.id">
-                {{ location.name }}
+              <option value="">Select Location...</option>
+              <option v-for="loc in locations" :key="loc.id" :value="loc.id">
+                {{ loc.name }}
               </option>
             </select>
+          </div>
+        </div>
+      </BaseCard>
+      
+      <!-- Authentication -->
+      <BaseCard title="Authentication">
+        <div class="space-y-4">
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text">Email (Identity) *</span>
+            </label>
+            <input 
+              v-model="formData.email"
+              type="email" 
+              placeholder="thing-uuid@device.local"
+              class="input input-bordered"
+              required
+            />
+            <label class="label">
+              <span class="label-text-alt">Used by the device to bootstrap/login.</span>
+            </label>
+          </div>
+          
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Password {{ isEdit ? '(Optional)' : '*' }}</span>
+              </label>
+              <input 
+                v-model="formData.password"
+                type="password" 
+                class="input input-bordered"
+                :required="!isEdit"
+                minlength="8"
+              />
+            </div>
+            
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Confirm Password {{ isEdit ? '(Optional)' : '*' }}</span>
+              </label>
+              <input 
+                v-model="formData.passwordConfirm"
+                type="password" 
+                class="input input-bordered"
+                :required="!!formData.password"
+              />
+            </div>
+          </div>
+        </div>
+      </BaseCard>
+
+      <!-- Infrastructure -->
+      <BaseCard title="Connectivity">
+        <div class="space-y-4">
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text">NATS User</span>
+            </label>
+            <select v-model="formData.nats_user" class="select select-bordered font-mono">
+              <option value="">None</option>
+              <option v-for="user in natsUsers" :key="user.id" :value="user.id">
+                {{ user.nats_username }}
+              </option>
+            </select>
+            <label class="label">
+              <span class="label-text-alt">
+                Links this device to a specific NATS identity.
+              </span>
+            </label>
+          </div>
+          
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text">Nebula Host</span>
+            </label>
+            <select v-model="formData.nebula_host" class="select select-bordered font-mono">
+              <option value="">None</option>
+              <option v-for="host in nebulaHosts" :key="host.id" :value="host.id">
+                {{ host.hostname }} ({{ host.overlay_ip }})
+              </option>
+            </select>
+            <label class="label">
+              <span class="label-text-alt">
+                Links this device to a Nebula VPN node.
+              </span>
+            </label>
           </div>
         </div>
       </BaseCard>
@@ -239,19 +369,12 @@ onMounted(() => {
       <!-- Metadata -->
       <BaseCard title="Metadata (JSON)">
         <div class="form-control">
-          <label class="label">
-            <span class="label-text">Custom metadata as JSON</span>
-            <span class="label-text-alt">Optional</span>
-          </label>
           <textarea 
             v-model="formData.metadata"
             class="textarea textarea-bordered font-mono"
             rows="6"
             placeholder='{"key": "value"}'
           ></textarea>
-          <label class="label">
-            <span class="label-text-alt">Must be valid JSON</span>
-          </label>
         </div>
       </BaseCard>
       
@@ -271,7 +394,7 @@ onMounted(() => {
           :disabled="loading"
         >
           <span v-if="loading" class="loading loading-spinner"></span>
-          <span v-else>{{ isEdit ? 'Update' : 'Create' }} Thing</span>
+          <span v-else>{{ isEdit ? 'Update' : 'Provision' }} Thing</span>
         </button>
       </div>
     </form>

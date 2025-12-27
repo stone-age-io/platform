@@ -4,7 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
-import type { Edge, EdgeType } from '@/types/pocketbase'
+import type { Edge, EdgeType, NatsUser, NebulaHost } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 
 const router = useRouter()
@@ -17,33 +17,50 @@ const isEdit = computed(() => !!edgeId)
 
 // Form data
 const formData = ref({
+  // Basic
   name: '',
   description: '',
   code: '',
   type: '',
+  
+  // Auth
+  email: '',
+  password: '',
+  passwordConfirm: '',
+  
+  // Infrastructure
+  nats_user: '',
+  nebula_host: '',
+  
+  // Meta
   metadata: '',
 })
 
 // Relation options
 const edgeTypes = ref<EdgeType[]>([])
+const natsUsers = ref<NatsUser[]>([])
+const nebulaHosts = ref<NebulaHost[]>([])
 
 // State
 const loading = ref(false)
 const loadingOptions = ref(true)
 
 /**
- * Load form options (types)
- * Backend automatically filters these by organization
+ * Load form options
  */
 async function loadOptions() {
   loadingOptions.value = true
   
   try {
-    const typesResult = await pb.collection('edge_types').getFullList<EdgeType>({ 
-      sort: 'name' 
-    })
+    const [typesRes, natsRes, nebulaRes] = await Promise.all([
+      pb.collection('edge_types').getFullList<EdgeType>({ sort: 'name' }),
+      pb.collection('nats_users').getFullList<NatsUser>({ sort: 'nats_username' }),
+      pb.collection('nebula_hosts').getFullList<NebulaHost>({ sort: 'hostname' }),
+    ])
     
-    edgeTypes.value = typesResult
+    edgeTypes.value = typesRes
+    natsUsers.value = natsRes
+    nebulaHosts.value = nebulaRes
   } catch (err: any) {
     toast.error('Failed to load form options')
   } finally {
@@ -52,7 +69,7 @@ async function loadOptions() {
 }
 
 /**
- * Load existing edge for editing
+ * Load existing edge
  */
 async function loadEdge() {
   if (!edgeId) return
@@ -67,6 +84,16 @@ async function loadEdge() {
       description: edge.description || '',
       code: edge.code || '',
       type: edge.type || '',
+      
+      // Auth (email only)
+      email: edge.email,
+      password: '',
+      passwordConfirm: '',
+      
+      // Infra
+      nats_user: edge.nats_user || '',
+      nebula_host: edge.nebula_host || '',
+      
       metadata: edge.metadata ? JSON.stringify(edge.metadata, null, 2) : '',
     }
   } catch (err: any) {
@@ -82,7 +109,6 @@ async function loadEdge() {
  */
 function validateMetadata(): boolean {
   if (!formData.value.metadata.trim()) return true
-  
   try {
     JSON.parse(formData.value.metadata)
     return true
@@ -98,6 +124,17 @@ function validateMetadata(): boolean {
 async function handleSubmit() {
   if (!validateMetadata()) return
   
+  // Validation: Create mode requires password
+  if (!isEdit.value && !formData.value.password) {
+    toast.error('Password is required for new edges')
+    return
+  }
+  
+  if (formData.value.password && formData.value.password !== formData.value.passwordConfirm) {
+    toast.error('Passwords do not match')
+    return
+  }
+  
   loading.value = true
   
   try {
@@ -106,18 +143,22 @@ async function handleSubmit() {
       description: formData.value.description || null,
       code: formData.value.code || null,
       type: formData.value.type || null,
+      email: formData.value.email,
+      nats_user: formData.value.nats_user || null,
+      nebula_host: formData.value.nebula_host || null,
       metadata: formData.value.metadata ? JSON.parse(formData.value.metadata) : null,
     }
     
+    if (formData.value.password) {
+      data.password = formData.value.password
+      data.passwordConfirm = formData.value.passwordConfirm
+    }
+    
     if (isEdit.value) {
-      // Update existing edge
       await pb.collection('edges').update(edgeId!, data)
       toast.success('Edge updated')
     } else {
-      // Create new edge
-      // IMPORTANT: Frontend must set organization
       data.organization = authStore.currentOrgId
-      
       await pb.collection('edges').create(data)
       toast.success('Edge created')
     }
@@ -149,7 +190,7 @@ onMounted(() => {
         </ul>
       </div>
       <h1 class="text-3xl font-bold">
-        {{ isEdit ? 'Edit Edge' : 'Create Edge' }}
+        {{ isEdit ? 'Edit Edge' : 'Provision Edge' }}
       </h1>
     </div>
     
@@ -160,9 +201,10 @@ onMounted(() => {
     
     <!-- Form -->
     <form v-else @submit.prevent="handleSubmit" class="space-y-6">
+      
+      <!-- Basic Information -->
       <BaseCard title="Basic Information">
         <div class="space-y-4">
-          <!-- Name -->
           <div class="form-control">
             <label class="label">
               <span class="label-text">Name *</span>
@@ -170,13 +212,12 @@ onMounted(() => {
             <input 
               v-model="formData.name"
               type="text" 
-              placeholder="Enter edge name"
+              placeholder="e.g. Gateway-01"
               class="input input-bordered"
               required
             />
           </div>
           
-          <!-- Description -->
           <div class="form-control">
             <label class="label">
               <span class="label-text">Description</span>
@@ -184,35 +225,122 @@ onMounted(() => {
             <textarea 
               v-model="formData.description"
               class="textarea textarea-bordered"
-              rows="3"
+              rows="2"
               placeholder="Optional description"
             ></textarea>
           </div>
           
-          <!-- Code -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Code / ID</span>
+              </label>
+              <input 
+                v-model="formData.code"
+                type="text" 
+                placeholder="Unique Identifier"
+                class="input input-bordered font-mono"
+              />
+            </div>
+            
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Type</span>
+              </label>
+              <select v-model="formData.type" class="select select-bordered">
+                <option value="">Select Type...</option>
+                <option v-for="t in edgeTypes" :key="t.id" :value="t.id">
+                  {{ t.name }}
+                </option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </BaseCard>
+      
+      <!-- Authentication -->
+      <BaseCard title="Authentication">
+        <div class="space-y-4">
           <div class="form-control">
             <label class="label">
-              <span class="label-text">Code</span>
+              <span class="label-text">Email (Identity) *</span>
             </label>
             <input 
-              v-model="formData.code"
-              type="text" 
-              placeholder="Optional code/identifier"
-              class="input input-bordered font-mono"
+              v-model="formData.email"
+              type="email" 
+              placeholder="edge-uuid@device.local"
+              class="input input-bordered"
+              required
             />
+            <label class="label">
+              <span class="label-text-alt">Used by the edge device to bootstrap/login.</span>
+            </label>
           </div>
           
-          <!-- Type -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Password {{ isEdit ? '(Optional)' : '*' }}</span>
+              </label>
+              <input 
+                v-model="formData.password"
+                type="password" 
+                class="input input-bordered"
+                :required="!isEdit"
+                minlength="8"
+              />
+            </div>
+            
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Confirm Password {{ isEdit ? '(Optional)' : '*' }}</span>
+              </label>
+              <input 
+                v-model="formData.passwordConfirm"
+                type="password" 
+                class="input input-bordered"
+                :required="!!formData.password"
+              />
+            </div>
+          </div>
+        </div>
+      </BaseCard>
+
+      <!-- Infrastructure -->
+      <BaseCard title="Connectivity">
+        <div class="space-y-4">
           <div class="form-control">
             <label class="label">
-              <span class="label-text">Type</span>
+              <span class="label-text">NATS User</span>
             </label>
-            <select v-model="formData.type" class="select select-bordered">
-              <option value="">Select a type (optional)</option>
-              <option v-for="type in edgeTypes" :key="type.id" :value="type.id">
-                {{ type.name }}
+            <select v-model="formData.nats_user" class="select select-bordered font-mono">
+              <option value="">None</option>
+              <option v-for="user in natsUsers" :key="user.id" :value="user.id">
+                {{ user.nats_username }}
               </option>
             </select>
+            <label class="label">
+              <span class="label-text-alt">
+                Links this gateway to a specific NATS identity.
+              </span>
+            </label>
+          </div>
+          
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text">Nebula Host</span>
+            </label>
+            <select v-model="formData.nebula_host" class="select select-bordered font-mono">
+              <option value="">None</option>
+              <option v-for="host in nebulaHosts" :key="host.id" :value="host.id">
+                {{ host.hostname }} ({{ host.overlay_ip }})
+              </option>
+            </select>
+            <label class="label">
+              <span class="label-text-alt">
+                Links this gateway to a Nebula VPN node.
+              </span>
+            </label>
           </div>
         </div>
       </BaseCard>
@@ -220,19 +348,12 @@ onMounted(() => {
       <!-- Metadata -->
       <BaseCard title="Metadata (JSON)">
         <div class="form-control">
-          <label class="label">
-            <span class="label-text">Custom metadata as JSON</span>
-            <span class="label-text-alt">Optional</span>
-          </label>
           <textarea 
             v-model="formData.metadata"
             class="textarea textarea-bordered font-mono"
             rows="6"
             placeholder='{"key": "value"}'
           ></textarea>
-          <label class="label">
-            <span class="label-text-alt">Must be valid JSON</span>
-          </label>
         </div>
       </BaseCard>
       
@@ -252,7 +373,7 @@ onMounted(() => {
           :disabled="loading"
         >
           <span v-if="loading" class="loading loading-spinner"></span>
-          <span v-else>{{ isEdit ? 'Update' : 'Create' }} Edge</span>
+          <span v-else>{{ isEdit ? 'Update' : 'Provision' }} Edge</span>
         </button>
       </div>
     </form>
