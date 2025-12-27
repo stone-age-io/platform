@@ -41,7 +41,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/dashboard/DashboardView.vue'),
       },
       
-      // Things
+      // --- THINGS ---
       {
         path: 'things',
         name: 'Things',
@@ -52,6 +52,26 @@ const routes: RouteRecordRaw[] = [
         name: 'ThingNew',
         component: () => import('@/views/things/ThingFormView.vue'),
       },
+      // Thing Types (Admin/Owner only) - Defined BEFORE :id to prevent conflict
+      {
+        path: 'things/types',
+        name: 'ThingTypes',
+        component: () => import('@/views/things/ThingTypeListView.vue'),
+        meta: { requiresRole: ['owner', 'admin'] },
+      },
+      {
+        path: 'things/types/new',
+        name: 'ThingTypeNew',
+        component: () => import('@/views/things/ThingTypeFormView.vue'),
+        meta: { requiresRole: ['owner', 'admin'] },
+      },
+      {
+        path: 'things/types/:id/edit',
+        name: 'ThingTypeEdit',
+        component: () => import('@/views/things/ThingTypeFormView.vue'),
+        meta: { requiresRole: ['owner', 'admin'] },
+      },
+      // Specific Thing Routes
       {
         path: 'things/:id',
         name: 'ThingDetail',
@@ -63,7 +83,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/things/ThingFormView.vue'),
       },
       
-      // Edges
+      // --- EDGES ---
       {
         path: 'edges',
         name: 'Edges',
@@ -74,6 +94,26 @@ const routes: RouteRecordRaw[] = [
         name: 'EdgeNew',
         component: () => import('@/views/edges/EdgeFormView.vue'),
       },
+      // Edge Types (Admin/Owner only)
+      {
+        path: 'edges/types',
+        name: 'EdgeTypes',
+        component: () => import('@/views/edges/EdgeTypeListView.vue'),
+        meta: { requiresRole: ['owner', 'admin'] },
+      },
+      {
+        path: 'edges/types/new',
+        name: 'EdgeTypeNew',
+        component: () => import('@/views/edges/EdgeTypeFormView.vue'),
+        meta: { requiresRole: ['owner', 'admin'] },
+      },
+      {
+        path: 'edges/types/:id/edit',
+        name: 'EdgeTypeEdit',
+        component: () => import('@/views/edges/EdgeTypeFormView.vue'),
+        meta: { requiresRole: ['owner', 'admin'] },
+      },
+      // Specific Edge Routes
       {
         path: 'edges/:id',
         name: 'EdgeDetail',
@@ -85,7 +125,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/edges/EdgeFormView.vue'),
       },
       
-      // Locations
+      // --- LOCATIONS ---
       {
         path: 'locations',
         name: 'Locations',
@@ -96,6 +136,26 @@ const routes: RouteRecordRaw[] = [
         name: 'LocationNew',
         component: () => import('@/views/locations/LocationFormView.vue'),
       },
+      // Location Types (Admin/Owner only)
+      {
+        path: 'locations/types',
+        name: 'LocationTypes',
+        component: () => import('@/views/locations/LocationTypeListView.vue'),
+        meta: { requiresRole: ['owner', 'admin'] },
+      },
+      {
+        path: 'locations/types/new',
+        name: 'LocationTypeNew',
+        component: () => import('@/views/locations/LocationTypeFormView.vue'),
+        meta: { requiresRole: ['owner', 'admin'] },
+      },
+      {
+        path: 'locations/types/:id/edit',
+        name: 'LocationTypeEdit',
+        component: () => import('@/views/locations/LocationTypeFormView.vue'),
+        meta: { requiresRole: ['owner', 'admin'] },
+      },
+      // Specific Location Routes
       {
         path: 'locations/:id',
         name: 'LocationDetail',
@@ -107,14 +167,14 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/locations/LocationFormView.vue'),
       },
       
-      // Map
+      // --- MAP ---
       {
         path: 'map',
         name: 'Map',
         component: () => import('@/views/map/MapView.vue'),
       },
       
-      // NATS
+      // --- NATS ---
       {
         path: 'nats',
         redirect: '/nats/accounts',
@@ -170,7 +230,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/nats/NatsRoleFormView.vue'),
       },
       
-      // Nebula
+      // --- NEBULA ---
       {
         path: 'nebula',
         redirect: '/nebula/cas',
@@ -226,14 +286,14 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/nebula/NebulaHostFormView.vue'),
       },
       
-      // Audit Logs
+      // --- AUDIT LOGS ---
       {
         path: 'audit',
         name: 'AuditLogs',
         component: () => import('@/views/audit/AuditLogView.vue'),
       },
       
-      // Organization Management (admin only)
+      // --- ORGANIZATION MANAGEMENT (Admin Only) ---
       {
         path: 'organization',
         name: 'Organization',
@@ -253,7 +313,7 @@ const routes: RouteRecordRaw[] = [
         meta: { requiresRole: ['owner', 'admin'] },
       },
       
-      // User Settings
+      // --- USER SETTINGS ---
       {
         path: 'settings',
         name: 'Settings',

@@ -11,7 +11,8 @@ const authStore = useAuthStore()
 const uiStore = useUIStore()
 
 const menuItems = computed(() => {
-  const items = [
+  // 1. Core Items
+  const items: any[] = [
     { label: 'Dashboard', icon: '📊', path: '/' },
     { label: 'Map', icon: '🗺️', path: '/map' },
     { label: 'Things', icon: '📦', path: '/things' },
@@ -37,9 +38,26 @@ const menuItems = computed(() => {
         { label: 'Hosts', path: '/nebula/hosts' },
       ]
     },
-    { label: 'Audit Logs', icon: '📋', path: '/audit' },
   ]
+
+  // 2. Types (Admin Only) - Placed between Nebula and Audit Logs
+  if (authStore.canManageUsers) {
+    items.push({
+      label: 'Types',
+      icon: '🏷️',
+      path: '/types', // Placeholder path for the group logic
+      children: [
+        { label: 'Thing Types', path: '/things/types' },
+        { label: 'Edge Types', path: '/edges/types' },
+        { label: 'Location Types', path: '/locations/types' },
+      ]
+    })
+  }
+
+  // 3. Audit Logs
+  items.push({ label: 'Audit Logs', icon: '📋', path: '/audit' })
   
+  // 4. Team Management (Admin Only) - Placed at the bottom
   if (authStore.canManageUsers) {
     items.push({ 
       label: 'Team', 
@@ -55,8 +73,32 @@ const menuItems = computed(() => {
   return items
 })
 
+/**
+ * Determine if a menu item is active based on the current route.
+ */
 const isActive = (path: string) => {
-  return route.path === path || route.path.startsWith(path + '/')
+  // Special handling for the "Types" group header
+  // Keeps the accordion open if we are on any ".../types" route
+  if (path === '/types') {
+    return route.path.endsWith('/types') || route.path.includes('/types/')
+  }
+
+  // Exact match always wins
+  if (route.path === path) return true
+  
+  // Prefix match logic
+  if (route.path.startsWith(path + '/')) {
+    // FIX: Collision detection
+    // If we are currently in a "Types" sub-view (e.g. /locations/types/...),
+    // do NOT highlight the parent entity menu (e.g. /locations).
+    if (route.path.includes('/types') && !path.includes('/types')) {
+      return false
+    }
+    
+    return true
+  }
+  
+  return false
 }
 
 async function handleOrgChange(orgId: string) {
@@ -79,10 +121,6 @@ function getAvatarUrl() {
   })
 }
 
-/**
- * Close the mobile drawer by unchecking the control checkbox.
- * Safe to call on desktop (has no visual effect as drawer is persistent).
- */
 function closeDrawer() {
   const drawer = document.getElementById('sidebar-drawer') as HTMLInputElement
   if (drawer) drawer.checked = false
@@ -92,7 +130,6 @@ function closeDrawer() {
 <template>
   <aside class="bg-base-100 w-72 min-h-screen flex flex-col border-r border-base-300">
     <!-- SECTION 1: Logo (Sticky Top) -->
-    <!-- Added router-link wrapper for logo to go home + close drawer -->
     <router-link to="/" class="p-4 flex items-center gap-3 hover:opacity-80 transition-opacity" @click="closeDrawer">
       <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 256 256" class="flex-shrink-0 text-primary">
         <path d="M128,0 C57.343,0 0,57.343 0,128 C0,198.657 57.343,256 128,256 C198.657,256 256,198.657 256,128 C256,57.343 198.657,0 128,0 z M128,28 C181.423,28 224.757,71.334 224.757,124.757 C224.757,139.486 221.04,153.32 214.356,165.42 C198.756,148.231 178.567,138.124 162.876,124.331 C155.723,124.214 128.543,124.043 113.254,124.043 C113.254,147.334 113.254,172.064 113.254,190.513 C100.456,179.347 94.543,156.243 94.543,156.243 C83.432,147.065 31.243,124.757 31.243,124.757 C31.243,71.334 74.577,28 128,28 z" fill="currentColor"/>
