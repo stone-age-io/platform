@@ -1,6 +1,8 @@
 package main
 
 import (
+	"embed"
+	"io/fs"
 	"log"
 	"os"
 	"strings"
@@ -16,9 +18,12 @@ import (
 	pbtenancy "github.com/skeeeon/pb-tenancy"
 )
 
+//go:embed pb_public/*
+var embeddedFS embed.FS
+
 // loadConfig handles the Viper initialization
 func loadConfig() {
-	// 1. Check for --config flag manually (before PocketBase parses flags)
+	// 1. Check for --config flag manually
 	configPath := ""
 	for i, arg := range os.Args {
 		if arg == "--config" && i+1 < len(os.Args) {
@@ -31,25 +36,23 @@ func loadConfig() {
 	if configPath != "" {
 		viper.SetConfigFile(configPath)
 	} else {
-		// Default search locations
 		viper.SetConfigName("config")
 		viper.SetConfigType("yaml")
 		viper.AddConfigPath(".")
 		viper.AddConfigPath("/etc/stone-age/")
 	}
 
-	// 3. Environment Variables (e.g. STONE_AGE_NATS_SERVER_URL)
+	// 3. Environment Variables
 	viper.SetEnvPrefix("STONE_AGE")
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
 
-	// 4. Set Defaults (Matching your libraries' defaults)
+	// 4. Set Defaults
 	setDefaults()
 
 	// 5. Read Config
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			// Only log if we explicitly asked for a specific file and it's missing
 			if configPath != "" {
 				log.Fatalf("❌ Explicit config file not found at: %s", configPath)
 			}
@@ -74,8 +77,6 @@ func setDefaults() {
 	viper.SetDefault("nats.role_collection_name", "nats_roles")
 	viper.SetDefault("nats.operator_name", "stone-age.io")
 	viper.SetDefault("nats.server_url", "nats://localhost:4222")
-	
-	// NATS Default Limits (For the glue logic)
 	viper.SetDefault("nats.default_limits.max_connections", 10)
 	viper.SetDefault("nats.default_limits.max_subscriptions", 50)
 
@@ -90,13 +91,9 @@ func setDefaults() {
 }
 
 func main() {
-	// 1. Load Configuration
 	loadConfig()
 
 	app := pocketbase.New()
-
-	// 2. Configure Libraries from Viper
-	// We map the config keys directly to the Options structs
 
 	// --- Tenancy ---
 	tenancyOptions := pbtenancy.DefaultOptions()
@@ -116,7 +113,6 @@ func main() {
 	natsOptions.OperatorName = viper.GetString("nats.operator_name")
 	natsOptions.NATSServerURL = viper.GetString("nats.server_url")
 	natsOptions.LogToConsole = viper.GetBool("nats.log_to_console")
-	// (Add backup URLs here if needed from config)
 
 	// --- Nebula ---
 	nebulaOptions := pbnebula.DefaultOptions()
@@ -133,7 +129,7 @@ func main() {
 	auditOptions.CollectionName = viper.GetString("audit.collection_name")
 	auditOptions.LogToConsole = viper.GetBool("audit.log_console")
 
-	// 3. Setup Libraries
+	// Setup Libraries
 	if err := pbaudit.Setup(app, auditOptions); err != nil {
 		log.Fatalf("Failed to register audit setup: %v", err)
 	}
@@ -147,12 +143,16 @@ func main() {
 		log.Fatalf("Failed to register Nebula setup: %v", err)
 	}
 
-	// 4. Schema Injection (Add 'organization' field)
+	// Schema Injection
 	app.OnBootstrap().BindFunc(func(e *core.BootstrapEvent) error {
-		if err := e.Next(); err != nil { return err }
+		if err := e.Next(); err != nil {
+			return err
+		}
 
 		orgsCollection, err := app.FindCollectionByNameOrId(tenancyOptions.OrganizationsCollection)
-		if err != nil { return nil } // Tenancy not initialized yet
+		if err != nil {
+			return nil
+		}
 
 		collectionsToUpdate := []string{
 			natsOptions.AccountCollectionName,
@@ -165,7 +165,9 @@ func main() {
 
 		for _, name := range collectionsToUpdate {
 			col, err := app.FindCollectionByNameOrId(name)
-			if err != nil { continue }
+			if err != nil {
+				continue
+			}
 
 			if col.Fields.GetByName("organization") == nil {
 				log.Printf("➕ Injecting organization field into '%s'...", name)
@@ -174,18 +176,17 @@ func main() {
 					CollectionId: orgsCollection.Id,
 					MaxSelect:    1,
 				})
-				// Silent fail on save, log if debug needed
 				app.Save(col)
 			}
 		}
 		return nil
 	})
 
-	// 5. Register Glue Hooks (Org Created -> Infrastructure Created)
+	// Infrastructure Provisioning Hook
 	app.OnRecordAfterCreateSuccess(tenancyOptions.OrganizationsCollection).BindFunc(func(e *core.RecordEvent) error {
 		log.Printf("🔗 Organization '%s' created, provisioning infrastructure...", e.Record.GetString("name"))
 
-		// A. Create NATS Account
+		// Create NATS Account
 		natsCol, err := app.FindCollectionByNameOrId(natsOptions.AccountCollectionName)
 		if err == nil {
 			rec := core.NewRecord(natsCol)
@@ -194,7 +195,6 @@ func main() {
 				"name":                         e.Record.GetString("name"),
 				"organization":                 e.Record.Id,
 				"active":                       true,
-				// Load default limits from Viper
 				"max_connections":              viper.GetInt("nats.default_limits.max_connections"),
 				"max_subscriptions":            viper.GetInt("nats.default_limits.max_subscriptions"),
 				"max_data":                     -1,
@@ -209,7 +209,7 @@ func main() {
 			}
 		}
 
-		// B. Create Nebula CA
+		// Create Nebula CA
 		nebulaCol, err := app.FindCollectionByNameOrId(nebulaOptions.CACollectionName)
 		if err == nil {
 			rec := core.NewRecord(nebulaCol)
@@ -229,7 +229,42 @@ func main() {
 		return e.Next()
 	})
 
-	// 6. Start Application
+	// 6. Serve Embedded UI with SPA Support
+	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
+		// Use fs.Sub to navigate into "pb_public"
+		subFS, err := fs.Sub(embeddedFS, "pb_public")
+		if err != nil {
+			return err
+		}
+
+		// Register catch-all route using Go 1.22 wildcard logic
+		// This will NOT override /api/ or /_/ because precise matches take precedence
+		e.Router.GET("/{path...}", func(e *core.RequestEvent) error {
+			path := e.Request.PathValue("path")
+
+			// 1. Default to index.html if root
+			if path == "" || path == "/" {
+				return e.FileFS(subFS, "index.html")
+			}
+
+			// 2. Check if specific file exists in FS (e.g. assets/style.css)
+			if f, err := subFS.Open(path); err == nil {
+				f.Close()
+				return e.FileFS(subFS, path)
+			}
+
+			// 3. SPA Fallback: Serve index.html for all other "Not Found" non-asset paths
+			// (Assuming anything with a dot is an asset that failed to load)
+			if strings.Contains(path, ".") {
+				return e.NotFoundError("File not found", nil)
+			}
+
+			return e.FileFS(subFS, "index.html")
+		})
+
+		return e.Next()
+	})
+
 	if err := app.Start(); err != nil {
 		log.Fatal(err)
 	}

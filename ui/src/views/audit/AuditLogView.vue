@@ -2,7 +2,6 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { usePagination } from '@/composables/usePagination'
 import { formatDate, formatRelativeTime, formatConstant } from '@/utils/format'
-import { pb } from '@/utils/pb'
 import type { AuditLog } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'

@@ -1,4 +1,4 @@
-import { ref, onUnmounted, nextTick } from 'vue'
+import { ref, shallowRef, onUnmounted, nextTick } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { Location } from '@/types/pocketbase'
@@ -12,9 +12,10 @@ const TILE_URLS = {
 const TILE_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
 
 export function useMap() {
-  const map = ref<L.Map | null>(null)
-  const markersLayer = ref<L.LayerGroup | null>(null)
-  const currentTileLayer = ref<L.TileLayer | null>(null)
+  // Use shallowRef for external library instances to prevent deep reactivity overhead and type mismatches
+  const map = shallowRef<L.Map | null>(null)
+  const markersLayer = shallowRef<L.LayerGroup | null>(null)
+  const currentTileLayer = shallowRef<L.TileLayer | null>(null)
   const mapInitialized = ref(false)
 
   /**
@@ -39,19 +40,24 @@ export function useMap() {
     fixLeafletIcons()
 
     // 1. Create Map Instance
-    map.value = L.map(containerId, {
+    const mapInstance = L.map(containerId, {
       center: [39.8283, -98.5795], // Default US Center
       zoom: 4,
-      zoomControl: false, // We'll add it manually to position it better if needed
+      zoomControl: false, 
     })
 
-    L.control.zoom({ position: 'topright' }).addTo(map.value)
+    // Store in shallow ref
+    map.value = mapInstance
+
+    L.control.zoom({ position: 'topright' }).addTo(mapInstance)
 
     // 2. Add Tile Layer
     updateTheme(isDarkMode)
 
     // 3. Create Layer Group for Markers
-    markersLayer.value = L.layerGroup().addTo(map.value)
+    const layerGroup = L.layerGroup()
+    layerGroup.addTo(mapInstance)
+    markersLayer.value = layerGroup
 
     // 4. Handle resize events
     window.addEventListener('resize', handleResize)
@@ -76,10 +82,13 @@ export function useMap() {
 
     const url = isDarkMode ? TILE_URLS.dark : TILE_URLS.light
     
-    currentTileLayer.value = L.tileLayer(url, {
+    const tileLayer = L.tileLayer(url, {
       attribution: TILE_ATTRIBUTION,
       maxZoom: 19
-    }).addTo(map.value)
+    })
+    
+    tileLayer.addTo(map.value)
+    currentTileLayer.value = tileLayer
   }
 
   /**
@@ -89,18 +98,16 @@ export function useMap() {
     if (!map.value || !markersLayer.value) return
 
     markersLayer.value.clearLayers()
-    const validBounds: L.LatLngExpression[] = []
+    
+    // Explicitly type as tuple array for fitBounds
+    const validBounds: [number, number][] = []
 
     locations.forEach(loc => {
-      // PocketBase 'geoPoint' field structure check
-      // It might be stored directly as coordinates object or raw fields depending on PB version
-      // Adapting to standard { lat: number, lon: number } from your types
       if (!loc.coordinates || !loc.coordinates.lat || !loc.coordinates.lon) return
 
       const { lat, lon } = loc.coordinates
       validBounds.push([lat, lon])
 
-      // Custom marker color based on type (simple hash logic or hardcoded)
       const marker = L.marker([lat, lon], {
         title: loc.name
       })
