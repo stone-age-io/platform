@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
 import { useToast } from '@/composables/useToast'
@@ -25,41 +25,34 @@ const {
   prevPage,
 } = usePagination<Location>('locations', 20)
 
-// Search query (client-side filtering)
+// Search query
 const searchQuery = ref('')
 
 /**
- * Filtered locations based on client-side search
- * Searches in: name, description, code, type name, parent name
+ * Filter Logic
+ * If Searching: Global flat search (find any location)
+ * Default: Only show Root locations (parent = empty)
  */
-const filteredLocations = computed(() => {
-  const query = searchQuery.value.toLowerCase().trim()
+async function loadLocations() {
+  let filter = ''
   
-  // No search query - return all locations
-  if (!query) return locations.value
-  
-  // Filter client-side
-  return locations.value.filter(location => {
-    // Search in name
-    if (location.name?.toLowerCase().includes(query)) return true
-    
-    // Search in description
-    if (location.description?.toLowerCase().includes(query)) return true
-    
-    // Search in code
-    if (location.code?.toLowerCase().includes(query)) return true
-    
-    // Search in type name
-    if (location.expand?.type?.name?.toLowerCase().includes(query)) return true
-    
-    // Search in parent name
-    if (location.expand?.parent?.name?.toLowerCase().includes(query)) return true
-    
-    return false
-  })
-})
+  if (searchQuery.value.trim()) {
+    // SEARCH MODE: Flatten everything
+    const q = searchQuery.value.toLowerCase().trim()
+    filter = `name ~ "${q}" || description ~ "${q}" || code ~ "${q}"`
+  } else {
+    // DEFAULT: Root level only
+    filter = 'parent = ""'
+  }
 
-// Column configuration for responsive list
+  await load({ 
+    filter,
+    expand: 'type',
+    sort: 'name' 
+  })
+}
+
+// Column configuration
 const columns: Column<Location>[] = [
   {
     key: 'name',
@@ -70,11 +63,6 @@ const columns: Column<Location>[] = [
     key: 'expand.type.name',
     label: 'Type',
     mobileLabel: 'Type',
-  },
-  {
-    key: 'expand.parent.name',
-    label: 'Parent Location',
-    mobileLabel: 'Parent',
   },
   {
     key: 'code',
@@ -89,27 +77,10 @@ const columns: Column<Location>[] = [
   },
 ]
 
-/**
- * Load locations from API
- * Backend automatically filters by current organization via API rules
- */
-async function loadLocations() {
-  // Only pass expand - backend handles org filtering via API rules
-  await load({ 
-    expand: 'type,parent' 
-  })
-}
-
-/**
- * Handle row/card click - navigate to detail view
- */
 function handleRowClick(location: Location) {
   router.push(`/locations/${location.id}`)
 }
 
-/**
- * Handle delete
- */
 async function handleDelete(location: Location) {
   if (!confirm(`Delete "${location.name}"? This cannot be undone.`)) return
   
@@ -122,18 +93,21 @@ async function handleDelete(location: Location) {
   }
 }
 
-/**
- * Handle organization change event
- */
 function handleOrgChange() {
-  // Reset search when org changes
   searchQuery.value = ''
   loadLocations()
 }
 
-/**
- * Initialize on mount
- */
+// Watch search to reload automatically
+let searchTimeout: any
+watch(searchQuery, () => {
+  clearTimeout(searchTimeout)
+  searchTimeout = setTimeout(() => {
+    page.value = 1
+    loadLocations()
+  }, 300)
+})
+
 onMounted(() => {
   loadLocations()
   window.addEventListener('organization-changed', handleOrgChange)
@@ -160,20 +134,26 @@ onUnmounted(() => {
       </router-link>
     </div>
     
-    <!-- Search -->
-    <div class="form-control">
-      <input 
-        v-model="searchQuery"
-        type="text"
-        placeholder="Search locations by name, code, type, or parent..."
-        class="input input-bordered w-full"
-      />
-      <label v-if="searchQuery && filteredLocations.length < locations.length" class="label">
-        <span class="label-text-alt">
-          Showing {{ filteredLocations.length }} of {{ locations.length }} locations
-          (searching current page only)
-        </span>
-      </label>
+    <!-- Controls -->
+    <div class="flex flex-col gap-4">
+      <div class="form-control">
+        <input 
+          v-model="searchQuery"
+          type="text"
+          placeholder="Search all locations..."
+          class="input input-bordered w-full"
+        />
+        <label v-if="!searchQuery" class="label">
+          <span class="label-text-alt text-base-content/60">
+            Showing top-level locations. Use search to find sub-locations.
+          </span>
+        </label>
+        <label v-else class="label">
+          <span class="label-text-alt text-base-content/60">
+            Searching all locations (flat view).
+          </span>
+        </label>
+      </div>
     </div>
     
     <!-- Loading State -->
@@ -185,43 +165,37 @@ onUnmounted(() => {
     <BaseCard v-else-if="locations.length === 0">
       <div class="text-center py-12">
         <span class="text-6xl">📍</span>
-        <h3 class="text-xl font-bold mt-4">No locations found</h3>
+        <h3 class="text-xl font-bold mt-4">
+          {{ searchQuery ? 'No matching locations' : 'No top-level locations' }}
+        </h3>
         <p class="text-base-content/70 mt-2">
-          Create your first location to get started
+          {{ searchQuery ? 'Try a different search term' : 'Create your first root location to get started' }}
         </p>
-        <router-link to="/locations/new" class="btn btn-primary mt-4">
-          Create Location
-        </router-link>
-      </div>
-    </BaseCard>
-    
-    <!-- No Search Results -->
-    <BaseCard v-else-if="filteredLocations.length === 0">
-      <div class="text-center py-12">
-        <span class="text-6xl">🔍</span>
-        <h3 class="text-xl font-bold mt-4">No matching locations</h3>
-        <p class="text-base-content/70 mt-2">
-          Try a different search term
-        </p>
-        <button @click="searchQuery = ''" class="btn btn-ghost mt-4">
-          Clear Search
-        </button>
+        <div class="mt-4 flex gap-2 justify-center">
+          <button v-if="searchQuery" @click="searchQuery = ''" class="btn btn-ghost">
+            Clear Search
+          </button>
+          <router-link v-else to="/locations/new" class="btn btn-primary">
+            Create Location
+          </router-link>
+        </div>
       </div>
     </BaseCard>
     
     <!-- Responsive List -->
     <BaseCard v-else :no-padding="true">
       <ResponsiveList 
-        :items="filteredLocations" 
+        :items="locations" 
         :columns="columns" 
         :loading="loading"
+        :clickable="true"
         @row-click="handleRowClick"
       >
-        <!-- Custom cell for name (with description) -->
+        <!-- Name -->
         <template #cell-name="{ item }">
           <div>
             <div class="font-medium">
-              {{ item.name || 'Unnamed' }}
+              {{ item.name }}
             </div>
             <div v-if="item.description" class="text-sm text-base-content/60 line-clamp-1">
               {{ item.description }}
@@ -229,11 +203,11 @@ onUnmounted(() => {
           </div>
         </template>
         
-        <!-- Custom mobile card for name (make it prominent) -->
+        <!-- Mobile Name -->
         <template #card-name="{ item }">
           <div>
             <div class="font-semibold text-base">
-              {{ item.name || 'Unnamed' }}
+              {{ item.name }}
             </div>
             <div v-if="item.description" class="text-sm text-base-content/60 mt-1">
               {{ item.description }}
@@ -241,7 +215,7 @@ onUnmounted(() => {
           </div>
         </template>
         
-        <!-- Custom cell for type (badge) -->
+        <!-- Type -->
         <template #cell-expand.type.name="{ item }">
           <span v-if="item.expand?.type" class="badge badge-ghost">
             {{ item.expand.type.name }}
@@ -249,30 +223,9 @@ onUnmounted(() => {
           <span v-else class="text-base-content/40">-</span>
         </template>
         
-        <!-- Custom card for type (badge) -->
-        <template #card-expand.type.name="{ item }">
-          <div class="flex flex-col">
-            <span class="text-xs font-medium text-base-content/70">Type</span>
-            <div class="mt-1">
-              <span v-if="item.expand?.type" class="badge badge-ghost badge-sm">
-                {{ item.expand.type.name }}
-              </span>
-              <span v-else class="text-sm text-base-content/40">-</span>
-            </div>
-          </div>
-        </template>
-        
-        <!-- Custom cell for parent -->
-        <template #cell-expand.parent.name="{ item }">
-          <span v-if="item.expand?.parent" class="text-sm">
-            {{ item.expand.parent.name }}
-          </span>
-          <span v-else class="text-base-content/40">-</span>
-        </template>
-        
-        <!-- Custom cell for code (mono font) -->
+        <!-- Code -->
         <template #cell-code="{ item }">
-          <code v-if="item.code" class="text-xs">{{ item.code }}</code>
+          <code v-if="item.code" class="text-xs bg-base-200 px-1 py-0.5 rounded">{{ item.code }}</code>
           <span v-else class="text-base-content/40">-</span>
         </template>
         
@@ -280,21 +233,22 @@ onUnmounted(() => {
         <template #actions="{ item }">
           <router-link 
             :to="`/locations/${item.id}/edit`" 
-            class="btn btn-ghost btn-sm flex-1 sm:flex-initial"
+            class="btn btn-ghost btn-sm"
+            @click.stop
           >
             Edit
           </router-link>
           <button 
-            @click="handleDelete(item)" 
-            class="btn btn-ghost btn-sm text-error flex-1 sm:flex-initial"
+            @click.stop="handleDelete(item)" 
+            class="btn btn-ghost btn-sm text-error"
           >
             Delete
           </button>
         </template>
       </ResponsiveList>
       
-      <!-- Pagination (only show when not searching) -->
-      <div v-if="!searchQuery" class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
+      <!-- Pagination -->
+      <div class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
         <span class="text-sm text-base-content/70 text-center sm:text-left">
           Showing {{ locations.length }} of {{ totalItems }} locations
         </span>
@@ -302,7 +256,7 @@ onUnmounted(() => {
           <button 
             class="join-item btn btn-sm"
             :disabled="page === 1 || loading"
-            @click="prevPage({ expand: 'type,parent' })"
+            @click="prevPage()"
           >
             «
           </button>
@@ -312,22 +266,11 @@ onUnmounted(() => {
           <button 
             class="join-item btn btn-sm"
             :disabled="page === totalPages || loading"
-            @click="nextPage({ expand: 'type,parent' })"
+            @click="nextPage()"
           >
             »
           </button>
         </div>
-      </div>
-      
-      <!-- Search active message (when paginated) -->
-      <div v-else class="p-4 border-t border-base-300 text-center">
-        <p class="text-sm text-base-content/60">
-          Searching within current page. 
-          <button @click="searchQuery = ''" class="link link-primary text-sm">
-            Clear search
-          </button>
-          to browse all pages.
-        </p>
       </div>
     </BaseCard>
   </div>

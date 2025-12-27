@@ -22,7 +22,6 @@ const subLocations = ref<Location[]>([])
 const things = ref<Thing[]>([])
 const loading = ref(true)
 
-const locationId = route.params.id as string
 const mapContainerId = 'mini-map-container'
 
 // Columns for Sub-Locations List
@@ -38,6 +37,24 @@ const thingColumns: Column<Thing>[] = [
   { key: 'expand.type.name', label: 'Type', mobileLabel: 'Type' },
   { key: 'code', label: 'Code', mobileLabel: 'Code' },
 ]
+
+/**
+ * Recursive Breadcrumbs Calculation
+ */
+const breadcrumbs = computed(() => {
+  const path: { id: string; name: string }[] = []
+  if (!location.value) return path
+
+  path.unshift({ id: location.value.id, name: location.value.name })
+
+  let current = location.value
+  while (current.expand?.parent) {
+    current = current.expand.parent as Location
+    path.unshift({ id: current.id, name: current.name })
+  }
+
+  return path
+})
 
 /**
  * Highlight JSON Metadata
@@ -59,25 +76,26 @@ const highlightedMetadata = computed(() => {
 /**
  * Load Location Data
  */
-async function loadLocation() {
+async function loadLocation(id: string) {
+  // FIX: Explicitly cleanup previous map instance before loading new data
+  // This ensures initMap() will create a fresh instance attached to the new DOM element
+  cleanupMap()
+  
   loading.value = true
   
   try {
-    // 1. Get Main Location
-    location.value = await pb.collection('locations').getOne<Location>(locationId, {
-      expand: 'type,parent',
+    location.value = await pb.collection('locations').getOne<Location>(id, {
+      expand: 'type,parent.parent.parent.parent.parent.parent',
     })
 
-    // 2. Get Sub-locations (Children)
     subLocations.value = await pb.collection('locations').getFullList<Location>({
-      filter: `parent = "${locationId}"`,
+      filter: `parent = "${id}"`,
       expand: 'type',
       sort: 'name',
     })
 
-    // 3. Get Associated Things
     things.value = await pb.collection('things').getFullList<Thing>({
-      filter: `location = "${locationId}"`,
+      filter: `location = "${id}"`,
       expand: 'type',
       sort: 'name',
     })
@@ -90,7 +108,7 @@ async function loadLocation() {
     loading.value = false
   }
 
-  // 4. Initialize Map (AFTER loading is false)
+  // Initialize Map (AFTER loading is false)
   if (location.value?.coordinates?.lat) {
     await nextTick()
     initMap(mapContainerId, uiStore.theme === 'dark')
@@ -123,12 +141,22 @@ async function handleDelete() {
   }
 }
 
+// Watchers
 watch(() => uiStore.theme, (newTheme) => {
   updateTheme(newTheme === 'dark')
 })
 
+watch(
+  () => route.params.id,
+  (newId) => {
+    if (newId) {
+      loadLocation(newId as string)
+    }
+  }
+)
+
 onMounted(() => {
-  loadLocation()
+  loadLocation(route.params.id as string)
 })
 
 onUnmounted(() => {
@@ -146,12 +174,21 @@ onUnmounted(() => {
     <template v-else-if="location">
       <!-- Header -->
       <div class="flex flex-col gap-4">
-        <div class="breadcrumbs text-sm">
+        <!-- Breadcrumbs -->
+        <div class="text-sm breadcrumbs">
           <ul>
             <li><router-link to="/locations">Locations</router-link></li>
-            <li class="truncate max-w-[200px]">{{ location.name || 'Unnamed' }}</li>
+            <li v-for="(crumb, index) in breadcrumbs" :key="crumb.id">
+              <span v-if="index === breadcrumbs.length - 1" class="font-bold">
+                {{ crumb.name }}
+              </span>
+              <router-link v-else :to="`/locations/${crumb.id}`">
+                {{ crumb.name }}
+              </router-link>
+            </li>
           </ul>
         </div>
+
         <div class="flex flex-col sm:flex-row justify-between items-start gap-4">
           <div class="flex items-center gap-3">
             <h1 class="text-3xl font-bold break-words">{{ location.name || 'Unnamed Location' }}</h1>
