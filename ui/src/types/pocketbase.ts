@@ -51,6 +51,13 @@ export interface User extends AuthRecord {
   nebula_host?: string
 }
 
+// _superusers record
+export interface SuperUser extends AuthRecord {
+  // The user mentioned they added this field. 
+  // If not, we can manage it in localStorage.
+  current_organization?: string 
+}
+
 // Thing Type
 export interface ThingType extends BaseRecord {
   organization?: string

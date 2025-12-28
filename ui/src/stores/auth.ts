@@ -1,31 +1,16 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { pb } from '@/utils/pb'
-import type { User, Membership, Organization } from '@/types/pocketbase'
+import type { User, Membership, Organization, SuperUser } from '@/types/pocketbase'
 
-/**
- * Auth Store
- * 
- * Manages authentication state and organization context.
- * This is the single source of truth for:
- * - Current user
- * - User's memberships
- * - Current organization context
- * - User's role in current org
- */
 export const useAuthStore = defineStore('auth', () => {
-  // ============================================================================
-  // STATE
-  // ============================================================================
-  
-  const user = ref<User | null>(null)
+  // State
+  const user = ref<User | SuperUser | null>(null)
   const memberships = ref<Membership[]>([])
   const currentOrgId = ref<string | null>(null)
+  const isSuperAdmin = ref(false) // Track login type
   
-  // ============================================================================
-  // COMPUTED
-  // ============================================================================
-  
+  // Computed
   const isAuthenticated = computed(() => !!user.value)
   
   const currentMembership = computed(() => {
@@ -39,6 +24,8 @@ export const useAuthStore = defineStore('auth', () => {
   })
   
   const userRole = computed(() => {
+    // Superadmins are effectively owners of everything
+    if (isSuperAdmin.value) return 'owner'
     return currentMembership.value?.role || 'member'
   })
   
@@ -46,111 +33,125 @@ export const useAuthStore = defineStore('auth', () => {
     return ['owner', 'admin'].includes(userRole.value)
   })
   
-  // ============================================================================
-  // ACTIONS
-  // ============================================================================
-  
-  /**
-   * Login with email and password
-   */
-  async function login(email: string, password: string) {
-    const authData = await pb.collection('users').authWithPassword(email, password)
-    user.value = authData.record as User
-    await loadMemberships()
+  // Actions
+  async function login(email: string, password: string, asSuperAdmin = false) {
+    const collection = asSuperAdmin ? '_superusers' : 'users'
     
-    // Set initial org context
-    if (user.value.current_organization) {
-      currentOrgId.value = user.value.current_organization
-    } else if (memberships.value.length > 0) {
-      // Default to first membership if no current_organization set
-      currentOrgId.value = memberships.value[0].organization
-    }
+    // Auth against specific collection
+    const authData = await pb.collection(collection).authWithPassword(email, password)
+    
+    user.value = authData.record as unknown as User
+    isSuperAdmin.value = asSuperAdmin
+    
+    await loadContext()
   }
   
-  /**
-   * Logout and clear all state
-   */
   async function logout() {
     pb.authStore.clear()
     user.value = null
     memberships.value = []
     currentOrgId.value = null
+    isSuperAdmin.value = false
   }
   
   /**
-   * Load user's memberships with expanded organization data
-   * 
-   * Note: We DO filter by user here because we need to know which
-   * organizations this specific user has access to (for the org switcher).
-   * This is different from viewing all memberships as an admin,
-   * which we'll handle separately in the organization management views.
+   * Smart Context Loader
+   * - Normal User: Loads Memberships
+   * - Super Admin: Loads ALL Organizations and maps them to fake memberships
    */
-  async function loadMemberships() {
+  async function loadContext() {
     if (!user.value) return
     
-    memberships.value = await pb.collection('memberships').getFullList<Membership>({
-      filter: `user = "${user.value.id}"`,
-      expand: 'organization',
-    })
+    if (isSuperAdmin.value) {
+      // GOD MODE: Fetch all organizations
+      const allOrgs = await pb.collection('organizations').getFullList<Organization>({
+        sort: 'name'
+      })
+      
+      // Map to "Fake" Memberships so the UI thinks we belong to them
+      memberships.value = allOrgs.map(org => ({
+        id: `super_${org.id}`,
+        created: new Date().toISOString(),
+        updated: new Date().toISOString(),
+        user: user.value!.id,
+        organization: org.id,
+        role: 'owner', // Superadmin is owner of all
+        expand: { organization: org }
+      }))
+    } else {
+      // NORMAL MODE: Fetch specific memberships
+      memberships.value = await pb.collection('memberships').getFullList<Membership>({
+        filter: `user = "${user.value.id}"`,
+        expand: 'organization',
+      })
+    }
+    
+    // Set initial org context
+    // 1. Try saved current_organization from record
+    if (user.value.current_organization) {
+      // Verify it exists in our list (permissions check)
+      const exists = memberships.value.find(m => m.organization === user.value?.current_organization)
+      if (exists) {
+        currentOrgId.value = user.value.current_organization
+        return
+      }
+    }
+    
+    // 2. Fallback to first available org
+    if (memberships.value.length > 0) {
+      const firstOrgId = memberships.value[0].organization
+      // We don't await this update to speed up UI load
+      switchOrganization(firstOrgId)
+    }
   }
   
-  /**
-   * Switch to a different organization
-   * This updates the user's current_organization and emits an event
-   * for all views to reactively refresh their data
-   */
   async function switchOrganization(orgId: string) {
     if (!user.value) return
     
-    // Update user's current_organization in PocketBase
-    await pb.collection('users').update(user.value.id, {
-      current_organization: orgId,
-    })
-    
-    // Update local state
     currentOrgId.value = orgId
     user.value.current_organization = orgId
     
-    // Emit custom event for views to listen to
-    // Views can reload their data when this event fires
+    // Persist to backend
+    const collection = isSuperAdmin.value ? '_superusers' : 'users'
+    try {
+      await pb.collection(collection).update(user.value.id, {
+        current_organization: orgId,
+      })
+    } catch (e) {
+      // If superuser record is locked/immutable, we just ignore the save error
+      // The local state is already updated for this session
+      console.warn('Could not persist org switch:', e)
+    }
+    
     window.dispatchEvent(new CustomEvent('organization-changed', { 
       detail: { orgId } 
     }))
   }
   
-  /**
-   * Initialize auth state from PocketBase authStore
-   * Called on app mount to restore session
-   */
   function initializeFromAuth() {
     if (pb.authStore.isValid && pb.authStore.model) {
-      user.value = pb.authStore.model as User
-      loadMemberships()
-      currentOrgId.value = user.value.current_organization || null
+      user.value = pb.authStore.model as unknown as User
+      
+      // Determine if we are superadmin based on collection name
+      isSuperAdmin.value = pb.authStore.model.collectionName === '_superusers'
+      
+      loadContext()
     }
   }
   
-  // ============================================================================
-  // RETURN PUBLIC API
-  // ============================================================================
-  
   return {
-    // State
     user,
     memberships,
     currentOrgId,
-    
-    // Computed
+    isSuperAdmin, // Exported for UI to show badges if needed
     isAuthenticated,
     currentMembership,
     currentOrg,
     userRole,
     canManageUsers,
-    
-    // Actions
     login,
     logout,
-    loadMemberships,
+    loadMemberships: loadContext, // Renamed internally for cleaner API
     switchOrganization,
     initializeFromAuth,
   }

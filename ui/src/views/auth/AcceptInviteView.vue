@@ -25,8 +25,8 @@ async function handleAccept() {
   loading.value = true
   
   try {
-    // Call pb-tenancy accept-invite endpoint
-    await pb.send('/api/accept-invite', {
+    // CORRECTED: Endpoint path updated to /api/tenancy/accept-invite
+    await pb.send('/api/tenancy/accept-invite', {
       method: 'POST',
       body: { token: token.value },
     })
@@ -35,17 +35,24 @@ async function handleAccept() {
     await authStore.loadMemberships()
     
     if (authStore.memberships.length > 0) {
-      // Switch to the newly joined organization
-      const newOrg = authStore.memberships[authStore.memberships.length - 1]
-      await authStore.switchOrganization(newOrg.organization)
+      // Find the membership for the newly joined org (likely the last one added)
+      // or default to the last one in the list
+      const newMembership = authStore.memberships[authStore.memberships.length - 1]
+      
+      // Switch context to that organization
+      await authStore.switchOrganization(newMembership.organization)
       
       toast.success('Invitation accepted!')
       router.push('/')
     } else {
-      toast.error('Failed to load organization')
+      // Edge case: Accept succeeded but membership query came back empty
+      toast.warning('Invitation accepted, but could not load organization details')
+      router.push('/')
     }
   } catch (err: any) {
-    toast.error(err.message || 'Failed to accept invitation')
+    // Handle specific error cases if needed
+    console.error('Invite Error:', err)
+    toast.error(err.data?.message || err.message || 'Failed to accept invitation')
   } finally {
     loading.value = false
   }
@@ -72,7 +79,7 @@ async function handleAccept() {
             <input 
               v-model="token"
               type="text" 
-              placeholder="Enter your invitation token" 
+              placeholder="Paste token here..." 
               class="input input-bordered font-mono" 
               required
             />
@@ -96,7 +103,7 @@ async function handleAccept() {
           </div>
         </form>
         
-        <!-- Back to Login -->
+        <!-- Back to Login (Logout) -->
         <div class="divider">OR</div>
         <button 
           @click="router.push('/login')" 

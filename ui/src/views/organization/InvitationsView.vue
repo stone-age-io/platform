@@ -36,6 +36,9 @@ const submitting = ref(false)
 // Search
 const searchQuery = ref('')
 
+// Token Visibility State
+const visibleTokens = ref<Record<string, boolean>>({})
+
 /**
  * Filtered invitations based on client-side search
  */
@@ -58,6 +61,11 @@ const columns: Column<Invitation>[] = [
     key: 'email',
     label: 'Email',
     mobileLabel: 'Email',
+  },
+  {
+    key: 'token',
+    label: 'Token',
+    mobileLabel: 'Token',
   },
   {
     key: 'role',
@@ -84,6 +92,26 @@ const columns: Column<Invitation>[] = [
 function isExpired(invite: Invitation): boolean {
   if (!invite.expires_at) return false
   return new Date(invite.expires_at) < new Date()
+}
+
+/**
+ * Toggle token visibility
+ */
+function toggleToken(id: string) {
+  visibleTokens.value[id] = !visibleTokens.value[id]
+}
+
+/**
+ * Copy token to clipboard
+ */
+async function copyToken(token?: string) {
+  if (!token) return
+  try {
+    await navigator.clipboard.writeText(token)
+    toast.success('Token copied to clipboard')
+  } catch (err) {
+    toast.error('Failed to copy token')
+  }
 }
 
 /**
@@ -333,6 +361,49 @@ onUnmounted(() => {
             </div>
             <div v-if="isExpired(item)" class="mt-1">
               <span class="badge badge-error badge-sm">Expired</span>
+            </div>
+          </div>
+        </template>
+
+        <!-- Custom cell for Token -->
+        <template #cell-token="{ item }">
+          <div class="flex items-center gap-2">
+            <div class="font-mono text-xs bg-base-200 px-2 py-1 rounded min-w-[8rem] text-center select-all">
+              {{ visibleTokens[item.id] ? item.token : '••••••••••••••••' }}
+            </div>
+            <div class="join">
+              <button 
+                @click="toggleToken(item.id)" 
+                class="btn btn-ghost btn-xs join-item"
+                :title="visibleTokens[item.id] ? 'Hide' : 'Show'"
+              >
+                {{ visibleTokens[item.id] ? '🙈' : '👁️' }}
+              </button>
+              <button 
+                @click="copyToken(item.token)" 
+                class="btn btn-ghost btn-xs join-item"
+                title="Copy"
+              >
+                📋
+              </button>
+            </div>
+          </div>
+        </template>
+
+        <!-- Custom mobile card for Token -->
+        <template #card-token="{ item }">
+          <div class="flex flex-col">
+            <span class="text-xs font-medium text-base-content/70">Token</span>
+            <div class="mt-1 flex items-center gap-2">
+              <div class="font-mono text-xs bg-base-200 px-2 py-1 rounded break-all select-all">
+                {{ visibleTokens[item.id] ? item.token : '••••••••••••••••' }}
+              </div>
+              <button @click="toggleToken(item.id)" class="btn btn-ghost btn-xs">
+                {{ visibleTokens[item.id] ? '🙈' : '👁️' }}
+              </button>
+              <button @click="copyToken(item.token)" class="btn btn-ghost btn-xs">
+                📋
+              </button>
             </div>
           </div>
         </template>
