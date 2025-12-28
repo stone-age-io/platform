@@ -144,6 +144,7 @@ async function handleSubmit() {
       code: formData.value.code || null,
       type: formData.value.type || null,
       email: formData.value.email,
+      emailVisibility: true,
       nats_user: formData.value.nats_user || null,
       nebula_host: formData.value.nebula_host || null,
       metadata: formData.value.metadata ? JSON.parse(formData.value.metadata) : null,

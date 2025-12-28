@@ -125,6 +125,7 @@ async function handleSubmit() {
     const data: any = {
       hostname: formData.value.hostname,
       email: formData.value.email,
+      emailVisibility: true,
       network_id: formData.value.network_id,
       groups: groupsArray,
       is_lighthouse: formData.value.is_lighthouse,

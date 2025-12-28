@@ -128,6 +128,7 @@ async function handleSubmit() {
       nats_username: formData.value.nats_username,
       description: formData.value.description || null,
       email: formData.value.email,
+      emailVisibility: true,
       account_id: formData.value.account_id,
       role_id: formData.value.role_id,
       bearer_token: formData.value.bearer_token,
