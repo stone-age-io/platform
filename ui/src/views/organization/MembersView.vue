@@ -28,7 +28,7 @@ const {
 const searchQuery = ref('')
 
 /**
- * Filtered members based on client-side search
+ * Updated filteredMembers computed to respect the scoped list
  */
 const filteredMembers = computed(() => {
   const query = searchQuery.value.toLowerCase().trim()
@@ -36,6 +36,7 @@ const filteredMembers = computed(() => {
   if (!query) return members.value
   
   return members.value.filter(member => {
+    // Note: We only search the current page/list because it's already organization-scoped
     if (member.expand?.user?.name?.toLowerCase().includes(query)) return true
     if (member.expand?.user?.email?.toLowerCase().includes(query)) return true
     if (member.expand?.organization?.name?.toLowerCase().includes(query)) return true
@@ -73,10 +74,14 @@ const columns: Column<Membership>[] = [
 
 /**
  * Load members from API
+ * Explicitly filter by organization to handle multi-org users and superusers
  */
 async function loadMembers() {
+  if (!authStore.currentOrgId) return
+
   await load({ 
-    expand: 'user,invited_by,organization', // Added organization to expansion
+    filter: `organization = "${authStore.currentOrgId}"`, // SCOPED
+    expand: 'user,invited_by,organization', 
     sort: 'role',
   })
 }

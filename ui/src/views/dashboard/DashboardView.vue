@@ -33,12 +33,15 @@ async function loadDashboard() {
   
   try {
     // Backend handles organization filtering via API rules
-    // We just fetch the data - no manual filtering needed
+    // We filter memberships to eliminate users that are in multiple orgs
     const [thingsResult, edgesResult, locationsResult, membersResult, activityResult] = await Promise.all([
       pb.collection('things').getList(1, 1),
       pb.collection('edges').getList(1, 1),
       pb.collection('locations').getList(1, 1),
-      pb.collection('memberships').getList(1, 1),
+      // SCOPED: Filter memberships to the current organization context
+      pb.collection('memberships').getList(1, 1, {
+        filter: `organization = "${authStore.currentOrgId}"`
+      }),
       pb.collection('audit_logs').getList<AuditLog>(1, 5, {
         sort: '-created',
         expand: 'user',
