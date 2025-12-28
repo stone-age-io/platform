@@ -15,6 +15,14 @@ export interface AuthRecord extends BaseRecord {
   verified: boolean
 }
 
+// SuperUser (System Admin)
+export interface SuperUser extends AuthRecord {
+  current_organization?: string 
+  // Optional fields to satisfy UI components shared with User
+  name?: string
+  avatar?: string
+}
+
 // Organization
 export interface Organization extends BaseRecord {
   name: string
@@ -49,13 +57,6 @@ export interface User extends AuthRecord {
   current_organization?: string // Relation to Organization - this sets the org context
   nats_user?: string
   nebula_host?: string
-}
-
-// _superusers record
-export interface SuperUser extends AuthRecord {
-  // The user mentioned they added this field. 
-  // If not, we can manage it in localStorage.
-  current_organization?: string 
 }
 
 // Thing Type

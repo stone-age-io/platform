@@ -76,14 +76,15 @@ async function updateProfile() {
     }
     
     // Update in PocketBase
-    const updatedUser = await pb.collection('users').update(authStore.user.id, formData)
+    // FIX: Use dynamic collection name to support both 'users' and '_superusers'
+    const collectionName = authStore.user.collectionName || 'users'
+    const updatedUser = await pb.collection(collectionName).update(authStore.user.id, formData)
     
-    // Update local store with type assertion
+    // Update local store
     authStore.user = updatedUser as unknown as User
     
     // Refresh preview from server URL to ensure consistency
     if (updatedUser.avatar) {
-      // We can use the updatedUser record directly for the file URL
       avatarPreview.value = pb.files.getUrl(updatedUser, updatedUser.avatar, { token: pb.authStore.token })
     }
     
@@ -112,7 +113,10 @@ async function updatePassword() {
   passwordLoading.value = true
   
   try {
-    await pb.collection('users').update(authStore.user.id, {
+    // FIX: Use dynamic collection name
+    const collectionName = authStore.user.collectionName || 'users'
+    
+    await pb.collection(collectionName).update(authStore.user.id, {
       oldPassword: passwordForm.value.oldPassword,
       password: passwordForm.value.password,
       passwordConfirm: passwordForm.value.passwordConfirm,

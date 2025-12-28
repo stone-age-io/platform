@@ -10,8 +10,11 @@ const route = useRoute()
 const authStore = useAuthStore()
 const uiStore = useUIStore()
 
+/**
+ * Navigation Menu Configuration
+ */
 const menuItems = computed(() => {
-  // 1. Core Items
+  // 1. Core Functional Items
   const items: any[] = [
     { label: 'Dashboard', icon: '📊', path: '/' },
     { label: 'Map', icon: '🗺️', path: '/map' },
@@ -40,12 +43,12 @@ const menuItems = computed(() => {
     },
   ]
 
-  // 2. Types (Admin Only) - Placed between Nebula and Audit Logs
+  // 2. Types Group (Admin/Owner Only)
   if (authStore.canManageUsers) {
     items.push({
       label: 'Types',
       icon: '🏷️',
-      path: '/types', // Placeholder path for the group logic
+      path: '/types', 
       children: [
         { label: 'Thing Types', path: '/things/types' },
         { label: 'Edge Types', path: '/edges/types' },
@@ -54,10 +57,9 @@ const menuItems = computed(() => {
     })
   }
 
-  // 3. Audit Logs
-  items.push({ label: 'Audit Logs', icon: '📋', path: '/audit' })
+  // 3. THE BOTTOM THREE: Team, Organizations, Audit Logs
   
-  // 4. Team Management (Admin Only) - Placed at the bottom
+  // Team (Admin/Owner Only)
   if (authStore.canManageUsers) {
     items.push({ 
       label: 'Team', 
@@ -69,32 +71,47 @@ const menuItems = computed(() => {
       ]
     })
   }
+
+  // Organizations (Super User Only)
+  if (authStore.isSuperAdmin) {
+    items.push({ 
+      label: 'Organizations', 
+      icon: '🏢', 
+      path: '/organizations' 
+    })
+  }
+
+  // Audit Logs (Visible to all authorized users)
+  items.push({ 
+    label: 'Audit Logs', 
+    icon: '📋', 
+    path: '/audit' 
+  })
   
   return items
 })
 
 /**
- * Determine if a menu item is active based on the current route.
+ * Determine if a menu item is active.
+ * Implements logic to prevent collisions between parent entities and "Types".
  */
 const isActive = (path: string) => {
-  // Special handling for the "Types" group header
-  // Keeps the accordion open if we are on any ".../types" route
+  // Special case: Accordion toggle for "Types" group
   if (path === '/types') {
-    return route.path.endsWith('/types') || route.path.includes('/types/')
+    return route.path.includes('/types')
   }
 
-  // Exact match always wins
+  // Exact match
   if (route.path === path) return true
   
-  // Prefix match logic
+  // Prefix matching
   if (route.path.startsWith(path + '/')) {
     // FIX: Collision detection
-    // If we are currently in a "Types" sub-view (e.g. /locations/types/...),
-    // do NOT highlight the parent entity menu (e.g. /locations).
+    // If current route is a "Types" route (e.g. /locations/types),
+    // don't let the parent entity (e.g. /locations) claim it as active.
     if (route.path.includes('/types') && !path.includes('/types')) {
       return false
     }
-    
     return true
   }
   
@@ -115,7 +132,8 @@ async function handleLogout() {
 
 function getAvatarUrl() {
   if (!authStore.user?.avatar) return null
-  return pb.files.getUrl(authStore.user, authStore.user.avatar, { 
+  // Support both User and SuperUser types
+  return pb.files.getUrl(authStore.user, (authStore.user as any).avatar, { 
     thumb: '100x100',
     token: pb.authStore.token 
   })
@@ -129,7 +147,7 @@ function closeDrawer() {
 
 <template>
   <aside class="bg-base-100 w-72 min-h-screen flex flex-col border-r border-base-300">
-    <!-- SECTION 1: Logo (Sticky Top) -->
+    <!-- SECTION 1: Logo -->
     <router-link to="/" class="p-4 flex items-center gap-3 hover:opacity-80 transition-opacity" @click="closeDrawer">
       <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 256 256" class="flex-shrink-0 text-primary">
         <path d="M128,0 C57.343,0 0,57.343 0,128 C0,198.657 57.343,256 128,256 C198.657,256 256,198.657 256,128 C256,57.343 198.657,0 128,0 z M128,28 C181.423,28 224.757,71.334 224.757,124.757 C224.757,139.486 221.04,153.32 214.356,165.42 C198.756,148.231 178.567,138.124 162.876,124.331 C155.723,124.214 128.543,124.043 113.254,124.043 C113.254,147.334 113.254,172.064 113.254,190.513 C100.456,179.347 94.543,156.243 94.543,156.243 C83.432,147.065 31.243,124.757 31.243,124.757 C31.243,71.334 74.577,28 128,28 z" fill="currentColor"/>
@@ -169,21 +187,23 @@ function closeDrawer() {
             </a>
           </li>
           
-          <li class="border-t border-base-200 my-1"></li>
-          
-          <li>
-            <router-link to="/organization/invitations" class="text-xs" @click="closeDrawer">
-              + New Organization
-            </router-link>
-          </li>
+          <!-- Super Admin Only Link -->
+          <template v-if="authStore.isSuperAdmin">
+            <li class="border-t border-base-200 my-1"></li>
+            <li>
+              <router-link to="/organizations/new" class="text-xs" @click="closeDrawer">
+                + New Organization
+              </router-link>
+            </li>
+          </template>
         </ul>
       </div>
     </div>
     
     <!-- SECTION 3: Main Navigation -->
     <ul class="menu p-3 gap-1 flex-1 overflow-y-auto">
-      <li v-for="item in menuItems" :key="item.path">
-        <!-- Menu item with children -->
+      <li v-for="item in menuItems" :key="item.label">
+        <!-- Menu item with children (Accordion) -->
         <details v-if="item.children" :open="isActive(item.path)">
           <summary :class="{ 'active': isActive(item.path) }">
             <span class="text-lg opacity-80 w-6 text-center">{{ item.icon }}</span>
