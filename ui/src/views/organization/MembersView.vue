@@ -38,12 +38,15 @@ const filteredMembers = computed(() => {
   return members.value.filter(member => {
     if (member.expand?.user?.name?.toLowerCase().includes(query)) return true
     if (member.expand?.user?.email?.toLowerCase().includes(query)) return true
+    if (member.expand?.organization?.name?.toLowerCase().includes(query)) return true
     if (member.role?.toLowerCase().includes(query)) return true
     return false
   })
 })
 
-// Column configuration for responsive list
+/**
+ * Column configuration for responsive list
+ */
 const columns: Column<Membership>[] = [
   {
     key: 'expand.user.name',
@@ -56,6 +59,11 @@ const columns: Column<Membership>[] = [
     mobileLabel: 'Email',
   },
   {
+    key: 'expand.organization.name', // NEW: Organization column
+    label: 'Organization',
+    mobileLabel: 'Org',
+  },
+  {
     key: 'role',
     label: 'Role',
     mobileLabel: 'Role',
@@ -65,11 +73,10 @@ const columns: Column<Membership>[] = [
 
 /**
  * Load members from API
- * Backend automatically filters by current organization
  */
 async function loadMembers() {
   await load({ 
-    expand: 'user,invited_by',
+    expand: 'user,invited_by,organization', // Added organization to expansion
     sort: 'role',
   })
 }
@@ -96,7 +103,7 @@ function canRemoveMember(member: Membership): boolean {
 async function handleRemoveMember(member: Membership) {
   const memberName = member.expand?.user?.name || member.expand?.user?.email || 'this member'
   
-  if (!confirm(`Remove ${memberName} from ${authStore.currentOrg?.name}?`)) return
+  if (!confirm(`Remove ${memberName} from ${member.expand?.organization?.name || 'the organization'}?`)) return
   
   try {
     await pb.collection('memberships').delete(member.id)
@@ -111,13 +118,11 @@ async function handleRemoveMember(member: Membership) {
  * Handle updating member role
  */
 async function handleUpdateRole(member: Membership, newRole: 'admin' | 'member') {
-  // Don't allow changing owner role
   if (member.role === 'owner') {
     toast.error('Cannot change owner role')
     return
   }
   
-  // Don't allow changing your own role
   if (member.user === authStore.user?.id) {
     toast.error('Cannot change your own role')
     return
@@ -194,7 +199,7 @@ onUnmounted(() => {
       <input 
         v-model="searchQuery"
         type="text"
-        placeholder="Search members by name, email, or role..."
+        placeholder="Search members by name, email, organization or role..."
         class="input input-bordered w-full"
       />
     </div>
@@ -234,7 +239,7 @@ onUnmounted(() => {
         :loading="loading"
         :clickable="false"
       >
-        <!-- Custom cell for name (with avatar placeholder) -->
+        <!-- Custom cell for name -->
         <template #cell-expand.user.name="{ item }">
           <div class="flex items-center gap-3">
             <div class="avatar placeholder">
@@ -285,8 +290,27 @@ onUnmounted(() => {
             {{ item.expand?.user?.email }}
           </a>
         </template>
+
+        <!-- Custom cell for Organization -->
+        <template #cell-expand.organization.name="{ item }">
+          <div class="flex items-center gap-1 opacity-80">
+            <span class="text-xs">🏢</span>
+            <span class="truncate max-w-[150px]">{{ item.expand?.organization?.name || 'Unknown' }}</span>
+          </div>
+        </template>
+
+        <!-- Custom card for Organization -->
+        <template #card-expand.organization.name="{ item }">
+          <div class="flex flex-col">
+            <span class="text-xs font-medium text-base-content/70">Organization</span>
+            <div class="mt-1 flex items-center gap-1">
+              <span class="text-xs">🏢</span>
+              <span class="text-sm">{{ item.expand?.organization?.name || 'Unknown' }}</span>
+            </div>
+          </div>
+        </template>
         
-        <!-- Custom cell for role (badge with dropdown for admins/owners) -->
+        <!-- Custom cell for role -->
         <template #cell-role="{ item }">
           <div class="flex items-center gap-2">
             <span 
@@ -296,7 +320,6 @@ onUnmounted(() => {
               {{ item.role.charAt(0).toUpperCase() + item.role.slice(1) }}
             </span>
             
-            <!-- Role change dropdown (only for admins/owners, not for self or owner) -->
             <div 
               v-if="authStore.canManageUsers && item.role !== 'owner' && item.user !== authStore.user?.id"
               class="dropdown dropdown-end"
@@ -306,33 +329,6 @@ onUnmounted(() => {
                 <li><a @click="handleUpdateRole(item, 'admin')">Make Admin</a></li>
                 <li><a @click="handleUpdateRole(item, 'member')">Make Member</a></li>
               </ul>
-            </div>
-          </div>
-        </template>
-        
-        <!-- Custom card for role -->
-        <template #card-role="{ item }">
-          <div class="flex flex-col">
-            <span class="text-xs font-medium text-base-content/70">Role</span>
-            <div class="mt-1 flex items-center gap-2">
-              <span 
-                class="badge badge-sm"
-                :class="getRoleBadgeClass(item.role)"
-              >
-                {{ item.role.charAt(0).toUpperCase() + item.role.slice(1) }}
-              </span>
-              
-              <!-- Role change dropdown for mobile -->
-              <div 
-                v-if="authStore.canManageUsers && item.role !== 'owner' && item.user !== authStore.user?.id"
-                class="dropdown dropdown-end"
-              >
-                <label tabindex="0" class="btn btn-ghost btn-xs">⋮</label>
-                <ul tabindex="0" class="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-52">
-                  <li><a @click="handleUpdateRole(item, 'admin')">Make Admin</a></li>
-                  <li><a @click="handleUpdateRole(item, 'member')">Make Member</a></li>
-                </ul>
-              </div>
             </div>
           </div>
         </template>
@@ -361,7 +357,7 @@ onUnmounted(() => {
           <button 
             class="join-item btn btn-sm"
             :disabled="page === 1 || loading"
-            @click="prevPage({ expand: 'user,invited_by', sort: 'role,-created' })"
+            @click="prevPage({ expand: 'user,invited_by,organization', sort: 'role,-created' })"
           >
             «
           </button>
@@ -371,7 +367,7 @@ onUnmounted(() => {
           <button 
             class="join-item btn btn-sm"
             :disabled="page === totalPages || loading"
-            @click="nextPage({ expand: 'user,invited_by', sort: 'role,-created' })"
+            @click="nextPage({ expand: 'user,invited_by,organization', sort: 'role,-created' })"
           >
             »
           </button>
