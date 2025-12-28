@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
@@ -12,22 +12,22 @@ const toast = useToast()
 // View States
 const mode = ref<'login' | 'forgot'>('login')
 const loading = ref(false)
-const showAdminToggle = ref(false) // Triggered by URL param
+const showAdminToggle = ref(false)
 
 // Form Data
 const email = ref('')
 const password = ref('')
 const isSuperAdmin = ref(false)
 
-/**
- * Check for the subtle "admin" trigger in the URL
- */
-onMounted(() => {
+const checkAdminParam = () => {
   if (route.query.admin === '1' || route.query.admin === 'true') {
     showAdminToggle.value = true
     isSuperAdmin.value = true
   }
-})
+}
+
+onMounted(checkAdminParam)
+watch(() => route.query.admin, checkAdminParam)
 
 /**
  * Authentication Handler
@@ -64,7 +64,6 @@ async function handleResetRequest() {
     toast.success('Password reset email sent! Please check your inbox.')
     mode.value = 'login'
   } catch (err: any) {
-    // We use error toast, but standard practice is to not reveal if email exists
     toast.error(err.message || 'Failed to request reset')
   } finally {
     loading.value = false
@@ -74,7 +73,7 @@ async function handleResetRequest() {
 
 <template>
   <div class="min-h-screen flex items-center justify-center bg-base-200 p-4">
-    <div class="card w-full max-w-sm bg-base-100 shadow-xl">
+    <div class="card w-full max-w-sm bg-base-100 shadow-xl border border-base-300">
       <div class="card-body">
         
         <!-- App Logo & Title -->
@@ -90,22 +89,19 @@ async function handleResetRequest() {
 
         <!-- LOGIN MODE -->
         <form v-if="mode === 'login'" @submit.prevent="handleLogin" class="space-y-4">
+          <!-- 1. Email -->
           <div class="form-control">
             <label class="label"><span class="label-text">Email</span></label>
             <input v-model="email" type="email" placeholder="name@company.com" class="input input-bordered" required />
           </div>
           
+          <!-- 2. Password -->
           <div class="form-control">
-            <div class="flex justify-between items-center pr-1">
-              <label class="label"><span class="label-text">Password</span></label>
-              <button type="button" @click="mode = 'forgot'" class="text-xs link link-primary no-underline hover:underline">
-                Forgot password?
-              </button>
-            </div>
+            <label class="label"><span class="label-text">Password</span></label>
             <input v-model="password" type="password" placeholder="••••••••" class="input input-bordered" required />
           </div>
 
-          <!-- Subtle Admin Toggle (Hidden unless ?admin=1 is in URL) -->
+          <!-- Subtle Admin Toggle (Discreetly revealed via ?admin=1) -->
           <div v-if="showAdminToggle" class="form-control bg-base-200 p-3 rounded-lg border border-base-300">
             <label class="label cursor-pointer justify-between">
               <span class="label-text font-bold text-xs uppercase tracking-widest opacity-70">Super User</span>
@@ -113,10 +109,18 @@ async function handleResetRequest() {
             </label>
           </div>
           
+          <!-- 3. Sign In Button -->
           <div class="form-control mt-6">
             <button type="submit" class="btn btn-primary w-full" :disabled="loading">
               <span v-if="loading" class="loading loading-spinner"></span>
               <span v-else>{{ isSuperAdmin ? 'Super User Login' : 'Sign In' }}</span>
+            </button>
+          </div>
+
+          <!-- 4. Forgot Password (LAST in tab order) -->
+          <div class="text-center mt-4">
+            <button type="button" @click="mode = 'forgot'" class="text-xs link link-primary no-underline hover:underline opacity-70 hover:opacity-100 transition-opacity">
+              Forgot password?
             </button>
           </div>
         </form>
@@ -128,7 +132,7 @@ async function handleResetRequest() {
             <input v-model="email" type="email" placeholder="name@company.com" class="input input-bordered" required />
             <label class="label">
               <span class="label-text-alt opacity-70">
-                We'll send a password reset link if an account exists for this email.
+                We'll send a password reset link if an account exists.
               </span>
             </label>
           </div>
