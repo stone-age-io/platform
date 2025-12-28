@@ -10,7 +10,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits(['thing-moved', 'uploaded'])
-const { mapInitialized, initFloorPlan, renderMarkers } = useFloorPlan()
+const { initFloorPlan, renderMarkers } = useFloorPlan()
 const loading = ref(false)
 
 const loadMap = () => {
