@@ -195,8 +195,12 @@ onUnmounted(() => cleanupMap())
               </div>
               <div>
                 <p class="opacity-50 uppercase text-xs font-bold mb-1">Parent</p>
+                <!-- FIXED: Parent is now a router-link -->
                 <p v-if="location.expand?.parent" class="flex items-center gap-1">
-                   <span class="text-primary text-xs">📍</span> {{ location.expand.parent.name }}
+                   <span class="text-primary text-xs">📍</span>
+                   <router-link :to="`/locations/${location.parent}`" class="link link-primary font-medium hover:no-underline">
+                     {{ location.expand.parent.name }}
+                   </router-link>
                 </p>
                 <p v-else class="opacity-40 italic">Root Location</p>
               </div>
