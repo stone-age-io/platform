@@ -149,7 +149,7 @@ onUnmounted(() => cleanupMap())
     </div>
     
     <template v-else-if="location">
-      <!-- Header -->
+      <!-- Standard Detail Header -->
       <div class="flex flex-col gap-4">
         <div class="text-sm breadcrumbs">
           <ul>
@@ -167,118 +167,125 @@ onUnmounted(() => cleanupMap())
             <span v-if="location.expand?.type" class="badge badge-lg badge-ghost">{{ location.expand.type.name }}</span>
           </div>
           <div class="flex gap-2 w-full sm:w-auto">
-            <router-link :to="`/locations/${location.id}/edit`" class="btn btn-primary flex-1 sm:flex-initial">Edit</router-link>
-            <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial">Delete</button>
+            <router-link :to="`/locations/${location.id}/edit`" class="btn btn-primary flex-1 sm:flex-initial">
+              Edit
+            </router-link>
+            <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial">
+              Delete
+            </button>
           </div>
         </div>
       </div>
       
-      <!-- Section 1: Info & Geo Map -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-        <div class="space-y-6">
-          <!-- Basic Info -->
+      <!-- Layout Grid (12 Columns) -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        
+        <!-- Left Column (Metadata & Geo Map) -->
+        <div class="lg:col-span-5 flex flex-col gap-6">
+          <!-- Basic Information -->
           <BaseCard title="Basic Information">
-            <dl class="space-y-4">
+            <div class="grid grid-cols-2 gap-y-4 text-sm">
+              <div class="col-span-2">
+                <p class="opacity-50 uppercase text-xs font-bold mb-1">Description</p>
+                <p class="text-base">{{ location.description || 'No description provided' }}</p>
+              </div>
               <div>
-                <dt class="text-sm font-medium text-base-content/70">Description</dt>
-                <dd class="mt-1 text-sm">{{ location.description || '-' }}</dd>
+                <p class="opacity-50 uppercase text-xs font-bold mb-1">Code</p>
+                <code class="bg-base-300 px-2 py-1 rounded font-mono text-xs">{{ location.code || 'N/A' }}</code>
               </div>
-              <div class="grid grid-cols-2 gap-4">
-                <div>
-                  <dt class="text-sm font-medium text-base-content/70">Code</dt>
-                  <dd class="mt-1 font-mono text-sm">{{ location.code || '-' }}</dd>
-                </div>
-                <div>
-                  <dt class="text-sm font-medium text-base-content/70">Parent</dt>
-                  <dd class="mt-1 text-sm">
-                    <router-link v-if="location.expand?.parent" :to="`/locations/${location.parent}`" class="link link-primary">
-                      📍 {{ location.expand.parent.name }}
-                    </router-link>
-                    <span v-else class="opacity-40">Root</span>
-                  </dd>
-                </div>
-              </div>
-              <!-- Created Timestamp Restored -->
               <div>
-                <dt class="text-sm font-medium text-base-content/70">Created</dt>
-                <dd class="mt-1 text-sm">{{ formatDate(location.created) }}</dd>
+                <p class="opacity-50 uppercase text-xs font-bold mb-1">Parent</p>
+                <p v-if="location.expand?.parent" class="flex items-center gap-1">
+                   <span class="text-primary text-xs">📍</span> {{ location.expand.parent.name }}
+                </p>
+                <p v-else class="opacity-40 italic">Root Location</p>
               </div>
-            </dl>
-          </BaseCard>
-
-          <!-- Geo Coordinates Card with Restored Header Button -->
-          <BaseCard>
-            <template #header>
-              <div class="flex justify-between items-center mb-2">
-                <h3 class="card-title text-base">Geo Coordinates</h3>
-                <button 
-                  v-if="location.coordinates"
-                  @click="openNavigation"
-                  class="btn btn-sm btn-primary btn-outline gap-2"
-                >
-                  <span class="text-lg">🗺️</span>
-                  Navigate
-                </button>
-              </div>
-            </template>
-
-            <div v-if="location.coordinates" class="space-y-4">
-              <div class="grid grid-cols-2 gap-3">
-                <div class="bg-base-200 rounded-lg p-2 border border-base-300 text-center">
-                  <span class="text-xs text-base-content/50 uppercase block">Lat</span>
-                  <span class="font-mono text-sm">{{ location.coordinates.lat }}</span>
-                </div>
-                <div class="bg-base-200 rounded-lg p-2 border border-base-300 text-center">
-                  <span class="text-xs text-base-content/50 uppercase block">Lon</span>
-                  <span class="font-mono text-sm">{{ location.coordinates.lon }}</span>
-                </div>
-              </div>
-              <div class="h-48 w-full rounded-lg overflow-hidden border border-base-300 relative z-0">
-                <div :id="mapContainerId" class="absolute inset-0"></div>
+              <div class="col-span-2">
+                <p class="opacity-50 uppercase text-xs font-bold mb-1">Created</p>
+                <p>{{ formatDate(location.created) }}</p>
               </div>
             </div>
-            <div v-else class="text-center py-8 opacity-50 border border-dashed border-base-300 rounded-lg bg-base-200/30">
-              No coordinates set.
+          </BaseCard>
+
+          <!-- Geo Coordinates -->
+          <BaseCard :no-padding="true" class="overflow-hidden">
+            <div class="p-4 border-b border-base-300 flex justify-between items-center bg-base-200/30">
+              <h2 class="font-bold uppercase text-[10px] tracking-widest opacity-60">Geo Location</h2>
+              <button v-if="location.coordinates" @click="openNavigation" class="btn btn-xs btn-primary btn-outline">
+                Navigate
+              </button>
+            </div>
+
+            <div v-if="location.coordinates" class="p-4 space-y-4">
+              <div class="grid grid-cols-2 gap-2 text-center">
+                <div class="bg-base-200 rounded p-2">
+                  <span class="block text-[10px] uppercase opacity-50 font-bold">Latitude</span>
+                  <span class="font-mono text-xs">{{ location.coordinates.lat }}</span>
+                </div>
+                <div class="bg-base-200 rounded p-2">
+                  <span class="block text-[10px] uppercase opacity-50 font-bold">Longitude</span>
+                  <span class="font-mono text-xs">{{ location.coordinates.lon }}</span>
+                </div>
+              </div>
+              <div class="h-44 w-full rounded-lg relative z-0 border border-base-300">
+                <div :id="mapContainerId" class="absolute inset-0 rounded-lg"></div>
+              </div>
+            </div>
+            <div v-else class="p-8 text-center opacity-40 italic text-sm">
+              No geographic coordinates set.
             </div>
           </BaseCard>
         </div>
 
-        <!-- Section 2: Floor Plan Map -->
-        <div class="space-y-4">
-          <div class="flex justify-between items-center">
-            <h2 class="text-xl font-bold">Floor Plan</h2>
-            <button 
-              v-if="location.floorplan"
-              @click="isPositioningMode = !isPositioningMode" 
-              class="btn btn-sm"
-              :class="isPositioningMode ? 'btn-success' : 'btn-outline'"
-            >
-              {{ isPositioningMode ? '💾 Save Positions' : '🛠️ Position Things' }}
-            </button>
-          </div>
-
-          <FloorPlanMap 
-            :location="location"
-            :things="things"
-            :editable="isPositioningMode"
-            @thing-moved="handleThingMoved"
-            @uploaded="handleFloorplanUploaded"
-          />
+        <!-- Right Column (Floor Plan Visualizer) -->
+        <div class="lg:col-span-7 h-full">
+          <BaseCard class="h-full flex flex-col" :no-padding="true">
+            <div class="p-4 border-b border-base-300 flex justify-between items-center bg-base-200/30">
+              <h2 class="font-bold uppercase text-[10px] tracking-widest opacity-60 flex items-center gap-2">
+                 🖼️ Floor Plan Map
+              </h2>
+              <button 
+                v-if="location.floorplan"
+                @click="isPositioningMode = !isPositioningMode" 
+                class="btn btn-xs sm:btn-sm"
+                :class="isPositioningMode ? 'btn-success' : 'btn-ghost bg-base-300'"
+              >
+                {{ isPositioningMode ? '💾 Save Positions' : '🛠️ Position Things' }}
+              </button>
+            </div>
+            
+            <div class="flex-grow min-h-[500px]">
+              <FloorPlanMap 
+                :location="location"
+                :things="things"
+                :editable="isPositioningMode"
+                @thing-moved="handleThingMoved"
+                @uploaded="handleFloorplanUploaded"
+              />
+            </div>
+          </BaseCard>
         </div>
       </div>
 
-      <!-- Section 3: Lists -->
-      <div class="grid grid-cols-1 gap-6">
+      <!-- Lists -->
+      <div class="space-y-6">
         <BaseCard title="Sub-Locations" :no-padding="true" v-if="subLocations.length">
           <ResponsiveList :items="subLocations" :columns="subLocColumns" @row-click="(i) => router.push(`/locations/${i.id}`)" />
         </BaseCard>
 
-        <BaseCard title="Things at this Location" :no-padding="true">
+        <BaseCard title="Associated Things" :no-padding="true">
           <ResponsiveList :items="things" :columns="thingColumns" @row-click="(i) => router.push(`/things/${i.id}`)">
-            <template #cell-code="{ item }"><code class="text-xs">{{ item.code || '-' }}</code></template>
+            <template #cell-code="{ item }"><code class="text-xs font-mono">{{ item.code || '-' }}</code></template>
           </ResponsiveList>
         </BaseCard>
       </div>
     </template>
   </div>
 </template>
+
+<style scoped>
+/* Grug UX: Invert floorplan colors in dark mode for better visual cohesion */
+:deep([data-theme='dark']) .leaflet-image-layer {
+  filter: invert(0.9) hue-rotate(180deg) brightness(0.8) contrast(1.2);
+}
+</style>
