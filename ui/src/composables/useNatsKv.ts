@@ -15,7 +15,6 @@ export function useNatsKv(bucketName: string) {
   const natsStore = useNatsStore()
   const toast = useToast()
   
-  // NATS SDK v2+ removal of StringCodec -> Use Web Standards
   const encoder = new TextEncoder()
   const decoder = new TextDecoder()
 
@@ -28,7 +27,7 @@ export function useNatsKv(bucketName: string) {
   
   let watcher: any = null
 
-  // Initialize: Check if bucket exists and open it
+  // Initialize
   async function init() {
     if (!natsStore.nc) return
     
@@ -40,8 +39,6 @@ export function useNatsKv(bucketName: string) {
     try {
       const kvm = new Kvm(natsStore.nc)
       
-      // Check if exists first
-      // kvm.list() returns an AsyncIterable of KvStatus objects
       let found = false
       for await (const b of await kvm.list()) { 
         if (b.bucket === bucketName) {
@@ -56,7 +53,6 @@ export function useNatsKv(bucketName: string) {
         return
       }
 
-      // Open and Watch
       kv.value = await kvm.open(bucketName)
       exists.value = true
       await startWatch()
@@ -76,8 +72,8 @@ export function useNatsKv(bucketName: string) {
       const kvm = new Kvm(natsStore.nc)
       await kvm.create(bucketName, {
         description: description || 'Digital Twin Store',
-        history: 5,
-        storage: 'file' // Durable storage
+        history: 10, // Increased history for the new feature
+        storage: 'file'
       })
       toast.success(`Bucket ${bucketName} created`)
       await init()
@@ -88,30 +84,20 @@ export function useNatsKv(bucketName: string) {
     }
   }
 
-  // Watch for changes
+  // Watcher
   async function startWatch() {
     if (!kv.value) return
-    
     try {
       const iter = await kv.value.watch()
       watcher = iter
-      
-      // Process updates in background
       ;(async () => {
         for await (const e of iter) {
           if (e.operation === 'DEL' || e.operation === 'PURGE') {
             entries.value.delete(e.key)
           } else {
-            let val = null
-            try {
-              // Try to decode JSON, fallback to string
-              const str = decoder.decode(e.value)
-              try { val = JSON.parse(str) } catch { val = str }
-            } catch { val = '[Binary]' }
-
             entries.value.set(e.key, {
               key: e.key,
-              value: val,
+              value: decodeValue(e.value),
               revision: e.revision,
               created: e.created,
               operation: e.operation
@@ -124,11 +110,18 @@ export function useNatsKv(bucketName: string) {
     }
   }
 
-  // Put Value (Auto JSON serialization)
+  // Helper: Decode value
+  function decodeValue(bytes: Uint8Array): any {
+    try {
+      const str = decoder.decode(bytes)
+      try { return JSON.parse(str) } catch { return str }
+    } catch { return '[Binary]' }
+  }
+
+  // Put
   async function put(key: string, value: any) {
     if (!kv.value) return
     try {
-      // Serialize everything to JSON for type safety across the wire
       const encoded = encoder.encode(JSON.stringify(value))
       await kv.value.put(key, encoded)
       toast.success('Key updated')
@@ -138,7 +131,7 @@ export function useNatsKv(bucketName: string) {
     }
   }
 
-  // Delete Key
+  // Delete
   async function del(key: string) {
     if (!kv.value) return
     try {
@@ -149,7 +142,28 @@ export function useNatsKv(bucketName: string) {
     }
   }
 
-  // Cleanup
+  // Get History
+  async function getHistory(key: string): Promise<KvEntry[]> {
+    if (!kv.value) return []
+    const history: KvEntry[] = []
+    try {
+      const iter = await kv.value.history({ key })
+      for await (const e of iter) {
+        history.push({
+          key: e.key,
+          value: e.value ? decodeValue(e.value) : null,
+          revision: e.revision,
+          created: e.created,
+          operation: e.operation
+        })
+      }
+    } catch (e) {
+      console.error('History fetch error', e)
+    }
+    // Return newest first
+    return history.reverse()
+  }
+
   onUnmounted(() => {
     if (watcher) watcher.stop()
   })
@@ -162,6 +176,7 @@ export function useNatsKv(bucketName: string) {
     init,
     createBucket,
     put,
-    del
+    del,
+    getHistory
   }
 }

@@ -5,20 +5,20 @@ import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
 import { useMap } from '@/composables/useMap'
 import { useUIStore } from '@/stores/ui'
-import { useNatsStore } from '@/stores/nats' // NEW: Import NATS Store
+import { useNatsStore } from '@/stores/nats'
 import { formatDate } from '@/utils/format'
 import type { Location, Thing } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 import FloorPlanMap from '@/components/map/FloorPlanMap.vue'
-import KvDashboard from '@/components/nats/KvDashboard.vue' // NEW: Import KV Dashboard
+import KvDashboard from '@/components/nats/KvDashboard.vue'
 
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
 const uiStore = useUIStore()
-const natsStore = useNatsStore() // NEW: Init Store
+const natsStore = useNatsStore()
 const { initMap, renderMarkers, updateTheme, cleanup: cleanupMap } = useMap()
 
 // State
@@ -243,11 +243,11 @@ onUnmounted(() => cleanupMap())
           </BaseCard>
         </div>
 
-        <!-- Right Column (Floor Plan Visualizer & KV Dashboard) -->
+        <!-- Right Column (Floor Plan Visualizer) -->
         <div class="lg:col-span-7 flex flex-col gap-6">
           
           <!-- Floor Plan Map -->
-          <BaseCard class="flex flex-col" :no-padding="true">
+          <BaseCard class="flex flex-col h-full min-h-[550px]" :no-padding="true">
             <div class="p-4 border-b border-base-300 flex justify-between items-center bg-base-200/30">
               <h2 class="font-bold uppercase text-[10px] tracking-widest opacity-60 flex items-center gap-2">
                  🖼️ Floor Plan Map
@@ -262,7 +262,7 @@ onUnmounted(() => cleanupMap())
               </button>
             </div>
             
-            <div class="flex-grow min-h-[500px]">
+            <div class="flex-grow">
               <FloorPlanMap 
                 :location="location"
                 :things="things"
@@ -273,43 +273,46 @@ onUnmounted(() => cleanupMap())
             </div>
           </BaseCard>
 
-          <!-- NEW: Digital Twin / KV Dashboard -->
-          <!-- Only shown if location has a Code -->
-          <template v-if="location.code">
-            
-            <!-- Active Dashboard (Connected) -->
-            <div v-if="natsStore.isConnected">
-              <KvDashboard 
-                :bucket="location.code" 
-                :context-code="location.code" 
-              />
-            </div>
-            
-            <!-- Warning (Not Connected) -->
-            <div v-else class="alert shadow-sm border border-base-300 bg-base-100">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-info shrink-0 w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-              <div class="text-xs">
-                <div class="font-bold">Digital Twin Offline</div> 
-                <span class="opacity-70">Connect to NATS in <router-link to="/settings" class="link">Settings</router-link> to view live data for this location.</span>
-              </div>
-            </div>
-
-          </template>
-
         </div>
       </div>
 
-      <!-- Lists -->
+      <!-- Lower Section: Lists & Digital Twin -->
       <div class="space-y-6">
+        
+        <!-- Sub-Locations -->
         <BaseCard title="Sub-Locations" :no-padding="true" v-if="subLocations.length">
           <ResponsiveList :items="subLocations" :columns="subLocColumns" @row-click="(i) => router.push(`/locations/${i.id}`)" />
         </BaseCard>
 
+        <!-- Associated Things -->
         <BaseCard title="Associated Things" :no-padding="true">
           <ResponsiveList :items="things" :columns="thingColumns" @row-click="(i) => router.push(`/things/${i.id}`)">
             <template #cell-code="{ item }"><code class="text-xs font-mono">{{ item.code || '-' }}</code></template>
           </ResponsiveList>
         </BaseCard>
+
+        <!-- Digital Twin / KV Dashboard (Last Item) -->
+        <template v-if="location.code">
+          
+          <!-- Active Dashboard (Connected) -->
+          <div v-if="natsStore.isConnected">
+            <KvDashboard 
+              :bucket="location.code" 
+              :context-code="location.code" 
+            />
+          </div>
+          
+          <!-- Warning (Not Connected) -->
+          <div v-else class="alert shadow-sm border border-base-300 bg-base-100">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-info shrink-0 w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <div class="text-xs">
+              <div class="font-bold">Digital Twin Offline</div> 
+              <span class="opacity-70">Connect to NATS in <router-link to="/settings" class="link">Settings</router-link> to view live data for this location.</span>
+            </div>
+          </div>
+
+        </template>
+
       </div>
     </template>
   </div>
