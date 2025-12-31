@@ -3,21 +3,28 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useNatsKv, type KvEntry } from '@/composables/useNatsKv'
 import { useToast } from '@/composables/useToast'
 import BaseCard from '@/components/ui/BaseCard.vue'
-import { formatDate } from '@/utils/format' // Using generic format util
+import ResponsiveList, { type Column } from '@/components/ui/ResponsiveList.vue'
+import { formatDate } from '@/utils/format'
+
+// Adapter type to satisfy ResponsiveList requirement (T extends { id: string })
+interface KvEntryWithId extends KvEntry {
+  id: string
+}
 
 const props = defineProps<{
   bucket: string
   contextCode: string // e.g. "LOC_01" - used to prefix keys
 }>()
 
-const { entries, loading, exists, error, init, createBucket, put, del, getHistory } = useNatsKv(props.bucket)
+// Use a wildcard filter based on the context code
+const { entries, loading, exists, error, init, createBucket, put, del, getHistory } = useNatsKv(props.bucket, `${props.contextCode}.>`)
 const toast = useToast()
 
 // UI State
 const showForm = ref(false)
 const isEditing = ref(false)
 const historyLoading = ref(false)
-const historyEntries = ref<KvEntry[]>([])
+const historyEntries = ref<KvEntryWithId[]>([])
 
 // Form Inputs
 const inputKey = ref('')
@@ -25,20 +32,39 @@ const inputType = ref<'string' | 'number' | 'boolean' | 'json'>('string')
 const inputValue = ref('')
 const inputBool = ref(true)
 
-// Computed list for display
-const sortedEntries = computed(() => {
-  return Array.from(entries.value.values()).sort((a, b) => a.key.localeCompare(b.key))
+// Computed list for display with ID adapter
+const sortedEntries = computed<KvEntryWithId[]>(() => {
+  return Array.from(entries.value.values())
+    .sort((a, b) => a.key.localeCompare(b.key))
+    .map(entry => ({
+      ...entry,
+      id: entry.key // Map key to id for ResponsiveList
+    }))
 })
 
-// Initialize
+// --- Columns Configuration ---
+
+const keyColumns: Column<KvEntryWithId>[] = [
+  { key: 'key', label: 'Key', mobileLabel: 'Key' },
+  { key: 'value', label: 'Value', mobileLabel: 'Value' },
+  { key: 'revision', label: 'Rev', mobileLabel: 'Rev', class: 'text-right w-20' }
+]
+
+const historyColumns: Column<KvEntryWithId>[] = [
+  { key: 'revision', label: 'Rev', mobileLabel: 'Rev', class: 'w-16' },
+  { key: 'operation', label: 'Op', mobileLabel: 'Op', class: 'w-20' },
+  { key: 'value', label: 'Value', mobileLabel: 'Value' },
+  { key: 'created', label: 'Time', mobileLabel: 'Time', class: 'text-right', format: (v) => formatDate(v, 'PP p') }
+]
+
+// --- Actions ---
+
 onMounted(() => init())
 
-// Create Bucket
 async function handleCreate() {
   await createBucket(`Digital Twin for ${props.contextCode}`)
 }
 
-// Reset Form
 function resetForm() {
   showForm.value = false
   isEditing.value = false
@@ -48,24 +74,19 @@ function resetForm() {
   historyEntries.value = []
 }
 
-// Open "Add New" Mode
 function openAddForm() {
   resetForm()
   showForm.value = true
-  // Pre-fill context code for convenience
-  // inputKey remains empty, user types suffix
 }
 
-// Open "Edit/View" Mode
-async function selectEntry(entry: KvEntry) {
+async function selectEntry(entry: KvEntryWithId) {
   isEditing.value = true
   showForm.value = true
   
-  // Strip context code prefix for display if it exists, strictly for visual cleanliness
-  // But strictly, we keep the full key in the input and disable it
+  // Set Key (Visual only, disabled input)
   inputKey.value = entry.key
   
-  // Detect Type
+  // Set Value & Type
   const val = entry.value
   if (typeof val === 'number') inputType.value = 'number'
   else if (typeof val === 'boolean') {
@@ -81,14 +102,17 @@ async function selectEntry(entry: KvEntry) {
     inputValue.value = String(val)
   }
 
-  // Load History
+  // Load History & Adapt IDs
   historyLoading.value = true
-  historyEntries.value = await getHistory(entry.key)
+  const rawHistory = await getHistory(entry.key)
+  historyEntries.value = rawHistory.map(h => ({
+    ...h,
+    id: h.revision.toString() // Map revision to id for ResponsiveList
+  }))
   historyLoading.value = false
 }
 
-// Restore a historical value to the input form
-function restoreHistory(entry: KvEntry) {
+function restoreHistory(entry: KvEntryWithId) {
   if (entry.operation === 'DEL') return
   
   const val = entry.value
@@ -108,14 +132,13 @@ function restoreHistory(entry: KvEntry) {
   toast.info(`Loaded value from Rev ${entry.revision}`)
 }
 
-// Handle Save (Put)
 async function handleSave() {
   if (!inputKey.value) {
     toast.error('Key name required')
     return
   }
 
-  // If adding new, prepend prefix. If editing, key is already full.
+  // Prefix logic
   let fullKey = inputKey.value
   if (!isEditing.value) {
     fullKey = inputKey.value.startsWith(props.contextCode + '.') 
@@ -137,10 +160,10 @@ async function handleSave() {
     
     await put(fullKey, finalValue)
     
-    // If editing, reload history to show the new revision immediately
     if (isEditing.value) {
       historyLoading.value = true
-      historyEntries.value = await getHistory(fullKey)
+      const rawHistory = await getHistory(fullKey)
+      historyEntries.value = rawHistory.map(h => ({ ...h, id: h.revision.toString() }))
       historyLoading.value = false
       toast.success('Updated')
     } else {
@@ -151,14 +174,12 @@ async function handleSave() {
   }
 }
 
-// Helper to determine type for badges
 function getValueType(val: any): string {
   if (val === null) return 'null'
   if (Array.isArray(val)) return 'array'
   return typeof val
 }
 
-// Watch for bucket prop changes
 watch(() => props.bucket, () => init())
 </script>
 
@@ -193,7 +214,7 @@ watch(() => props.bucket, () => init())
       
       <!-- Toolbar -->
       <div class="flex justify-between items-center">
-        <div class="text-xs opacity-60 font-mono">{{ entries.size }} Keys</div>
+        <div class="text-xs opacity-60 font-mono">{{ entries.size }} Keys (Filter: {{ contextCode }}.&gt;)</div>
         <button 
           v-if="!showForm"
           @click="openAddForm" 
@@ -218,7 +239,7 @@ watch(() => props.bucket, () => init())
 
         <div class="flex flex-col sm:flex-row gap-2">
           <!-- Key Input -->
-          <div class="join flex-1">
+          <div class="join w-full sm:w-auto flex-1">
             <span v-if="!isEditing" class="join-item btn btn-sm btn-static bg-base-300 font-mono text-xs text-base-content/70">
               {{ contextCode }}.
             </span>
@@ -226,13 +247,13 @@ watch(() => props.bucket, () => init())
               v-model="inputKey" 
               type="text" 
               placeholder="key.name" 
-              class="input input-sm input-bordered join-item flex-1 font-mono"
+              class="input input-sm input-bordered join-item flex-1 font-mono min-w-0"
               :disabled="isEditing"
             />
           </div>
           
           <!-- Type Selector -->
-          <select v-model="inputType" class="select select-sm select-bordered">
+          <select v-model="inputType" class="select select-sm select-bordered w-full sm:w-auto">
             <option value="string">String</option>
             <option value="number">Number</option>
             <option value="boolean">Boolean</option>
@@ -281,7 +302,7 @@ watch(() => props.bucket, () => init())
           </button>
         </div>
 
-        <!-- History Table (Only in Edit Mode) -->
+        <!-- History Table (Responsive) -->
         <div v-if="isEditing" class="pt-2 border-t border-base-content/10">
           <div class="font-bold text-xs uppercase opacity-50 tracking-wider mb-2">Revision History</div>
           
@@ -289,81 +310,118 @@ watch(() => props.bucket, () => init())
             <span class="loading loading-dots loading-xs"></span>
           </div>
           
-          <div v-else class="overflow-x-auto max-h-[150px] border border-base-300 rounded bg-base-100">
-            <table class="table table-xs table-pin-rows">
-              <thead>
-                <tr>
-                  <th>Rev</th>
-                  <th>Op</th>
-                  <th>Value</th>
-                  <th>Time</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="h in historyEntries" :key="h.revision" class="hover group">
-                  <td class="font-mono text-xs opacity-50">{{ h.revision }}</td>
-                  <td>
-                    <span class="badge badge-xs" :class="h.operation === 'DEL' ? 'badge-error' : 'badge-success'">
-                      {{ h.operation }}
-                    </span>
-                  </td>
-                  <td class="max-w-[150px] truncate font-mono text-xs opacity-70">
-                    {{ h.operation === 'DEL' ? '-' : JSON.stringify(h.value) }}
-                  </td>
-                  <td class="text-xs opacity-50 whitespace-nowrap">{{ formatDate(h.created) }}</td>
-                  <td class="text-right">
-                    <button 
-                      v-if="h.operation !== 'DEL'"
-                      @click="restoreHistory(h)"
-                      class="btn btn-xs btn-ghost opacity-0 group-hover:opacity-100"
-                      title="Load this value to editor"
-                    >
-                      Load
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          <div v-else class="border border-base-300 rounded bg-base-100 max-h-[300px] overflow-y-auto">
+            <ResponsiveList 
+              :items="historyEntries" 
+              :columns="historyColumns"
+              :clickable="false"
+            >
+              <!-- Revision -->
+              <template #cell-revision="{ item }">
+                <span class="font-mono text-xs opacity-70">{{ item.revision }}</span>
+              </template>
+              <template #card-revision="{ item }">
+                <span class="font-mono text-xs opacity-70">Rev {{ item.revision }}</span>
+              </template>
+
+              <!-- Operation -->
+              <template #cell-operation="{ item }">
+                <span class="badge badge-xs" :class="item.operation === 'DEL' ? 'badge-error' : 'badge-success'">
+                  {{ item.operation }}
+                </span>
+              </template>
+              <template #card-operation="{ item }">
+                <span class="badge badge-xs" :class="item.operation === 'DEL' ? 'badge-error' : 'badge-success'">
+                  {{ item.operation }}
+                </span>
+              </template>
+
+              <!-- Value -->
+              <template #cell-value="{ item }">
+                <span class="truncate font-mono text-xs opacity-70 block max-w-[200px]">
+                  {{ item.operation === 'DEL' ? '-' : (typeof item.value === 'object' ? JSON.stringify(item.value) : item.value) }}
+                </span>
+              </template>
+              <template #card-value="{ item }">
+                <div class="font-mono text-xs bg-base-200 p-1 rounded mt-1 break-all">
+                  {{ item.operation === 'DEL' ? 'DELETED' : (typeof item.value === 'object' ? JSON.stringify(item.value) : item.value) }}
+                </div>
+              </template>
+
+              <!-- Actions (Restore) -->
+              <template #actions="{ item }">
+                <button 
+                  v-if="item.operation !== 'DEL'"
+                  @click="restoreHistory(item)"
+                  class="btn btn-ghost btn-xs"
+                >
+                  Load
+                </button>
+              </template>
+            </ResponsiveList>
           </div>
         </div>
       </div>
 
-      <!-- Keys Table -->
-      <div v-if="!showForm" class="overflow-x-auto max-h-[400px] border border-base-200 rounded-lg">
-        <table class="table table-xs table-pin-rows">
-          <thead>
-            <tr>
-              <th>Key</th>
-              <th>Value</th>
-              <th class="text-right">Rev</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr 
-              v-for="entry in sortedEntries" 
-              :key="entry.key" 
-              class="hover cursor-pointer transition-colors"
-              @click="selectEntry(entry)"
+      <!-- Main Keys List (Responsive) -->
+      <div v-if="!showForm" class="border border-base-200 rounded-lg">
+        <ResponsiveList 
+          :items="sortedEntries" 
+          :columns="keyColumns"
+          @row-click="selectEntry"
+        >
+          <!-- Key Slot -->
+          <template #cell-key="{ item }">
+            <span class="font-mono text-primary font-medium text-xs sm:text-sm">{{ item.key }}</span>
+          </template>
+          <template #card-key="{ item }">
+            <span class="font-mono text-primary font-medium text-sm">{{ item.key }}</span>
+          </template>
+
+          <!-- Value Slot -->
+          <template #cell-value="{ item }">
+            <div class="flex items-center gap-2 max-w-[300px]">
+              <span class="badge badge-xs badge-outline opacity-50 shrink-0">{{ getValueType(item.value) }}</span>
+              <span class="truncate font-mono opacity-80 text-xs">
+                {{ typeof item.value === 'object' ? JSON.stringify(item.value) : item.value }}
+              </span>
+            </div>
+          </template>
+          <template #card-value="{ item }">
+            <div class="mt-1">
+              <span class="badge badge-xs badge-outline opacity-50 mb-1 mr-2">{{ getValueType(item.value) }}</span>
+              <div class="font-mono text-xs bg-base-200 p-2 rounded break-all">
+                {{ typeof item.value === 'object' ? JSON.stringify(item.value) : item.value }}
+              </div>
+            </div>
+          </template>
+
+          <!-- Revision Slot -->
+          <template #cell-revision="{ item }">
+            <span class="font-mono opacity-50 text-xs">{{ item.revision }}</span>
+          </template>
+          <template #card-revision="{ item }">
+            <span class="font-mono opacity-50 text-xs">Rev: {{ item.revision }}</span>
+          </template>
+
+          <!-- Delete Action -->
+          <template #actions="{ item }">
+            <button 
+              @click.stop="del(item.key)" 
+              class="btn btn-ghost btn-xs text-error hover:bg-error/10"
+              title="Delete Key"
             >
-              <td class="font-mono text-primary font-medium">{{ entry.key }}</td>
-              
-              <td class="max-w-[200px]">
-                <div class="flex items-center gap-2">
-                  <span class="badge badge-xs badge-outline opacity-50">{{ getValueType(entry.value) }}</span>
-                  <span class="truncate font-mono opacity-80 text-xs">
-                    {{ typeof entry.value === 'object' ? JSON.stringify(entry.value) : entry.value }}
-                  </span>
-                </div>
-              </td>
-              
-              <td class="text-right font-mono opacity-50">{{ entry.revision }}</td>
-            </tr>
-            <tr v-if="sortedEntries.length === 0">
-              <td colspan="3" class="text-center py-8 opacity-50 italic">No keys in bucket</td>
-            </tr>
-          </tbody>
-        </table>
+              ✕
+            </button>
+          </template>
+
+          <!-- Empty State -->
+          <template #empty>
+            <div class="text-center py-8 opacity-50 italic">
+              No keys found for {{ contextCode }}
+            </div>
+          </template>
+        </ResponsiveList>
       </div>
 
     </div>

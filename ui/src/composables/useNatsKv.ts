@@ -11,10 +11,11 @@ export interface KvEntry {
   operation: 'PUT' | 'DEL' | 'PURGE'
 }
 
-export function useNatsKv(bucketName: string) {
+export function useNatsKv(bucketName: string, watchFilter: string = '>') {
   const natsStore = useNatsStore()
   const toast = useToast()
   
+  // NATS SDK v2+ removal of StringCodec -> Use Web Standards
   const encoder = new TextEncoder()
   const decoder = new TextDecoder()
 
@@ -27,7 +28,7 @@ export function useNatsKv(bucketName: string) {
   
   let watcher: any = null
 
-  // Initialize
+  // Initialize: Check if bucket exists and open it
   async function init() {
     if (!natsStore.nc) return
     
@@ -39,6 +40,7 @@ export function useNatsKv(bucketName: string) {
     try {
       const kvm = new Kvm(natsStore.nc)
       
+      // Check if exists first
       let found = false
       for await (const b of await kvm.list()) { 
         if (b.bucket === bucketName) {
@@ -53,6 +55,7 @@ export function useNatsKv(bucketName: string) {
         return
       }
 
+      // Open and Watch
       kv.value = await kvm.open(bucketName)
       exists.value = true
       await startWatch()
@@ -72,8 +75,8 @@ export function useNatsKv(bucketName: string) {
       const kvm = new Kvm(natsStore.nc)
       await kvm.create(bucketName, {
         description: description || 'Digital Twin Store',
-        history: 10, // Increased history for the new feature
-        storage: 'file'
+        history: 10,
+        storage: 'file' // Durable storage
       })
       toast.success(`Bucket ${bucketName} created`)
       await init()
@@ -84,20 +87,31 @@ export function useNatsKv(bucketName: string) {
     }
   }
 
-  // Watcher
+  // Watch for changes
   async function startWatch() {
     if (!kv.value) return
+    
     try {
-      const iter = await kv.value.watch()
+      // Apply the filter at the NATS server level
+      // This ensures we only receive keys relevant to this view (e.g. THING_01.>)
+      const iter = await kv.value.watch({ key: watchFilter })
       watcher = iter
+      
+      // Process updates in background
       ;(async () => {
         for await (const e of iter) {
           if (e.operation === 'DEL' || e.operation === 'PURGE') {
             entries.value.delete(e.key)
           } else {
+            let val = null
+            try {
+              const str = decoder.decode(e.value)
+              try { val = JSON.parse(str) } catch { val = str }
+            } catch { val = '[Binary]' }
+
             entries.value.set(e.key, {
               key: e.key,
-              value: decodeValue(e.value),
+              value: val,
               revision: e.revision,
               created: e.created,
               operation: e.operation
@@ -110,15 +124,7 @@ export function useNatsKv(bucketName: string) {
     }
   }
 
-  // Helper: Decode value
-  function decodeValue(bytes: Uint8Array): any {
-    try {
-      const str = decoder.decode(bytes)
-      try { return JSON.parse(str) } catch { return str }
-    } catch { return '[Binary]' }
-  }
-
-  // Put
+  // Put Value (Auto JSON serialization)
   async function put(key: string, value: any) {
     if (!kv.value) return
     try {
@@ -131,7 +137,7 @@ export function useNatsKv(bucketName: string) {
     }
   }
 
-  // Delete
+  // Delete Key
   async function del(key: string) {
     if (!kv.value) return
     try {
@@ -160,10 +166,17 @@ export function useNatsKv(bucketName: string) {
     } catch (e) {
       console.error('History fetch error', e)
     }
-    // Return newest first
     return history.reverse()
   }
 
+  function decodeValue(bytes: Uint8Array): any {
+    try {
+      const str = decoder.decode(bytes)
+      try { return JSON.parse(str) } catch { return str }
+    } catch { return '[Binary]' }
+  }
+
+  // Cleanup
   onUnmounted(() => {
     if (watcher) watcher.stop()
   })
