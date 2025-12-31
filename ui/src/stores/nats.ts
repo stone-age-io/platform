@@ -168,7 +168,7 @@ export const useNatsStore = defineStore('nats', () => {
           rtt.value = await nc.value.rtt()
         } catch { /* ignore */ }
       }
-    }, 2000) as unknown as number
+    }, 10000) as unknown as number
   }
 
   function tryAutoConnect() {

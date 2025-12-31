@@ -394,14 +394,22 @@ const serverInfoJson = computed(() => {
               </div>
               <div class="stat place-items-center py-2">
                 <div class="stat-title text-xs">Connected To</div>
-                <div class="stat-value text-lg font-mono text-primary truncate max-w-[150px]">
+                <!-- 
+                   FIX: Removed 'truncate max-w-[150px]'. 
+                   Added 'break-all text-center leading-tight' to wrap long URLs. 
+                -->
+                <div class="stat-value text-lg font-mono text-primary break-all text-center leading-tight">
                   {{ natsStore.nc?.getServer() || 'Unknown' }}
                 </div>
               </div>
             </div>
 
             <!-- Raw Info JSON -->
-            <div class="mockup-code bg-base-300 text-xs">
+            <!-- 
+               FIX: Added 'text-base-content' to override DaisyUI's default white text 
+               in mockup-code, ensuring readability in Light Mode. 
+            -->
+            <div class="mockup-code bg-base-300 text-base-content text-xs">
               <pre class="px-4 py-2"><code>{{ serverInfoJson }}</code></pre>
             </div>
           </div>
