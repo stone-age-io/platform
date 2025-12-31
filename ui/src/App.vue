@@ -14,18 +14,14 @@ onMounted(() => {
   // Initialize theme from localStorage
   uiStore.initializeTheme()
   
-  // Restore session - the router guard will handle redirection 
-  // based on the result of this initialization.
+  // Restore session
+  // This will trigger the watcher below if a user is found, 
+  // starting the NATS connection process automatically.
   authStore.initializeFromAuth()
-
-  // Attempt NATS Auto-Connect if session was restored
-  if (authStore.isAuthenticated) {
-    natsStore.tryAutoConnect()
-  }
 })
 
 // Global Auth Watcher
-// Handles connecting on Login and disconnecting on Logout
+// Handles connecting on Login, Logout, and Page Reload
 watch(() => authStore.isAuthenticated, (isAuth) => {
   if (isAuth) {
     natsStore.tryAutoConnect()

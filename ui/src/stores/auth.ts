@@ -99,8 +99,7 @@ export const useAuthStore = defineStore('auth', () => {
   /**
    * Internal Context Loader
    * - Normal User: Loads specific memberships via the memberships collection.
-   * - Super Admin: Loads ALL organizations and maps them to a fake membership structure
-   *   so the rest of the UI logic (Sidebar/Header) remains identical.
+   * - Super Admin: Loads ALL organizations and maps them to a fake membership structure.
    */
   async function loadContext() {
     if (!user.value) return
@@ -142,7 +141,7 @@ export const useAuthStore = defineStore('auth', () => {
     // 2. Fallback to the first available organization
     if (memberships.value.length > 0) {
       const firstOrgId = memberships.value[0].organization
-      // Don't await the persist call here to allow faster UI loading
+      // We don't await persist here to keep UI snappy
       switchOrganization(firstOrgId)
     }
   }
@@ -164,7 +163,6 @@ export const useAuthStore = defineStore('auth', () => {
         current_organization: orgId,
       })
     } catch (e) {
-      // We log but don't throw, as the local session is already updated correctly
       console.warn('Organization persistence failed:', e)
     }
     
@@ -177,15 +175,32 @@ export const useAuthStore = defineStore('auth', () => {
   /**
    * Restore auth state from the PocketBase SDK Store.
    * Called once during application mount.
+   * Performs an async authRefresh to verify the token is still valid on the server.
    */
-  function initializeFromAuth() {
+  async function initializeFromAuth() {
     if (pb.authStore.isValid && pb.authStore.model) {
+      // 1. Optimistic Load: Set state immediately so UI renders
       user.value = pb.authStore.model as unknown as User
       
-      // Determine if we are superadmin based on the collection name of the stored model
+      // Determine if we are superadmin based on the collection name
       isSuperAdmin.value = pb.authStore.model.collectionName === '_superusers'
       
-      loadContext()
+      // Load context (Memberships/Orgs) immediately
+      await loadContext()
+
+      // 2. Background Verification: Check if token is still valid
+      try {
+        const collection = isSuperAdmin.value ? '_superusers' : 'users'
+        // This validates the token against the server
+        const authData = await pb.collection(collection).authRefresh()
+        
+        // Update local model with fresh data (e.g. avatar/name changes)
+        user.value = authData.record as unknown as User
+      } catch (error) {
+        console.warn('Session invalid or expired, logging out...')
+        // If refresh fails (token expired, user deleted), kill the session
+        await logout() 
+      }
     }
   }
   
