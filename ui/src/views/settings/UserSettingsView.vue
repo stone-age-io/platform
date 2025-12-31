@@ -2,16 +2,18 @@
 import { ref, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useUIStore } from '@/stores/ui'
+import { useNatsStore } from '@/stores/nats'
 import { useToast } from '@/composables/useToast'
 import { pb } from '@/utils/pb'
-import type { User } from '@/types/pocketbase'
+import type { User, NatsUser } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 
 const authStore = useAuthStore()
 const uiStore = useUIStore()
+const natsStore = useNatsStore()
 const toast = useToast()
 
-// Profile State
+// --- Profile State ---
 const profileForm = ref({
   name: '',
 })
@@ -19,7 +21,7 @@ const avatarFile = ref<File | null>(null)
 const avatarPreview = ref<string | null>(null)
 const profileLoading = ref(false)
 
-// Password State
+// --- Password State ---
 const passwordForm = ref({
   oldPassword: '',
   password: '',
@@ -27,9 +29,15 @@ const passwordForm = ref({
 })
 const passwordLoading = ref(false)
 
-/**
- * Initialize form data from current user
- */
+// --- Connectivity State ---
+const newUrl = ref('')
+const availableIdentities = ref<NatsUser[]>([])
+const loadingIdentities = ref(false)
+
+// ============================================================================
+// PROFILE ACTIONS
+// ============================================================================
+
 function initProfile() {
   if (authStore.user) {
     profileForm.value.name = authStore.user.name || ''
@@ -41,9 +49,6 @@ function initProfile() {
   }
 }
 
-/**
- * Handle Avatar File Selection
- */
 function handleFileChange(event: Event) {
   const target = event.target as HTMLInputElement
   if (target.files && target.files.length > 0) {
@@ -59,9 +64,6 @@ function handleFileChange(event: Event) {
   }
 }
 
-/**
- * Update Profile (Name & Avatar)
- */
 async function updateProfile() {
   if (!authStore.user) return
   
@@ -76,21 +78,18 @@ async function updateProfile() {
     }
     
     // Update in PocketBase
-    // FIX: Use dynamic collection name to support both 'users' and '_superusers'
     const collectionName = authStore.user.collectionName || 'users'
     const updatedUser = await pb.collection(collectionName).update(authStore.user.id, formData)
     
     // Update local store
     authStore.user = updatedUser as unknown as User
     
-    // Refresh preview from server URL to ensure consistency
+    // Refresh preview from server URL
     if (updatedUser.avatar) {
       avatarPreview.value = pb.files.getUrl(updatedUser, updatedUser.avatar, { token: pb.authStore.token })
     }
     
     toast.success('Profile updated successfully')
-    
-    // Clear file input
     avatarFile.value = null
   } catch (err: any) {
     toast.error(err.message || 'Failed to update profile')
@@ -99,9 +98,14 @@ async function updateProfile() {
   }
 }
 
-/**
- * Update Password
- */
+function triggerFileInput() {
+  document.getElementById('avatar-upload')?.click()
+}
+
+// ============================================================================
+// PASSWORD ACTIONS
+// ============================================================================
+
 async function updatePassword() {
   if (!authStore.user) return
   
@@ -113,7 +117,6 @@ async function updatePassword() {
   passwordLoading.value = true
   
   try {
-    // FIX: Use dynamic collection name
     const collectionName = authStore.user.collectionName || 'users'
     
     await pb.collection(collectionName).update(authStore.user.id, {
@@ -137,15 +140,79 @@ async function updatePassword() {
   }
 }
 
-/**
- * Trigger hidden file input
- */
-function triggerFileInput() {
-  document.getElementById('avatar-upload')?.click()
+// ============================================================================
+// CONNECTIVITY ACTIONS
+// ============================================================================
+
+async function loadIdentities() {
+  if (!authStore.currentOrgId) return
+  loadingIdentities.value = true
+  try {
+    // API Rule automatically filters this by organization, but we double check active
+    availableIdentities.value = await pb.collection('nats_users').getFullList<NatsUser>({
+      sort: 'nats_username',
+      filter: 'active = true' 
+    })
+  } catch (e) {
+    // Silent fail if permissions issue or no collection
+    console.warn('Could not load NATS identities', e)
+  } finally {
+    loadingIdentities.value = false
+  }
 }
+
+async function updateIdentity(event: Event) {
+  const select = event.target as HTMLSelectElement
+  const natsUserId = select.value || null
+  
+  if (!authStore.user) return
+  
+  try {
+    const collectionName = authStore.user.collectionName || 'users'
+    const updated = await pb.collection(collectionName).update(authStore.user.id, {
+      nats_user: natsUserId
+    })
+    
+    // Update local User store
+    // We need to fetch the expanded record to get the credentials file immediately
+    const expandedUser = await pb.collection(collectionName).getOne(updated.id, {
+      expand: 'nats_user'
+    })
+    
+    authStore.user = expandedUser as any
+    
+    // If we changed identity, disconnect current session to force reconnection with new creds
+    if (natsStore.isConnected) {
+      await natsStore.disconnect()
+      toast.info('Identity changed. Please reconnect.')
+    }
+    
+    toast.success('Identity updated')
+  } catch (e: any) {
+    toast.error(e.message)
+  }
+}
+
+function handleAddUrl() {
+  if (newUrl.value) {
+    const url = newUrl.value.trim()
+    if (!url.startsWith('ws://') && !url.startsWith('wss://')) {
+      toast.error('URL must start with ws:// or wss://')
+      return
+    }
+    natsStore.addUrl(url)
+    newUrl.value = ''
+  }
+}
+
+// ============================================================================
+// LIFECYCLE
+// ============================================================================
 
 onMounted(() => {
   initProfile()
+  natsStore.loadSettings()
+  loadIdentities()
 })
 </script>
 
@@ -155,7 +222,7 @@ onMounted(() => {
     <div>
       <h1 class="text-3xl font-bold">Account Settings</h1>
       <p class="text-base-content/70 mt-1">
-        Manage your profile and security preferences
+        Manage your profile, security, and connectivity preferences
       </p>
     </div>
 
@@ -237,9 +304,139 @@ onMounted(() => {
         </form>
       </BaseCard>
 
-      <!-- Security Section -->
+      <!-- Right Column Stack -->
       <div class="space-y-6">
         
+        <!-- NATS Connectivity Card -->
+        <BaseCard title="Connectivity & Digital Twin">
+          <div class="space-y-6">
+            
+            <!-- Identity Selector -->
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Operational Identity</span>
+                <div class="tooltip tooltip-left" data-tip="Links your user account to a NATS identity for live data access">
+                  <span class="label-text-alt text-info cursor-help">ⓘ</span>
+                </div>
+              </label>
+              <select 
+                class="select select-bordered font-mono text-sm" 
+                :value="authStore.user?.nats_user || ''"
+                @change="updateIdentity"
+                :disabled="loadingIdentities"
+              >
+                <option value="">-- No Identity Linked --</option>
+                <option v-for="u in availableIdentities" :key="u.id" :value="u.id">
+                  {{ u.nats_username }} ({{ u.email }})
+                </option>
+              </select>
+              <div class="label" v-if="!availableIdentities.length && !loadingIdentities">
+                <span class="label-text-alt text-warning">
+                  No active NATS Users found. Create one in the NATS section first.
+                </span>
+              </div>
+            </div>
+
+            <div class="divider text-xs opacity-50">Connection</div>
+
+            <!-- Connection URLs -->
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Server URLs</span>
+              </label>
+              
+              <!-- URL List -->
+              <div class="space-y-2 mb-2">
+                <div v-for="url in natsStore.serverUrls" :key="url" class="flex gap-2 items-center bg-base-200 p-2 rounded">
+                  <span class="font-mono text-xs flex-1 truncate">{{ url }}</span>
+                  <button @click="natsStore.removeUrl(url)" class="btn btn-xs btn-ghost text-error" title="Remove URL">✕</button>
+                </div>
+                <div v-if="natsStore.serverUrls.length === 0" class="text-xs text-base-content/50 italic p-2 text-center">
+                  No URLs configured
+                </div>
+              </div>
+
+              <!-- Add URL -->
+              <div class="join w-full">
+                <input 
+                  v-model="newUrl" 
+                  type="text" 
+                  placeholder="wss://nats.example.com" 
+                  class="input input-bordered input-sm join-item flex-1 font-mono"
+                  @keyup.enter="handleAddUrl"
+                />
+                <button @click="handleAddUrl" class="btn btn-sm btn-primary join-item">Add</button>
+              </div>
+            </div>
+
+            <!-- Connection Controls -->
+            <div class="bg-base-200 p-4 rounded-lg mt-4 space-y-4">
+              <div class="flex justify-between items-center">
+                <div class="flex items-center gap-2">
+                  <div 
+                    class="w-3 h-3 rounded-full transition-colors shadow-sm"
+                    :class="{
+                      'bg-success': natsStore.status === 'connected',
+                      'bg-warning': natsStore.status === 'connecting' || natsStore.status === 'reconnecting',
+                      'bg-error': natsStore.status === 'disconnected'
+                    }"
+                  ></div>
+                  <div class="flex flex-col">
+                    <span class="text-xs font-bold uppercase opacity-70">{{ natsStore.status }}</span>
+                    <span v-if="natsStore.rtt" class="text-[10px] font-mono opacity-50">RTT: {{ natsStore.rtt }}ms</span>
+                  </div>
+                </div>
+
+                <!-- Action Button -->
+                <button 
+                  v-if="natsStore.isConnected"
+                  @click="natsStore.disconnect"
+                  class="btn btn-xs btn-error btn-outline"
+                >
+                  Disconnect
+                </button>
+                <button 
+                  v-else
+                  @click="() => natsStore.connect()"
+                  class="btn btn-xs btn-success"
+                  :disabled="natsStore.status === 'connecting' || !natsStore.serverUrls.length"
+                >
+                  Connect
+                </button>
+              </div>
+
+              <!-- Auto Connect Toggle -->
+              <div class="form-control">
+                <label class="label cursor-pointer gap-2 p-0 justify-start">
+                  <input 
+                    type="checkbox" 
+                    class="checkbox checkbox-xs"
+                    v-model="natsStore.autoConnect"
+                    @change="natsStore.saveSettings"
+                  />
+                  <span class="label-text text-xs">Auto-connect on login</span>
+                </label>
+              </div>
+            </div>
+
+          </div>
+        </BaseCard>
+
+        <!-- Preferences -->
+        <BaseCard title="Preferences">
+          <div class="form-control">
+            <label class="label cursor-pointer">
+              <span class="label-text">Dark Mode</span> 
+              <input 
+                type="checkbox" 
+                class="toggle toggle-primary" 
+                :checked="uiStore.theme === 'dark'"
+                @change="uiStore.toggleTheme"
+              />
+            </label>
+          </div>
+        </BaseCard>
+
         <!-- Password Change -->
         <BaseCard title="Change Password">
           <form @submit.prevent="updatePassword" class="space-y-4">
@@ -293,20 +490,6 @@ onMounted(() => {
           </form>
         </BaseCard>
 
-        <!-- Preferences -->
-        <BaseCard title="Preferences">
-          <div class="form-control">
-            <label class="label cursor-pointer">
-              <span class="label-text">Dark Mode</span> 
-              <input 
-                type="checkbox" 
-                class="toggle toggle-primary" 
-                :checked="uiStore.theme === 'dark'"
-                @change="uiStore.toggleTheme"
-              />
-            </label>
-          </div>
-        </BaseCard>
       </div>
     </div>
   </div>

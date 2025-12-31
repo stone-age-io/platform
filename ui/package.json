@@ -9,6 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@nats-io/jetstream": "^3.3.0",
+    "@nats-io/kv": "^3.3.0",
+    "@nats-io/nats-core": "^3.3.0",
     "@vueuse/core": "^10.7.0",
     "date-fns": "^3.0.0",
     "leaflet": "^1.9.4",
