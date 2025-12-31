@@ -20,11 +20,23 @@ async function loadData() {
   
   loading.value = true
   try {
+    // Optimization 1: Select only necessary fields
+    // Optimization 2: Filter empty coordinates on server-side where possible
     const result = await pb.collection('locations').getFullList<Location>({
-      filter: 'coordinates != null', 
+      filter: 'coordinates != ""', 
+      fields: 'id,name,description,coordinates,expand.type.name',
       expand: 'type',
     })
-    locations.value = result
+
+    // Optimization 3: Client-side filter for "Null Island" (0,0)
+    // PocketBase defaults empty geoPoints to 0,0, which we want to exclude
+    locations.value = result.filter(l => {
+      const lat = l.coordinates?.lat ?? 0
+      const lon = l.coordinates?.lon ?? 0
+      // Keep if it's NOT (0,0)
+      return lat !== 0 || lon !== 0
+    })
+
     renderMarkers(locations.value)
   } catch (err) {
     console.error('Failed to load map data:', err)
@@ -70,11 +82,6 @@ onMounted(async () => {
     </div>
 
     <!-- Map Container Wrapper -->
-    <!-- 
-      FIX for Mobile: 
-      Added 'min-h-[60vh]'. On mobile, flex-1 inside a scroll container often collapses to 0. 
-      This forces a height. 'lg:min-h-0' resets it on desktop to use full flex height.
-    -->
     <div class="flex-1 w-full relative min-h-[60vh] lg:min-h-0 bg-base-300 rounded-xl overflow-hidden shadow-lg border border-base-300">
       
       <!-- Leaflet Target -->
@@ -97,7 +104,7 @@ onMounted(async () => {
           <span class="text-4xl">🗺️</span>
           <h3 class="font-bold text-lg mt-2">No Mapped Locations</h3>
           <p class="text-sm text-base-content/70 mt-1 mb-4">
-            Add coordinates to your locations to see them here.
+            Add non-zero coordinates to your locations to see them here.
           </p>
           <router-link to="/locations" class="btn btn-primary btn-sm">
             Manage Locations
