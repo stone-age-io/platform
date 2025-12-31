@@ -432,6 +432,7 @@ onUnmounted(() => cleanupMap())
         <template v-if="location.code">
           <div v-if="natsStore.isConnected">
             <KvDashboard 
+              :key="location.code"
               :bucket="location.code" 
               :context-code="location.code" 
             />

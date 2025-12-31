@@ -355,6 +355,7 @@ onMounted(() => {
       <!-- Condition: User must be connected to NATS to see the dashboard or specific warnings -->
       <div v-if="hasDigitalTwinConfig && natsStore.isConnected" class="mt-6">
         <KvDashboard 
+          :key="`${locationCode}_${thingCode}`"
           :bucket="locationCode!" 
           :context-code="thingCode!" 
         />

@@ -23,7 +23,7 @@ const routes: RouteRecordRaw[] = [
     path: '/accept-invite',
     name: 'AcceptInvite',
     component: () => import('@/views/auth/AcceptInviteView.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: false },
   },
   
   // ============================================================================

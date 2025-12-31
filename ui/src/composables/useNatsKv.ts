@@ -32,6 +32,14 @@ export function useNatsKv(bucketName: string, watchFilter: string = '>') {
   async function init() {
     if (!natsStore.nc) return
     
+    // Safety: cleanup previous watcher if exists
+    if (watcher) {
+      try {
+        watcher.stop()
+      } catch (e) { console.error('Error stopping previous watcher:', e) }
+      watcher = null
+    }
+    
     loading.value = true
     entries.value.clear()
     error.value = null

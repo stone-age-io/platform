@@ -216,13 +216,6 @@ function getValueType(val: any): string {
   return typeof val
 }
 
-// Reset pagination when bucket changes
-watch(() => props.bucket, () => {
-  init()
-  currentPage.value = 1
-  searchQuery.value = ''
-})
-
 // Reset pagination when search changes
 watch(searchQuery, () => {
   currentPage.value = 1
