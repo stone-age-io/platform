@@ -6,17 +6,16 @@ import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList, { type Column } from '@/components/ui/ResponsiveList.vue'
 import { formatDate } from '@/utils/format'
 
-// Adapter type to satisfy ResponsiveList requirement (T extends { id: string })
+// Adapter type to satisfy ResponsiveList requirement
 interface KvEntryWithId extends KvEntry {
   id: string
 }
 
 const props = defineProps<{
   bucket: string
-  contextCode: string // e.g. "LOC_01" - used to prefix keys
+  contextCode: string
 }>()
 
-// Use a wildcard filter based on the context code
 const { entries, loading, exists, error, init, createBucket, put, del, getHistory } = useNatsKv(props.bucket, `${props.contextCode}.>`)
 const toast = useToast()
 
@@ -26,23 +25,60 @@ const isEditing = ref(false)
 const historyLoading = ref(false)
 const historyEntries = ref<KvEntryWithId[]>([])
 
+// Search & Pagination
+const searchQuery = ref('')
+const currentPage = ref(1)
+const itemsPerPage = 10
+
 // Form Inputs
 const inputKey = ref('')
 const inputType = ref<'string' | 'number' | 'boolean' | 'json'>('string')
 const inputValue = ref('')
 const inputBool = ref(true)
 
-// Computed list for display with ID adapter
+// --- Computeds ---
+
+// 1. Full Sorted List (All data)
 const sortedEntries = computed<KvEntryWithId[]>(() => {
   return Array.from(entries.value.values())
     .sort((a, b) => a.key.localeCompare(b.key))
     .map(entry => ({
       ...entry,
-      id: entry.key // Map key to id for ResponsiveList
+      id: entry.key
     }))
 })
 
-// --- Columns Configuration ---
+// 2. Filtered List (Search)
+const filteredEntries = computed(() => {
+  const q = searchQuery.value.toLowerCase().trim()
+  if (!q) return sortedEntries.value
+
+  return sortedEntries.value.filter(item => {
+    // Search Key
+    if (item.key.toLowerCase().includes(q)) return true
+    
+    // Search Value (handle objects/arrays by stringifying)
+    const valStr = typeof item.value === 'object' 
+      ? JSON.stringify(item.value) 
+      : String(item.value)
+    
+    if (valStr.toLowerCase().includes(q)) return true
+    
+    return false
+  })
+})
+
+// 3. Pagination Logic (Based on Filtered List)
+const totalItems = computed(() => filteredEntries.value.length)
+const totalPages = computed(() => Math.ceil(totalItems.value / itemsPerPage) || 1)
+
+const paginatedEntries = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage
+  const end = start + itemsPerPage
+  return filteredEntries.value.slice(start, end)
+})
+
+// --- Columns ---
 
 const keyColumns: Column<KvEntryWithId>[] = [
   { key: 'key', label: 'Key', mobileLabel: 'Key' },
@@ -65,6 +101,14 @@ async function handleCreate() {
   await createBucket(`Digital Twin for ${props.contextCode}`)
 }
 
+// Pagination Controls
+function nextPage() {
+  if (currentPage.value < totalPages.value) currentPage.value++
+}
+function prevPage() {
+  if (currentPage.value > 1) currentPage.value--
+}
+
 function resetForm() {
   showForm.value = false
   isEditing.value = false
@@ -82,11 +126,8 @@ function openAddForm() {
 async function selectEntry(entry: KvEntryWithId) {
   isEditing.value = true
   showForm.value = true
-  
-  // Set Key (Visual only, disabled input)
   inputKey.value = entry.key
   
-  // Set Value & Type
   const val = entry.value
   if (typeof val === 'number') inputType.value = 'number'
   else if (typeof val === 'boolean') {
@@ -102,13 +143,9 @@ async function selectEntry(entry: KvEntryWithId) {
     inputValue.value = String(val)
   }
 
-  // Load History & Adapt IDs
   historyLoading.value = true
   const rawHistory = await getHistory(entry.key)
-  historyEntries.value = rawHistory.map(h => ({
-    ...h,
-    id: h.revision.toString() // Map revision to id for ResponsiveList
-  }))
+  historyEntries.value = rawHistory.map(h => ({ ...h, id: h.revision.toString() }))
   historyLoading.value = false
 }
 
@@ -138,7 +175,6 @@ async function handleSave() {
     return
   }
 
-  // Prefix logic
   let fullKey = inputKey.value
   if (!isEditing.value) {
     fullKey = inputKey.value.startsWith(props.contextCode + '.') 
@@ -180,7 +216,17 @@ function getValueType(val: any): string {
   return typeof val
 }
 
-watch(() => props.bucket, () => init())
+// Reset pagination when bucket changes
+watch(() => props.bucket, () => {
+  init()
+  currentPage.value = 1
+  searchQuery.value = ''
+})
+
+// Reset pagination when search changes
+watch(searchQuery, () => {
+  currentPage.value = 1
+})
 </script>
 
 <template>
@@ -213,22 +259,34 @@ watch(() => props.bucket, () => init())
     <div v-else class="space-y-4">
       
       <!-- Toolbar -->
-      <div class="flex justify-between items-center">
-        <div class="text-xs opacity-60 font-mono">{{ entries.size }} Keys (Filter: {{ contextCode }}.&gt;)</div>
-        <button 
-          v-if="!showForm"
-          @click="openAddForm" 
-          class="btn btn-xs btn-primary btn-outline"
-        >
-          + Add Key
-        </button>
-        <button 
-          v-else
-          @click="resetForm" 
-          class="btn btn-xs btn-ghost"
-        >
-          Cancel
-        </button>
+      <div class="flex flex-col gap-3">
+        <div class="flex justify-between items-center">
+          <div class="text-xs opacity-60 font-mono">{{ sortedEntries.length }} Keys (Filter: {{ contextCode }}.&gt;)</div>
+          <button 
+            v-if="!showForm"
+            @click="openAddForm" 
+            class="btn btn-xs btn-primary btn-outline"
+          >
+            + Add Key
+          </button>
+          <button 
+            v-else
+            @click="resetForm" 
+            class="btn btn-xs btn-ghost"
+          >
+            Cancel
+          </button>
+        </div>
+
+        <!-- Search Input -->
+        <div v-if="!showForm" class="form-control">
+          <input 
+            v-model="searchQuery"
+            type="text" 
+            placeholder="Search keys or values..." 
+            class="input input-sm input-bordered w-full"
+          />
+        </div>
       </div>
 
       <!-- Editor Form (Add / Edit) -->
@@ -263,36 +321,15 @@ watch(() => props.bucket, () => init())
 
         <!-- Value Input -->
         <div>
-          <input 
-            v-if="inputType === 'string'" 
-            v-model="inputValue" 
-            type="text" 
-            placeholder="Value..." 
-            class="input input-sm input-bordered w-full font-mono"
-          />
-          
-          <input 
-            v-if="inputType === 'number'" 
-            v-model="inputValue" 
-            type="number" 
-            placeholder="0.00" 
-            class="input input-sm input-bordered w-full font-mono"
-          />
-          
+          <input v-if="inputType === 'string'" v-model="inputValue" type="text" placeholder="Value..." class="input input-sm input-bordered w-full font-mono" />
+          <input v-if="inputType === 'number'" v-model="inputValue" type="number" placeholder="0.00" class="input input-sm input-bordered w-full font-mono" />
           <div v-if="inputType === 'boolean'" class="form-control">
             <label class="label cursor-pointer justify-start gap-3">
               <input type="checkbox" v-model="inputBool" class="toggle toggle-sm toggle-success" />
               <span class="font-mono">{{ inputBool }}</span>
             </label>
           </div>
-
-          <textarea 
-            v-if="inputType === 'json'"
-            v-model="inputValue"
-            class="textarea textarea-bordered textarea-sm w-full font-mono leading-tight"
-            rows="4"
-            placeholder='{"foo": "bar", "tags": [1, 2]}'
-          ></textarea>
+          <textarea v-if="inputType === 'json'" v-model="inputValue" class="textarea textarea-bordered textarea-sm w-full font-mono leading-tight" rows="4" placeholder='{"foo": "bar"}'></textarea>
         </div>
 
         <div class="flex justify-end gap-2">
@@ -305,58 +342,25 @@ watch(() => props.bucket, () => init())
         <!-- History Table (Responsive) -->
         <div v-if="isEditing" class="pt-2 border-t border-base-content/10">
           <div class="font-bold text-xs uppercase opacity-50 tracking-wider mb-2">Revision History</div>
-          
-          <div v-if="historyLoading" class="text-center py-4">
-            <span class="loading loading-dots loading-xs"></span>
-          </div>
-          
+          <div v-if="historyLoading" class="text-center py-4"><span class="loading loading-dots loading-xs"></span></div>
           <div v-else class="border border-base-300 rounded bg-base-100 max-h-[300px] overflow-y-auto">
-            <ResponsiveList 
-              :items="historyEntries" 
-              :columns="historyColumns"
-              :clickable="false"
-            >
-              <!-- Revision -->
-              <template #cell-revision="{ item }">
-                <span class="font-mono text-xs opacity-70">{{ item.revision }}</span>
-              </template>
-              <template #card-revision="{ item }">
-                <span class="font-mono text-xs opacity-70">Rev {{ item.revision }}</span>
-              </template>
-
-              <!-- Operation -->
+            <ResponsiveList :items="historyEntries" :columns="historyColumns" :clickable="false">
+              <template #cell-revision="{ item }"><span class="font-mono text-xs opacity-70">{{ item.revision }}</span></template>
+              <template #card-revision="{ item }"><span class="font-mono text-xs opacity-70">Rev {{ item.revision }}</span></template>
               <template #cell-operation="{ item }">
-                <span class="badge badge-xs" :class="item.operation === 'DEL' ? 'badge-error' : 'badge-success'">
-                  {{ item.operation }}
-                </span>
+                <span class="badge badge-xs" :class="item.operation === 'DEL' ? 'badge-error' : 'badge-success'">{{ item.operation }}</span>
               </template>
               <template #card-operation="{ item }">
-                <span class="badge badge-xs" :class="item.operation === 'DEL' ? 'badge-error' : 'badge-success'">
-                  {{ item.operation }}
-                </span>
+                <span class="badge badge-xs" :class="item.operation === 'DEL' ? 'badge-error' : 'badge-success'">{{ item.operation }}</span>
               </template>
-
-              <!-- Value -->
               <template #cell-value="{ item }">
-                <span class="truncate font-mono text-xs opacity-70 block max-w-[200px]">
-                  {{ item.operation === 'DEL' ? '-' : (typeof item.value === 'object' ? JSON.stringify(item.value) : item.value) }}
-                </span>
+                <span class="truncate font-mono text-xs opacity-70 block max-w-[200px]">{{ item.operation === 'DEL' ? '-' : (typeof item.value === 'object' ? JSON.stringify(item.value) : item.value) }}</span>
               </template>
               <template #card-value="{ item }">
-                <div class="font-mono text-xs bg-base-200 p-1 rounded mt-1 break-all">
-                  {{ item.operation === 'DEL' ? 'DELETED' : (typeof item.value === 'object' ? JSON.stringify(item.value) : item.value) }}
-                </div>
+                <div class="font-mono text-xs bg-base-200 p-1 rounded mt-1 break-all">{{ item.operation === 'DEL' ? 'DELETED' : (typeof item.value === 'object' ? JSON.stringify(item.value) : item.value) }}</div>
               </template>
-
-              <!-- Actions (Restore) -->
               <template #actions="{ item }">
-                <button 
-                  v-if="item.operation !== 'DEL'"
-                  @click="restoreHistory(item)"
-                  class="btn btn-ghost btn-xs"
-                >
-                  Load
-                </button>
+                <button v-if="item.operation !== 'DEL'" @click="restoreHistory(item)" class="btn btn-ghost btn-xs">Load</button>
               </template>
             </ResponsiveList>
           </div>
@@ -365,63 +369,44 @@ watch(() => props.bucket, () => init())
 
       <!-- Main Keys List (Responsive) -->
       <div v-if="!showForm" class="border border-base-200 rounded-lg">
-        <ResponsiveList 
-          :items="sortedEntries" 
-          :columns="keyColumns"
-          @row-click="selectEntry"
-        >
-          <!-- Key Slot -->
-          <template #cell-key="{ item }">
-            <span class="font-mono text-primary font-medium text-xs sm:text-sm">{{ item.key }}</span>
-          </template>
-          <template #card-key="{ item }">
-            <span class="font-mono text-primary font-medium text-sm">{{ item.key }}</span>
-          </template>
-
-          <!-- Value Slot -->
+        <ResponsiveList :items="paginatedEntries" :columns="keyColumns" @row-click="selectEntry">
+          <template #cell-key="{ item }"><span class="font-mono text-primary font-medium text-xs sm:text-sm">{{ item.key }}</span></template>
+          <template #card-key="{ item }"><span class="font-mono text-primary font-medium text-sm">{{ item.key }}</span></template>
           <template #cell-value="{ item }">
             <div class="flex items-center gap-2 max-w-[300px]">
               <span class="badge badge-xs badge-outline opacity-50 shrink-0">{{ getValueType(item.value) }}</span>
-              <span class="truncate font-mono opacity-80 text-xs">
-                {{ typeof item.value === 'object' ? JSON.stringify(item.value) : item.value }}
-              </span>
+              <span class="truncate font-mono opacity-80 text-xs">{{ typeof item.value === 'object' ? JSON.stringify(item.value) : item.value }}</span>
             </div>
           </template>
           <template #card-value="{ item }">
             <div class="mt-1">
               <span class="badge badge-xs badge-outline opacity-50 mb-1 mr-2">{{ getValueType(item.value) }}</span>
-              <div class="font-mono text-xs bg-base-200 p-2 rounded break-all">
-                {{ typeof item.value === 'object' ? JSON.stringify(item.value) : item.value }}
-              </div>
+              <div class="font-mono text-xs bg-base-200 p-2 rounded break-all">{{ typeof item.value === 'object' ? JSON.stringify(item.value) : item.value }}</div>
             </div>
           </template>
-
-          <!-- Revision Slot -->
-          <template #cell-revision="{ item }">
-            <span class="font-mono opacity-50 text-xs">{{ item.revision }}</span>
-          </template>
-          <template #card-revision="{ item }">
-            <span class="font-mono opacity-50 text-xs">Rev: {{ item.revision }}</span>
-          </template>
-
-          <!-- Delete Action -->
+          <template #cell-revision="{ item }"><span class="font-mono opacity-50 text-xs">{{ item.revision }}</span></template>
+          <template #card-revision="{ item }"><span class="font-mono opacity-50 text-xs">Rev: {{ item.revision }}</span></template>
           <template #actions="{ item }">
-            <button 
-              @click.stop="del(item.key)" 
-              class="btn btn-ghost btn-xs text-error hover:bg-error/10"
-              title="Delete Key"
-            >
-              ✕
-            </button>
+            <button @click.stop="del(item.key)" class="btn btn-ghost btn-xs text-error hover:bg-error/10" title="Delete Key">✕</button>
           </template>
-
-          <!-- Empty State -->
           <template #empty>
             <div class="text-center py-8 opacity-50 italic">
-              No keys found for {{ contextCode }}
+              {{ searchQuery ? 'No matches found' : `No keys found for ${contextCode}` }}
             </div>
           </template>
         </ResponsiveList>
+      </div>
+
+      <!-- Pagination Controls (Client-Side) -->
+      <div v-if="!showForm && totalItems > 0" class="flex flex-col sm:flex-row justify-between items-center gap-4 p-2 border-t border-base-200">
+        <span class="text-xs text-base-content/70">
+          Showing {{ ((currentPage - 1) * itemsPerPage) + 1 }} - {{ Math.min(currentPage * itemsPerPage, totalItems) }} of {{ totalItems }}
+        </span>
+        <div class="join">
+          <button class="join-item btn btn-xs" :disabled="currentPage === 1" @click="prevPage()">«</button>
+          <button class="join-item btn btn-xs cursor-default">Page {{ currentPage }}</button>
+          <button class="join-item btn btn-xs" :disabled="currentPage === totalPages" @click="nextPage()">»</button>
+        </div>
       </div>
 
     </div>
