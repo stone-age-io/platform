@@ -3,13 +3,16 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
+import { useNatsStore } from '@/stores/nats' // NEW
 import { formatDate } from '@/utils/format'
-import type { Thing, NatsUser, NebulaHost } from '@/types/pocketbase'
+import type { Thing, NatsUser, NebulaHost, Location } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import KvDashboard from '@/components/nats/KvDashboard.vue' // NEW
 
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
+const natsStore = useNatsStore() // NEW
 
 const thing = ref<Thing | null>(null)
 const loading = ref(true)
@@ -40,6 +43,13 @@ const highlightedMetadata = computed(() => {
     return `<span class="${cls}">${match}</span>`
   })
 })
+
+/**
+ * Computed helpers for Digital Twin logic
+ */
+const locationCode = computed(() => (thing.value?.expand?.location as Location)?.code)
+const thingCode = computed(() => thing.value?.code)
+const hasDigitalTwinConfig = computed(() => !!locationCode.value && !!thingCode.value)
 
 async function loadThing() {
   loading.value = true
@@ -224,7 +234,6 @@ onMounted(() => {
               <div class="flex justify-between items-center mb-2">
                 <h3 class="card-title text-base">NATS Connectivity</h3>
                 <div class="flex gap-2" v-if="thing.expand?.nats_user">
-                  <!-- Switched to btn-outline for better visibility -->
                   <button 
                     @click="downloadNatsCreds" 
                     class="btn btn-sm btn-outline h-8 min-h-0"
@@ -233,7 +242,6 @@ onMounted(() => {
                     <span class="text-lg">📥</span>
                     <span class="hidden sm:inline">.creds</span>
                   </button>
-                  <!-- Switched to btn-outline -->
                   <button 
                     @click="showRegenerateModal = true" 
                     class="btn btn-sm btn-outline btn-error h-8 min-h-0"
@@ -284,7 +292,6 @@ onMounted(() => {
               <div class="flex justify-between items-center mb-2">
                 <h3 class="card-title text-base">Nebula Connectivity</h3>
                 <div v-if="thing.expand?.nebula_host">
-                  <!-- Switched to btn-outline -->
                   <button 
                     @click="downloadNebulaConfig" 
                     class="btn btn-sm btn-outline h-8 min-h-0"
@@ -301,7 +308,6 @@ onMounted(() => {
                 <div class="bg-base-200 rounded-lg p-3 border border-base-300">
                   <div class="flex justify-between items-start mb-1">
                     <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Hostname</span>
-                    <!-- Updated Status Display for Nebula -->
                     <div class="flex items-center gap-1.5" v-if="thing.expand.nebula_host.active">
                       <span class="w-2 h-2 rounded-full bg-success"></span>
                       <span class="text-xs font-medium text-base-content/70">Active</span>
@@ -324,7 +330,6 @@ onMounted(() => {
               <div v-if="thing.expand.nebula_host.groups && thing.expand.nebula_host.groups.length">
                 <div class="text-xs font-bold text-base-content/50 uppercase tracking-wider mb-2">Groups</div>
                 <div class="flex flex-wrap gap-2">
-                  <!-- Use badge-ghost for better dark mode readability -->
                   <span 
                     v-for="grp in thing.expand.nebula_host.groups" 
                     :key="grp"
@@ -345,6 +350,39 @@ onMounted(() => {
         </div>
         
       </div>
+
+      <!-- Bottom Section: Digital Twin / KV Dashboard -->
+      <!-- Condition: User must be connected to NATS to see the dashboard or specific warnings -->
+      <div v-if="hasDigitalTwinConfig && natsStore.isConnected" class="mt-6">
+        <KvDashboard 
+          :bucket="locationCode!" 
+          :context-code="thingCode!" 
+        />
+      </div>
+
+      <!-- Digital Twin Warning States -->
+      <div v-else class="mt-6">
+        
+        <!-- Case 1: Configured but Disconnected -->
+        <div v-if="hasDigitalTwinConfig && !natsStore.isConnected" class="alert shadow-sm border border-base-300 bg-base-100">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-info shrink-0 w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+          <div class="text-xs">
+            <div class="font-bold">Digital Twin Offline</div> 
+            <span class="opacity-70">Connect to NATS in <router-link to="/settings" class="link">Settings</router-link> to view live data.</span>
+          </div>
+        </div>
+
+        <!-- Case 2: Missing Configuration -->
+        <div v-else class="alert shadow-sm border border-base-300 bg-base-200/50">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-base-content/30 shrink-0 w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+          <div class="text-xs opacity-60">
+            <div class="font-bold">Digital Twin Unavailable</div> 
+            <span>To enable the Digital Twin, ensure this Thing has a <b>Code</b> and is assigned to a <b>Location</b> with a Code.</span>
+          </div>
+        </div>
+
+      </div>
+
     </template>
 
     <!-- Regenerate Modal -->
