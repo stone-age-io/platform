@@ -1,12 +1,9 @@
-// src/stores/nats.ts
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { 
   wsconnect, 
   credsAuthenticator, 
-  type NatsConnection,
-  type Msg,
-  type NatsError
+  type NatsConnection
 } from '@nats-io/nats-core'
 import { useAuthStore } from './auth'
 import { useToast } from '@/composables/useToast'
@@ -143,7 +140,8 @@ export const useNatsStore = defineStore('nats', () => {
           toast.success('Reconnected to NATS')
           break
         case 'error':
-          console.error('NATS Error:', s.data)
+          // 's' contains the error details directly in recent NATS versions
+          console.error('NATS Error:', s)
           break
       }
     }
