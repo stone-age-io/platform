@@ -64,6 +64,10 @@ function handleFileChange(event: Event) {
   }
 }
 
+function triggerFileInput() {
+  document.getElementById('avatar-upload')?.click()
+}
+
 async function updateProfile() {
   if (!authStore.user) return
   
@@ -78,6 +82,7 @@ async function updateProfile() {
     }
     
     // Update in PocketBase
+    // FIX: Use dynamic collection name to support both 'users' and '_superusers'
     const collectionName = authStore.user.collectionName || 'users'
     const updatedUser = await pb.collection(collectionName).update(authStore.user.id, formData)
     
@@ -96,10 +101,6 @@ async function updateProfile() {
   } finally {
     profileLoading.value = false
   }
-}
-
-function triggerFileInput() {
-  document.getElementById('avatar-upload')?.click()
 }
 
 // ============================================================================
@@ -154,6 +155,7 @@ async function loadIdentities() {
       filter: 'active = true' 
     })
   } catch (e) {
+    // Silent fail if permissions issue or no collection
     console.warn('Could not load NATS identities', e)
   } finally {
     loadingIdentities.value = false
@@ -168,18 +170,22 @@ async function updateIdentity(event: Event) {
   
   try {
     const collectionName = authStore.user.collectionName || 'users'
-    const updated = await pb.collection(collectionName).update(authStore.user.id, {
+    
+    // 1. Update Backend
+    await pb.collection(collectionName).update(authStore.user.id, {
       nats_user: natsUserId
     })
     
-    // Update local User store
-    const expandedUser = await pb.collection(collectionName).getOne(updated.id, {
+    // 2. Refresh Local Auth Store
+    // We need to fetch the expanded record to ensure our local state matches DB
+    const freshUser = await pb.collection(collectionName).getOne(authStore.user.id, {
       expand: 'nats_user'
     })
     
-    authStore.user = expandedUser as any
+    authStore.user = freshUser as any
     
-    // If we changed identity, disconnect current session to force reconnection with new creds
+    // 3. Handle Connection State
+    // If we changed identity, disconnect current session to force reconnection with new creds later
     if (natsStore.isConnected) {
       await natsStore.disconnect()
       toast.info('Identity changed. Please reconnect.')

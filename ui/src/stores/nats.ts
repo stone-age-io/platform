@@ -7,6 +7,8 @@ import {
 } from '@nats-io/nats-core'
 import { useAuthStore } from './auth'
 import { useToast } from '@/composables/useToast'
+import { pb } from '@/utils/pb'
+import type { NatsUser } from '@/types/pocketbase'
 
 export const useNatsStore = defineStore('nats', () => {
   const authStore = useAuthStore()
@@ -23,10 +25,8 @@ export const useNatsStore = defineStore('nats', () => {
   const rtt = ref<number | null>(null)
   let statsInterval: number | null = null
 
-  // Computed
   const isConnected = computed(() => status.value === 'connected')
 
-  // Load Settings from LocalStorage
   function loadSettings() {
     const savedUrls = localStorage.getItem('stone_age_nats_urls')
     if (savedUrls) {
@@ -43,13 +43,11 @@ export const useNatsStore = defineStore('nats', () => {
     autoConnect.value = savedAuto === 'true'
   }
 
-  // Save Settings
   function saveSettings() {
     localStorage.setItem('stone_age_nats_urls', JSON.stringify(serverUrls.value))
     localStorage.setItem('stone_age_nats_autoconnect', String(autoConnect.value))
   }
 
-  // Add/Remove URLs
   function addUrl(url: string) {
     if (!url) return
     if (!serverUrls.value.includes(url)) {
@@ -63,21 +61,26 @@ export const useNatsStore = defineStore('nats', () => {
     saveSettings()
   }
 
-  // Connect Logic
+  // --- CONNECT LOGIC ---
   async function connect(specificUrl?: string) {
     if (nc.value) await disconnect()
 
-    // 1. Determine URL
-    // Use specific URL if provided, otherwise try the first one in the list
+    // 1. Validations
     const url = specificUrl || serverUrls.value[0]
     if (!url) {
       toast.error('No NATS URL configured')
       return
     }
 
-    // 2. Get Credentials from User Identity
-    const natsUser = authStore.user?.expand?.nats_user
-    if (!natsUser || !natsUser.creds_file) {
+    if (!authStore.user) {
+      toast.error('You must be logged in to connect')
+      return
+    }
+
+    // Check if ID exists on the user record (string check, not object check)
+    // We cast to 'any' to access custom fields safely
+    const natsUserId = (authStore.user as any).nats_user
+    if (!natsUserId) {
       toast.error('No NATS Identity linked to user account')
       return
     }
@@ -86,21 +89,30 @@ export const useNatsStore = defineStore('nats', () => {
     lastError.value = null
 
     try {
+      // 2. Fetch Fresh Credentials
+      // We do NOT rely on authStore expansions here. We fetch the source of truth.
+      const natsUserRecord = await pb.collection('nats_users').getOne<NatsUser>(natsUserId)
+      
+      if (!natsUserRecord.creds_file) {
+        throw new Error('Linked NATS identity has no credentials file')
+      }
+
       // 3. Prepare Authenticator
       const encoder = new TextEncoder()
-      const credsBytes = encoder.encode(natsUser.creds_file)
+      const credsBytes = encoder.encode(natsUserRecord.creds_file)
       
       // 4. Connect
+      console.log(`Connecting to NATS at ${url} as ${natsUserRecord.nats_username}...`)
+      
       nc.value = await wsconnect({ 
         servers: [url],
         authenticator: credsAuthenticator(credsBytes),
-        name: `stone-age-ui-${authStore.user?.id}`,
+        name: `stone-age-ui-${authStore.user.id}`,
       })
 
       status.value = 'connected'
-      toast.success(`Connected to ${url}`)
+      toast.success(`Connected to NATS`)
 
-      // 5. Monitor Connection
       monitorConnection()
       startStatsLoop()
 
@@ -108,11 +120,15 @@ export const useNatsStore = defineStore('nats', () => {
       console.error('NATS Connection Error:', err)
       status.value = 'disconnected'
       lastError.value = err.message
-      toast.error(`Connection failed: ${err.message}`)
+      // If it's a fetch 404, the user might have been deleted
+      if (err.status === 404) {
+        toast.error('Linked NATS Identity no longer exists')
+      } else {
+        toast.error(`Connection failed: ${err.message}`)
+      }
     }
   }
 
-  // Disconnect Logic
   async function disconnect() {
     if (statsInterval) {
       clearInterval(statsInterval)
@@ -127,7 +143,6 @@ export const useNatsStore = defineStore('nats', () => {
     rtt.value = null
   }
 
-  // Internal: Monitor Status
   async function monitorConnection() {
     if (!nc.value) return
     for await (const s of nc.value.status()) {
@@ -140,14 +155,12 @@ export const useNatsStore = defineStore('nats', () => {
           toast.success('Reconnected to NATS')
           break
         case 'error':
-          // 's' contains the error details directly in recent NATS versions
           console.error('NATS Error:', s)
           break
       }
     }
   }
 
-  // Internal: Stats Loop
   function startStatsLoop() {
     statsInterval = setInterval(async () => {
       if (nc.value && !nc.value.isClosed()) {
@@ -158,31 +171,16 @@ export const useNatsStore = defineStore('nats', () => {
     }, 2000) as unknown as number
   }
 
-  // Auto-connect helper called by App.vue
   function tryAutoConnect() {
     loadSettings()
-    if (autoConnect.value && authStore.user?.expand?.nats_user) {
+    // Only attempt if configured AND we have a user ID linked
+    if (autoConnect.value && (authStore.user as any)?.nats_user) {
       connect()
     }
   }
 
   return {
-    // State
-    nc,
-    status,
-    lastError,
-    serverUrls,
-    autoConnect,
-    rtt,
-    isConnected,
-    
-    // Actions
-    loadSettings,
-    saveSettings,
-    addUrl,
-    removeUrl,
-    connect,
-    disconnect,
-    tryAutoConnect
+    nc, status, lastError, serverUrls, autoConnect, rtt, isConnected,
+    loadSettings, saveSettings, addUrl, removeUrl, connect, disconnect, tryAutoConnect
   }
 })
