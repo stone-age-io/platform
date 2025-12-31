@@ -4,6 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
 import { useMap } from '@/composables/useMap'
+import { usePagination } from '@/composables/usePagination'
 import { useUIStore } from '@/stores/ui'
 import { useNatsStore } from '@/stores/nats'
 import { formatDate } from '@/utils/format'
@@ -21,16 +22,39 @@ const uiStore = useUIStore()
 const natsStore = useNatsStore()
 const { initMap, renderMarkers, updateTheme, cleanup: cleanupMap } = useMap()
 
-// State
+// --- State ---
 const location = ref<Location | null>(null)
-const subLocations = ref<Location[]>([])
-const things = ref<Thing[]>([])
 const loading = ref(true)
 const isPositioningMode = ref(false)
-
 const mapContainerId = 'mini-map-container'
 
-// List Columns
+// --- Pagination & Search: Sub-Locations ---
+const subLocSearch = ref('')
+const {
+  items: subLocations,
+  page: subLocPage,
+  totalPages: subLocTotalPages,
+  totalItems: subLocTotalItems,
+  loading: subLocLoading,
+  load: loadSubLocs,
+  nextPage: nextSubLocPage,
+  prevPage: prevSubLocPage,
+} = usePagination<Location>('locations', 5)
+
+// --- Pagination & Search: Things ---
+const thingSearch = ref('')
+const {
+  items: things,
+  page: thingPage,
+  totalPages: thingTotalPages,
+  totalItems: thingTotalItems,
+  loading: thingLoading,
+  load: loadThings,
+  nextPage: nextThingPage,
+  prevPage: prevThingPage,
+} = usePagination<Thing>('things', 10)
+
+// --- List Columns ---
 const subLocColumns: Column<Location>[] = [
   { key: 'name', label: 'Name', mobileLabel: 'Name' },
   { key: 'expand.type.name', label: 'Type', mobileLabel: 'Type' },
@@ -59,28 +83,55 @@ const breadcrumbs = computed(() => {
 })
 
 /**
- * Load Location Data
+ * Filter Logic
+ */
+const subLocFilter = computed(() => {
+  if (!location.value) return ''
+  let f = `parent = "${location.value.id}"`
+  const q = subLocSearch.value.trim().toLowerCase()
+  if (q) {
+    f += ` && (name ~ "${q}" || code ~ "${q}")`
+  }
+  return f
+})
+
+const thingFilter = computed(() => {
+  if (!location.value) return ''
+  let f = `location = "${location.value.id}"`
+  const q = thingSearch.value.trim().toLowerCase()
+  if (q) {
+    f += ` && (name ~ "${q}" || code ~ "${q}")`
+  }
+  return f
+})
+
+// All things (unpaginated) for the Floor Plan map
+const allThingsForMap = ref<Thing[]>([])
+
+/**
+ * Main Load Function
  */
 async function loadData(id: string) {
   cleanupMap()
   loading.value = true
   
   try {
+    // 1. Load Location Details
     location.value = await pb.collection('locations').getOne<Location>(id, {
       expand: 'type,parent.parent.parent.parent',
     })
 
-    subLocations.value = await pb.collection('locations').getFullList<Location>({
-      filter: `parent = "${id}"`,
-      expand: 'type',
-      sort: 'name',
-    })
-
-    things.value = await pb.collection('things').getFullList<Thing>({
-      filter: `location = "${id}"`,
-      expand: 'type',
-      sort: 'name',
-    })
+    // 2. Load Lists (Paginated)
+    await Promise.all([
+      refreshSubLocs(),
+      refreshThings(),
+      // 3. Load Map Data (All items, strictly for coordinates)
+      pb.collection('things').getFullList<Thing>({
+        filter: `location = "${id}"`,
+        fields: 'id,name,metadata,expand.type.name', // optimize fetch
+        expand: 'type'
+      }).then(res => allThingsForMap.value = res)
+    ])
 
   } catch (err: any) {
     toast.error(err.message || 'Failed to load location')
@@ -97,18 +148,28 @@ async function loadData(id: string) {
   }
 }
 
+// Helpers to refresh lists with current filters
+async function refreshSubLocs() {
+  await loadSubLocs({ filter: subLocFilter.value, expand: 'type', sort: 'name' })
+}
+
+async function refreshThings() {
+  await loadThings({ filter: thingFilter.value, expand: 'type', sort: 'name' })
+}
+
 /**
  * Handle Floor Plan Coordinate Updates
  */
 async function handleThingMoved({ id, x, y }: { id: string, x: number, y: number }) {
   try {
-    const thing = things.value.find(t => t.id === id)
+    // Update local map data
+    const thing = allThingsForMap.value.find(t => t.id === id)
     if (!thing) return
 
     const metadata = { ...(thing.metadata || {}), x, y }
     await pb.collection('things').update(id, { metadata })
-    
     thing.metadata = metadata
+    
     toast.success(`${thing.name} position saved`)
   } catch (err: any) {
     toast.error('Failed to save position')
@@ -136,6 +197,25 @@ async function handleDelete() {
     toast.error(err.message)
   }
 }
+
+// Watchers for Search
+let subLocTimeout: any
+watch(subLocSearch, () => {
+  clearTimeout(subLocTimeout)
+  subLocTimeout = setTimeout(() => {
+    subLocPage.value = 1
+    refreshSubLocs()
+  }, 300)
+})
+
+let thingTimeout: any
+watch(thingSearch, () => {
+  clearTimeout(thingTimeout)
+  thingTimeout = setTimeout(() => {
+    thingPage.value = 1
+    refreshThings()
+  }, 300)
+})
 
 watch(() => uiStore.theme, (newTheme) => updateTheme(newTheme === 'dark'))
 watch(() => route.params.id, (newId) => { if (newId) loadData(newId as string) })
@@ -180,12 +260,11 @@ onUnmounted(() => cleanupMap())
         </div>
       </div>
       
-      <!-- Layout Grid (12 Columns) -->
+      <!-- Layout Grid -->
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
         <!-- Left Column (Metadata & Geo Map) -->
         <div class="lg:col-span-5 flex flex-col gap-6">
-          <!-- Basic Information -->
           <BaseCard title="Basic Information">
             <div class="grid grid-cols-2 gap-y-4 text-sm">
               <div class="col-span-2">
@@ -213,7 +292,6 @@ onUnmounted(() => cleanupMap())
             </div>
           </BaseCard>
 
-          <!-- Geo Coordinates -->
           <BaseCard :no-padding="true" class="overflow-hidden">
             <div class="p-4 border-b border-base-300 flex justify-between items-center bg-base-200/30">
               <h2 class="font-bold uppercase text-[10px] tracking-widest opacity-60">Geo Location</h2>
@@ -245,8 +323,6 @@ onUnmounted(() => cleanupMap())
 
         <!-- Right Column (Floor Plan Visualizer) -->
         <div class="lg:col-span-7 flex flex-col gap-6">
-          
-          <!-- Floor Plan Map -->
           <BaseCard class="flex flex-col h-full min-h-[550px]" :no-padding="true">
             <div class="p-4 border-b border-base-300 flex justify-between items-center bg-base-200/30">
               <h2 class="font-bold uppercase text-[10px] tracking-widest opacity-60 flex items-center gap-2">
@@ -265,44 +341,101 @@ onUnmounted(() => cleanupMap())
             <div class="flex-grow">
               <FloorPlanMap 
                 :location="location"
-                :things="things"
+                :things="allThingsForMap" 
                 :editable="isPositioningMode"
                 @thing-moved="handleThingMoved"
                 @uploaded="handleFloorplanUploaded"
               />
             </div>
           </BaseCard>
-
         </div>
       </div>
 
       <!-- Lower Section: Lists & Digital Twin -->
       <div class="space-y-6">
         
-        <!-- Sub-Locations -->
-        <BaseCard title="Sub-Locations" :no-padding="true" v-if="subLocations.length">
-          <ResponsiveList :items="subLocations" :columns="subLocColumns" @row-click="(i) => router.push(`/locations/${i.id}`)" />
+        <!-- Sub-Locations List -->
+        <!-- Fixed: Condition includes Search query and Loading state to prevent disappearing -->
+        <BaseCard :no-padding="true" v-if="subLocations.length > 0 || subLocSearch || subLocLoading">
+          <template #header>
+            <div class="flex justify-between items-center mb-2">
+              <h3 class="card-title">Sub-Locations</h3>
+              <!-- Search Input -->
+              <input 
+                v-model="subLocSearch"
+                type="text"
+                placeholder="Search..."
+                class="input input-xs input-bordered w-32 md:w-48"
+              />
+            </div>
+          </template>
+
+          <ResponsiveList 
+            :items="subLocations" 
+            :columns="subLocColumns" 
+            :loading="subLocLoading"
+            @row-click="(i) => router.push(`/locations/${i.id}`)" 
+          />
+
+          <!-- Pagination -->
+          <div v-if="subLocTotalItems > 0" class="flex justify-between items-center p-3 border-t border-base-200 bg-base-100/50">
+            <span class="text-xs text-base-content/60">
+              {{ subLocTotalItems }} items
+            </span>
+            <div class="join">
+              <button class="join-item btn btn-xs" :disabled="subLocPage === 1" @click="prevSubLocPage({ filter: subLocFilter, expand: 'type', sort: 'name' })">«</button>
+              <button class="join-item btn btn-xs cursor-default">Page {{ subLocPage }}</button>
+              <button class="join-item btn btn-xs" :disabled="subLocPage === subLocTotalPages" @click="nextSubLocPage({ filter: subLocFilter, expand: 'type', sort: 'name' })">»</button>
+            </div>
+          </div>
         </BaseCard>
 
-        <!-- Associated Things -->
-        <BaseCard title="Associated Things" :no-padding="true">
-          <ResponsiveList :items="things" :columns="thingColumns" @row-click="(i) => router.push(`/things/${i.id}`)">
+        <!-- Associated Things List -->
+        <!-- Fixed: Condition includes Search query and Loading state to prevent disappearing -->
+        <BaseCard :no-padding="true" v-if="things.length > 0 || thingSearch || thingLoading">
+          <template #header>
+            <div class="flex justify-between items-center mb-2">
+              <h3 class="card-title">Associated Things</h3>
+              <!-- Search Input -->
+              <input 
+                v-model="thingSearch"
+                type="text"
+                placeholder="Search..."
+                class="input input-xs input-bordered w-32 md:w-48"
+              />
+            </div>
+          </template>
+
+          <ResponsiveList 
+            :items="things" 
+            :columns="thingColumns" 
+            :loading="thingLoading"
+            @row-click="(i) => router.push(`/things/${i.id}`)"
+          >
             <template #cell-code="{ item }"><code class="text-xs font-mono">{{ item.code || '-' }}</code></template>
           </ResponsiveList>
+
+          <!-- Pagination -->
+          <div v-if="thingTotalItems > 0" class="flex justify-between items-center p-3 border-t border-base-200 bg-base-100/50">
+            <span class="text-xs text-base-content/60">
+              {{ thingTotalItems }} items
+            </span>
+            <div class="join">
+              <button class="join-item btn btn-xs" :disabled="thingPage === 1" @click="prevThingPage({ filter: thingFilter, expand: 'type', sort: 'name' })">«</button>
+              <button class="join-item btn btn-xs cursor-default">Page {{ thingPage }}</button>
+              <button class="join-item btn btn-xs" :disabled="thingPage === thingTotalPages" @click="nextThingPage({ filter: thingFilter, expand: 'type', sort: 'name' })">»</button>
+            </div>
+          </div>
         </BaseCard>
 
         <!-- Digital Twin / KV Dashboard (Last Item) -->
         <template v-if="location.code">
-          
-          <!-- Active Dashboard (Connected) -->
           <div v-if="natsStore.isConnected">
             <KvDashboard 
               :bucket="location.code" 
               :context-code="location.code" 
             />
           </div>
-          
-          <!-- Warning (Not Connected) -->
           <div v-else class="alert shadow-sm border border-base-300 bg-base-100">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-info shrink-0 w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
             <div class="text-xs">
@@ -310,7 +443,6 @@ onUnmounted(() => cleanupMap())
               <span class="opacity-70">Connect to NATS in <router-link to="/settings" class="link">Settings</router-link> to view live data for this location.</span>
             </div>
           </div>
-
         </template>
 
       </div>
