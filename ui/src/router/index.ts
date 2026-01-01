@@ -148,6 +148,7 @@ const routes: RouteRecordRaw[] = [
         meta: { requiresRole: ['owner', 'admin'] },
         children: [
           { path: 'members', name: 'OrganizationMembers', component: () => import('@/views/organization/MembersView.vue') },
+          { path: 'members/:id', name: 'MemberDetail', component: () => import('@/views/organization/MemberDetailView.vue')},
           { path: 'invitations', name: 'OrganizationInvitations', component: () => import('@/views/organization/InvitationsView.vue') },
         ]
       },

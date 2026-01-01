@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router' // Added
 import { usePagination } from '@/composables/usePagination'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
@@ -9,6 +10,7 @@ import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 
+const router = useRouter() // Added
 const authStore = useAuthStore()
 const toast = useToast()
 
@@ -27,16 +29,12 @@ const {
 // Search
 const searchQuery = ref('')
 
-/**
- * Updated filteredMembers computed to respect the scoped list
- */
 const filteredMembers = computed(() => {
   const query = searchQuery.value.toLowerCase().trim()
   
   if (!query) return members.value
   
   return members.value.filter(member => {
-    // Note: We only search the current page/list because it's already organization-scoped
     if (member.expand?.user?.name?.toLowerCase().includes(query)) return true
     if (member.expand?.user?.email?.toLowerCase().includes(query)) return true
     if (member.expand?.organization?.name?.toLowerCase().includes(query)) return true
@@ -45,9 +43,6 @@ const filteredMembers = computed(() => {
   })
 })
 
-/**
- * Column configuration for responsive list
- */
 const columns: Column<Membership>[] = [
   {
     key: 'expand.user.name',
@@ -60,11 +55,6 @@ const columns: Column<Membership>[] = [
     mobileLabel: 'Email',
   },
   {
-    key: 'expand.organization.name', // NEW: Organization column
-    label: 'Organization',
-    mobileLabel: 'Org',
-  },
-  {
     key: 'role',
     label: 'Role',
     mobileLabel: 'Role',
@@ -72,81 +62,21 @@ const columns: Column<Membership>[] = [
   },
 ]
 
-/**
- * Load members from API
- * Explicitly filter by organization to handle multi-org users and superusers
- */
 async function loadMembers() {
   if (!authStore.currentOrgId) return
 
   await load({ 
-    filter: `organization = "${authStore.currentOrgId}"`, // SCOPED
+    filter: `organization = "${authStore.currentOrgId}"`, 
     expand: 'user,invited_by,organization', 
     sort: 'role',
   })
 }
 
-/**
- * Check if current user can remove a member
- */
-function canRemoveMember(member: Membership): boolean {
-  // Can't remove yourself
-  if (member.user === authStore.user?.id) return false
-  
-  // Can't remove the owner
-  if (member.role === 'owner') return false
-  
-  // Only owners and admins can remove members
-  if (!authStore.canManageUsers) return false
-  
-  return true
+// Navigate to Detail View
+function handleRowClick(member: Membership) {
+  router.push(`/organization/members/${member.id}`)
 }
 
-/**
- * Handle removing a member
- */
-async function handleRemoveMember(member: Membership) {
-  const memberName = member.expand?.user?.name || member.expand?.user?.email || 'this member'
-  
-  if (!confirm(`Remove ${memberName} from ${member.expand?.organization?.name || 'the organization'}?`)) return
-  
-  try {
-    await pb.collection('memberships').delete(member.id)
-    toast.success('Member removed')
-    await loadMembers()
-  } catch (err: any) {
-    toast.error(err.message || 'Failed to remove member')
-  }
-}
-
-/**
- * Handle updating member role
- */
-async function handleUpdateRole(member: Membership, newRole: 'admin' | 'member') {
-  if (member.role === 'owner') {
-    toast.error('Cannot change owner role')
-    return
-  }
-  
-  if (member.user === authStore.user?.id) {
-    toast.error('Cannot change your own role')
-    return
-  }
-  
-  try {
-    await pb.collection('memberships').update(member.id, {
-      role: newRole,
-    })
-    toast.success('Role updated')
-    await loadMembers()
-  } catch (err: any) {
-    toast.error(err.message || 'Failed to update role')
-  }
-}
-
-/**
- * Get role badge class
- */
 function getRoleBadgeClass(role: string): string {
   switch (role) {
     case 'owner': return 'badge-primary'
@@ -156,9 +86,6 @@ function getRoleBadgeClass(role: string): string {
   }
 }
 
-/**
- * Handle organization change
- */
 function handleOrgChange() {
   searchQuery.value = ''
   loadMembers()
@@ -193,18 +120,12 @@ onUnmounted(() => {
       </router-link>
     </div>
     
-    <!-- Info Alert -->
-    <div class="alert alert-info">
-      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-      <span>Members are added when they accept an invitation. Use the "Send Invitation" button to invite new members.</span>
-    </div>
-    
     <!-- Search -->
     <div class="form-control">
       <input 
         v-model="searchQuery"
         type="text"
-        placeholder="Search members by name, email, organization or role..."
+        placeholder="Search members by name, email, or role..."
         class="input input-bordered w-full"
       />
     </div>
@@ -219,9 +140,6 @@ onUnmounted(() => {
       <div class="text-center py-12">
         <span class="text-6xl">👥</span>
         <h3 class="text-xl font-bold mt-4">No members found</h3>
-        <p class="text-base-content/70 mt-2">
-          This shouldn't happen - at least you should be a member!
-        </p>
       </div>
     </BaseCard>
     
@@ -242,7 +160,8 @@ onUnmounted(() => {
         :items="filteredMembers" 
         :columns="columns" 
         :loading="loading"
-        :clickable="false"
+        :clickable="true"
+        @row-click="handleRowClick"
       >
         <!-- Custom cell for name -->
         <template #cell-expand.user.name="{ item }">
@@ -288,68 +207,27 @@ onUnmounted(() => {
         
         <!-- Custom cell for email -->
         <template #cell-expand.user.email="{ item }">
-          <a 
-            :href="`mailto:${item.expand?.user?.email}`"
-            class="link link-hover text-sm"
-          >
-            {{ item.expand?.user?.email }}
-          </a>
-        </template>
-
-        <!-- Custom cell for Organization -->
-        <template #cell-expand.organization.name="{ item }">
-          <div class="flex items-center gap-1 opacity-80">
-            <span class="text-xs">🏢</span>
-            <span class="truncate max-w-[150px]">{{ item.expand?.organization?.name || 'Unknown' }}</span>
-          </div>
-        </template>
-
-        <!-- Custom card for Organization -->
-        <template #card-expand.organization.name="{ item }">
-          <div class="flex flex-col">
-            <span class="text-xs font-medium text-base-content/70">Organization</span>
-            <div class="mt-1 flex items-center gap-1">
-              <span class="text-xs">🏢</span>
-              <span class="text-sm">{{ item.expand?.organization?.name || 'Unknown' }}</span>
-            </div>
-          </div>
+          <span class="opacity-70 text-sm">{{ item.expand?.user?.email }}</span>
         </template>
         
         <!-- Custom cell for role -->
         <template #cell-role="{ item }">
-          <div class="flex items-center gap-2">
-            <span 
-              class="badge badge-sm"
-              :class="getRoleBadgeClass(item.role)"
-            >
-              {{ item.role.charAt(0).toUpperCase() + item.role.slice(1) }}
-            </span>
-            
-            <div 
-              v-if="authStore.canManageUsers && item.role !== 'owner' && item.user !== authStore.user?.id"
-              class="dropdown dropdown-end"
-            >
-              <label tabindex="0" class="btn btn-ghost btn-xs">⋮</label>
-              <ul tabindex="0" class="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-52">
-                <li><a @click="handleUpdateRole(item, 'admin')">Make Admin</a></li>
-                <li><a @click="handleUpdateRole(item, 'member')">Make Member</a></li>
-              </ul>
-            </div>
-          </div>
+          <span 
+            class="badge badge-sm"
+            :class="getRoleBadgeClass(item.role)"
+          >
+            {{ item.role.charAt(0).toUpperCase() + item.role.slice(1) }}
+          </span>
         </template>
         
-        <!-- Actions (remove member) -->
+        <!-- Actions -->
         <template #actions="{ item }">
           <button 
-            v-if="canRemoveMember(item)"
-            @click="handleRemoveMember(item)" 
-            class="btn btn-ghost btn-sm text-error flex-1 sm:flex-initial"
+            @click.stop="handleRowClick(item)"
+            class="btn btn-ghost btn-sm"
           >
-            Remove
+            {{ authStore.canManageUsers ? 'Manage' : 'View' }}
           </button>
-          <span v-else class="text-sm text-base-content/40 flex-1 sm:flex-initial text-center">
-            {{ item.user === authStore.user?.id ? 'You' : 'Owner' }}
-          </span>
         </template>
       </ResponsiveList>
       
