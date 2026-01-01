@@ -430,11 +430,10 @@ onUnmounted(() => cleanupMap())
 
         <!-- Digital Twin / KV Dashboard (Last Item) -->
         <template v-if="location.code">
-          <div v-if="natsStore.isConnected">
+          <div v-if="location.code && natsStore.isConnected" class="mt-6">
             <KvDashboard 
               :key="location.code"
-              :bucket="location.code" 
-              :context-code="location.code" 
+              :base-key="`location.${location.code}`" 
             />
           </div>
           <div v-else class="alert shadow-sm border border-base-300 bg-base-100">

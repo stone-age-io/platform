@@ -11,11 +11,16 @@ export interface KvEntry {
   operation: 'PUT' | 'DEL' | 'PURGE'
 }
 
-export function useNatsKv(bucketName: string, watchFilter: string = '>') {
+/**
+ * useNatsKv handles interactions with a NATS Key-Value bucket.
+ * @param bucketName Defaults to 'twin' for the global organization state.
+ * @param baseKey Optional prefix (e.g., 'thing.S01'). If provided, the watcher 
+ *                and writers will be scoped to this prefix.
+ */
+export function useNatsKv(bucketName: string = 'twin', baseKey?: string) {
   const natsStore = useNatsStore()
   const toast = useToast()
   
-  // NATS SDK v2+ removal of StringCodec -> Use Web Standards
   const encoder = new TextEncoder()
   const decoder = new TextDecoder()
 
@@ -28,27 +33,22 @@ export function useNatsKv(bucketName: string, watchFilter: string = '>') {
   
   let watcher: any = null
 
-  // Initialize: Check if bucket exists and open it
   async function init() {
     if (!natsStore.nc) return
     
-    // Safety: cleanup previous watcher if exists
     if (watcher) {
-      try {
-        watcher.stop()
-      } catch (e) { console.error('Error stopping previous watcher:', e) }
+      try { watcher.stop() } catch (e) { console.error('Watcher stop error:', e) }
       watcher = null
     }
     
     loading.value = true
     entries.value.clear()
     error.value = null
-    exists.value = false
 
     try {
       const kvm = new Kvm(natsStore.nc)
       
-      // Check if exists first
+      // Check if bucket exists
       let found = false
       for await (const b of await kvm.list()) { 
         if (b.bucket === bucketName) {
@@ -63,7 +63,6 @@ export function useNatsKv(bucketName: string, watchFilter: string = '>') {
         return
       }
 
-      // Open and Watch
       kv.value = await kvm.open(bucketName)
       exists.value = true
       await startWatch()
@@ -75,51 +74,24 @@ export function useNatsKv(bucketName: string, watchFilter: string = '>') {
     }
   }
 
-  // Create Bucket
-  async function createBucket(description?: string) {
-    if (!natsStore.nc) return
-    loading.value = true
-    try {
-      const kvm = new Kvm(natsStore.nc)
-      await kvm.create(bucketName, {
-        description: description || 'Digital Twin Store',
-        history: 10,
-        storage: 'file' // Durable storage
-      })
-      toast.success(`Bucket ${bucketName} created`)
-      await init()
-    } catch (e: any) {
-      toast.error(e.message)
-    } finally {
-      loading.value = false
-    }
-  }
-
-  // Watch for changes
   async function startWatch() {
     if (!kv.value) return
     
     try {
-      // Apply the filter at the NATS server level
-      // This ensures we only receive keys relevant to this view (e.g. THING_01.>)
-      const iter = await kv.value.watch({ key: watchFilter })
+      // If baseKey is provided, watch "baseKey.>"
+      // Otherwise watch the whole bucket ">"
+      const filter = baseKey ? `${baseKey}.>` : '>'
+      const iter = await kv.value.watch({ key: filter })
       watcher = iter
       
-      // Process updates in background
       ;(async () => {
         for await (const e of iter) {
           if (e.operation === 'DEL' || e.operation === 'PURGE') {
             entries.value.delete(e.key)
           } else {
-            let val = null
-            try {
-              const str = decoder.decode(e.value)
-              try { val = JSON.parse(str) } catch { val = str }
-            } catch { val = '[Binary]' }
-
             entries.value.set(e.key, {
               key: e.key,
-              value: val,
+              value: decodeValue(e.value),
               revision: e.revision,
               created: e.created,
               operation: e.operation
@@ -132,20 +104,26 @@ export function useNatsKv(bucketName: string, watchFilter: string = '>') {
     }
   }
 
-  // Put Value (Auto JSON serialization)
-  async function put(key: string, value: any) {
+  /**
+   * Puts a value into KV.
+   * If baseKey is 'thing.S01' and propName is 'temp', key will be 'thing.S01.temp'
+   */
+  async function put(propName: string, value: any) {
     if (!kv.value) return
     try {
+      // Prevent double prefixing if the full key was passed
+      const fullKey = (baseKey && !propName.startsWith(baseKey)) 
+        ? `${baseKey}.${propName}` 
+        : propName
+
       const encoded = encoder.encode(JSON.stringify(value))
-      await kv.value.put(key, encoded)
-      toast.success('Key updated')
+      await kv.value.put(fullKey, encoded)
     } catch (e: any) {
-      toast.error(`Failed to put key: ${e.message}`)
+      toast.error(`Update failed: ${e.message}`)
       throw e
     }
   }
 
-  // Delete Key
   async function del(key: string) {
     if (!kv.value) return
     try {
@@ -156,7 +134,6 @@ export function useNatsKv(bucketName: string, watchFilter: string = '>') {
     }
   }
 
-  // Get History
   async function getHistory(key: string): Promise<KvEntry[]> {
     if (!kv.value) return []
     const history: KvEntry[] = []
@@ -177,6 +154,25 @@ export function useNatsKv(bucketName: string, watchFilter: string = '>') {
     return history.reverse()
   }
 
+  async function createBucket(description?: string) {
+    if (!natsStore.nc) return
+    loading.value = true
+    try {
+      const kvm = new Kvm(natsStore.nc)
+      await kvm.create(bucketName, {
+        description: description || 'Digital Twin Store',
+        history: 10,
+        storage: 'file'
+      })
+      toast.success(`Bucket ${bucketName} initialized`)
+      await init()
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      loading.value = false
+    }
+  }
+
   function decodeValue(bytes: Uint8Array): any {
     try {
       const str = decoder.decode(bytes)
@@ -184,20 +180,9 @@ export function useNatsKv(bucketName: string, watchFilter: string = '>') {
     } catch { return '[Binary]' }
   }
 
-  // Cleanup
   onUnmounted(() => {
     if (watcher) watcher.stop()
   })
 
-  return {
-    entries,
-    loading,
-    exists,
-    error,
-    init,
-    createBucket,
-    put,
-    del,
-    getHistory
-  }
+  return { entries, loading, exists, error, init, createBucket, put, del, getHistory }
 }
