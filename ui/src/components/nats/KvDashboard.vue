@@ -4,6 +4,7 @@ import { useNatsKv, type KvEntry } from '@/composables/useNatsKv'
 import { useToast } from '@/composables/useToast'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList, { type Column } from '@/components/ui/ResponsiveList.vue'
+import { formatDate } from '@/utils/format'
 
 interface KvEntryWithId extends KvEntry {
   id: string
@@ -21,6 +22,7 @@ const toast = useToast()
 const showForm = ref(false)
 const isEditing = ref(false)
 const historyLoading = ref(false)
+const showHistory = ref(false)
 const historyEntries = ref<KvEntryWithId[]>([])
 
 // Search & Pagination State
@@ -34,14 +36,12 @@ const inputType = ref<'string' | 'number' | 'boolean' | 'json'>('string')
 const inputValue = ref('')
 const inputBool = ref(true)
 
-// Helper: Strip the baseKey prefix for display (e.g. location.bldg.temp -> temp)
 function displayKey(fullKey: string) {
   if (!props.baseKey) return fullKey
   const prefix = `${props.baseKey}.`
   return fullKey.startsWith(prefix) ? fullKey.replace(prefix, '') : fullKey
 }
 
-// Data Processing
 const sortedEntries = computed<KvEntryWithId[]>(() => {
   return Array.from(entries.value.values())
     .sort((a, b) => a.key.localeCompare(b.key))
@@ -70,15 +70,17 @@ const keyColumns: Column<KvEntryWithId>[] = [
   { key: 'revision', label: 'Rev', mobileLabel: 'Rev', class: 'text-right w-20' }
 ]
 
-// Actions
-onMounted(() => init())
+const historyColumns: Column<KvEntryWithId>[] = [
+  { key: 'revision', label: 'Rev', mobileLabel: 'Rev', class: 'w-16 font-mono text-xs' },
+  { key: 'value', label: 'Value', mobileLabel: 'Val' },
+  { key: 'created', label: 'Time', mobileLabel: 'Time', class: 'text-right text-xs opacity-60' }
+]
 
-// Reset pagination on search
+onMounted(() => init())
 watch(searchQuery, () => { currentPage.value = 1 })
 
 async function handleSave() {
   if (!inputKey.value) return toast.error('Property name required')
-  
   let finalValue: any = inputValue.value
   try {
     if (inputType.value === 'number') finalValue = Number(inputValue.value)
@@ -104,15 +106,33 @@ async function selectEntry(entry: KvEntryWithId) {
   else if (typeof val === 'object') { inputType.value = 'json'; inputValue.value = JSON.stringify(val, null, 2) }
   else { inputType.value = 'string'; inputValue.value = String(val) }
 
+  loadHistory(entry.key)
+}
+
+async function loadHistory(key: string) {
   historyLoading.value = true
-  const rawHistory = await getHistory(entry.key)
-  historyEntries.value = rawHistory.map(h => ({ ...h, id: h.revision.toString() }))
-  historyLoading.value = false
+  showHistory.value = true
+  try {
+    const raw = await getHistory(key)
+    historyEntries.value = raw.map(h => ({ ...h, id: `${h.key}-${h.revision}` }))
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+function restoreRevision(rev: KvEntryWithId) {
+  if (rev.operation === 'DEL') return
+  const val = rev.value
+  if (typeof val === 'number') { inputType.value = 'number'; inputValue.value = String(val) }
+  else if (typeof val === 'boolean') { inputType.value = 'boolean'; inputBool.value = val }
+  else if (typeof val === 'object') { inputType.value = 'json'; inputValue.value = JSON.stringify(val, null, 2) }
+  else { inputType.value = 'string'; inputValue.value = String(val) }
+  toast.info(`Loaded value from Revision ${rev.revision}`)
 }
 
 function resetForm() {
   showForm.value = false; isEditing.value = false; inputKey.value = ''; inputValue.value = ''
-  inputType.value = 'string'; historyEntries.value = []
+  inputType.value = 'string'; historyEntries.value = []; showHistory.value = false
 }
 </script>
 
@@ -133,132 +153,137 @@ function resetForm() {
     <!-- Active State -->
     <div v-else class="space-y-4">
       
-      <!-- Toolbar: Responsive Header -->
+      <!-- Toolbar -->
       <div class="flex flex-col sm:flex-row gap-3 justify-between items-start sm:items-center">
         <div v-if="!showForm" class="flex-1 w-full max-w-xs">
-          <input 
-            v-model="searchQuery" 
-            type="text" 
-            placeholder="Search keys/values..." 
-            class="input input-sm input-bordered w-full" 
-          />
+          <input v-model="searchQuery" type="text" placeholder="Search properties..." class="input input-sm input-bordered w-full" />
         </div>
         <div v-else class="text-sm font-bold opacity-50 uppercase tracking-widest">
           {{ isEditing ? 'Edit Property' : 'New Property' }}
         </div>
 
-        <button 
-          v-if="!showForm" 
-          @click="showForm = true" 
-          class="btn btn-xs btn-primary btn-outline w-full sm:w-auto"
-        >
-          + Add Property
-        </button>
-        <button 
-          v-else 
-          @click="resetForm" 
-          class="btn btn-xs btn-ghost w-full sm:w-auto"
-        >
-          Cancel
-        </button>
+        <button v-if="!showForm" @click="showForm = true" class="btn btn-xs btn-primary btn-outline w-full sm:w-auto">+ Add Property</button>
+        <button v-else @click="resetForm" class="btn btn-xs btn-ghost w-full sm:w-auto">Cancel</button>
       </div>
 
       <!-- Editor Form -->
-      <div v-if="showForm" class="bg-base-200 p-4 rounded-lg space-y-4 border border-base-300">
-        <div class="flex flex-col gap-3">
-          <!-- Key Input with Prefix -->
-          <div class="form-control">
-            <label class="label p-0 mb-1"><span class="label-text text-xs opacity-60">Property Key</span></label>
-            <div class="join w-full">
-              <span class="join-item btn btn-sm btn-disabled font-mono text-[10px] hidden md:flex">
-                {{ baseKey }}.
-              </span>
-              <input 
-                v-model="inputKey" 
-                type="text" 
-                placeholder="property_name" 
-                class="input input-sm input-bordered join-item flex-1 font-mono" 
-                :disabled="isEditing" 
-              />
+      <div v-if="showForm" class="space-y-4">
+        <div class="bg-base-200 p-4 rounded-lg space-y-4 border border-base-300">
+          <div class="flex flex-col md:flex-row gap-3">
+            <div class="form-control flex-1">
+              <label class="label p-0 mb-1"><span class="label-text text-[10px] uppercase font-bold opacity-50">Key</span></label>
+              <div class="join w-full">
+                <span class="join-item btn btn-sm btn-disabled font-mono text-[10px] hidden lg:flex">{{ baseKey }}.</span>
+                <input v-model="inputKey" type="text" placeholder="name" class="input input-sm input-bordered join-item flex-1 font-mono" :disabled="isEditing" />
+              </div>
             </div>
-            <span class="text-[10px] opacity-40 mt-1 block md:hidden">Full path: {{ baseKey }}.{{ inputKey || '...' }}</span>
+
+            <div class="form-control w-full md:w-32">
+              <label class="label p-0 mb-1"><span class="label-text text-[10px] uppercase font-bold opacity-50">Type</span></label>
+              <select v-model="inputType" class="select select-sm select-bordered w-full">
+                <option value="string">String</option><option value="number">Number</option><option value="boolean">Boolean</option><option value="json">JSON</option>
+              </select>
+            </div>
           </div>
 
-          <!-- Type Selector -->
           <div class="form-control">
-            <label class="label p-0 mb-1"><span class="label-text text-xs opacity-60">Value Type</span></label>
-            <select v-model="inputType" class="select select-sm select-bordered w-full">
-              <option value="string">String</option>
-              <option value="number">Number</option>
-              <option value="boolean">Boolean</option>
-              <option value="json">JSON</option>
-            </select>
+            <label class="label p-0 mb-1"><span class="label-text text-[10px] uppercase font-bold opacity-50">Value</span></label>
+            <input v-if="inputType === 'boolean'" type="checkbox" v-model="inputBool" class="toggle toggle-success" />
+            <textarea v-else-if="inputType === 'json'" v-model="inputValue" class="textarea textarea-bordered textarea-sm w-full font-mono text-xs" rows="4"></textarea>
+            <input v-else v-model="inputValue" :type="inputType === 'number' ? 'number' : 'text'" class="input input-sm input-bordered w-full font-mono text-xs" />
+          </div>
+          
+          <div class="flex justify-end gap-2">
+            <button v-if="isEditing" @click="del(`${baseKey}.${inputKey}`); resetForm()" class="btn btn-sm btn-ghost text-error">Delete</button>
+            <button @click="handleSave" class="btn btn-sm btn-primary px-6">Save Changes</button>
           </div>
         </div>
 
-        <!-- Value Input -->
-        <div class="form-control">
-          <label class="label p-0 mb-1"><span class="label-text text-xs opacity-60">Value</span></label>
-          <div v-if="inputType === 'boolean'">
-            <input type="checkbox" v-model="inputBool" class="toggle toggle-success" />
+        <!-- REVISION HISTORY SECTION -->
+        <div v-if="isEditing" class="border border-base-300 rounded-lg overflow-hidden bg-base-100">
+          <div class="bg-base-200 px-4 py-2 flex justify-between items-center border-b border-base-300">
+            <span class="text-[10px] font-bold uppercase tracking-widest opacity-60">Revision History</span>
+            <span v-if="historyLoading" class="loading loading-dots loading-xs"></span>
           </div>
-          <textarea 
-            v-else-if="inputType === 'json'" 
-            v-model="inputValue" 
-            class="textarea textarea-bordered textarea-sm w-full font-mono" 
-            rows="4"
-          ></textarea>
-          <input 
-            v-else 
-            v-model="inputValue" 
-            :type="inputType === 'number' ? 'number' : 'text'" 
-            class="input input-sm input-bordered w-full font-mono" 
-          />
-        </div>
-        
-        <div class="flex justify-end gap-2">
-          <button v-if="isEditing" @click="del(`${baseKey}.${inputKey}`); resetForm()" class="btn btn-sm btn-ghost text-error">Delete</button>
-          <button @click="handleSave" class="btn btn-sm btn-primary px-6">Save Property</button>
-        </div>
 
-        <!-- History Preview for edits -->
-        <div v-if="isEditing && historyEntries.length > 1" class="pt-4 border-t border-base-300">
-           <span class="text-[10px] font-bold uppercase opacity-40">Previous Versions ({{ historyEntries.length }})</span>
-           <!-- Note: You could add a mini list here if needed, or keep it simple for now -->
+          <div class="max-h-60 overflow-y-auto">
+            <ResponsiveList :items="historyEntries" :columns="historyColumns" :clickable="false">
+              <template #cell-revision="{ item }">
+                <span class="font-mono text-xs">#{{ item.revision }}</span>
+              </template>
+              <template #cell-value="{ item }">
+                <div class="flex items-center justify-between gap-2 group">
+                  <code class="text-[10px] opacity-70 truncate max-w-[150px] lg:max-w-md">
+                    {{ item.operation === 'DEL' ? 'DELETED' : (typeof item.value === 'object' ? JSON.stringify(item.value) : item.value) }}
+                  </code>
+                  <button 
+                    v-if="item.operation !== 'DEL'" 
+                    @click="restoreRevision(item)"
+                    class="btn btn-ghost btn-xs text-primary no-animation opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    Restore
+                  </button>
+                </div>
+              </template>
+              <template #cell-created="{ item }">
+                <span class="text-[10px]">{{ formatDate(item.created, 'MMM d, HH:mm') }}</span>
+              </template>
+
+              <!-- Mobile History Card -->
+              <template #card-revision="{ item }">
+                <div class="flex justify-between items-center w-full">
+                  <span class="badge badge-sm font-mono">Rev {{ item.revision }}</span>
+                  <span class="text-[10px] opacity-50">{{ formatDate(item.created, 'PPp') }}</span>
+                </div>
+              </template>
+              <template #card-value="{ item }">
+                <div class="mt-1 bg-base-200 p-2 rounded relative">
+                   <code class="text-[10px] block break-all">{{ typeof item.value === 'object' ? JSON.stringify(item.value, null, 2) : item.value }}</code>
+                   <button v-if="item.operation !== 'DEL'" @click="restoreRevision(item)" class="btn btn-xs btn-primary mt-2 w-full">Load this version</button>
+                </div>
+              </template>
+
+              <template #empty>
+                <div class="p-4 text-center text-xs opacity-40">No previous revisions found</div>
+              </template>
+            </ResponsiveList>
+          </div>
         </div>
       </div>
 
-      <!-- List -->
+      <!-- Main List View -->
       <div v-if="!showForm" class="border border-base-200 rounded-lg overflow-hidden">
         <ResponsiveList :items="paginatedEntries" :columns="keyColumns" @row-click="selectEntry">
-          <!-- Desktop/Cell View -->
           <template #cell-key="{ item }">
             <div class="flex flex-col">
-              <span class="font-mono text-primary font-bold">{{ displayKey(item.key) }}</span>
-              <span class="text-[10px] opacity-40 truncate max-w-[200px]">{{ item.key }}</span>
+              <span class="font-mono text-primary font-bold text-sm">{{ displayKey(item.key) }}</span>
+              <span class="text-[9px] opacity-30 truncate max-w-[150px]">{{ item.key }}</span>
             </div>
           </template>
-          
           <template #cell-value="{ item }">
             <code class="text-xs opacity-80 break-all">{{ typeof item.value === 'object' ? JSON.stringify(item.value) : item.value }}</code>
           </template>
 
-          <!-- Mobile Card View -->
           <template #card-key="{ item }">
             <div class="flex flex-col">
-              <span class="text-[10px] font-bold text-base-content/40 uppercase tracking-widest">Property</span>
+              <span class="text-[9px] font-bold text-base-content/40 uppercase tracking-widest">Property</span>
               <span class="font-mono text-primary font-bold text-base mt-0.5">{{ displayKey(item.key) }}</span>
               <span class="text-[9px] opacity-30 mt-0.5">{{ item.key }}</span>
             </div>
           </template>
-
           <template #card-value="{ item }">
-            <div class="flex flex-col">
-              <span class="text-[10px] font-bold text-base-content/40 uppercase tracking-widest">Value</span>
+            <div class="flex flex-col mt-1">
+              <span class="text-[9px] font-bold text-base-content/40 uppercase tracking-widest">Current Value</span>
               <div class="bg-base-200 p-2 rounded mt-1 overflow-x-auto">
                 <code class="text-xs opacity-90 whitespace-pre-wrap">{{ typeof item.value === 'object' ? JSON.stringify(item.value, null, 2) : item.value }}</code>
               </div>
             </div>
+          </template>
+          <template #card-revision="{ item }">
+             <div class="flex justify-between items-center mt-2 pt-2 border-t border-base-300">
+               <span class="text-[9px] opacity-50 uppercase font-bold">Revision</span>
+               <span class="badge badge-sm font-mono">{{ item.revision }}</span>
+             </div>
           </template>
 
           <template #empty>
