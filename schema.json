@@ -250,11 +250,11 @@
         "type": "text"
       },
       {
-        "hidden": true,
+        "hidden": false,
         "id": "bool1547992806",
         "name": "emailVisibility",
         "presentable": false,
-        "required": false,
+        "required": true,
         "system": true,
         "type": "bool"
       },
@@ -526,7 +526,7 @@
         "type": "text"
       },
       {
-        "hidden": true,
+        "hidden": false,
         "id": "bool1547992806",
         "name": "emailVisibility",
         "presentable": false,
@@ -873,7 +873,7 @@
         "type": "text"
       },
       {
-        "hidden": true,
+        "hidden": false,
         "id": "bool1547992806",
         "name": "emailVisibility",
         "presentable": false,
@@ -1242,11 +1242,11 @@
         "type": "text"
       },
       {
-        "hidden": true,
+        "hidden": false,
         "id": "bool1547992806",
         "name": "emailVisibility",
         "presentable": false,
-        "required": false,
+        "required": true,
         "system": true,
         "type": "bool"
       },
@@ -1614,19 +1614,6 @@
         "maxSelect": 1,
         "minSelect": 0,
         "name": "nats_user",
-        "presentable": false,
-        "required": false,
-        "system": false,
-        "type": "relation"
-      },
-      {
-        "cascadeDelete": false,
-        "collectionId": "pbc_789448849",
-        "hidden": false,
-        "id": "relation324049829",
-        "maxSelect": 1,
-        "minSelect": 0,
-        "name": "nebula_host",
         "presentable": false,
         "required": false,
         "system": false,
@@ -2428,7 +2415,7 @@
     "listRule": "// 1. Always show my own memberships across all organizations (required for the switcher)\n(user = @request.auth.id) || \n\n// 2. Show other members ONLY IF they are in my current active context\n// AND I have the authority (Owner or Admin) in that specific organization.\n(\n  organization = @request.auth.current_organization && \n  (\n    (organization.owner = @request.auth.id) ||\n    (organization.memberships_via_organization.user ?= @request.auth.id && \n     organization.memberships_via_organization.role ?!= \"member\")\n  )\n)",
     "viewRule": "// 1. Always show my own memberships across all organizations (required for the switcher)\n(user = @request.auth.id) || \n\n// 2. Show other members ONLY IF they are in my current active context\n// AND I have the authority (Owner or Admin) in that specific organization.\n(\n  organization = @request.auth.current_organization && \n  (\n    (organization.owner = @request.auth.id) ||\n    (organization.memberships_via_organization.user ?= @request.auth.id && \n     organization.memberships_via_organization.role ?!= \"member\")\n  )\n)",
     "createRule": "// Only owners or admins of an organization can create new memberships for that organization.\n@request.auth.collectionName = \"users\" && \n@collection.memberships.user ?= @request.auth.id && \n@collection.memberships.organization ?= @request.body.organization && \n(@collection.memberships.role = \"admin\" || @collection.memberships.role = \"owner\")",
-    "updateRule": "// 1. Only owners/admins of the organization can update a membership.\n// 2. The organization of the membership record cannot be changed.\n@request.auth.collectionName = \"users\" && \n@collection.memberships.user ?= @request.auth.id && \n@collection.memberships.organization ?= organization && \n(@collection.memberships.role = \"admin\" || @collection.memberships.role = \"owner\") && \n@request.body.organization:changed = false",
+    "updateRule": "// 1. I am updating my OWN membership (User Settings)\nuser = @request.auth.id \n||\n// 2. I am the OWNER of the organization (checked directly on the Org record)\norganization.owner = @request.auth.id\n||\n// 3. I am an ADMIN of the organization (checked via memberships collection)\n(\n  @collection.memberships.user ?= @request.auth.id &&\n  @collection.memberships.organization ?= organization &&\n  @collection.memberships.role = \"admin\"\n)",
     "deleteRule": "// Only owners/admins of the organization can delete/remove a membership.\n@request.auth.collectionName = \"users\" && \n@collection.memberships.user ?= @request.auth.id && \n@collection.memberships.organization ?= organization && \n(@collection.memberships.role = \"admin\" || @collection.memberships.role = \"owner\")",
     "name": "memberships",
     "type": "base",
@@ -2496,6 +2483,19 @@
         "maxSelect": 1,
         "minSelect": 0,
         "name": "invited_by",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "relation"
+      },
+      {
+        "cascadeDelete": false,
+        "collectionId": "pbc_4097575383",
+        "hidden": false,
+        "id": "relation3991680165",
+        "maxSelect": 1,
+        "minSelect": 0,
+        "name": "nats_user",
         "presentable": false,
         "required": false,
         "system": false,
