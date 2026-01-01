@@ -3,8 +3,6 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router' // Added
 import { usePagination } from '@/composables/usePagination'
 import { useAuthStore } from '@/stores/auth'
-import { useToast } from '@/composables/useToast'
-import { pb } from '@/utils/pb'
 import type { Membership } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
@@ -12,7 +10,6 @@ import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 
 const router = useRouter() // Added
 const authStore = useAuthStore()
-const toast = useToast()
 
 // Pagination for members list
 const {

@@ -37,6 +37,7 @@ export interface Membership extends BaseRecord {
   organization: string // Organization ID
   role: 'owner' | 'admin' | 'member'
   invited_by?: string
+  nats_user?: string
 }
 
 // Invitation

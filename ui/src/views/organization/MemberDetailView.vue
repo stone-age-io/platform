@@ -4,34 +4,53 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import { pb } from '@/utils/pb'
-import type { Membership, NatsUser } from '@/types/pocketbase'
+import type { Membership, NatsUser, User, Organization } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
+
+/**
+ * Local interface that explicitly defines the fields we are expanding 
+ * in this specific view.
+ */
+interface FullMemberMembership extends Membership {
+  expand: {
+    user: User
+    organization: Organization
+    nats_user?: NatsUser
+    invited_by?: User
+  }
+}
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const toast = useToast()
 
-const membership = ref<Membership | null>(null)
+// --- State ---
+// Use the locally defined interface here
+const membership = ref<FullMemberMembership | null>(null)
 const natsUsers = ref<NatsUser[]>([])
 const loading = ref(true)
-const saving = ref(false)
+
+const roleSaving = ref(false)
+const natsSaving = ref(false)
 
 const memberId = route.params.id as string
 
+// --- Computeds ---
 const isSelf = computed(() => membership.value?.user === authStore.user?.id)
 const isOwner = computed(() => membership.value?.role === 'owner')
 const canManage = computed(() => authStore.canManageUsers && !isSelf.value && !isOwner.value)
 
+// --- Actions ---
+
 async function loadData() {
   loading.value = true
   try {
-    // 1. Get Membership details (added invited_by expansion)
+    // Cast the result to our local comprehensive interface
     membership.value = await pb.collection('memberships').getOne(memberId, {
       expand: 'user,organization,nats_user,invited_by'
-    })
+    }) as FullMemberMembership
 
-    // 2. Get available NATS users for this org
     natsUsers.value = await pb.collection('nats_users').getFullList<NatsUser>({
       sort: 'nats_username',
       filter: 'active = true'
@@ -45,19 +64,22 @@ async function loadData() {
 }
 
 async function updateRole(newRole: 'admin' | 'member') {
-  if (!membership.value) return
+  if (!membership.value || membership.value.role === newRole) return
   
-  saving.value = true
+  roleSaving.value = true
   try {
     const updated = await pb.collection('memberships').update(membership.value.id, {
       role: newRole
-    })
-    membership.value.role = updated.role
+    }, {
+      expand: 'user,organization,nats_user,invited_by'
+    }) as FullMemberMembership
+    
+    Object.assign(membership.value, updated)
     toast.success(`Role updated to ${newRole}`)
   } catch (err: any) {
     toast.error(err.message)
   } finally {
-    saving.value = false
+    roleSaving.value = false
   }
 }
 
@@ -67,23 +89,26 @@ async function updateNatsIdentity(event: Event) {
   
   if (!membership.value) return
   
-  saving.value = true
+  natsSaving.value = true
   try {
-    await pb.collection('memberships').update(membership.value.id, {
+    const updated = await pb.collection('memberships').update(membership.value.id, {
       nats_user: natsUserId
-    })
-    toast.success('NATS Identity assigned')
-    await loadData() 
+    }, {
+      expand: 'user,organization,nats_user,invited_by'
+    }) as FullMemberMembership
+    
+    Object.assign(membership.value, updated)
+    toast.success('NATS Identity updated')
   } catch (err: any) {
     toast.error(err.message)
   } finally {
-    saving.value = false
+    natsSaving.value = false
   }
 }
 
 async function removeMember() {
   if (!membership.value) return
-  const userName = membership.value.expand?.user?.name || membership.value.expand?.user?.email
+  const userName = membership.value.expand.user.name || membership.value.expand.user.email
   
   if (!confirm(`Are you sure you want to remove ${userName} from the organization?`)) return
   
@@ -101,29 +126,33 @@ onMounted(loadData)
 
 <template>
   <div class="space-y-6">
-    <!-- Loading State -->
     <div v-if="loading" class="flex justify-center p-12">
       <span class="loading loading-spinner loading-lg"></span>
     </div>
 
     <template v-else-if="membership">
-      <!-- Header -->
+      <!-- Page Header -->
       <div class="flex flex-col gap-4">
         <div class="breadcrumbs text-sm">
           <ul>
             <li><router-link to="/organization/members">Members</router-link></li>
-            <li>{{ membership.expand?.user?.name || 'Member Details' }}</li>
+            <li>{{ membership.expand.user.name || 'Member Details' }}</li>
           </ul>
         </div>
+        
         <div class="flex flex-col sm:flex-row justify-between items-start gap-4">
           <div class="flex items-center gap-3">
             <div class="avatar placeholder">
-              <div class="bg-neutral text-neutral-content rounded-full w-10">
-                <span class="text-xl">{{ membership.expand?.user?.name?.[0]?.toUpperCase() || 'U' }}</span>
+              <div class="bg-neutral text-neutral-content rounded-full w-12 border-2 border-base-300">
+                <span class="text-xl">{{ membership.expand.user.name?.[0]?.toUpperCase() || 'U' }}</span>
               </div>
             </div>
             <div>
-              <h1 class="text-3xl font-bold break-words">{{ membership.expand?.user?.name || 'Unknown User' }}</h1>
+              <h1 class="text-3xl font-bold break-words">{{ membership.expand.user.name || 'Unknown User' }}</h1>
+              <div class="flex items-center gap-2 mt-1">
+                 <span class="badge badge-sm badge-outline opacity-70">{{ membership.role.toUpperCase() }}</span>
+                 <span v-if="isSelf" class="badge badge-sm badge-info">YOU</span>
+              </div>
             </div>
           </div>
           
@@ -135,133 +164,133 @@ onMounted(loadData)
         </div>
       </div>
 
-      <!-- Content Grid -->
+      <!-- Main Dashboard Grid -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         
-        <!-- Left Column: User Profile & Permissions -->
+        <!-- LEFT COLUMN -->
         <div class="space-y-6">
           <BaseCard title="Profile Information">
-            <dl class="space-y-4">
+            <div class="space-y-5">
               <div>
-                <dt class="text-sm font-medium text-base-content/70">Email</dt>
-                <dd class="mt-1 text-sm font-mono select-all bg-base-200 inline-block px-2 py-1 rounded">
-                  {{ membership.expand?.user?.email }}
+                <dt class="text-xs font-bold text-base-content/50 uppercase tracking-widest mb-1">Email Address</dt>
+                <dd class="font-mono text-sm select-all bg-base-200 inline-block px-3 py-1.5 rounded-lg border border-base-300">
+                  {{ membership.expand.user.email }}
                 </dd>
               </div>
               
-              <div v-if="membership.expand?.invited_by">
-                <dt class="text-sm font-medium text-base-content/70 mb-2">Invited By</dt>
-                <div class="flex items-center gap-2 p-2 bg-base-200/50 rounded-lg border border-base-200">
+              <div>
+                <dt class="text-xs font-bold text-base-content/50 uppercase tracking-widest mb-2">Onboarding</dt>
+                <div v-if="membership.expand.invited_by" class="flex items-center gap-3 p-3 bg-base-200/50 rounded-xl border border-base-300">
                   <div class="avatar placeholder">
-                    <div class="bg-neutral-focus text-neutral-content rounded-full w-6">
+                    <div class="bg-primary text-primary-content rounded-full w-8">
                       <span class="text-xs">{{ membership.expand.invited_by.name?.[0] || '?' }}</span>
                     </div>
                   </div>
-                  <div class="text-sm">
-                    <span class="font-bold">{{ membership.expand.invited_by.name || 'Unknown' }}</span>
-                    <span class="text-xs opacity-60 ml-2">({{ membership.expand.invited_by.email }})</span>
+                  <div class="flex flex-col">
+                    <span class="text-xs opacity-60">Invited By</span>
+                    <span class="text-sm font-bold">{{ membership.expand.invited_by.name || membership.expand.invited_by.email }}</span>
                   </div>
                 </div>
+                <div v-else class="text-sm opacity-50 italic px-1">
+                  System provisioned or Direct entry
+                </div>
               </div>
-              <div v-else>
-                <dt class="text-sm font-medium text-base-content/70">Invited By</dt>
-                <dd class="text-sm opacity-50 italic">System / Direct Add</dd>
-              </div>
-            </dl>
+            </div>
           </BaseCard>
 
           <BaseCard title="Role & Permissions">
             <div class="space-y-4">
-              <div v-if="isOwner" class="alert alert-info py-2 text-sm">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                <span>Organization Owner (Immutable)</span>
+              <div v-if="isOwner" class="alert bg-primary/10 border-primary/20 py-3 text-sm">
+                <span class="text-xl">👑</span>
+                <span>This user is the <strong>Organization Owner</strong>. Roles are immutable for owners.</span>
               </div>
               
-              <div v-else-if="isSelf" class="alert alert-warning py-2 text-sm">
-                <span>You cannot change your own role.</span>
+              <div v-else-if="isSelf" class="alert bg-info/10 border-info/20 py-3 text-sm">
+                <span class="text-xl">👤</span>
+                <span>You are managing your own membership. Use the <strong>Settings</strong> page for personal changes.</span>
               </div>
 
               <div v-else>
-                <dt class="text-sm font-medium text-base-content/70 mb-2">Assigned Role</dt>
-                <div class="join w-full">
+                <label class="label pt-0"><span class="label-text font-bold text-base-content/50 uppercase text-xs">Assign Organization Role</span></label>
+                <div class="join w-full bg-base-200 p-1 rounded-xl">
                   <button 
-                    class="btn join-item flex-1" 
-                    :class="membership.role === 'admin' ? 'btn-primary' : 'btn-active btn-ghost'"
+                    class="btn join-item flex-1 border-none shadow-none" 
+                    :class="membership.role === 'admin' ? 'btn-primary' : 'btn-ghost'"
                     @click="updateRole('admin')"
-                    :disabled="saving"
+                    :disabled="roleSaving" 
                   >
-                    Admin
+                    <span v-if="roleSaving && membership.role === 'member'" class="loading loading-spinner loading-xs"></span>
+                    Administrator
                   </button>
                   <button 
-                    class="btn join-item flex-1" 
-                    :class="membership.role === 'member' ? 'btn-primary' : 'btn-active btn-ghost'"
+                    class="btn join-item flex-1 border-none shadow-none" 
+                    :class="membership.role === 'member' ? 'btn-primary' : 'btn-ghost'"
                     @click="updateRole('member')"
-                    :disabled="saving"
+                    :disabled="roleSaving"
                   >
-                    Member
+                    <span v-if="roleSaving && membership.role === 'admin'" class="loading loading-spinner loading-xs"></span>
+                    Standard Member
                   </button>
                 </div>
-                <p class="text-xs text-base-content/60 mt-2">
-                  Admins can invite new users and manage existing members.
-                </p>
               </div>
             </div>
           </BaseCard>
         </div>
 
-        <!-- Right Column: Infrastructure Identity -->
+        <!-- RIGHT COLUMN -->
         <div class="space-y-6">
           <BaseCard title="Infrastructure Identity">
-            <div class="space-y-4">
+            <div class="space-y-5">
               <div class="form-control">
-                <label class="label">
-                  <span class="label-text font-medium text-base-content/70">Assigned NATS User</span>
+                <label class="label pt-0">
+                  <span class="label-text font-bold text-base-content/50 uppercase text-xs">Linked NATS Identity</span>
                 </label>
-                <select 
-                  class="select select-bordered font-mono text-sm w-full"
-                  :value="membership.nats_user || ''"
-                  @change="updateNatsIdentity"
-                  :disabled="saving || isSelf" 
-                >
-                  <option value="">-- None Assigned --</option>
-                  <option v-for="u in natsUsers" :key="u.id" :value="u.id">
-                    {{ u.nats_username }}
-                  </option>
-                </select>
-                <label class="label">
-                  <span class="label-text-alt">
-                    Links this user to a specific NATS Credential for this organization context.
-                    {{ isSelf ? 'Go to Settings to change your own identity.' : '' }}
-                  </span>
-                </label>
-              </div>
-
-              <div v-if="membership.expand?.nats_user" class="bg-base-200 rounded-lg p-3 border border-base-300">
-                <div class="flex justify-between items-start mb-1">
-                  <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Username</span>
-                  <div class="flex items-center gap-1.5">
-                    <span class="w-2 h-2 rounded-full" :class="membership.expand.nats_user.active ? 'bg-success' : 'bg-error'"></span>
-                    <span class="text-xs font-medium text-base-content/70">{{ membership.expand.nats_user.active ? 'Active' : 'Inactive' }}</span>
+                <div class="relative">
+                  <select 
+                    class="select select-bordered font-mono text-sm w-full h-12"
+                    :value="membership.nats_user || ''"
+                    @change="updateNatsIdentity"
+                    :disabled="natsSaving || isSelf" 
+                  >
+                    <option value="">-- No Identity Linked --</option>
+                    <option v-for="u in natsUsers" :key="u.id" :value="u.id">
+                      {{ u.nats_username }}
+                    </option>
+                  </select>
+                  <div v-if="natsSaving" class="absolute right-10 top-3.5">
+                     <span class="loading loading-spinner loading-xs text-primary"></span>
                   </div>
                 </div>
-                <div class="font-mono text-sm break-all select-all">{{ membership.expand.nats_user.nats_username }}</div>
+              </div>
+
+              <div v-if="membership.expand.nats_user" class="bg-base-300/50 rounded-xl p-4 border border-base-300">
+                <div class="flex justify-between items-start mb-4">
+                  <span class="text-[10px] font-black text-base-content/40 uppercase tracking-widest">Active Credentials</span>
+                  <div class="badge badge-success badge-xs gap-1.5 font-bold">ACTIVE</div>
+                </div>
                 
-                <div class="divider my-2"></div>
-                
-                <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider block mb-1">Public Key</span>
-                <div class="font-mono text-xs text-base-content/70 break-all">
-                  {{ membership.expand.nats_user.public_key }}
+                <div class="grid grid-cols-1 gap-4">
+                  <div>
+                    <span class="block text-[10px] font-bold text-base-content/60 uppercase mb-1">NATS Username</span>
+                    <span class="font-mono text-sm text-primary select-all">{{ membership.expand.nats_user.nats_username }}</span>
+                  </div>
+                  <div>
+                    <span class="block text-[10px] font-bold text-base-content/60 uppercase mb-1">Public Key (NKey)</span>
+                    <div class="font-mono text-[10px] break-all bg-base-100 p-2 rounded border border-base-300 text-base-content/70">
+                      {{ membership.expand.nats_user.public_key }}
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div v-else class="text-center py-6 border-2 border-dashed border-base-300 rounded-lg bg-base-100">
-                <span class="text-2xl block mb-2 opacity-50">🚫</span>
-                <span class="text-sm opacity-60">No Identity Linked</span>
+              <div v-else class="flex flex-col items-center justify-center py-10 border-2 border-dashed border-base-300 rounded-xl bg-base-200/30">
+                <span class="text-4xl mb-2 opacity-20">📡</span>
+                <span class="text-xs font-bold opacity-40 uppercase tracking-widest">Offline Mode</span>
+                <p class="text-[10px] opacity-40 mt-1">No operational identity assigned</p>
               </div>
             </div>
           </BaseCard>
         </div>
-
       </div>
     </template>
   </div>

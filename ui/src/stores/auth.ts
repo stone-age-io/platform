@@ -181,7 +181,7 @@ export const useAuthStore = defineStore('auth', () => {
     // 1. Optimistic Update (partial)
     const idx = memberships.value.findIndex(m => m.id === memId)
     if (idx !== -1) {
-      memberships.value[idx] = { ...memberships.value[idx], ...data }
+      memberships.value[idx] = { ...memberships.value[idx], ...data } as ExtendedMembership
     }
 
     // 2. Backend Update

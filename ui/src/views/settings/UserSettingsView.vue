@@ -183,6 +183,10 @@ onMounted(() => {
   loadIdentities()
 })
 
+function triggerAvatarUpload() {
+  document.getElementById('avatar-upload')?.click()
+}
+
 // Reload identities if user switches org while on Settings page
 watch(() => authStore.currentOrgId, loadIdentities)
 </script>
@@ -224,7 +228,7 @@ watch(() => authStore.currentOrgId, loadIdentities)
           </div>
           
           <input id="avatar-upload" type="file" accept="image/*" class="hidden" @change="handleFileChange" />
-          <button type="button" @click="document.getElementById('avatar-upload')?.click()" class="btn btn-xs btn-outline">Change Avatar</button>
+          <button type="button" @click="triggerAvatarUpload" class="btn btn-xs btn-outline">Change Avatar</button>
         </div>
 
         <div class="flex-1 w-full grid grid-cols-1 md:grid-cols-2 gap-4">
