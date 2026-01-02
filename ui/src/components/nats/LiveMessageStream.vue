@@ -12,7 +12,7 @@ const toast = useToast()
 const isStreaming = ref(false)
 const messages = ref<any[]>([])
 const showSettings = ref(false)
-const selectedMessage = ref<any | null>(null) // For details modal
+const selectedMessage = ref<any | null>(null)
 
 // Config State (Persisted)
 const configuredSubjects = ref<string[]>([])
@@ -66,7 +66,7 @@ async function copyText(text: string, label: string = 'Text') {
     await navigator.clipboard.writeText(text)
     toast.success(`${label} copied`)
   } catch (e) {
-    toast.error('Failed to copy to clipboard')
+    toast.error('Failed to copy')
   }
 }
 
@@ -171,34 +171,33 @@ onUnmounted(() => {
 <template>
   <div class="card bg-base-100 shadow-xl h-[500px] flex flex-col">
     <!-- Header -->
-    <div class="card-body pb-2 flex-none">
-      <div class="flex justify-between items-center">
-        <div>
-          <h2 class="card-title flex items-center gap-2">
-            <span>📡 Live Event Bus</span>
-            <div class="badge" :class="isStreaming ? 'badge-success animate-pulse' : 'badge-ghost'">
-              {{ isStreaming ? 'LIVE' : 'PAUSED' }}
-            </div>
+    <div class="card-body p-4 flex-none border-b border-base-200">
+      <div class="flex flex-wrap justify-between items-center gap-3">
+        
+        <!-- Left: Identity & Status -->
+        <div class="flex items-center gap-3">
+          <h2 class="card-title text-base sm:text-lg m-0">
+            📡 NATS Messages 
           </h2>
-          <div class="text-xs opacity-60 mt-1 flex flex-wrap gap-1 items-center">
-            <span>Subscribed to:</span>
-            <span v-if="configuredSubjects.length === 0" class="badge badge-xs badge-ghost">All (&gt;)</span>
-            <span v-else v-for="s in configuredSubjects" :key="s" class="badge badge-xs badge-neutral font-mono">
-              {{ s }}
-            </span>
+          <div class="badge badge-sm font-bold" :class="isStreaming ? 'badge-success animate-pulse' : 'badge-ghost'">
+            {{ isStreaming ? 'LIVE' : 'PAUSED' }}
           </div>
         </div>
         
+        <!-- Right: Actions -->
         <div class="flex gap-2">
-          <button v-if="!isStreaming" @click="showSettings = true" class="btn btn-sm btn-ghost">
-            ⚙️ Configure
+          <!-- Only show Configure when paused to prevent hot-swapping confusion -->
+          <button v-if="!isStreaming" @click="showSettings = true" class="btn btn-sm btn-ghost" title="Configure Subjects">
+            ⚙️ <span class="hidden sm:inline">Config</span>
           </button>
-          <button v-if="messages.length > 0" @click="clearMessages" class="btn btn-sm btn-ghost" title="Clear Log">
+          
+          <button v-if="messages.length > 0" @click="clearMessages" class="btn btn-sm btn-ghost text-error" title="Clear Log">
             🚫
           </button>
+          
           <button 
             @click="toggleStream" 
-            class="btn btn-sm w-24"
+            class="btn btn-sm w-20 sm:w-24"
             :class="isStreaming ? 'btn-error btn-outline' : 'btn-primary'"
           >
             {{ isStreaming ? 'Stop' : 'Start' }}
@@ -208,7 +207,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Terminal / Log Area -->
-    <div class="flex-1 overflow-y-auto p-4 bg-base-200/50 border-t border-b border-base-200 font-mono text-xs space-y-3">
+    <div class="flex-1 overflow-y-auto p-4 bg-base-200/50 font-mono text-xs space-y-3">
       
       <!-- Empty State -->
       <div v-if="messages.length === 0" class="h-full flex flex-col items-center justify-center opacity-40">
@@ -237,6 +236,7 @@ onUnmounted(() => {
           </div>
           <div class="flex items-center gap-2 shrink-0">
             <span class="text-[10px] opacity-50">{{ formatDate(msg.timestamp, 'HH:mm:ss.SSS') }}</span>
+            <!-- Explicit Copy Data Button -->
             <button 
               @click.stop="copyText(getPayloadString(msg.payload), 'Payload')"
               class="btn btn-ghost btn-xs opacity-0 group-hover:opacity-100 transition-opacity"
@@ -251,21 +251,24 @@ onUnmounted(() => {
           @click="selectedMessage = msg"
           class="p-3 cursor-pointer relative hover:bg-base-200/30 transition-colors"
         >
+          <!-- Constrain Height -->
           <div class="overflow-hidden max-h-32 text-base-content/80 relative">
             <pre v-if="typeof msg.payload === 'object'">{{ JSON.stringify(msg.payload, null, 2) }}</pre>
             <span v-else class="break-all whitespace-pre-wrap">{{ msg.payload }}</span>
             
-            <!-- Fade Out Gradient for truncation -->
+            <!-- Fade Out Gradient for truncation visual cue -->
             <div class="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-base-100 to-transparent pointer-events-none"></div>
           </div>
+          
           <div class="text-[9px] text-center opacity-30 mt-1 uppercase tracking-widest group-hover:text-primary group-hover:opacity-100 transition-all">
-            Click to view full message
+            Click to view details
           </div>
         </div>
       </div>
 
     </div>
     
+    <!-- Footer Warning -->
     <div v-if="!natsStore.isConnected" class="bg-warning/10 p-2 text-center text-xs text-warning border-t border-warning/20">
       ⚠️ NATS Disconnected. Check <router-link to="/settings" class="link">Settings</router-link>.
     </div>
@@ -289,9 +292,11 @@ onUnmounted(() => {
 
       <div class="mt-4">
         <label class="label"><span class="label-text text-xs uppercase font-bold opacity-50">Active Filters</span></label>
+        
         <div v-if="configuredSubjects.length === 0" class="alert bg-base-200 text-xs py-2">
           <span>No filters set. Defaulting to <strong>&gt;</strong> (All messages).</span>
         </div>
+
         <div class="flex flex-wrap gap-2">
           <div v-for="sub in configuredSubjects" :key="sub" class="badge badge-lg gap-2 pr-1">
             <span class="font-mono text-xs">{{ sub }}</span>
