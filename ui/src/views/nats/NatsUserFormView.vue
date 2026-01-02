@@ -7,13 +7,22 @@ import { useToast } from '@/composables/useToast'
 import type { NatsUser, NatsAccount, NatsRole } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 
+const props = defineProps<{
+  embedded?: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'success', record: NatsUser): void
+  (e: 'cancel'): void
+}>()
+
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const toast = useToast()
 
 const userId = route.params.id as string | undefined
-const isEdit = computed(() => !!userId)
+const isEdit = computed(() => !!userId && !props.embedded)
 
 // Form data
 const formData = ref({
@@ -80,7 +89,7 @@ async function loadOptions() {
  * Load existing user for editing
  */
 async function loadUser() {
-  if (!userId) return
+  if (!userId || props.embedded) return
   
   loading.value = true
   
@@ -141,20 +150,34 @@ async function handleSubmit() {
       data.passwordConfirm = formData.value.passwordConfirm
     }
     
+    let record: NatsUser
+
     if (isEdit.value) {
-      await pb.collection('nats_users').update(userId!, data)
+      record = await pb.collection('nats_users').update<NatsUser>(userId!, data)
       toast.success('NATS user updated')
     } else {
       data.organization = authStore.currentOrgId
-      await pb.collection('nats_users').create(data)
+      record = await pb.collection('nats_users').create<NatsUser>(data)
       toast.success('NATS user created')
     }
     
-    router.push('/nats/users')
+    if (props.embedded) {
+      emit('success', record)
+    } else {
+      router.push('/nats/users')
+    }
   } catch (err: any) {
     toast.error(err.message || 'Failed to save NATS user')
   } finally {
     loading.value = false
+  }
+}
+
+function handleCancel() {
+  if (props.embedded) {
+    emit('cancel')
+  } else {
+    router.back()
   }
 }
 
@@ -168,8 +191,8 @@ onMounted(() => {
 
 <template>
   <div class="space-y-6">
-    <!-- Header -->
-    <div>
+    <!-- Header: Hidden if Embedded -->
+    <div v-if="!embedded">
       <div class="breadcrumbs text-sm">
         <ul>
           <li><router-link to="/nats/users">NATS Users</router-link></li>
@@ -189,162 +212,167 @@ onMounted(() => {
     <!-- Form -->
     <form v-else @submit.prevent="handleSubmit" class="space-y-6">
       
-      <!-- Identity -->
-      <BaseCard title="Identity">
-        <div class="space-y-4">
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">NATS Username *</span>
-            </label>
-            <input 
-              v-model="formData.nats_username"
-              type="text" 
-              placeholder="user.device.sensor1"
-              class="input input-bordered font-mono"
-              required
-              :disabled="isEdit"
-            />
-            <label class="label">
-              <span class="label-text-alt">
-                {{ isEdit ? 'Username cannot be changed after creation' : 'Use dot notation for hierarchical naming' }}
-              </span>
-            </label>
-          </div>
-          
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Description</span>
-            </label>
-            <textarea 
-              v-model="formData.description"
-              class="textarea textarea-bordered"
-              rows="3"
-              placeholder="Optional description"
-            ></textarea>
-          </div>
-        </div>
-      </BaseCard>
-
-      <!-- Authentication -->
-      <BaseCard title="Authentication">
-        <div class="space-y-4">
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Email (Unique Identity) *</span>
-            </label>
-            <input 
-              v-model="formData.email"
-              type="email" 
-              placeholder="device-uuid@nats.local"
-              class="input input-bordered"
-              required
-            />
-            <label class="label">
-              <span class="label-text-alt">Unique email used for PocketBase authentication record.</span>
-            </label>
-          </div>
-          
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Password {{ isEdit ? '(Optional)' : '*' }}</span>
-              </label>
-              <input 
-                v-model="formData.password"
-                type="password" 
-                class="input input-bordered"
-                :required="!isEdit"
-                minlength="8"
-              />
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        
+        <!-- Left Column -->
+        <div class="space-y-6">
+          <BaseCard title="Identity">
+            <div class="space-y-4">
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">NATS Username *</span>
+                </label>
+                <input 
+                  v-model="formData.nats_username"
+                  type="text" 
+                  placeholder="user.device.sensor1"
+                  class="input input-bordered font-mono"
+                  required
+                  :disabled="isEdit"
+                />
+                <label class="label">
+                  <span class="label-text-alt">
+                    {{ isEdit ? 'Username cannot be changed after creation' : 'Use dot notation for hierarchical naming' }}
+                  </span>
+                </label>
+              </div>
+              
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Description</span>
+                </label>
+                <textarea 
+                  v-model="formData.description"
+                  class="textarea textarea-bordered"
+                  rows="3"
+                  placeholder="Optional description"
+                ></textarea>
+              </div>
             </div>
-            
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Confirm Password {{ isEdit ? '(Optional)' : '*' }}</span>
-              </label>
-              <input 
-                v-model="formData.passwordConfirm"
-                type="password" 
-                class="input input-bordered"
-                :required="!!formData.password"
-              />
-            </div>
-          </div>
-        </div>
-      </BaseCard>
-      
-      <!-- Permissions -->
-      <BaseCard title="Account & Permissions">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">NATS Account *</span>
-            </label>
-            <select v-model="formData.account_id" class="select select-bordered" required>
-              <option value="">Select an account</option>
-              <option v-for="account in accounts" :key="account.id" :value="account.id">
-                {{ account.name }}
-              </option>
-            </select>
-          </div>
-          
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Role *</span>
-            </label>
-            <select v-model="formData.role_id" class="select select-bordered" required>
-              <option value="">Select a role</option>
-              <option v-for="role in roles" :key="role.id" :value="role.id">
-                {{ role.name }}
-                <span v-if="role.is_default"> (Default)</span>
-              </option>
-            </select>
-          </div>
-        </div>
-      </BaseCard>
-      
-      <!-- Security Options -->
-      <BaseCard title="Security Settings">
-        <div class="space-y-4">
-          <div class="form-control">
-            <label class="label cursor-pointer justify-start gap-4">
-              <input 
-                v-model="formData.active"
-                type="checkbox" 
-                class="toggle toggle-success"
-              />
-              <span class="label-text">
-                <span class="font-medium">Active Status</span>
-                <span class="block text-sm text-base-content/70">
-                  Allow this user to authenticate and connect
-                </span>
-              </span>
-            </label>
-          </div>
+          </BaseCard>
 
-          <div class="form-control">
-            <label class="label cursor-pointer justify-start gap-4">
-              <input 
-                v-model="formData.bearer_token"
-                type="checkbox" 
-                class="checkbox"
-              />
-              <span class="label-text">
-                <span class="font-medium">Enable Bearer Token</span>
-                <span class="block text-sm text-base-content/70">
-                  Generate a long-lived bearer token for simplified auth
-                </span>
-              </span>
-            </label>
-          </div>
+          <BaseCard title="Authentication">
+            <div class="space-y-4">
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Email (Identity) *</span>
+                </label>
+                <input 
+                  v-model="formData.email"
+                  type="email" 
+                  placeholder="device-uuid@nats.local"
+                  class="input input-bordered"
+                  required
+                />
+                <label class="label">
+                  <span class="label-text-alt">Unique email used for PocketBase authentication record.</span>
+                </label>
+              </div>
+              
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="form-control">
+                  <label class="label">
+                    <span class="label-text">Password {{ isEdit ? '(Optional)' : '*' }}</span>
+                  </label>
+                  <input 
+                    v-model="formData.password"
+                    type="password" 
+                    class="input input-bordered"
+                    :required="!isEdit"
+                    minlength="8"
+                  />
+                </div>
+                
+                <div class="form-control">
+                  <label class="label">
+                    <span class="label-text">Confirm Password {{ isEdit ? '(Optional)' : '*' }}</span>
+                  </label>
+                  <input 
+                    v-model="formData.passwordConfirm"
+                    type="password" 
+                    class="input input-bordered"
+                    :required="!!formData.password"
+                  />
+                </div>
+              </div>
+            </div>
+          </BaseCard>
         </div>
-      </BaseCard>
+
+        <!-- Right Column -->
+        <div class="space-y-6">
+          <BaseCard title="Account & Permissions">
+            <div class="space-y-4">
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">NATS Account *</span>
+                </label>
+                <select v-model="formData.account_id" class="select select-bordered" required>
+                  <option value="">Select an account</option>
+                  <option v-for="account in accounts" :key="account.id" :value="account.id">
+                    {{ account.name }}
+                  </option>
+                </select>
+              </div>
+              
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Role *</span>
+                </label>
+                <select v-model="formData.role_id" class="select select-bordered" required>
+                  <option value="">Select a role</option>
+                  <option v-for="role in roles" :key="role.id" :value="role.id">
+                    {{ role.name }}
+                    <span v-if="role.is_default"> (Default)</span>
+                  </option>
+                </select>
+              </div>
+            </div>
+          </BaseCard>
+          
+          <BaseCard title="Security Settings">
+            <div class="space-y-4">
+              <div class="form-control">
+                <label class="label cursor-pointer justify-start gap-4">
+                  <input 
+                    v-model="formData.active"
+                    type="checkbox" 
+                    class="toggle toggle-success"
+                  />
+                  <span class="label-text">
+                    <span class="font-medium">Active Status</span>
+                    <span class="block text-sm text-base-content/70">
+                      Allow this user to authenticate and connect
+                    </span>
+                  </span>
+                </label>
+              </div>
+
+              <div class="form-control">
+                <label class="label cursor-pointer justify-start gap-4">
+                  <input 
+                    v-model="formData.bearer_token"
+                    type="checkbox" 
+                    class="checkbox"
+                  />
+                  <span class="label-text">
+                    <span class="font-medium">Enable Bearer Token</span>
+                    <span class="block text-sm text-base-content/70">
+                      Generate a long-lived bearer token for simplified auth
+                    </span>
+                  </span>
+                </label>
+              </div>
+            </div>
+          </BaseCard>
+        </div>
+      </div>
       
       <!-- Actions -->
       <div class="flex flex-col sm:flex-row justify-end gap-2 sm:gap-4">
         <button 
           type="button" 
-          @click="router.back()" 
+          @click="handleCancel" 
           class="btn btn-ghost order-2 sm:order-1"
           :disabled="loading"
         >

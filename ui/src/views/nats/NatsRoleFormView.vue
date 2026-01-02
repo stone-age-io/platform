@@ -78,14 +78,10 @@ async function handleSubmit() {
     }
     
     if (isEdit.value) {
-      // Update existing role
       await pb.collection('nats_roles').update(roleId!, data)
       toast.success('Role updated')
     } else {
-      // Create new role
-      // IMPORTANT: Frontend must set organization
       data.organization = authStore.currentOrgId
-      
       await pb.collection('nats_roles').create(data)
       toast.success('Role created')
     }
@@ -122,144 +118,152 @@ onMounted(() => {
     
     <!-- Form -->
     <form @submit.prevent="handleSubmit" class="space-y-6">
-      <BaseCard title="Basic Information">
-        <div class="space-y-4">
-          <!-- Name -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Name *</span>
-            </label>
-            <input 
-              v-model="formData.name"
-              type="text" 
-              placeholder="Enter role name"
-              class="input input-bordered"
-              required
-            />
-          </div>
-          
-          <!-- Description -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Description</span>
-            </label>
-            <textarea 
-              v-model="formData.description"
-              class="textarea textarea-bordered"
-              rows="3"
-              placeholder="Optional description"
-            ></textarea>
-          </div>
-          
-          <!-- Is Default -->
-          <div class="form-control">
-            <label class="label cursor-pointer justify-start gap-4">
-              <input 
-                v-model="formData.is_default"
-                type="checkbox" 
-                class="checkbox"
-              />
-              <span class="label-text">
-                <span class="font-medium">Default Role</span>
-                <span class="block text-sm text-base-content/70 mt-1">
-                  Automatically assign this role to new NATS users
-                </span>
-              </span>
-            </label>
-          </div>
-        </div>
-      </BaseCard>
       
-      <!-- Permissions -->
-      <BaseCard title="Permissions">
-        <div class="space-y-4">
-          <!-- Publish Permissions -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Publish Permissions</span>
-            </label>
-            <textarea 
-              v-model="formData.publish_permissions"
-              class="textarea textarea-bordered font-mono"
-              rows="6"
-              placeholder="subjects.>"
-            ></textarea>
-            <label class="label">
-              <span class="label-text-alt">
-                Comma-separated list of subjects this role can publish to. Use '>' for wildcards.
-              </span>
-            </label>
-          </div>
-          
-          <!-- Subscribe Permissions -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Subscribe Permissions</span>
-            </label>
-            <textarea 
-              v-model="formData.subscribe_permissions"
-              class="textarea textarea-bordered font-mono"
-              rows="6"
-              placeholder="subjects.>"
-            ></textarea>
-            <label class="label">
-              <span class="label-text-alt">
-                Comma-separated list of subjects this role can subscribe to. Use '>' for wildcards.
-              </span>
-            </label>
-          </div>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        
+        <!-- Left Column: Basic Info & Limits -->
+        <div class="space-y-6">
+          <BaseCard title="Basic Information">
+            <div class="space-y-4">
+              <!-- Name -->
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Name *</span>
+                </label>
+                <input 
+                  v-model="formData.name"
+                  type="text" 
+                  placeholder="Enter role name"
+                  class="input input-bordered"
+                  required
+                />
+              </div>
+              
+              <!-- Description -->
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Description</span>
+                </label>
+                <textarea 
+                  v-model="formData.description"
+                  class="textarea textarea-bordered"
+                  rows="3"
+                  placeholder="Optional description"
+                ></textarea>
+              </div>
+              
+              <!-- Is Default -->
+              <div class="form-control">
+                <label class="label cursor-pointer justify-start gap-4">
+                  <input 
+                    v-model="formData.is_default"
+                    type="checkbox" 
+                    class="checkbox"
+                  />
+                  <span class="label-text">
+                    <span class="font-medium">Default Role</span>
+                    <span class="block text-sm text-base-content/70 mt-1">
+                      Automatically assign this role to new NATS users
+                    </span>
+                  </span>
+                </label>
+              </div>
+            </div>
+          </BaseCard>
+
+          <BaseCard title="Resource Limits">
+            <div class="grid grid-cols-1 gap-4">
+              <!-- Max Subscriptions -->
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Max Subscriptions</span>
+                </label>
+                <input 
+                  v-model="formData.max_subscriptions"
+                  type="number"
+                  class="input input-bordered font-mono"
+                />
+                <label class="label">
+                  <span class="label-text-alt">-1 = Unlimited</span>
+                </label>
+              </div>
+              
+              <!-- Max Data -->
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Max Data (bytes)</span>
+                </label>
+                <input 
+                  v-model="formData.max_data"
+                  type="number"
+                  class="input input-bordered font-mono"
+                />
+                <label class="label">
+                  <span class="label-text-alt">-1 = Unlimited</span>
+                </label>
+              </div>
+              
+              <!-- Max Payload -->
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Max Payload (bytes)</span>
+                </label>
+                <input 
+                  v-model="formData.max_payload"
+                  type="number"
+                  class="input input-bordered font-mono"
+                />
+                <label class="label">
+                  <span class="label-text-alt">-1 = Unlimited</span>
+                </label>
+              </div>
+            </div>
+          </BaseCard>
         </div>
-      </BaseCard>
-      
-      <!-- Limits -->
-      <BaseCard title="Resource Limits">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <!-- Max Subscriptions -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Max Subscriptions</span>
-            </label>
-            <input 
-              v-model="formData.max_subscriptions"
-              type="number"
-              class="input input-bordered font-mono"
-            />
-            <label class="label">
-              <span class="label-text-alt">-1 = Unlimited</span>
-            </label>
-          </div>
-          
-          <!-- Max Data -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Max Data (bytes)</span>
-            </label>
-            <input 
-              v-model="formData.max_data"
-              type="number"
-              class="input input-bordered font-mono"
-            />
-            <label class="label">
-              <span class="label-text-alt">-1 = Unlimited</span>
-            </label>
-          </div>
-          
-          <!-- Max Payload -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Max Payload (bytes)</span>
-            </label>
-            <input 
-              v-model="formData.max_payload"
-              type="number"
-              class="input input-bordered font-mono"
-            />
-            <label class="label">
-              <span class="label-text-alt">-1 = Unlimited</span>
-            </label>
-          </div>
+
+        <!-- Right Column: Permissions -->
+        <div class="space-y-6">
+          <BaseCard title="Permissions">
+            <div class="space-y-4">
+              <!-- Publish Permissions -->
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Publish Permissions</span>
+                </label>
+                <textarea 
+                  v-model="formData.publish_permissions"
+                  class="textarea textarea-bordered font-mono"
+                  rows="8"
+                  placeholder="subjects.>"
+                ></textarea>
+                <label class="label">
+                  <span class="label-text-alt">
+                    Comma-separated list of subjects this role can publish to. Use '>' for wildcards.
+                  </span>
+                </label>
+              </div>
+              
+              <!-- Subscribe Permissions -->
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Subscribe Permissions</span>
+                </label>
+                <textarea 
+                  v-model="formData.subscribe_permissions"
+                  class="textarea textarea-bordered font-mono"
+                  rows="8"
+                  placeholder="subjects.>"
+                ></textarea>
+                <label class="label">
+                  <span class="label-text-alt">
+                    Comma-separated list of subjects this role can subscribe to. Use '>' for wildcards.
+                  </span>
+                </label>
+              </div>
+            </div>
+          </BaseCard>
         </div>
-      </BaseCard>
+      </div>
       
       <!-- Actions -->
       <div class="flex flex-col sm:flex-row justify-end gap-2 sm:gap-4">

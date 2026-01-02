@@ -84,7 +84,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="max-w-2xl mx-auto space-y-6">
+  <div class="mx-auto space-y-6">
     <div class="breadcrumbs text-sm">
       <ul>
         <li><router-link to="/edges/types">Edge Types</router-link></li>
@@ -94,7 +94,7 @@ onMounted(() => {
     
     <h1 class="text-3xl font-bold">{{ isEdit ? 'Edit' : 'Create' }} Edge Type</h1>
 
-    <form @submit.prevent="submit">
+    <form @submit.prevent="submit" class="max-w-4xl mx-auto">
       <BaseCard>
         <div class="space-y-4">
           <div class="form-control">

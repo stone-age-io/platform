@@ -7,13 +7,22 @@ import { useToast } from '@/composables/useToast'
 import type { Location, LocationType } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 
+const props = defineProps<{
+  embedded?: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'success', record: Location): void
+  (e: 'cancel'): void
+}>()
+
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const toast = useToast()
 
 const locationId = route.params.id as string | undefined
-const isEdit = computed(() => !!locationId)
+const isEdit = computed(() => !!locationId && !props.embedded)
 
 // Form data
 const formData = ref({
@@ -66,7 +75,7 @@ async function loadOptions() {
  * Load existing location for editing
  */
 async function loadLocation() {
-  if (!locationId) return
+  if (!locationId || props.embedded) return
   
   loading.value = true
   
@@ -198,24 +207,38 @@ async function handleSubmit() {
       formDataToSend.append('floorplan', floorplanFile.value)
     }
     
+    let record: Location
+
     if (isEdit.value) {
       // Update existing location
-      await pb.collection('locations').update(locationId!, formDataToSend)
+      record = await pb.collection('locations').update<Location>(locationId!, formDataToSend)
       toast.success('Location updated')
     } else {
       // Create new location
       // IMPORTANT: Frontend must set organization
       formDataToSend.append('organization', authStore.currentOrgId!)
       
-      await pb.collection('locations').create(formDataToSend)
+      record = await pb.collection('locations').create<Location>(formDataToSend)
       toast.success('Location created')
     }
     
-    router.push('/locations')
+    if (props.embedded) {
+      emit('success', record)
+    } else {
+      router.push('/locations')
+    }
   } catch (err: any) {
     toast.error(err.message || 'Failed to save location')
   } finally {
     loading.value = false
+  }
+}
+
+function handleCancel() {
+  if (props.embedded) {
+    emit('cancel')
+  } else {
+    router.back()
   }
 }
 
@@ -229,8 +252,8 @@ onMounted(() => {
 
 <template>
   <div class="space-y-6">
-    <!-- Header -->
-    <div>
+    <!-- Header: Hide if embedded -->
+    <div v-if="!embedded">
       <div class="breadcrumbs text-sm">
         <ul>
           <li><router-link to="/locations">Locations</router-link></li>
@@ -249,175 +272,169 @@ onMounted(() => {
     
     <!-- Form -->
     <form v-else @submit.prevent="handleSubmit" class="space-y-6">
-      <BaseCard title="Basic Information">
-        <div class="space-y-4">
-          <!-- Name -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Name *</span>
-            </label>
-            <input 
-              v-model="formData.name"
-              type="text" 
-              placeholder="Enter location name"
-              class="input input-bordered"
-              required
-            />
-          </div>
-          
-          <!-- Description -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Description</span>
-            </label>
-            <textarea 
-              v-model="formData.description"
-              class="textarea textarea-bordered"
-              rows="3"
-              placeholder="Optional description"
-            ></textarea>
-          </div>
-          
-          <!-- Code -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Code</span>
-            </label>
-            <input 
-              v-model="formData.code"
-              type="text" 
-              placeholder="Optional code/identifier"
-              class="input input-bordered font-mono"
-            />
-          </div>
-          
-          <!-- Type -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Type</span>
-            </label>
-            <select v-model="formData.type" class="select select-bordered">
-              <option value="">Select a type (optional)</option>
-              <option v-for="type in locationTypes" :key="type.id" :value="type.id">
-                {{ type.name }}
-              </option>
-            </select>
-          </div>
-          
-          <!-- Parent Location -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Parent Location</span>
-            </label>
-            <select v-model="formData.parent" class="select select-bordered">
-              <option value="">None (top level)</option>
-              <option v-for="location in parentLocations" :key="location.id" :value="location.id">
-                {{ location.name }}
-              </option>
-            </select>
-            <label class="label">
-              <span class="label-text-alt">For hierarchical organization (e.g., Building > Floor > Room)</span>
-            </label>
-          </div>
-        </div>
-      </BaseCard>
       
-      <!-- Coordinates -->
-      <BaseCard title="Geo Coordinates">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <!-- Latitude -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Latitude</span>
-            </label>
-            <input 
-              v-model="formData.latitude"
-              type="number"
-              step="any"
-              placeholder="e.g., 37.7749"
-              class="input input-bordered font-mono"
-            />
-            <label class="label">
-              <span class="label-text-alt">Range: -90 to 90</span>
-            </label>
-          </div>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        
+        <!-- Left Column: Basic Info -->
+        <div class="space-y-6">
+          <BaseCard title="Basic Information">
+            <div class="space-y-4">
+              <!-- Name -->
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Name *</span>
+                </label>
+                <input 
+                  v-model="formData.name"
+                  type="text" 
+                  placeholder="Enter location name"
+                  class="input input-bordered"
+                  required
+                />
+              </div>
+              
+              <!-- Description -->
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Description</span>
+                </label>
+                <textarea 
+                  v-model="formData.description"
+                  class="textarea textarea-bordered"
+                  rows="3"
+                  placeholder="Optional description"
+                ></textarea>
+              </div>
+              
+              <!-- Code -->
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Code</span>
+                </label>
+                <input 
+                  v-model="formData.code"
+                  type="text" 
+                  placeholder="Optional code/identifier"
+                  class="input input-bordered font-mono"
+                />
+              </div>
+              
+              <!-- Type -->
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Type</span>
+                </label>
+                <select v-model="formData.type" class="select select-bordered">
+                  <option value="">Select a type (optional)</option>
+                  <option v-for="type in locationTypes" :key="type.id" :value="type.id">
+                    {{ type.name }}
+                  </option>
+                </select>
+              </div>
+              
+              <!-- Parent Location -->
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Parent Location</span>
+                </label>
+                <select v-model="formData.parent" class="select select-bordered">
+                  <option value="">None (top level)</option>
+                  <option v-for="location in parentLocations" :key="location.id" :value="location.id">
+                    {{ location.name }}
+                  </option>
+                </select>
+                <label class="label">
+                  <span class="label-text-alt">For hierarchical organization (e.g., Building > Floor > Room)</span>
+                </label>
+              </div>
+            </div>
+          </BaseCard>
+        </div>
+
+        <!-- Right Column: Coordinates, Floorplan, Metadata -->
+        <div class="space-y-6">
+          <BaseCard title="Geo Coordinates">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <!-- Latitude -->
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Latitude</span>
+                </label>
+                <input 
+                  v-model="formData.latitude"
+                  type="number"
+                  step="any"
+                  placeholder="e.g., 37.7749"
+                  class="input input-bordered font-mono"
+                />
+              </div>
+              
+              <!-- Longitude -->
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Longitude</span>
+                </label>
+                <input 
+                  v-model="formData.longitude"
+                  type="number"
+                  step="any"
+                  placeholder="e.g., -122.4194"
+                  class="input input-bordered font-mono"
+                />
+              </div>
+            </div>
+            <div class="alert alert-info mt-4">
+              <span class="text-sm">Both latitude and longitude are required for map display.</span>
+            </div>
+          </BaseCard>
           
-          <!-- Longitude -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Longitude</span>
-            </label>
-            <input 
-              v-model="formData.longitude"
-              type="number"
-              step="any"
-              placeholder="e.g., -122.4194"
-              class="input input-bordered font-mono"
-            />
-            <label class="label">
-              <span class="label-text-alt">Range: -180 to 180</span>
-            </label>
-          </div>
-        </div>
-        <div class="alert alert-info mt-4">
-          <span class="text-sm">Both latitude and longitude are required for map display. Leave both empty if location has no coordinates.</span>
-        </div>
-      </BaseCard>
-      
-      <!-- Floorplan -->
-      <BaseCard title="Floorplan">
-        <div class="form-control">
-          <label class="label">
-            <span class="label-text">Upload Floorplan Image</span>
-            <span class="label-text-alt">Optional</span>
-          </label>
+          <BaseCard title="Floorplan">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Upload Floorplan Image</span>
+                <span class="label-text-alt">Optional</span>
+              </label>
+              
+              <!-- Current floorplan preview -->
+              <div v-if="currentFloorplan && !floorplanFile" class="mb-4">
+                <p class="text-sm text-base-content/70 mb-2">Current floorplan:</p>
+                <img 
+                  :src="currentFloorplan" 
+                  alt="Current floorplan"
+                  class="max-w-xs rounded border border-base-300"
+                />
+              </div>
+              
+              <input 
+                type="file"
+                accept="image/*"
+                @change="handleFileChange"
+                class="file-input file-input-bordered"
+              />
+              <label class="label">
+                <span class="label-text-alt">Accepts: JPG, PNG, SVG, GIF, WebP</span>
+              </label>
+            </div>
+          </BaseCard>
           
-          <!-- Current floorplan preview -->
-          <div v-if="currentFloorplan && !floorplanFile" class="mb-4">
-            <p class="text-sm text-base-content/70 mb-2">Current floorplan:</p>
-            <img 
-              :src="currentFloorplan" 
-              alt="Current floorplan"
-              class="max-w-xs rounded border border-base-300"
-            />
-          </div>
-          
-          <input 
-            type="file"
-            accept="image/*"
-            @change="handleFileChange"
-            class="file-input file-input-bordered"
-          />
-          <label class="label">
-            <span class="label-text-alt">Accepts: JPG, PNG, SVG, GIF, WebP</span>
-          </label>
+          <BaseCard title="Metadata (JSON)">
+            <div class="form-control">
+              <textarea 
+                v-model="formData.metadata"
+                class="textarea textarea-bordered font-mono"
+                rows="6"
+                placeholder='{"key": "value"}'
+              ></textarea>
+            </div>
+          </BaseCard>
         </div>
-      </BaseCard>
-      
-      <!-- Metadata -->
-      <BaseCard title="Metadata (JSON)">
-        <div class="form-control">
-          <label class="label">
-            <span class="label-text">Custom metadata as JSON</span>
-            <span class="label-text-alt">Optional</span>
-          </label>
-          <textarea 
-            v-model="formData.metadata"
-            class="textarea textarea-bordered font-mono"
-            rows="6"
-            placeholder='{"key": "value"}'
-          ></textarea>
-          <label class="label">
-            <span class="label-text-alt">Must be valid JSON</span>
-          </label>
-        </div>
-      </BaseCard>
+      </div>
       
       <!-- Actions -->
       <div class="flex flex-col sm:flex-row justify-end gap-2 sm:gap-4">
         <button 
           type="button" 
-          @click="router.back()" 
+          @click="handleCancel" 
           class="btn btn-ghost order-2 sm:order-1"
           :disabled="loading"
         >

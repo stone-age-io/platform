@@ -7,13 +7,22 @@ import { useToast } from '@/composables/useToast'
 import type { NebulaHost, NebulaNetwork } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 
+const props = defineProps<{
+  embedded?: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'success', record: NebulaHost): void
+  (e: 'cancel'): void
+}>()
+
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const toast = useToast()
 
 const hostId = route.params.id as string | undefined
-const isEdit = computed(() => !!hostId)
+const isEdit = computed(() => !!hostId && !props.embedded)
 
 // Form data
 const formData = ref({
@@ -68,7 +77,7 @@ async function loadOptions() {
  * Load existing host
  */
 async function loadHost() {
-  if (!hostId) return
+  if (!hostId || props.embedded) return
   
   loading.value = true
   
@@ -144,20 +153,34 @@ async function handleSubmit() {
       data.overlay_ip = formData.value.overlay_ip
     }
     
+    let record: NebulaHost
+
     if (isEdit.value) {
-      await pb.collection('nebula_hosts').update(hostId!, data)
+      record = await pb.collection('nebula_hosts').update<NebulaHost>(hostId!, data)
       toast.success('Nebula host updated')
     } else {
       data.organization = authStore.currentOrgId
-      await pb.collection('nebula_hosts').create(data)
+      record = await pb.collection('nebula_hosts').create<NebulaHost>(data)
       toast.success('Nebula host created')
     }
     
-    router.push('/nebula/hosts')
+    if (props.embedded) {
+      emit('success', record)
+    } else {
+      router.push('/nebula/hosts')
+    }
   } catch (err: any) {
     toast.error(err.message || 'Failed to save Nebula host')
   } finally {
     loading.value = false
+  }
+}
+
+function handleCancel() {
+  if (props.embedded) {
+    emit('cancel')
+  } else {
+    router.back()
   }
 }
 
@@ -171,8 +194,8 @@ onMounted(() => {
 
 <template>
   <div class="space-y-6">
-    <!-- Header -->
-    <div>
+    <!-- Header: Hidden if Embedded -->
+    <div v-if="!embedded">
       <div class="breadcrumbs text-sm">
         <ul>
           <li><router-link to="/nebula/hosts">Nebula Hosts</router-link></li>
@@ -192,194 +215,199 @@ onMounted(() => {
     <!-- Form -->
     <form v-else @submit.prevent="handleSubmit" class="space-y-6">
       
-      <!-- Identity -->
-      <BaseCard title="Identity">
-        <div class="space-y-4">
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Hostname *</span>
-            </label>
-            <input 
-              v-model="formData.hostname"
-              type="text" 
-              placeholder="e.g. laptop-01, server-prod"
-              class="input input-bordered font-mono"
-              required
-            />
-            <label class="label">
-              <span class="label-text-alt">
-                Unique identifier for this host in the Nebula network
-              </span>
-            </label>
-          </div>
-        </div>
-      </BaseCard>
-
-      <!-- Authentication -->
-      <BaseCard title="Authentication">
-        <div class="space-y-4">
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Email (Identity) *</span>
-            </label>
-            <input 
-              v-model="formData.email"
-              type="email" 
-              placeholder="host-uuid@nebula.local"
-              class="input input-bordered"
-              required
-            />
-            <label class="label">
-              <span class="label-text-alt">Unique email used for PocketBase authentication record.</span>
-            </label>
-          </div>
-          
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Password {{ isEdit ? '(Optional)' : '*' }}</span>
-              </label>
-              <input 
-                v-model="formData.password"
-                type="password" 
-                class="input input-bordered"
-                :required="!isEdit"
-                minlength="8"
-              />
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        
+        <!-- Left Column: Identity & Auth -->
+        <div class="space-y-6">
+          <BaseCard title="Identity">
+            <div class="space-y-4">
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Hostname *</span>
+                </label>
+                <input 
+                  v-model="formData.hostname"
+                  type="text" 
+                  placeholder="e.g. laptop-01, server-prod"
+                  class="input input-bordered font-mono"
+                  required
+                />
+                <label class="label">
+                  <span class="label-text-alt">
+                    Unique identifier for this host in the Nebula network
+                  </span>
+                </label>
+              </div>
             </div>
-            
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Confirm Password {{ isEdit ? '(Optional)' : '*' }}</span>
-              </label>
-              <input 
-                v-model="formData.passwordConfirm"
-                type="password" 
-                class="input input-bordered"
-                :required="!!formData.password"
-              />
+          </BaseCard>
+
+          <BaseCard title="Authentication">
+            <div class="space-y-4">
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Email (Identity) *</span>
+                </label>
+                <input 
+                  v-model="formData.email"
+                  type="email" 
+                  placeholder="host-uuid@nebula.local"
+                  class="input input-bordered"
+                  required
+                />
+                <label class="label">
+                  <span class="label-text-alt">Unique email used for PocketBase authentication record.</span>
+                </label>
+              </div>
+              
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="form-control">
+                  <label class="label">
+                    <span class="label-text">Password {{ isEdit ? '(Optional)' : '*' }}</span>
+                  </label>
+                  <input 
+                    v-model="formData.password"
+                    type="password" 
+                    class="input input-bordered"
+                    :required="!isEdit"
+                    minlength="8"
+                  />
+                </div>
+                
+                <div class="form-control">
+                  <label class="label">
+                    <span class="label-text">Confirm Password {{ isEdit ? '(Optional)' : '*' }}</span>
+                  </label>
+                  <input 
+                    v-model="formData.passwordConfirm"
+                    type="password" 
+                    class="input input-bordered"
+                    :required="!!formData.password"
+                  />
+                </div>
+              </div>
             </div>
-          </div>
+          </BaseCard>
         </div>
-      </BaseCard>
-      
-      <!-- Network Configuration -->
-      <BaseCard title="Network Configuration">
-        <div class="space-y-4">
-          <!-- Network -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Network *</span>
-            </label>
-            <select v-model="formData.network_id" class="select select-bordered" required>
-              <option value="">Select a network</option>
-              <option v-for="net in networks" :key="net.id" :value="net.id">
-                {{ net.name }} ({{ net.cidr_range }})
-              </option>
-            </select>
-          </div>
 
-          <!-- Groups -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Groups</span>
-            </label>
-            <input 
-              v-model="formData.groups"
-              type="text" 
-              placeholder="server, ssh, http"
-              class="input input-bordered"
-            />
-            <label class="label">
-              <span class="label-text-alt">
-                Comma-separated list of groups for firewall rules
-              </span>
-            </label>
-          </div>
+        <!-- Right Column: Network, Role, Status -->
+        <div class="space-y-6">
+          <BaseCard title="Network Configuration">
+            <div class="space-y-4">
+              <!-- Network -->
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Network *</span>
+                </label>
+                <select v-model="formData.network_id" class="select select-bordered" required>
+                  <option value="">Select a network</option>
+                  <option v-for="net in networks" :key="net.id" :value="net.id">
+                    {{ net.name }} ({{ net.cidr_range }})
+                  </option>
+                </select>
+              </div>
 
-          <!-- Overlay IP (Read-onlyish) -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Overlay IP (Optional)</span>
-            </label>
-            <input 
-              v-model="formData.overlay_ip"
-              type="text" 
-              placeholder="Auto-assigned if empty"
-              class="input input-bordered font-mono"
-            />
-            <label class="label">
-              <span class="label-text-alt">
-                Leave empty to let the system auto-assign an IP from the network CIDR
-              </span>
-            </label>
-          </div>
+              <!-- Groups -->
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Groups</span>
+                </label>
+                <input 
+                  v-model="formData.groups"
+                  type="text" 
+                  placeholder="server, ssh, http"
+                  class="input input-bordered"
+                />
+                <label class="label">
+                  <span class="label-text-alt">
+                    Comma-separated list of groups for firewall rules
+                  </span>
+                </label>
+              </div>
+
+              <!-- Overlay IP (Read-onlyish) -->
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Overlay IP (Optional)</span>
+                </label>
+                <input 
+                  v-model="formData.overlay_ip"
+                  type="text" 
+                  placeholder="Auto-assigned if empty"
+                  class="input input-bordered font-mono"
+                />
+                <label class="label">
+                  <span class="label-text-alt">
+                    Leave empty to let the system auto-assign an IP from the network CIDR
+                  </span>
+                </label>
+              </div>
+            </div>
+          </BaseCard>
+
+          <BaseCard title="Role & Status">
+            <div class="space-y-4">
+              <!-- Is Lighthouse -->
+              <div class="form-control">
+                <label class="label cursor-pointer justify-start gap-4">
+                  <input 
+                    v-model="formData.is_lighthouse"
+                    type="checkbox" 
+                    class="checkbox checkbox-primary"
+                  />
+                  <span class="label-text">
+                    <span class="font-medium">Is Lighthouse</span>
+                    <span class="block text-sm text-base-content/70 mt-1">
+                      This host will serve as a lighthouse for other nodes. Requires a static public IP.
+                    </span>
+                  </span>
+                </label>
+              </div>
+
+              <!-- Public IP/Port (Conditional) -->
+              <div v-if="formData.is_lighthouse" class="form-control pl-8 border-l-2 border-base-300">
+                <label class="label">
+                  <span class="label-text">Public Host:Port *</span>
+                </label>
+                <input 
+                  v-model="formData.public_host_port"
+                  type="text" 
+                  placeholder="1.2.3.4:4242"
+                  class="input input-bordered font-mono"
+                  :required="formData.is_lighthouse"
+                />
+                <label class="label">
+                  <span class="label-text-alt">
+                    The publicly accessible address of this lighthouse
+                  </span>
+                </label>
+              </div>
+
+              <!-- Active -->
+              <div class="form-control">
+                <label class="label cursor-pointer justify-start gap-4">
+                  <input 
+                    v-model="formData.active"
+                    type="checkbox" 
+                    class="toggle toggle-success"
+                  />
+                  <span class="label-text">
+                    <span class="font-medium">Active Status</span>
+                    <span class="block text-sm text-base-content/70">
+                      Allow this host to connect to the network
+                    </span>
+                  </span>
+                </label>
+              </div>
+            </div>
+          </BaseCard>
         </div>
-      </BaseCard>
-
-      <!-- Lighthouse Settings -->
-      <BaseCard title="Role & Status">
-        <div class="space-y-4">
-          <!-- Is Lighthouse -->
-          <div class="form-control">
-            <label class="label cursor-pointer justify-start gap-4">
-              <input 
-                v-model="formData.is_lighthouse"
-                type="checkbox" 
-                class="checkbox checkbox-primary"
-              />
-              <span class="label-text">
-                <span class="font-medium">Is Lighthouse</span>
-                <span class="block text-sm text-base-content/70 mt-1">
-                  This host will serve as a lighthouse for other nodes. Requires a static public IP.
-                </span>
-              </span>
-            </label>
-          </div>
-
-          <!-- Public IP/Port (Conditional) -->
-          <div v-if="formData.is_lighthouse" class="form-control pl-8 border-l-2 border-base-300">
-            <label class="label">
-              <span class="label-text">Public Host:Port *</span>
-            </label>
-            <input 
-              v-model="formData.public_host_port"
-              type="text" 
-              placeholder="1.2.3.4:4242"
-              class="input input-bordered font-mono"
-              :required="formData.is_lighthouse"
-            />
-            <label class="label">
-              <span class="label-text-alt">
-                The publicly accessible address of this lighthouse
-              </span>
-            </label>
-          </div>
-
-          <!-- Active -->
-          <div class="form-control">
-            <label class="label cursor-pointer justify-start gap-4">
-              <input 
-                v-model="formData.active"
-                type="checkbox" 
-                class="toggle toggle-success"
-              />
-              <span class="label-text">
-                <span class="font-medium">Active Status</span>
-                <span class="block text-sm text-base-content/70">
-                  Allow this host to connect to the network
-                </span>
-              </span>
-            </label>
-          </div>
-        </div>
-      </BaseCard>
+      </div>
       
       <!-- Actions -->
       <div class="flex flex-col sm:flex-row justify-end gap-2 sm:gap-4">
         <button 
           type="button" 
-          @click="router.back()" 
+          @click="handleCancel" 
           class="btn btn-ghost order-2 sm:order-1"
           :disabled="loading"
         >

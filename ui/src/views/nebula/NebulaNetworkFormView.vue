@@ -147,94 +147,100 @@ onMounted(() => {
     <!-- Form -->
     <form v-else @submit.prevent="handleSubmit" class="space-y-6">
       
-      <!-- Identity -->
-      <BaseCard title="Identity">
-        <div class="space-y-4">
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Network Name *</span>
-            </label>
-            <input 
-              v-model="formData.name"
-              type="text" 
-              placeholder="e.g. Production Overlay"
-              class="input input-bordered"
-              required
-            />
-          </div>
-          
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Description</span>
-            </label>
-            <textarea 
-              v-model="formData.description"
-              class="textarea textarea-bordered"
-              rows="3"
-              placeholder="Optional description"
-            ></textarea>
-          </div>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        
+        <!-- Left Column: Identity & Status -->
+        <div class="space-y-6">
+          <BaseCard title="Identity">
+            <div class="space-y-4">
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Network Name *</span>
+                </label>
+                <input 
+                  v-model="formData.name"
+                  type="text" 
+                  placeholder="e.g. Production Overlay"
+                  class="input input-bordered"
+                  required
+                />
+              </div>
+              
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Description</span>
+                </label>
+                <textarea 
+                  v-model="formData.description"
+                  class="textarea textarea-bordered"
+                  rows="3"
+                  placeholder="Optional description"
+                ></textarea>
+              </div>
+            </div>
+          </BaseCard>
+
+          <BaseCard title="Status">
+            <div class="form-control">
+              <label class="label cursor-pointer justify-start gap-4">
+                <input 
+                  v-model="formData.active"
+                  type="checkbox" 
+                  class="toggle toggle-success"
+                />
+                <span class="label-text">
+                  <span class="font-medium">Active Status</span>
+                  <span class="block text-sm text-base-content/70">
+                    Enable or disable this network overlay
+                  </span>
+                </span>
+              </label>
+            </div>
+          </BaseCard>
         </div>
-      </BaseCard>
-      
-      <!-- Configuration -->
-      <BaseCard title="Configuration">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">CIDR Range *</span>
-            </label>
-            <input 
-              v-model="formData.cidr_range"
-              type="text" 
-              placeholder="e.g. 10.100.0.0/24"
-              class="input input-bordered font-mono"
-              required
-            />
-            <label class="label">
-              <span class="label-text-alt">
-                Defines the IP pool for this network overlay.
-              </span>
-            </label>
-          </div>
-          
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Certificate Authority *</span>
-            </label>
-            <select v-model="formData.ca_id" class="select select-bordered" required>
-              <option value="">Select a CA</option>
-              <option v-for="ca in cas" :key="ca.id" :value="ca.id">
-                {{ ca.name }}
-              </option>
-            </select>
-            <label class="label">
-              <span class="label-text-alt">
-                The CA used to sign certificates for this network.
-              </span>
-            </label>
-          </div>
+
+        <!-- Right Column: Configuration -->
+        <div class="space-y-6">
+          <BaseCard title="Configuration">
+            <div class="space-y-4">
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">CIDR Range *</span>
+                </label>
+                <input 
+                  v-model="formData.cidr_range"
+                  type="text" 
+                  placeholder="e.g. 10.100.0.0/24"
+                  class="input input-bordered font-mono"
+                  required
+                />
+                <label class="label">
+                  <span class="label-text-alt">
+                    Defines the IP pool for this network overlay.
+                  </span>
+                </label>
+              </div>
+              
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Certificate Authority *</span>
+                </label>
+                <select v-model="formData.ca_id" class="select select-bordered" required>
+                  <option value="">Select a CA</option>
+                  <option v-for="ca in cas" :key="ca.id" :value="ca.id">
+                    {{ ca.name }}
+                  </option>
+                </select>
+                <label class="label">
+                  <span class="label-text-alt">
+                    The CA used to sign certificates for this network.
+                  </span>
+                </label>
+              </div>
+            </div>
+          </BaseCard>
         </div>
-      </BaseCard>
-      
-      <!-- Status -->
-      <BaseCard title="Status">
-        <div class="form-control">
-          <label class="label cursor-pointer justify-start gap-4">
-            <input 
-              v-model="formData.active"
-              type="checkbox" 
-              class="toggle toggle-success"
-            />
-            <span class="label-text">
-              <span class="font-medium">Active Status</span>
-              <span class="block text-sm text-base-content/70">
-                Enable or disable this network overlay
-              </span>
-            </span>
-          </label>
-        </div>
-      </BaseCard>
+      </div>
       
       <!-- Actions -->
       <div class="flex flex-col sm:flex-row justify-end gap-2 sm:gap-4">
