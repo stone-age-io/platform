@@ -4,6 +4,8 @@ import { pb } from '@/utils/pb'
 import { useAuthStore } from '@/stores/auth'
 import { formatRelativeTime } from '@/utils/format'
 import type { AuditLog } from '@/types/pocketbase'
+import BaseCard from '@/components/ui/BaseCard.vue'
+import LiveMessageStream from '@/components/nats/LiveMessageStream.vue'
 
 const authStore = useAuthStore()
 
@@ -15,16 +17,12 @@ const stats = ref({
   members: 0,
 })
 
-// Recent activity
+// Activity
 const recentActivity = ref<AuditLog[]>([])
 const loading = ref(true)
 
 /**
  * Load dashboard data
- * 
- * Note: No organization filtering needed!
- * The backend API rules automatically filter all data
- * based on the user's current_organization.
  */
 async function loadDashboard() {
   if (!authStore.currentOrgId) return
@@ -32,30 +30,29 @@ async function loadDashboard() {
   loading.value = true
   
   try {
-    // Backend handles organization filtering via API rules
-    // We filter memberships to eliminate users that are in multiple orgs
-    const [thingsResult, edgesResult, locationsResult, membersResult, activityResult] = await Promise.all([
+    const [
+      thingsRes, 
+      edgesRes, 
+      locsRes, 
+      membersRes, 
+      activityRes
+    ] = await Promise.all([
       pb.collection('things').getList(1, 1),
       pb.collection('edges').getList(1, 1),
       pb.collection('locations').getList(1, 1),
-      // SCOPED: Filter memberships to the current organization context
-      pb.collection('memberships').getList(1, 1, {
-        filter: `organization = "${authStore.currentOrgId}"`
-      }),
-      pb.collection('audit_logs').getList<AuditLog>(1, 5, {
-        sort: '-created',
-        expand: 'user',
-      }),
+      pb.collection('memberships').getList(1, 1, { filter: `organization = "${authStore.currentOrgId}"` }),
+      pb.collection('audit_logs').getList<AuditLog>(1, 5, { sort: '-created', expand: 'user' }),
     ])
     
     stats.value = {
-      things: thingsResult.totalItems,
-      edges: edgesResult.totalItems,
-      locations: locationsResult.totalItems,
-      members: membersResult.totalItems,
+      things: thingsRes.totalItems,
+      edges: edgesRes.totalItems,
+      locations: locsRes.totalItems,
+      members: membersRes.totalItems,
     }
     
-    recentActivity.value = activityResult.items
+    recentActivity.value = activityRes.items
+
   } catch (err) {
     console.error('Failed to load dashboard:', err)
   } finally {
@@ -63,9 +60,6 @@ async function loadDashboard() {
   }
 }
 
-/**
- * Handle organization change event
- */
 function handleOrgChange() {
   loadDashboard()
 }
@@ -79,36 +73,24 @@ onUnmounted(() => {
   window.removeEventListener('organization-changed', handleOrgChange)
 })
 
-/**
- * Get badge class for event type
- */
 function getEventBadgeClass(eventType: string) {
-  switch (eventType) {
-    case 'create':
-    case 'create_request':
-      return 'badge-success'
-    case 'update':
-    case 'update_request':
-      return 'badge-warning'
-    case 'delete':
-    case 'delete_request':
-      return 'badge-error'
-    case 'auth':
-      return 'badge-info'
-    default:
-      return ''
-  }
+  if (eventType.includes('create')) return 'badge-success'
+  if (eventType.includes('update')) return 'badge-warning'
+  if (eventType.includes('delete')) return 'badge-error'
+  return 'badge-ghost'
 }
 </script>
 
 <template>
   <div class="space-y-6">
     <!-- Header -->
-    <div>
-      <h1 class="text-3xl font-bold">Dashboard</h1>
-      <p class="text-base-content/70 mt-1">
-        Overview of {{ authStore.currentOrg?.name }}
-      </p>
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div>
+        <h1 class="text-3xl font-bold">Dashboard</h1>
+        <p class="text-base-content/70 mt-1">
+          {{ authStore.currentOrg?.name }}
+        </p>
+      </div>
     </div>
     
     <!-- Loading State -->
@@ -116,129 +98,114 @@ function getEventBadgeClass(eventType: string) {
       <span class="loading loading-spinner loading-lg"></span>
     </div>
     
-    <!-- Stats Grid -->
-    <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <!-- Things -->
-      <div class="stats shadow">
-        <div class="stat">
-          <div class="stat-figure text-primary">
-            <span class="text-3xl sm:text-4xl">📦</span>
-          </div>
-          <div class="stat-title">Things</div>
-          <div class="stat-value text-primary text-2xl sm:text-3xl">{{ stats.things }}</div>
-          <div class="stat-desc">Connected devices</div>
-        </div>
-      </div>
+    <div v-else class="space-y-6">
       
-      <!-- Edges -->
-      <div class="stats shadow">
-        <div class="stat">
-          <div class="stat-figure text-secondary">
-            <span class="text-3xl sm:text-4xl">🔌</span>
-          </div>
-          <div class="stat-title">Edges</div>
-          <div class="stat-value text-secondary text-2xl sm:text-3xl">{{ stats.edges }}</div>
-          <div class="stat-desc">Edge gateways</div>
-        </div>
-      </div>
-      
-      <!-- Locations -->
-      <div class="stats shadow">
-        <div class="stat">
-          <div class="stat-figure text-accent">
-            <span class="text-3xl sm:text-4xl">📍</span>
-          </div>
-          <div class="stat-title">Locations</div>
-          <div class="stat-value text-accent text-2xl sm:text-3xl">{{ stats.locations }}</div>
-          <div class="stat-desc">Physical sites</div>
-        </div>
-      </div>
-      
-      <!-- Team Members -->
-      <div class="stats shadow">
-        <div class="stat">
-          <div class="stat-figure">
-            <span class="text-3xl sm:text-4xl">👥</span>
-          </div>
-          <div class="stat-title">Team Members</div>
-          <div class="stat-value text-2xl sm:text-3xl">{{ stats.members }}</div>
-          <div class="stat-desc">Active users</div>
-        </div>
-      </div>
-    </div>
-    
-    <!-- Recent Activity -->
-    <div class="card bg-base-100 shadow-xl">
-      <div class="card-body">
-        <h2 class="card-title">Recent Activity</h2>
-        
-        <div v-if="recentActivity.length === 0" class="text-center py-8 text-base-content/50">
-          No recent activity
-        </div>
-        
-        <template v-else>
-          <!-- Desktop Table -->
-          <div class="hidden sm:block overflow-x-auto">
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>User</th>
-                  <th>Action</th>
-                  <th>Collection</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="log in recentActivity" :key="log.id">
-                  <td class="whitespace-nowrap">
-                    {{ formatRelativeTime(log.created) }}
-                  </td>
-                  <td>
-                    {{ log.expand?.user?.name || log.expand?.user?.email || 'System' }}
-                  </td>
-                  <td>
-                    <span 
-                      class="badge badge-sm"
-                      :class="getEventBadgeClass(log.event_type)"
-                    >
-                      {{ log.event_type }}
-                    </span>
-                  </td>
-                  <td>
-                    <code class="text-xs">{{ log.collection_name }}</code>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          
-          <!-- Mobile Card View -->
-          <div class="sm:hidden space-y-3">
-            <div 
-              v-for="log in recentActivity" 
-              :key="log.id"
-              class="card bg-base-200 p-3"
-            >
-              <div class="flex justify-between items-start mb-2">
-                <span class="text-xs text-base-content/70">
-                  {{ formatRelativeTime(log.created) }}
-                </span>
-                <span 
-                  class="badge badge-sm"
-                  :class="getEventBadgeClass(log.event_type)"
-                >
-                  {{ log.event_type }}
-                </span>
-              </div>
-              <div class="text-sm font-medium">
-                {{ log.expand?.user?.name || log.expand?.user?.email || 'System' }}
-              </div>
-              <div class="text-xs text-base-content/60 mt-1">
-                <code>{{ log.collection_name }}</code>
-              </div>
+      <!-- 1. Stats Grid (Inventory) -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- Things -->
+        <div class="stats shadow border border-base-200">
+          <div class="stat">
+            <div class="stat-figure text-primary">
+              <span class="text-3xl">📦</span>
+            </div>
+            <div class="stat-title">Things</div>
+            <div class="stat-value text-primary">{{ stats.things }}</div>
+            <div class="stat-actions">
+              <router-link to="/things/new" class="btn btn-xs btn-primary btn-outline">+ Add</router-link>
             </div>
           </div>
-        </template>
+        </div>
+        
+        <!-- Edges -->
+        <div class="stats shadow border border-base-200">
+          <div class="stat">
+            <div class="stat-figure text-secondary">
+              <span class="text-3xl">🔌</span>
+            </div>
+            <div class="stat-title">Edges</div>
+            <div class="stat-value text-secondary">{{ stats.edges }}</div>
+            <div class="stat-actions">
+              <router-link to="/edges/new" class="btn btn-xs btn-secondary btn-outline">+ Add</router-link>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Locations -->
+        <div class="stats shadow border border-base-200">
+          <div class="stat">
+            <div class="stat-figure text-accent">
+              <span class="text-3xl">📍</span>
+            </div>
+            <div class="stat-title">Locations</div>
+            <div class="stat-value text-accent">{{ stats.locations }}</div>
+            <div class="stat-actions">
+              <router-link to="/locations/new" class="btn btn-xs btn-accent btn-outline">+ Add</router-link>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Members -->
+        <div class="stats shadow border border-base-200">
+          <div class="stat">
+            <div class="stat-figure">
+              <span class="text-3xl">👥</span>
+            </div>
+            <div class="stat-title">Team</div>
+            <div class="stat-value">{{ stats.members }}</div>
+            <div class="stat-actions">
+              <router-link to="/organization/invitations" class="btn btn-xs btn-ghost btn-outline">Invite</router-link>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Operational Views -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Left: Live Stream (Takes up 2/3) -->
+        <div class="lg:col-span-2">
+          <LiveMessageStream />
+        </div>
+
+        <!-- Right: Recent Activity (Takes up 1/3) -->
+        <div class="lg:col-span-1">
+          <BaseCard title="Recent Activity" :no-padding="true" class="h-[500px]">
+            <div v-if="recentActivity.length === 0" class="text-center py-8 opacity-50">No recent activity</div>
+            <div v-else class="overflow-y-auto h-full pb-16"> <!-- Padding bottom for footer -->
+              <table class="table table-sm">
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Action</th>
+                    <th class="text-right">Time</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="log in recentActivity" :key="log.id">
+                    <td>
+                      <div class="font-medium text-xs">
+                        {{ log.expand?.user?.name || log.expand?.user?.email || 'System' }}
+                      </div>
+                      <div class="text-[10px] opacity-60">{{ log.collection_name }}</div>
+                    </td>
+                    <td>
+                      <span class="badge badge-xs" :class="getEventBadgeClass(log.event_type)">
+                        {{ log.event_type.replace('_request', '') }}
+                      </span>
+                    </td>
+                    <td class="text-right text-[10px] opacity-50 whitespace-nowrap">
+                      {{ formatRelativeTime(log.created) }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="absolute bottom-0 left-0 right-0 p-3 text-center border-t border-base-200 bg-base-100 rounded-b-xl">
+              <router-link to="/audit" class="btn btn-xs btn-ghost w-full">View All Logs</router-link>
+            </div>
+          </BaseCard>
+        </div>
+
       </div>
     </div>
   </div>

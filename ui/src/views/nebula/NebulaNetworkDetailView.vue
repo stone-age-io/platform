@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
@@ -18,6 +18,11 @@ const hosts = ref<NebulaHost[]>([])
 const loading = ref(true)
 
 const networkId = route.params.id as string
+
+// Derived Stats
+const totalHosts = computed(() => hosts.value.length)
+const totalLighthouses = computed(() => hosts.value.filter(h => h.is_lighthouse).length)
+const activeHosts = computed(() => hosts.value.filter(h => h.active).length)
 
 // Columns for Attached Hosts List
 const hostColumns: Column<NebulaHost>[] = [
@@ -149,18 +154,32 @@ onMounted(() => {
           </BaseCard>
         </div>
         
-        <!-- Right Column: Stats placeholder / Instructions -->
+        <!-- Right Column: Stats & Addressing -->
         <div class="space-y-6">
-          <div class="alert alert-info shadow-sm">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-            <div>
-              <h3 class="font-bold text-sm">Network Overlay</h3>
-              <div class="text-xs">
-                Hosts added to this network will automatically be assigned an IP from the 
-                <span class="font-mono">{{ network.cidr_range }}</span> block.
+          <BaseCard title="Network Utilization">
+            <div class="grid grid-cols-2 gap-4 mb-4">
+              <div class="bg-base-200 p-3 rounded-lg text-center border border-base-300">
+                <div class="text-2xl font-bold">{{ totalHosts }}</div>
+                <div class="text-xs opacity-60 uppercase tracking-wide">Total Hosts</div>
+              </div>
+              <div class="bg-base-200 p-3 rounded-lg text-center border border-base-300">
+                <div class="text-2xl font-bold text-success">{{ activeHosts }}</div>
+                <div class="text-xs opacity-60 uppercase tracking-wide">Active</div>
+              </div>
+              <div class="bg-base-200 p-3 rounded-lg text-center border border-base-300 col-span-2">
+                <div class="text-xl font-bold font-mono">{{ totalLighthouses }}</div>
+                <div class="text-xs opacity-60 uppercase tracking-wide">Lighthouses</div>
               </div>
             </div>
-          </div>
+
+            <div class="alert bg-base-200 border-none text-xs">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-info shrink-0 w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+              <div>
+                <span class="font-bold block mb-1">Addressing Policy</span>
+                IP addresses must be manually assigned within the <span class="font-mono">{{ network.cidr_range }}</span> block. Ensure IP uniqueness to prevent routing conflicts.
+              </div>
+            </div>
+          </BaseCard>
         </div>
       </div>
 

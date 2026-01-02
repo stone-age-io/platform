@@ -140,17 +140,13 @@ async function handleSubmit() {
       is_lighthouse: formData.value.is_lighthouse,
       public_host_port: formData.value.public_host_port || null,
       active: formData.value.active,
+      overlay_ip: formData.value.overlay_ip,
     }
     
     // Only send password if entered
     if (formData.value.password) {
       data.password = formData.value.password
       data.passwordConfirm = formData.value.passwordConfirm
-    }
-    
-    // Only send overlay_ip if explicitly set (usually backend handles this)
-    if (formData.value.overlay_ip) {
-      data.overlay_ip = formData.value.overlay_ip
     }
     
     let record: NebulaHost
@@ -306,6 +302,25 @@ onMounted(() => {
                 </select>
               </div>
 
+              <!-- Overlay IP (Required) -->
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Overlay IP *</span>
+                </label>
+                <input 
+                  v-model="formData.overlay_ip"
+                  type="text" 
+                  placeholder="e.g. 10.100.0.5"
+                  class="input input-bordered font-mono"
+                  required
+                />
+                <label class="label">
+                  <span class="label-text-alt text-base-content/60">
+                    Ensure this address is unique within the network.
+                  </span>
+                </label>
+              </div>
+
               <!-- Groups -->
               <div class="form-control">
                 <label class="label">
@@ -320,24 +335,6 @@ onMounted(() => {
                 <label class="label">
                   <span class="label-text-alt">
                     Comma-separated list of groups for firewall rules
-                  </span>
-                </label>
-              </div>
-
-              <!-- Overlay IP (Read-onlyish) -->
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text">Overlay IP (Optional)</span>
-                </label>
-                <input 
-                  v-model="formData.overlay_ip"
-                  type="text" 
-                  placeholder="Auto-assigned if empty"
-                  class="input input-bordered font-mono"
-                />
-                <label class="label">
-                  <span class="label-text-alt">
-                    Leave empty to let the system auto-assign an IP from the network CIDR
                   </span>
                 </label>
               </div>
