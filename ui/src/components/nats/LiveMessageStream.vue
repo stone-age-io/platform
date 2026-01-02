@@ -12,6 +12,7 @@ const toast = useToast()
 const isStreaming = ref(false)
 const messages = ref<any[]>([])
 const showSettings = ref(false)
+const selectedMessage = ref<any | null>(null) // For details modal
 
 // Config State (Persisted)
 const configuredSubjects = ref<string[]>([])
@@ -56,9 +57,24 @@ function addSubject() {
 
 function removeSubject(subject: string) {
   configuredSubjects.value = configuredSubjects.value.filter(s => s !== subject)
-  // If list becomes empty, user probably wants '>' implicitly, but we'll leave it empty in UI
-  // and handle the default in startStream logic if needed.
   saveSettings()
+}
+
+// --- Clipboard Utils ---
+async function copyText(text: string, label: string = 'Text') {
+  try {
+    await navigator.clipboard.writeText(text)
+    toast.success(`${label} copied`)
+  } catch (e) {
+    toast.error('Failed to copy to clipboard')
+  }
+}
+
+function getPayloadString(payload: any): string {
+  if (typeof payload === 'object') {
+    return JSON.stringify(payload, null, 2)
+  }
+  return String(payload)
 }
 
 // --- Streaming Logic ---
@@ -77,7 +93,6 @@ async function startStream() {
     return
   }
 
-  // Use configured subjects, or default to '>' if list is empty
   const subjectsToSub = configuredSubjects.value.length > 0 
     ? configuredSubjects.value 
     : ['>']
@@ -85,14 +100,10 @@ async function startStream() {
   try {
     isStreaming.value = true
     
-    // Subscribe to ALL subjects
     for (const subject of subjectsToSub) {
       console.log(`Subscribing to ${subject}`)
       const sub = natsStore.nc.subscribe(subject)
       subscriptions.value.push(sub)
-      
-      // Launch async iterator for this specific subscription
-      // Note: We don't await this, we let it run in background
       handleSubscription(sub)
     }
 
@@ -105,7 +116,6 @@ async function startStream() {
 async function handleSubscription(sub: Subscription) {
   try {
     for await (const m of sub) {
-      // Decode
       let payload: any = ''
       try {
         try { payload = m.json() } catch { payload = m.string() }
@@ -120,22 +130,18 @@ async function handleSubscription(sub: Subscription) {
         timestamp: new Date()
       }
 
-      // Prepend to log
       messages.value.unshift(entry)
 
-      // Buffer Limit
       if (messages.value.length > 50) {
         messages.value.pop()
       }
     }
   } catch (err) {
-    // Subscription closed or errored
     console.debug('Subscription closed', err)
   }
 }
 
 function stopStream() {
-  // Unsubscribe all
   for (const sub of subscriptions.value) {
     sub.unsubscribe()
   }
@@ -147,14 +153,12 @@ function clearMessages() {
   messages.value = []
 }
 
-// Watch connection status to auto-stop
 watch(() => natsStore.status, (newStatus) => {
   if (newStatus !== 'connected' && isStreaming.value) {
     stopStream()
   }
 })
 
-// Lifecycle
 onMounted(() => {
   loadSettings()
 })
@@ -204,38 +208,70 @@ onUnmounted(() => {
     </div>
 
     <!-- Terminal / Log Area -->
-    <div class="flex-1 overflow-y-auto p-4 bg-base-200/50 border-t border-b border-base-200 font-mono text-xs space-y-2">
+    <div class="flex-1 overflow-y-auto p-4 bg-base-200/50 border-t border-b border-base-200 font-mono text-xs space-y-3">
       
+      <!-- Empty State -->
       <div v-if="messages.length === 0" class="h-full flex flex-col items-center justify-center opacity-40">
         <span class="text-4xl mb-2">📥</span>
         <p>Waiting for messages...</p>
         <p class="text-[10px]" v-if="!isStreaming">Click Start to connect</p>
       </div>
 
+      <!-- Message Items -->
       <div 
         v-for="msg in messages" 
         :key="msg.id" 
-        class="bg-base-100 p-3 rounded border-l-4 border-primary shadow-sm hover:shadow-md transition-shadow"
+        class="bg-base-100 rounded border-l-4 border-primary shadow-sm hover:shadow-md transition-shadow group"
       >
-        <div class="flex justify-between items-start mb-1 opacity-70">
-          <span class="font-bold text-primary break-all">{{ msg.subject }}</span>
-          <span class="text-[10px] whitespace-nowrap ml-2">{{ formatDate(msg.timestamp, 'HH:mm:ss.SSS') }}</span>
+        <!-- Item Header -->
+        <div class="flex justify-between items-center p-2 bg-base-200/50 border-b border-base-200">
+          <div class="flex items-center gap-2 overflow-hidden">
+            <span class="font-bold text-primary truncate" :title="msg.subject">{{ msg.subject }}</span>
+            <button 
+              @click.stop="copyText(msg.subject, 'Subject')" 
+              class="btn btn-ghost btn-xs btn-square opacity-0 group-hover:opacity-100 transition-opacity" 
+              title="Copy Subject"
+            >
+              📋
+            </button>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <span class="text-[10px] opacity-50">{{ formatDate(msg.timestamp, 'HH:mm:ss.SSS') }}</span>
+            <button 
+              @click.stop="copyText(getPayloadString(msg.payload), 'Payload')"
+              class="btn btn-ghost btn-xs opacity-0 group-hover:opacity-100 transition-opacity"
+            >
+              Copy Data
+            </button>
+          </div>
         </div>
-        <div class="overflow-x-auto text-base-content/80">
-          <pre v-if="typeof msg.payload === 'object'">{{ JSON.stringify(msg.payload, null, 2) }}</pre>
-          <span v-else class="break-all whitespace-pre-wrap">{{ msg.payload }}</span>
+
+        <!-- Item Body (Clickable) -->
+        <div 
+          @click="selectedMessage = msg"
+          class="p-3 cursor-pointer relative hover:bg-base-200/30 transition-colors"
+        >
+          <div class="overflow-hidden max-h-32 text-base-content/80 relative">
+            <pre v-if="typeof msg.payload === 'object'">{{ JSON.stringify(msg.payload, null, 2) }}</pre>
+            <span v-else class="break-all whitespace-pre-wrap">{{ msg.payload }}</span>
+            
+            <!-- Fade Out Gradient for truncation -->
+            <div class="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-base-100 to-transparent pointer-events-none"></div>
+          </div>
+          <div class="text-[9px] text-center opacity-30 mt-1 uppercase tracking-widest group-hover:text-primary group-hover:opacity-100 transition-all">
+            Click to view full message
+          </div>
         </div>
       </div>
 
     </div>
     
-    <!-- Footer / Connection Warning -->
     <div v-if="!natsStore.isConnected" class="bg-warning/10 p-2 text-center text-xs text-warning border-t border-warning/20">
       ⚠️ NATS Disconnected. Check <router-link to="/settings" class="link">Settings</router-link>.
     </div>
   </div>
 
-  <!-- Configuration Modal -->
+  <!-- Settings Modal -->
   <dialog class="modal" :class="{ 'modal-open': showSettings }">
     <div class="modal-box">
       <h3 class="font-bold text-lg">Stream Configuration</h3>
@@ -244,28 +280,18 @@ onUnmounted(() => {
       </p>
       
       <div class="form-control">
-        <label class="label">
-          <span class="label-text">Add Subject</span>
-        </label>
+        <label class="label"><span class="label-text">Add Subject</span></label>
         <div class="join">
-          <input 
-            v-model="newSubjectInput" 
-            @keyup.enter="addSubject"
-            type="text" 
-            class="input input-bordered font-mono w-full join-item" 
-            placeholder="e.g. location.ny.>" 
-          />
+          <input v-model="newSubjectInput" @keyup.enter="addSubject" type="text" class="input input-bordered font-mono w-full join-item" placeholder="e.g. location.ny.>" />
           <button @click="addSubject" class="btn btn-primary join-item">Add</button>
         </div>
       </div>
 
       <div class="mt-4">
         <label class="label"><span class="label-text text-xs uppercase font-bold opacity-50">Active Filters</span></label>
-        
         <div v-if="configuredSubjects.length === 0" class="alert bg-base-200 text-xs py-2">
           <span>No filters set. Defaulting to <strong>&gt;</strong> (All messages).</span>
         </div>
-
         <div class="flex flex-wrap gap-2">
           <div v-for="sub in configuredSubjects" :key="sub" class="badge badge-lg gap-2 pr-1">
             <span class="font-mono text-xs">{{ sub }}</span>
@@ -279,5 +305,52 @@ onUnmounted(() => {
       </div>
     </div>
     <form method="dialog" class="modal-backdrop" @click="showSettings = false"><button>close</button></form>
+  </dialog>
+
+  <!-- Message Detail Modal -->
+  <dialog class="modal" :class="{ 'modal-open': !!selectedMessage }">
+    <div class="modal-box w-11/12 max-w-4xl" v-if="selectedMessage">
+      <div class="flex justify-between items-start mb-4">
+        <div>
+          <h3 class="font-bold text-lg">Message Details</h3>
+          <p class="text-xs opacity-50 font-mono">{{ selectedMessage.id }}</p>
+        </div>
+        <button class="btn btn-sm btn-circle btn-ghost" @click="selectedMessage = null">✕</button>
+      </div>
+
+      <div class="space-y-4">
+        <!-- Subject -->
+        <div class="form-control">
+          <label class="label pb-1"><span class="label-text text-xs uppercase font-bold opacity-50">Subject</span></label>
+          <div class="join">
+            <input type="text" class="input input-bordered w-full font-mono text-sm join-item" :value="selectedMessage.subject" readonly />
+            <button @click="copyText(selectedMessage.subject, 'Subject')" class="btn join-item">📋</button>
+          </div>
+        </div>
+
+        <!-- Timestamp -->
+        <div class="form-control">
+          <label class="label pb-1"><span class="label-text text-xs uppercase font-bold opacity-50">Timestamp</span></label>
+          <input type="text" class="input input-bordered w-full font-mono text-sm" :value="formatDate(selectedMessage.timestamp, 'PPpp')" readonly />
+        </div>
+
+        <!-- Payload -->
+        <div class="form-control">
+          <label class="label pb-1 flex justify-between">
+            <span class="label-text text-xs uppercase font-bold opacity-50">Payload</span>
+            <button @click="copyText(getPayloadString(selectedMessage.payload), 'Payload')" class="btn btn-xs btn-ghost">Copy Data</button>
+          </label>
+          <div class="mockup-code bg-base-300 text-base-content text-sm min-h-[200px] max-h-[60vh] overflow-y-auto">
+            <pre class="px-4 py-2" v-if="typeof selectedMessage.payload === 'object'">{{ JSON.stringify(selectedMessage.payload, null, 2) }}</pre>
+            <pre class="px-4 py-2 whitespace-pre-wrap break-all" v-else>{{ selectedMessage.payload }}</pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-action">
+        <button class="btn" @click="selectedMessage = null">Close</button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop" @click="selectedMessage = null"><button>close</button></form>
   </dialog>
 </template>
