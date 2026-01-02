@@ -44,7 +44,7 @@ async function submit() {
   try {
     const data = {
       ...form.value,
-      organization: isEdit.value ? undefined : authStore.currentOrgId // Only set org on create
+      organization: isEdit.value ? undefined : authStore.currentOrgId
     }
     
     if (isEdit.value) {
@@ -68,43 +68,54 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="mx-auto space-y-6">
-    <div class="breadcrumbs text-sm">
-      <ul>
-        <li><router-link to="/locations/types">Location Types</router-link></li>
-        <li>{{ isEdit ? 'Edit' : 'New' }}</li>
-      </ul>
+  <div class="space-y-6">
+    <div>
+      <div class="breadcrumbs text-sm">
+        <ul>
+          <li><router-link to="/locations/types">Location Types</router-link></li>
+          <li>{{ isEdit ? 'Edit' : 'New' }}</li>
+        </ul>
+      </div>
+      <h1 class="text-3xl font-bold">{{ isEdit ? 'Edit' : 'Create' }} Location Type</h1>
     </div>
-    
-    <h1 class="text-3xl font-bold">{{ isEdit ? 'Edit' : 'Create' }} Location Type</h1>
 
-    <form @submit.prevent="submit" class="max-w-4xl mx-auto">
-      <BaseCard>
-        <div class="space-y-4">
-          <div class="form-control">
-            <label class="label">Name *</label>
-            <input v-model="form.name" type="text" class="input input-bordered" required />
+    <form @submit.prevent="submit" class="space-y-6">
+      
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+        <!-- Left Column -->
+        <BaseCard title="Identity">
+          <div class="space-y-4">
+            <div class="form-control">
+              <label class="label">Name *</label>
+              <input v-model="form.name" type="text" class="input input-bordered" required />
+            </div>
+            
+            <div class="form-control">
+              <label class="label">Code</label>
+              <input v-model="form.code" type="text" class="input input-bordered font-mono" placeholder="Optional identifier" />
+            </div>
           </div>
-          
-          <div class="form-control">
-            <label class="label">Code</label>
-            <input v-model="form.code" type="text" class="input input-bordered font-mono" placeholder="Optional identifier" />
+        </BaseCard>
+
+        <!-- Right Column -->
+        <BaseCard title="Details">
+          <div class="space-y-4">
+            <div class="form-control">
+              <label class="label">Description</label>
+              <textarea v-model="form.description" class="textarea textarea-bordered" rows="5"></textarea>
+            </div>
           </div>
-          
-          <div class="form-control">
-            <label class="label">Description</label>
-            <textarea v-model="form.description" class="textarea textarea-bordered" rows="3"></textarea>
-          </div>
-        </div>
-        
-        <div class="flex justify-end gap-2 mt-6">
-          <button type="button" class="btn btn-ghost" @click="router.back()">Cancel</button>
-          <button type="submit" class="btn btn-primary" :disabled="loading">
-            <span v-if="loading" class="loading loading-spinner"></span>
-            Save
-          </button>
-        </div>
-      </BaseCard>
+        </BaseCard>
+      </div>
+      
+      <!-- Actions -->
+      <div class="flex justify-end gap-2">
+        <button type="button" class="btn btn-ghost" @click="router.back()">Cancel</button>
+        <button type="submit" class="btn btn-primary" :disabled="loading">
+          <span v-if="loading" class="loading loading-spinner"></span>
+          Save
+        </button>
+      </div>
     </form>
   </div>
 </template>
