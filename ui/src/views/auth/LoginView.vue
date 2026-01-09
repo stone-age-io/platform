@@ -26,26 +26,54 @@ const checkAdminParam = () => {
   }
 }
 
-onMounted(checkAdminParam)
+onMounted(() => {
+  checkAdminParam()
+  // Load available OAuth providers (Google, GitHub, etc.)
+  authStore.loadAuthMethods()
+})
+
 watch(() => route.query.admin, checkAdminParam)
 
 /**
- * Authentication Handler
+ * Authentication Handler (Email/Pass)
  */
 async function handleLogin() {
   loading.value = true
   try {
     await authStore.login(email.value, password.value, isSuperAdmin.value)
-    
-    if (authStore.memberships.length === 0 && !authStore.isSuperAdmin) {
-      router.push('/accept-invite')
-    } else {
-      router.push('/')
-    }
+    redirectUser()
   } catch (err: any) {
     toast.error(err.message || 'Login failed')
   } finally {
     loading.value = false
+  }
+}
+
+/**
+ * Authentication Handler (OAuth2)
+ */
+async function handleOAuthLogin(provider: string) {
+  loading.value = true
+  try {
+    await authStore.loginWithOAuth2(provider)
+    redirectUser()
+  } catch (err: any) {
+    // User closed popup or error occurred
+    if (err.isAbort) {
+      toast.info('Login cancelled')
+    } else {
+      toast.error(err.message || 'OAuth login failed')
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+function redirectUser() {
+  if (authStore.memberships.length === 0 && !authStore.isSuperAdmin) {
+    router.push('/accept-invite')
+  } else {
+    router.push('/')
   }
 }
 
@@ -69,6 +97,11 @@ async function handleResetRequest() {
     loading.value = false
   }
 }
+
+// Helper for provider icons/colors (Optional)
+function getProviderLabel(name: string) {
+  return `Sign in with ${name.charAt(0).toUpperCase() + name.slice(1)}`
+}
 </script>
 
 <template>
@@ -88,42 +121,62 @@ async function handleResetRequest() {
         </div>
 
         <!-- LOGIN MODE -->
-        <form v-if="mode === 'login'" @submit.prevent="handleLogin" class="space-y-4">
-          <!-- 1. Email -->
-          <div class="form-control">
-            <label class="label"><span class="label-text">Email</span></label>
-            <input v-model="email" type="email" placeholder="name@company.com" class="input input-bordered" required />
-          </div>
-          
-          <!-- 2. Password -->
-          <div class="form-control">
-            <label class="label"><span class="label-text">Password</span></label>
-            <input v-model="password" type="password" placeholder="••••••••" class="input input-bordered" required />
+        <div v-if="mode === 'login'">
+          <form @submit.prevent="handleLogin" class="space-y-4">
+            <!-- 1. Email -->
+            <div class="form-control">
+              <label class="label"><span class="label-text">Email</span></label>
+              <input v-model="email" type="email" placeholder="name@company.com" class="input input-bordered" required />
+            </div>
+            
+            <!-- 2. Password -->
+            <div class="form-control">
+              <label class="label"><span class="label-text">Password</span></label>
+              <input v-model="password" type="password" placeholder="••••••••" class="input input-bordered" required />
+            </div>
+
+            <!-- Subtle Admin Toggle -->
+            <div v-if="showAdminToggle" class="form-control bg-base-200 p-3 rounded-lg border border-base-300">
+              <label class="label cursor-pointer justify-between">
+                <span class="label-text font-bold text-xs uppercase tracking-widest opacity-70">Super User</span>
+                <input type="checkbox" v-model="isSuperAdmin" class="toggle toggle-primary toggle-sm" />
+              </label>
+            </div>
+            
+            <!-- 3. Sign In Button -->
+            <div class="form-control mt-6">
+              <button type="submit" class="btn btn-primary w-full" :disabled="loading">
+                <span v-if="loading" class="loading loading-spinner"></span>
+                <span v-else>{{ isSuperAdmin ? 'Super User Login' : 'Sign In' }}</span>
+              </button>
+            </div>
+          </form>
+
+          <!-- OAuth2 Section (Hidden for SuperUsers) -->
+          <div v-if="!isSuperAdmin && authStore.authProviders.length > 0" class="mt-6">
+            <div class="divider text-xs opacity-50">OR</div>
+            <div class="flex flex-col gap-3">
+              <button 
+                v-for="provider in authStore.authProviders" 
+                :key="provider.name"
+                @click="handleOAuthLogin(provider.name)"
+                class="btn btn-outline w-full"
+                :disabled="loading"
+              >
+                <!-- Simple generic icon if specific ones aren't available -->
+                <span v-if="loading" class="loading loading-spinner loading-xs"></span>
+                <span v-else>{{ getProviderLabel(provider.name) }}</span>
+              </button>
+            </div>
           </div>
 
-          <!-- Subtle Admin Toggle (Discreetly revealed via ?admin=1) -->
-          <div v-if="showAdminToggle" class="form-control bg-base-200 p-3 rounded-lg border border-base-300">
-            <label class="label cursor-pointer justify-between">
-              <span class="label-text font-bold text-xs uppercase tracking-widest opacity-70">Super User</span>
-              <input type="checkbox" v-model="isSuperAdmin" class="toggle toggle-primary toggle-sm" />
-            </label>
-          </div>
-          
-          <!-- 3. Sign In Button -->
-          <div class="form-control mt-6">
-            <button type="submit" class="btn btn-primary w-full" :disabled="loading">
-              <span v-if="loading" class="loading loading-spinner"></span>
-              <span v-else>{{ isSuperAdmin ? 'Super User Login' : 'Sign In' }}</span>
-            </button>
-          </div>
-
-          <!-- 4. Forgot Password (LAST in tab order) -->
+          <!-- 4. Forgot Password -->
           <div class="text-center mt-4">
             <button type="button" @click="mode = 'forgot'" class="text-xs link link-primary no-underline hover:underline opacity-70 hover:opacity-100 transition-opacity">
               Forgot password?
             </button>
           </div>
-        </form>
+        </div>
 
         <!-- FORGOT PASSWORD MODE -->
         <form v-else @submit.prevent="handleResetRequest" class="space-y-4">
