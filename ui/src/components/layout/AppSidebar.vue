@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { useMediaQuery } from '@vueuse/core' // Added for responsive logic
+import { useMediaQuery } from '@vueuse/core'
 import { useAuthStore } from '@/stores/auth'
 import { useUIStore } from '@/stores/ui'
 import { useNatsStore } from '@/stores/nats'
@@ -13,7 +13,7 @@ const authStore = useAuthStore()
 const uiStore = useUIStore()
 const natsStore = useNatsStore()
 
-// Responsive Check: 'lg' breakpoint is 1024px in Tailwind
+// Responsive Check: 'lg' breakpoint is 1024px
 const isLargeScreen = useMediaQuery('(min-width: 1024px)')
 
 // Computed: Only allow compact mode if user wants it AND we are on desktop
@@ -25,9 +25,6 @@ const showNatsModal = ref(false)
 // Org Search State
 const orgSearchQuery = ref('')
 
-/**
- * Filtered Memberships for the Switcher
- */
 const filteredMemberships = computed(() => {
   const q = orgSearchQuery.value.toLowerCase().trim()
   if (!q) return authStore.memberships
@@ -37,15 +34,10 @@ const filteredMemberships = computed(() => {
   )
 })
 
-/**
- * Navigation Menu Configuration
- */
 const menuItems = computed(() => {
-  // 1. Core Functional Items
   const items: any[] = [
     { label: 'Dashboard', icon: '📊', path: '/' },
     { label: 'Overview', icon: '📈', path: '/overview' },
-    
     { label: 'Map', icon: '🗺️', path: '/map' },
     { label: 'Things', icon: '📦', path: '/things' },
     { label: 'Edges', icon: '🔌', path: '/edges' },
@@ -72,7 +64,6 @@ const menuItems = computed(() => {
     },
   ]
 
-  // 2. Types Group (Admin/Owner Only)
   if (authStore.canManageUsers) {
     items.push({
       label: 'Types',
@@ -86,7 +77,6 @@ const menuItems = computed(() => {
     })
   }
 
-  // 3. Admin & Audit
   if (authStore.canManageUsers) {
     items.push({ 
       label: 'Team', 
@@ -117,22 +107,17 @@ const menuItems = computed(() => {
 })
 
 const isActive = (path: string) => {
-  if (path === '/types') {
-    return route.path.includes('/types')
-  }
+  if (path === '/types') return route.path.includes('/types')
   if (path === '/' && route.path === '/') return true
   if (path === '/overview' && route.path === '/overview') return true
   
   if (path !== '/' && route.path.startsWith(path)) {
-    if (route.path.includes('/types') && !path.includes('/types')) {
-      return false
-    }
+    if (route.path.includes('/types') && !path.includes('/types')) return false
     return true
   }
   return false
 }
 
-// --- Logic to Close Dropdown ---
 function closeUserDropdown() {
   const details = document.getElementById('user-dropdown')
   if (details) details.removeAttribute('open')
@@ -153,7 +138,6 @@ async function handleLogout() {
   router.push('/login')
 }
 
-// --- Click Outside Handler ---
 function handleClickOutside(e: Event) {
   const details = document.getElementById('user-dropdown')
   if (details && details.hasAttribute('open')) {
@@ -185,7 +169,6 @@ function closeDrawer() {
   if (drawer) drawer.checked = false
 }
 
-// NATS Status Helpers
 const natsStatusColor = computed(() => {
   switch (natsStore.status) {
     case 'connected': return 'bg-success'
@@ -212,7 +195,7 @@ const serverInfoJson = computed(() => {
 
 <template>
   <aside 
-    class="bg-base-100 h-screen flex flex-col border-r border-base-300 overflow-hidden transition-all duration-300 ease-in-out"
+    class="bg-base-100 h-screen flex flex-col border-r border-base-300 transition-all duration-300 ease-in-out z-20"
     :class="effectiveCompact ? 'w-20 min-w-[5rem]' : 'w-72 min-w-[18rem]'"
   >
     
@@ -232,7 +215,11 @@ const serverInfoJson = computed(() => {
       </router-link>
 
       <!-- User & Org Card (DETAILS DROPDOWN) -->
-      <details id="user-dropdown" class="dropdown w-full">
+      <details 
+        id="user-dropdown" 
+        class="dropdown"
+        :class="effectiveCompact ? '' : 'dropdown-bottom w-full'"
+      >
         <summary 
           class="flex items-center gap-3 w-full p-2 rounded-lg bg-base-200/50 hover:bg-base-200 border border-transparent hover:border-base-300 transition-all cursor-pointer select-none list-none"
           :class="{ 'justify-center': effectiveCompact }"
@@ -261,7 +248,15 @@ const serverInfoJson = computed(() => {
         </summary>
         
         <!-- Dropdown Menu -->
-        <ul class="dropdown-content z-[20] menu p-0 shadow-xl bg-base-100 rounded-box w-72 border border-base-300 gap-0 mt-1 overflow-hidden left-0">
+        <!-- 
+           FIX: Use 'fixed' positioning when compact to escape the drawer-side clipping.
+           'left-[5.5rem]' pushes it just past the 5rem sidebar.
+           'top-[4.5rem]' aligns it roughly with the user card.
+        -->
+        <ul 
+          class="dropdown-content z-[999] menu p-0 shadow-xl bg-base-100 rounded-box border border-base-300 gap-0 overflow-hidden"
+          :class="effectiveCompact ? 'fixed left-[5.5rem] top-[4.5rem] w-72' : 'absolute w-full mt-1 left-0'"
+        >
           
           <!-- Header -->
           <li class="menu-title px-3 py-2 bg-base-200/30 text-xs font-bold uppercase tracking-wider border-b border-base-200">
