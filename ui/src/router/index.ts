@@ -2,48 +2,40 @@ import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import MainLayout from '@/components/layout/MainLayout.vue'
 
-/**
- * Route definitions
- */
 const routes: RouteRecordRaw[] = [
-  // ============================================================================
-  // PUBLIC ROUTES
-  // ============================================================================
   {
     path: '/login',
     name: 'Login',
     component: () => import('@/views/auth/LoginView.vue'),
     meta: { requiresAuth: false },
   },
-  
-  // ============================================================================
-  // AUTHENTICATED ROUTES (Pre-Dashboard)
-  // ============================================================================
   {
     path: '/accept-invite',
     name: 'AcceptInvite',
     component: () => import('@/views/auth/AcceptInviteView.vue'),
     meta: { requiresAuth: false },
   },
-  
-  // ============================================================================
-  // MAIN APPLICATION LAYOUT
-  // ============================================================================
   {
     path: '/',
     component: MainLayout,
     meta: { requiresAuth: true },
     children: [
-      // Dashboard
+      // NEW: Visualizer is now the home page
       {
         path: '',
-        name: 'Dashboard',
+        name: 'Visualizer',
+        component: () => import('@/views/dashboard/VisualizerView.vue'),
+      },
+      // MOVED: Old dashboard is now Overview
+      {
+        path: 'overview',
+        name: 'Overview',
         component: () => import('@/views/dashboard/DashboardView.vue'),
       },
 
-      // ========================================================================
-      // PLATFORM ADMINISTRATION (Super User Only)
-      // ========================================================================
+      // ... (Rest of the routes remain unchanged) ...
+      
+      // Admin
       {
         path: 'organizations',
         name: 'AdminOrgList',
@@ -69,11 +61,7 @@ const routes: RouteRecordRaw[] = [
         meta: { requiresSuperUser: true },
       },
 
-      // ========================================================================
-      // ENTITY MANAGEMENT
-      // ========================================================================
-      
-      // --- THINGS ---
+      // Things
       { path: 'things/types', name: 'ThingTypes', component: () => import('@/views/things/ThingTypeListView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
       { path: 'things/types/new', name: 'ThingTypeNew', component: () => import('@/views/things/ThingTypeFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
       { path: 'things/types/:id/edit', name: 'ThingTypeEdit', component: () => import('@/views/things/ThingTypeFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
@@ -82,7 +70,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'things/:id', name: 'ThingDetail', component: () => import('@/views/things/ThingDetailView.vue') },
       { path: 'things/:id/edit', name: 'ThingEdit', component: () => import('@/views/things/ThingFormView.vue') },
       
-      // --- EDGES ---
+      // Edges
       { path: 'edges/types', name: 'EdgeTypes', component: () => import('@/views/edges/EdgeTypeListView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
       { path: 'edges/types/new', name: 'EdgeTypeNew', component: () => import('@/views/edges/EdgeTypeFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
       { path: 'edges/types/:id/edit', name: 'EdgeTypeEdit', component: () => import('@/views/edges/EdgeTypeFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
@@ -91,7 +79,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'edges/:id', name: 'EdgeDetail', component: () => import('@/views/edges/EdgeDetailView.vue') },
       { path: 'edges/:id/edit', name: 'EdgeEdit', component: () => import('@/views/edges/EdgeFormView.vue') },
       
-      // --- LOCATIONS ---
+      // Locations
       { path: 'locations/types', name: 'LocationTypes', component: () => import('@/views/locations/LocationTypeListView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
       { path: 'locations/types/new', name: 'LocationTypeNew', component: () => import('@/views/locations/LocationTypeFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
       { path: 'locations/types/:id/edit', name: 'LocationTypeEdit', component: () => import('@/views/locations/LocationTypeFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
@@ -100,14 +88,10 @@ const routes: RouteRecordRaw[] = [
       { path: 'locations/:id', name: 'LocationDetail', component: () => import('@/views/locations/LocationDetailView.vue') },
       { path: 'locations/:id/edit', name: 'LocationEdit', component: () => import('@/views/locations/LocationFormView.vue') },
       
-      // --- MAP ---
+      // Map
       { path: 'map', name: 'Map', component: () => import('@/views/map/MapView.vue') },
       
-      // ========================================================================
-      // INFRASTRUCTURE MANAGEMENT
-      // ========================================================================
-
-      // --- NATS ---
+      // NATS
       { path: 'nats', redirect: '/nats/accounts' },
       { path: 'nats/accounts', name: 'NatsAccounts', component: () => import('@/views/nats/NatsAccountListView.vue') },
       { path: 'nats/accounts/:id', name: 'NatsAccountDetail', component: () => import('@/views/nats/NatsAccountDetailView.vue') },
@@ -120,7 +104,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'nats/roles/:id', name: 'NatsRoleDetail', component: () => import('@/views/nats/NatsRoleDetailView.vue') },
       { path: 'nats/roles/:id/edit', name: 'NatsRoleEdit', component: () => import('@/views/nats/NatsRoleFormView.vue') },
       
-      // --- NEBULA ---
+      // Nebula
       { path: 'nebula', redirect: '/nebula/cas' },
       { path: 'nebula/cas', name: 'NebulaCAs', component: () => import('@/views/nebula/NebulaCAListView.vue') },
       { path: 'nebula/cas/:id', name: 'NebulaCADetail', component: () => import('@/views/nebula/NebulaCADetailView.vue') },
@@ -133,14 +117,10 @@ const routes: RouteRecordRaw[] = [
       { path: 'nebula/hosts/:id', name: 'NebulaHostDetail', component: () => import('@/views/nebula/NebulaHostDetailView.vue') },
       { path: 'nebula/hosts/:id/edit', name: 'NebulaHostEdit', component: () => import('@/views/nebula/NebulaHostFormView.vue') },
       
-      // --- AUDIT LOGS ---
+      // Audit
       { path: 'audit', name: 'AuditLogs', component: () => import('@/views/audit/AuditLogView.vue') },
       
-      // ========================================================================
-      // USER & TENANT MANAGEMENT
-      // ========================================================================
-
-      // Team Management (Admin/Owner Only)
+      // Organization
       {
         path: 'organization',
         name: 'Organization',
@@ -153,7 +133,7 @@ const routes: RouteRecordRaw[] = [
         ]
       },
       
-      // User Settings
+      // Settings
       { path: 'settings', name: 'Settings', component: () => import('@/views/settings/UserSettingsView.vue') },
     ],
   },
@@ -164,25 +144,19 @@ const router = createRouter({
   routes,
 })
 
-/**
- * Navigation guard
- */
 router.beforeEach((to, _from, next) => {
   const authStore = useAuthStore()
   
-  // 1. Authentication Check
   if (to.meta.requiresAuth !== false && !authStore.isAuthenticated) {
     next('/login')
     return
   }
   
-  // 2. Super User Check
   if (to.meta.requiresSuperUser && !authStore.isSuperAdmin) {
     next('/')
     return
   }
 
-  // 3. Role Check (Only if NOT a super admin, as they bypass tenant roles)
   if (to.meta.requiresRole && !authStore.isSuperAdmin) {
     const allowedRoles = to.meta.requiresRole as string[]
     if (!allowedRoles.includes(authStore.userRole)) {

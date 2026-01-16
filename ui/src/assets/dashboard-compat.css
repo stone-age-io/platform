@@ -1,0 +1,67 @@
+:root {
+  /* =========================================
+     Theme Bridge: DaisyUI -> NATS Dashboard
+     ========================================= */
+
+  /* Base Colors */
+  --bg: oklch(var(--b2));
+  --panel: oklch(var(--b1));
+  --border: oklch(var(--b3));
+  --input-bg: oklch(var(--b2));
+  
+  --text: oklch(var(--bc));
+  --text-secondary: oklch(var(--bc) / 0.7);
+  --muted: oklch(var(--bc) / 0.5);
+
+  /* Semantic Colors */
+  --color-primary: oklch(var(--p));
+  --color-primary-hover: oklch(var(--pf));
+  
+  --color-secondary: oklch(var(--s));
+  
+  --color-accent: oklch(var(--a));
+  
+  --color-success: oklch(var(--su));
+  --color-success-bg: oklch(var(--su) / 0.1);
+  --color-success-border: oklch(var(--su) / 0.3);
+  
+  --color-warning: oklch(var(--wa));
+  --color-warning-bg: oklch(var(--wa) / 0.1);
+  --color-warning-border: oklch(var(--wa) / 0.3);
+  
+  --color-error: oklch(var(--er));
+  --color-error-bg: oklch(var(--er) / 0.1);
+  --color-error-border: oklch(var(--er) / 0.3);
+  
+  --color-info: oklch(var(--in));
+  --color-info-bg: oklch(var(--in) / 0.1);
+  --color-info-border: oklch(var(--in) / 0.3);
+
+  /* Widget Specifics */
+  --widget-bg: oklch(var(--b1));
+  --widget-border: oklch(var(--b3));
+  --widget-header-bg: oklch(var(--b2));
+  
+  /* Fonts */
+  --font: ui-sans-serif, system-ui, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Scrollbar styling compatibility */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: oklch(var(--bc) / 0.2);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(var(--bc) / 0.3);
+}

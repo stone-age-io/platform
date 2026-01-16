@@ -18,7 +18,7 @@ import (
 	pbtenancy "github.com/skeeeon/pb-tenancy"
 )
 
-//go:embed pb_public/*
+//go:embed all:pb_public/*
 var embeddedFS embed.FS
 
 // loadConfig handles the Viper initialization

@@ -95,7 +95,7 @@ function getActionColor(eventType: string) {
     <!-- Header -->
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
       <div>
-        <h1 class="text-3xl font-bold">Dashboard</h1>
+        <h1 class="text-3xl font-bold">Overview</h1>
         <p class="text-base-content/70 mt-1">
           {{ authStore.currentOrg?.name }}
         </p>
