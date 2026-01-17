@@ -5,7 +5,6 @@ import { useNatsKv, type KvEntry } from '@/composables/useNatsKv'
 import { useToast } from '@/composables/useToast'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList, { type Column } from '@/components/ui/ResponsiveList.vue'
-import { formatDate } from '@/utils/format'
 
 interface KvEntryWithId extends KvEntry {
   id: string
