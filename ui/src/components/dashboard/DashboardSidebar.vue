@@ -1,10 +1,10 @@
+<!-- ui/src/components/dashboard/DashboardSidebar.vue -->
 <template>
   <div class="sidebar-container">
     <aside class="sidebar">
-      <!-- Header -->
+      <!-- ... (Header and Tabs remain the same) ... -->
       <div class="sidebar-header">
         <h2 class="sidebar-title">Dashboards</h2>
-        <!-- CHANGED: Removed v-if="isMobile", always show close button in drawer mode -->
         <button 
           class="close-btn"
           @click="closeSidebar"
@@ -14,7 +14,6 @@
         </button>
       </div>
       
-      <!-- Storage Tabs -->
       <div v-if="dashboardStore.enableSharedDashboards" class="storage-tabs">
         <button 
           class="tab-btn" 
@@ -34,7 +33,7 @@
       
       <!-- Dashboard list -->
       <div class="sidebar-body">
-        <!-- LOCAL TAB -->
+        <!-- ... (Body content remains the same) ... -->
         <template v-if="activeTab === 'local'">
           <div v-if="dashboards.length === 0" class="empty-state">
             <div class="empty-icon">📊</div>
@@ -57,7 +56,6 @@
           </div>
         </template>
 
-        <!-- SHARED TAB -->
         <template v-if="activeTab === 'shared'">
           <div v-if="!natsStore.isConnected" class="empty-state">
             <div class="empty-icon">🔌</div>
@@ -85,7 +83,6 @@
       
       <!-- Footer with actions -->
       <div class="sidebar-footer">
-        <!-- Storage indicator (Local only) -->
         <div v-if="activeTab === 'local'" class="storage-indicator" :class="storageClass">
           <div class="storage-bar-bg">
             <div 
@@ -98,7 +95,6 @@
           </div>
         </div>
         
-        <!-- Action buttons -->
         <div class="action-buttons">
           <button 
             class="btn-action btn-new"
@@ -144,7 +140,7 @@
     <!-- Modals (Teleported) -->
     <!-- Rename Modal -->
     <Teleport to="body">
-      <div v-if="showRename" class="modal-overlay" @click.self="showRename = false">
+      <div v-if="showRename" class="sidebar-modal-overlay" @click.self="showRename = false">
         <div class="nd-modal">
           <div class="modal-header">
             <h3>Rename Dashboard</h3>
@@ -171,7 +167,7 @@
 
     <!-- Duplicate Local Modal -->
     <Teleport to="body">
-      <div v-if="showDuplicateLocal" class="modal-overlay" @click.self="showDuplicateLocal = false">
+      <div v-if="showDuplicateLocal" class="sidebar-modal-overlay" @click.self="showDuplicateLocal = false">
         <div class="nd-modal">
           <div class="modal-header">
             <h3>Duplicate Dashboard</h3>
@@ -201,7 +197,7 @@
     
     <!-- Share / Create / Duplicate Remote Modal -->
     <Teleport to="body">
-      <div v-if="showShareModal" class="modal-overlay" @click.self="showShareModal = false">
+      <div v-if="showShareModal" class="sidebar-modal-overlay" @click.self="showShareModal = false">
         <div class="nd-modal">
           <div class="modal-header">
             <h3>
@@ -276,7 +272,7 @@
     
     <!-- Import Modal -->
     <Teleport to="body">
-      <div v-if="showImport" class="modal-overlay" @click.self="showImport = false">
+      <div v-if="showImport" class="sidebar-modal-overlay" @click.self="showImport = false">
         <div class="nd-modal">
           <div class="modal-header">
             <h3>Import Dashboards</h3>
@@ -338,7 +334,6 @@ import DashboardTree from './DashboardTree.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import type { Dashboard } from '@/types/dashboard'
 
-// CHANGED: Define emits to notify parent
 const emit = defineEmits(['close'])
 
 const dashboardStore = useDashboardStore()
@@ -431,20 +426,17 @@ const deleteConfirmMessage = computed(() => {
 
 // --- Actions ---
 
-// CHANGED: Emit close event to parent
 function closeSidebar() {
   emit('close')
 }
 
 function selectDashboard(dashboard: Dashboard) {
   dashboardStore.setActiveDashboard(dashboard)
-  // CHANGED: Close sidebar on selection for better UX on mobile/drawer
   emit('close')
 }
 
 function selectRemoteDashboard(key: string) {
   dashboardStore.loadRemoteDashboard(key)
-  // CHANGED: Close sidebar on selection
   emit('close')
 }
 
@@ -595,7 +587,6 @@ function handleModalSubmit() {
   }
   
   showShareModal.value = false
-  // CHANGED: Emit close event
   emit('close')
 }
 
@@ -682,6 +673,41 @@ watch(() => dashboardStore.activeDashboard?.storage, (storage) => {
   flex-direction: column;
 }
 
+/* 
+  MODAL FIX: 
+  Use a unique class name and enforce fixed positioning with high z-index.
+  This ensures the modal breaks out of any stacking context.
+*/
+.sidebar-modal-overlay {
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100000 !important;
+  backdrop-filter: blur(2px);
+  isolation: isolate;
+  pointer-events: auto;
+}
+
+.nd-modal {
+  background: oklch(var(--b1));
+  border: 1px solid oklch(var(--b3));
+  border-radius: 8px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  max-height: 80vh;
+}
+
+/* ... (rest of the styles remain unchanged) ... */
+
 .sidebar {
   width: 100%;
   height: 100%;
@@ -690,11 +716,6 @@ watch(() => dashboardStore.activeDashboard?.storage, (storage) => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-/* Remove resize handle since it's a drawer now */
-.resize-handle {
-  display: none; 
 }
 
 .sidebar-header {
@@ -716,7 +737,6 @@ watch(() => dashboardStore.activeDashboard?.storage, (storage) => {
   white-space: nowrap;
 }
 
-/* CHANGED: Ensure close button is visible */
 .close-btn {
   background: none;
   border: none;
@@ -724,10 +744,9 @@ watch(() => dashboardStore.activeDashboard?.storage, (storage) => {
   font-size: 24px;
   cursor: pointer;
   padding: 4px;
-  display: block; /* Always visible in drawer mode */
+  display: block; 
 }
 
-/* Tabs */
 .storage-tabs {
   display: flex;
   padding: 12px;
@@ -804,7 +823,6 @@ watch(() => dashboardStore.activeDashboard?.storage, (storage) => {
   gap: 4px;
 }
 
-/* Footer */
 .sidebar-footer {
   padding: 16px;
   border-top: 1px solid oklch(var(--b3));
@@ -895,4 +913,121 @@ watch(() => dashboardStore.activeDashboard?.storage, (storage) => {
 .btn-text {
   flex: 1;
 }
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid oklch(var(--b3));
+}
+
+.modal-header h3 { margin: 0; font-size: 18px; }
+
+.modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  padding: 16px 24px;
+  border-top: 1px solid oklch(var(--b3));
+}
+
+.btn-secondary,
+.btn-primary {
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: oklch(var(--bc));
+}
+
+.btn-primary {
+  background: oklch(var(--p));
+  color: white;
+}
+
+.form-group {
+  margin-bottom: 1.25rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: oklch(var(--bc));
+  opacity: 0.8;
+}
+
+.form-input {
+  display: block;
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  background-color: oklch(var(--b2));
+  border: 1px solid oklch(var(--b3));
+  color: oklch(var(--bc));
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.form-input:focus {
+  border-color: oklch(var(--a));
+  outline: none;
+}
+
+.folder-selection-mode {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.help-text {
+  font-size: 12px;
+  color: oklch(var(--bc) / 0.5);
+  margin-top: 4px;
+}
+
+.file-input {
+  width: 100%;
+  padding: 8px;
+  background: oklch(var(--b2));
+  border: 1px solid oklch(var(--b3));
+  border-radius: 4px;
+}
+
+.import-results {
+  margin-top: 16px;
+  padding: 12px;
+  background: rgba(0,0,0,0.1);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.result-success { color: oklch(var(--su)); margin-bottom: 4px; }
+.result-warning { color: oklch(var(--wa)); margin-bottom: 4px; }
+.result-errors { color: oklch(var(--er)); }
+.error-title { font-weight: bold; margin-bottom: 4px; }
+.error-item { font-family: monospace; font-size: 11px; margin-bottom: 2px; }
 </style>
