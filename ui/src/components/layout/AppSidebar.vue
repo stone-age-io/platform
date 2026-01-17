@@ -1,3 +1,4 @@
+<!-- ui/src/components/layout/AppSidebar.vue -->
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -24,6 +25,11 @@ const showNatsModal = ref(false)
 
 // Org Search State
 const orgSearchQuery = ref('')
+
+// Dropdown State
+const isDropdownOpen = ref(false)
+const dropdownTriggerRef = ref<HTMLElement | null>(null)
+const dropdownMenuRef = ref<HTMLElement | null>(null)
 
 const filteredMemberships = computed(() => {
   const q = orgSearchQuery.value.toLowerCase().trim()
@@ -119,9 +125,12 @@ const isActive = (path: string) => {
 }
 
 function closeUserDropdown() {
-  const details = document.getElementById('user-dropdown')
-  if (details) details.removeAttribute('open')
+  isDropdownOpen.value = false
   setTimeout(() => orgSearchQuery.value = '', 200)
+}
+
+function toggleDropdown() {
+  isDropdownOpen.value = !isDropdownOpen.value
 }
 
 async function handleOrgChange(orgId: string) {
@@ -139,13 +148,14 @@ async function handleLogout() {
 }
 
 function handleClickOutside(e: Event) {
-  const details = document.getElementById('user-dropdown')
-  if (details && details.hasAttribute('open')) {
-    if (!details.contains(e.target as Node)) {
-      details.removeAttribute('open')
-      setTimeout(() => orgSearchQuery.value = '', 200)
-    }
-  }
+  if (!isDropdownOpen.value) return
+  const target = e.target as Node
+  
+  // Allow clicks inside the trigger or the menu (even if teleported)
+  if (dropdownTriggerRef.value?.contains(target)) return
+  if (dropdownMenuRef.value?.contains(target)) return
+  
+  closeUserDropdown()
 }
 
 onMounted(() => {
@@ -214,15 +224,18 @@ const serverInfoJson = computed(() => {
         <span v-show="!effectiveCompact" class="font-bold text-lg tracking-tight text-base-content whitespace-nowrap overflow-hidden">Stone-Age.io</span>
       </router-link>
 
-      <!-- User & Org Card (DETAILS DROPDOWN) -->
-      <details 
-        id="user-dropdown" 
+      <!-- User & Org Card (DROPDOWN) -->
+      <div 
         class="dropdown"
         :class="effectiveCompact ? '' : 'dropdown-bottom w-full'"
       >
-        <summary 
-          class="flex items-center gap-3 w-full p-2 rounded-lg bg-base-200/50 hover:bg-base-200 border border-transparent hover:border-base-300 transition-all cursor-pointer select-none list-none"
+        <!-- Trigger -->
+        <div 
+          ref="dropdownTriggerRef"
+          @click="toggleDropdown"
+          class="flex items-center gap-3 w-full p-2 rounded-lg bg-base-200/50 hover:bg-base-200 border border-transparent hover:border-base-300 transition-all cursor-pointer select-none"
           :class="{ 'justify-center': effectiveCompact }"
+          role="button"
         >
           <!-- User Avatar -->
           <div class="avatar placeholder">
@@ -245,80 +258,80 @@ const serverInfoJson = computed(() => {
           
           <!-- Chevron -->
           <svg v-show="!effectiveCompact" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 256 256" class="opacity-50 flex-shrink-0"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" fill="currentColor"/></svg>
-        </summary>
+        </div>
         
         <!-- Dropdown Menu -->
-        <!-- 
-           FIX: Use 'fixed' positioning when compact to escape the drawer-side clipping.
-           'left-[5.5rem]' pushes it just past the 5rem sidebar.
-           'top-[4.5rem]' aligns it roughly with the user card.
-        -->
-        <ul 
-          class="dropdown-content z-[999] menu p-0 shadow-xl bg-base-100 rounded-box border border-base-300 gap-0 overflow-hidden"
-          :class="effectiveCompact ? 'fixed left-[5.5rem] top-[4.5rem] w-72' : 'absolute w-full mt-1 left-0'"
-        >
-          
-          <!-- Header -->
-          <li class="menu-title px-3 py-2 bg-base-200/30 text-xs font-bold uppercase tracking-wider border-b border-base-200">
-            Switch Organization
-          </li>
-
-          <!-- Search Input -->
-          <div class="px-2 py-2 border-b border-base-200">
-            <input 
-              v-model="orgSearchQuery"
-              type="text" 
-              placeholder="Filter organizations..." 
-              class="input input-xs input-bordered w-full"
-              @click.stop
-            />
-          </div>
-
-          <!-- SCROLLABLE LIST -->
-          <div class="max-h-64 overflow-y-auto scrollbar-thin">
-            <li v-for="membership in filteredMemberships" :key="membership.id">
-              <a 
-                @click="handleOrgChange(membership.organization)"
-                :class="{ 'active': authStore.currentOrgId === membership.organization }"
-                class="justify-between rounded-none px-4 py-2 border-b border-base-200/50"
-              >
-                <div class="flex items-center gap-2 truncate">
-                  <span class="w-2 h-2 rounded-full flex-shrink-0" :class="authStore.currentOrgId === membership.organization ? 'bg-current' : 'bg-transparent border border-base-content/30'"></span>
-                  <span class="truncate">{{ membership.expand?.organization?.name }}</span>
-                </div>
-              </a>
-            </li>
+        <!-- Use Teleport when compact to escape sidebar clipping -->
+        <Teleport to="body" :disabled="!effectiveCompact">
+          <ul 
+            v-if="isDropdownOpen"
+            ref="dropdownMenuRef"
+            class="z-[9999] menu p-0 shadow-xl bg-base-100 rounded-box border border-base-300 gap-0 overflow-hidden"
+            :class="effectiveCompact ? 'fixed left-[5.5rem] top-[4.5rem] w-72' : 'absolute w-full mt-1 left-0'"
+          >
             
-            <li v-if="filteredMemberships.length === 0" class="disabled opacity-50 px-4 py-3 text-center text-xs">
-              No matching organizations
+            <!-- Header -->
+            <li class="menu-title px-3 py-2 bg-base-200/30 text-xs font-bold uppercase tracking-wider border-b border-base-200">
+              Switch Organization
             </li>
-          </div>
-          
-          <!-- Footer Actions -->
-          <div class="border-t border-base-300 bg-base-100 p-1">
-            <li v-if="authStore.isSuperAdmin">
-              <router-link to="/organizations/new" class="text-xs" @click="closeUserDropdown">
-                + New Organization
-              </router-link>
-            </li>
-            <li>
-              <router-link to="/settings" @click="closeUserDropdown">
-                ⚙️ Settings
-              </router-link>
-            </li>
-            <li>
-              <a @click="uiStore.toggleTheme">
-                {{ uiStore.theme === 'dark' ? '☀️ Light Mode' : '🌙 Dark Mode' }}
-              </a>
-            </li>
-            <li>
-              <a @click="handleLogout" class="text-error hover:bg-error/10">
-                🚪 Log out
-              </a>
-            </li>
-          </div>
-        </ul>
-      </details>
+
+            <!-- Search Input -->
+            <div class="px-2 py-2 border-b border-base-200">
+              <input 
+                v-model="orgSearchQuery"
+                type="text" 
+                placeholder="Filter organizations..." 
+                class="input input-xs input-bordered w-full"
+                @click.stop
+              />
+            </div>
+
+            <!-- SCROLLABLE LIST -->
+            <div class="max-h-64 overflow-y-auto scrollbar-thin">
+              <li v-for="membership in filteredMemberships" :key="membership.id">
+                <a 
+                  @click="handleOrgChange(membership.organization)"
+                  :class="{ 'active': authStore.currentOrgId === membership.organization }"
+                  class="justify-between rounded-none px-4 py-2 border-b border-base-200/50"
+                >
+                  <div class="flex items-center gap-2 truncate">
+                    <span class="w-2 h-2 rounded-full flex-shrink-0" :class="authStore.currentOrgId === membership.organization ? 'bg-current' : 'bg-transparent border border-base-content/30'"></span>
+                    <span class="truncate">{{ membership.expand?.organization?.name }}</span>
+                  </div>
+                </a>
+              </li>
+              
+              <li v-if="filteredMemberships.length === 0" class="disabled opacity-50 px-4 py-3 text-center text-xs">
+                No matching organizations
+              </li>
+            </div>
+            
+            <!-- Footer Actions -->
+            <div class="border-t border-base-300 bg-base-100 p-1">
+              <li v-if="authStore.isSuperAdmin">
+                <router-link to="/organizations/new" class="text-xs" @click="closeUserDropdown">
+                  + New Organization
+                </router-link>
+              </li>
+              <li>
+                <router-link to="/settings" @click="closeUserDropdown">
+                  ⚙️ Settings
+                </router-link>
+              </li>
+              <li>
+                <a @click="uiStore.toggleTheme">
+                  {{ uiStore.theme === 'dark' ? '☀️ Light Mode' : '🌙 Dark Mode' }}
+                </a>
+              </li>
+              <li>
+                <a @click="handleLogout" class="text-error hover:bg-error/10">
+                  🚪 Log out
+                </a>
+              </li>
+            </div>
+          </ul>
+        </Teleport>
+      </div>
 
       <!-- Connectivity Status Bar (Clickable) -->
       <div 
@@ -472,13 +485,5 @@ const serverInfoJson = computed(() => {
 /* Hide summary marker in compact mode to avoid weird arrows */
 details[open] > summary {
   margin-bottom: 0;
-}
-
-/* When compact, hide the marker on details */
-aside.w-20 details > summary {
-  list-style: none;
-}
-aside.w-20 details > summary::-webkit-details-marker {
-  display: none;
 }
 </style>
