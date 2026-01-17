@@ -48,6 +48,7 @@
           :is="widgetComponent" 
           :config="config"
           :layout-mode="isMobile ? 'card' : 'standard'"
+          :is-fullscreen="isFullscreen"
         />
       </div>
     </template>
@@ -74,11 +75,12 @@ import ConsoleWidget from '@/components/widgets/ConsoleWidget.vue'
 import PublisherWidget from '@/components/widgets/PublisherWidget.vue'
 import StatusWidget from '@/components/widgets/StatusWidget.vue'
 import MarkdownWidget from '@/components/widgets/MarkdownWidget.vue'
-import PocketBaseWidget from '@/components/widgets/PocketBaseWidget.vue' // Added
+import PocketBaseWidget from '@/components/widgets/PocketBaseWidget.vue'
 
 const props = defineProps<{
   config?: WidgetConfig
   isMobile?: boolean
+  isFullscreen?: boolean // <--- Added prop
 }>()
 
 const emit = defineEmits<{
@@ -108,7 +110,7 @@ const widgetComponent = computed(() => {
     case 'publisher': return PublisherWidget
     case 'status': return StatusWidget
     case 'markdown': return MarkdownWidget
-    case 'pocketbase': return PocketBaseWidget // Added
+    case 'pocketbase': return PocketBaseWidget
     default: return null
   }
 })

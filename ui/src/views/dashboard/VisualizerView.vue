@@ -173,7 +173,8 @@
         <WidgetContainer 
           :config="fullScreenWidget" 
           :is-mobile="false"
-          @delete="handleDeleteWidget(fullScreenWidget.id)"
+          :is-fullscreen="true"
+	  @delete="handleDeleteWidget(fullScreenWidget.id)"
           @configure="handleConfigureWidget(fullScreenWidget.id)"
           @duplicate="handleDuplicateWidget(fullScreenWidget.id)"
           @fullscreen="exitFullScreen"
