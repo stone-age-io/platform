@@ -1,3 +1,4 @@
+// ui/src/stores/nats.ts
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { 
@@ -23,7 +24,7 @@ export const useNatsStore = defineStore('nats', () => {
   
   // Stats
   const rtt = ref<number | null>(null)
-  const reconnectCount = ref(0) // <--- ADDED THIS
+  const reconnectCount = ref(0)
   let statsInterval: number | null = null
 
   const isConnected = computed(() => status.value === 'connected')
@@ -73,20 +74,22 @@ export const useNatsStore = defineStore('nats', () => {
       return
     }
 
-    if (!authStore.user) {
+    if (!authStore.isAuthenticated) {
       toast.error('You must be logged in to connect')
       return
     }
 
-    const natsUserId = (authStore.user as any).nats_user
+    // CHANGED: Get identity from the current organization membership
+    const natsUserId = authStore.currentMembership?.nats_user
+    
     if (!natsUserId) {
-      toast.error('No NATS Identity linked to user account')
+      toast.error('No NATS Identity linked to this organization context')
       return
     }
 
     status.value = 'connecting'
     lastError.value = null
-    reconnectCount.value = 0 // <--- RESET COUNT
+    reconnectCount.value = 0
 
     try {
       const natsUserRecord = await pb.collection('nats_users').getOne<NatsUser>(natsUserId)
@@ -103,7 +106,7 @@ export const useNatsStore = defineStore('nats', () => {
       nc.value = await wsconnect({ 
         servers: [url],
         authenticator: credsAuthenticator(credsBytes),
-        name: `stone-age-ui-${authStore.user.id}`,
+        name: `stone-age-ui-${authStore.user?.id}`,
       })
 
       status.value = 'connected'
@@ -147,7 +150,7 @@ export const useNatsStore = defineStore('nats', () => {
           break
         case 'reconnect':
           status.value = 'connected'
-          reconnectCount.value++ // <--- INCREMENT COUNT
+          reconnectCount.value++
           toast.success('Reconnected to NATS')
           break
         case 'error':
@@ -169,13 +172,14 @@ export const useNatsStore = defineStore('nats', () => {
 
   function tryAutoConnect() {
     loadSettings()
-    if (autoConnect.value && (authStore.user as any)?.nats_user) {
+    // CHANGED: Check membership instead of user record
+    if (autoConnect.value && authStore.currentMembership?.nats_user) {
       connect()
     }
   }
 
   return {
-    nc, status, lastError, serverUrls, autoConnect, rtt, isConnected, reconnectCount, // <--- EXPORTED
+    nc, status, lastError, serverUrls, autoConnect, rtt, isConnected, reconnectCount,
     loadSettings, saveSettings, addUrl, removeUrl, connect, disconnect, tryAutoConnect
   }
 })
