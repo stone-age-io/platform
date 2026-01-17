@@ -1,6 +1,5 @@
 <!-- ui/src/components/ui/ResponsiveList.vue -->
 <script setup lang="ts" generic="T extends { id: string }">
-import { computed } from 'vue'
 
 export interface Column<T = any> {
   key: string
