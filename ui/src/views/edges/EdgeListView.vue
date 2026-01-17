@@ -233,27 +233,13 @@ onUnmounted(() => {
           </div>
         </template>
         
-        <!-- Custom cell for type (badge) -->
-        <template #cell-expand.type.name="{ item }">
-          <span v-if="item.expand?.type" class="badge badge-ghost">
+        <template #card-expand.type.name="{ item }">
+          <span v-if="item.expand?.type" class="badge badge-ghost badge-sm">
             {{ item.expand.type.name }}
           </span>
-          <span v-else class="text-base-content/40">-</span>
+          <span v-else>-</span>
         </template>
-        
-        <!-- Custom card for type (badge) -->
-        <template #card-expand.type.name="{ item }">
-          <div class="flex flex-col">
-            <span class="text-xs font-medium text-base-content/70">Type</span>
-            <div class="mt-1">
-              <span v-if="item.expand?.type" class="badge badge-ghost badge-sm">
-                {{ item.expand.type.name }}
-              </span>
-              <span v-else class="text-sm text-base-content/40">-</span>
-            </div>
-          </div>
-        </template>
-        
+
         <!-- Custom cell for code (mono font) -->
         <template #cell-code="{ item }">
           <code v-if="item.code" class="text-xs">{{ item.code }}</code>

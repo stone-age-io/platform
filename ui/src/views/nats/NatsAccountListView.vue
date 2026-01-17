@@ -193,22 +193,12 @@ onUnmounted(() => {
           </div>
         </template>
         
-        <!-- Custom card for status -->
         <template #card-active="{ item }">
-          <div class="flex flex-col">
-            <span class="text-xs font-medium text-base-content/70">Status</span>
-            <div class="mt-1">
-              <div class="flex items-center gap-1.5" v-if="item.active">
-                <span class="w-2 h-2 rounded-full bg-success"></span>
-                <span>Active</span>
-              </div>
-              <div class="flex items-center gap-1.5" v-else>
-                <span class="w-2 h-2 rounded-full bg-error"></span>
-                <span>Inactive</span>
-              </div>
-            </div>
-          </div>
-        </template>
+  	  <div class="flex items-center gap-1.5">
+    	    <span class="w-2 h-2 rounded-full" :class="item.active ? 'bg-success' : 'bg-error'"></span>
+    	    <span class="text-xs">{{ item.active ? 'Active' : 'Inactive' }}</span>
+  	  </div>
+	</template>
         
         <!-- Actions -->
         <template #actions="{ item }">
