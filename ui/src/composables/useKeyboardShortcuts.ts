@@ -20,33 +20,24 @@ export function useKeyboardShortcuts(shortcuts: ShortcutDefinition[]) {
       return
     }
 
-    // 2. Global Help Shortcut (?)
-    if (event.key === '?' && !event.ctrlKey && !event.altKey && !event.metaKey) {
-      window.dispatchEvent(new CustomEvent('show-shortcuts-help'))
-      return
-    }
-    
-    // 3. Check defined shortcuts
+    // 2. Check defined shortcuts
     for (const s of shortcuts) {
       // Case insensitive match
       const keyMatch = event.key.toLowerCase() === s.key.toLowerCase()
       
       // Strict Modifier Check: 
-      // We only want to trigger if NO modifiers are pressed.
-      // This prevents 's' logic from firing when user hits 'Ctrl+S'
-      const noModifiers = !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey
+      // We want to trigger if NO control/alt/meta modifiers are pressed.
+      // We allow Shift ONLY if the defined key is a special character that usually requires it (like '?')
+      const isShiftException = /^[?<>!@#$%^&*()_+{}|:"~]$/.test(s.key)
+      const noModifiers = !event.ctrlKey && !event.altKey && !event.metaKey && (!event.shiftKey || isShiftException)
 
-      // Exception: 'Escape' usually works regardless of modifiers, but let's keep it simple
-      // Exception: If the key itself is uppercase (like 'S'), shift might be implied, 
-      // but usually event.key handles that. We'll stick to strict no-modifiers for safety.
-      
       if (keyMatch && noModifiers) {
         event.preventDefault()
         s.handler(event)
         return
       }
       
-      // Special case for Escape (often doesn't care about modifiers)
+      // Special case for Escape
       if (s.key.toLowerCase() === 'escape' && event.key === 'Escape') {
         event.preventDefault()
         s.handler(event)

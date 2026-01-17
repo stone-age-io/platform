@@ -195,6 +195,7 @@
 import { ref, onMounted, onUnmounted, watch, computed, nextTick, provide } from 'vue'
 import { useNatsStore } from '@/stores/nats'
 import { useDashboardStore } from '@/stores/dashboard'
+import { useUIStore } from '@/stores/ui'
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
 import { useWidgetOperations } from '@/composables/useWidgetOperations'
 
@@ -213,6 +214,7 @@ import type { WidgetType } from '@/types/dashboard'
 
 const natsStore = useNatsStore()
 const dashboardStore = useDashboardStore()
+const uiStore = useUIStore()
 
 const {
   subscribeWidget,
@@ -335,6 +337,11 @@ const { shortcuts } = useKeyboardShortcuts([
     key: 'b', 
     description: 'Toggle Dashboard List', 
     handler: toggleSidebar 
+  },
+  { 
+    key: 'a', 
+    description: 'Toggle App Sidebar', 
+    handler: () => uiStore.toggleCompact()
   },
   { 
     key: 'v', 
