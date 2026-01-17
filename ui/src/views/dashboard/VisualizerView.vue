@@ -174,7 +174,7 @@
           :config="fullScreenWidget" 
           :is-mobile="false"
           :is-fullscreen="true"
-	  @delete="handleDeleteWidget(fullScreenWidget.id)"
+          @delete="handleDeleteWidget(fullScreenWidget.id)"
           @configure="handleConfigureWidget(fullScreenWidget.id)"
           @duplicate="handleDuplicateWidget(fullScreenWidget.id)"
           @fullscreen="exitFullScreen"
@@ -435,16 +435,55 @@ watch(() => dashboardStore.activeWidgets.length, (newCount, oldCount) => {
 </script>
 
 <style scoped>
+/* 
+  VISUALIZER VIEW LAYOUT
+  
+  Grug say: To stop page scrolling when internal grid should scroll, 
+  we must fix the height of this container to the viewport minus header.
+  
+  AppHeader is ~4rem (64px).
+  Padding is 1rem (mobile) or 1.5rem (desktop).
+  
+  We calculate height to fit perfectly.
+*/
 .visualizer-view {
   display: flex;
-  height: 100%;
-  /* Ensure minimum height to prevent collapse on mobile */
-  min-height: calc(100vh - 8rem);
-  overflow: hidden;
+  flex-direction: column;
+  
+  /* 
+     Height Calculation:
+     100vh (Viewport) 
+     - 4rem (AppHeader) 
+     = Remaining Space
+     
+     We also added negative margins to break out of parent padding.
+     So we set height to fill that exactly.
+  */
+  height: calc(100vh - 4rem); 
+  
+  /* Negative margins to break out of MainLayout padding */
+  margin: -1rem; 
+  width: calc(100% + 2rem);
+  
+  overflow: hidden; /* Important: Prevents parent scrollbar */
   background: oklch(var(--b2));
-  border-radius: 0.5rem;
-  border: 1px solid oklch(var(--b3));
+  
+  /* Remove "card" look */
+  border-radius: 0;
+  border: none;
   position: relative;
+}
+
+@media (min-width: 1024px) {
+  .visualizer-view {
+    /* 
+       On desktop, parent padding is 1.5rem (p-6).
+       So we counteract that.
+    */
+    margin: -1.5rem;
+    width: calc(100% + 3rem);
+    height: calc(100vh - 4rem);
+  }
 }
 
 .visualizer-main {
@@ -517,12 +556,26 @@ watch(() => dashboardStore.activeWidgets.length, (newCount, oldCount) => {
   border-bottom: 1px solid oklch(var(--b3));
   flex-shrink: 0;
   gap: 0.5rem;
+  
+  /* Sticky backup, though fixed height should solve scrolling */
+  position: sticky;
+  top: 0;
+  z-index: 40;
 }
 
-.toolbar-left, .toolbar-right {
+.toolbar-left {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex: 1;
+  min-width: 0; 
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0; 
 }
 
 .sidebar-toggle-btn {
@@ -549,6 +602,7 @@ watch(() => dashboardStore.activeWidgets.length, (newCount, oldCount) => {
   gap: 0.75rem;
   margin-left: 0.5rem;
   min-width: 0; /* Enable truncation flex child */
+  flex: 1;
 }
 
 .dashboard-name {
