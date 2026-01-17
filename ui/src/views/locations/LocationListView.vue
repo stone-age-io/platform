@@ -233,14 +233,14 @@ onUnmounted(() => {
         <template #actions="{ item }">
           <router-link 
             :to="`/locations/${item.id}/edit`" 
-            class="btn btn-ghost btn-sm flex-1"
+            class="btn btn-xs flex-1"
             @click.stop
           >
             Edit
           </router-link>
           <button 
             @click.stop="handleDelete(item)" 
-            class="btn btn-ghost btn-sm text-error flex-1"
+            class="btn btn-xs text-error flex-1"
           >
             Delete
           </button>

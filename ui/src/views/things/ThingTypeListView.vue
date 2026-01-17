@@ -82,8 +82,8 @@ onUnmounted(() => window.removeEventListener('organization-changed', handleOrgCh
         </template>
 
         <template #actions="{ item }">
-          <router-link :to="`/things/types/${item.id}/edit`" class="btn btn-ghost btn-sm">Edit</router-link>
-          <button @click.stop="handleDelete(item)" class="btn btn-ghost btn-sm text-error">Delete</button>
+          <router-link :to="`/things/types/${item.id}/edit`" class="btn btn-xs flex-1">Edit</router-link>
+          <button @click.stop="handleDelete(item)" class="btn btn-xs text-error flex-1">Delete</button>
         </template>
       </ResponsiveList>
       

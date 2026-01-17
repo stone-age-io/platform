@@ -217,13 +217,13 @@ onUnmounted(() => {
         <template #actions="{ item }">
           <router-link 
             :to="`/nats/roles/${item.id}/edit`" 
-            class="btn btn-ghost btn-sm flex-1 sm:flex-initial"
+            class="btn btn-xs flex-1 sm:flex-initial"
           >
             Edit
           </router-link>
           <button 
             @click="handleDelete(item)" 
-            class="btn btn-ghost btn-sm text-error flex-1 sm:flex-initial"
+            class="btn btn-xs text-error flex-1 sm:flex-initial"
           >
             Delete
           </button>

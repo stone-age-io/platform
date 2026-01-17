@@ -185,7 +185,7 @@ onUnmounted(() => {
         <template #actions="{ item }">
           <router-link 
             :to="`/nebula/cas/${item.id}`" 
-            class="btn btn-ghost btn-sm flex-1 sm:flex-initial"
+            class="btn btn-xs flex-1 sm:flex-initial"
           >
             View Details
           </router-link>

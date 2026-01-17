@@ -204,7 +204,7 @@ onUnmounted(() => {
         <template #actions="{ item }">
           <button 
             @click.stop="handleRowClick(item)"
-            class="btn btn-ghost btn-sm flex-1 sm:flex-initial"
+            class="btn btn-xs flex-1 sm:flex-initial"
           >
             View Details
           </button>
