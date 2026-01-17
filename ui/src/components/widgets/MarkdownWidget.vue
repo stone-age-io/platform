@@ -1,3 +1,4 @@
+<!-- ui/src/components/widgets/MarkdownWidget.vue -->
 <template>
   <div class="markdown-widget" :class="{ 'card-layout': layoutMode === 'card', 'is-editing': isEditing }">
     
@@ -347,10 +348,13 @@ onUnmounted(() => {
 .markdown-body {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden; /* Grug fix: Prevent horizontal scroll on body */
   padding: 12px;
   color: var(--text);
   font-size: 14px;
   line-height: 1.6;
+  overflow-wrap: break-word; /* Grug fix: Break long words */
+  word-wrap: break-word;
 }
 
 :deep(h1), :deep(h2), :deep(h3), :deep(h4) {
@@ -378,13 +382,14 @@ onUnmounted(() => {
   border-radius: 3px;
   font-family: var(--mono);
   font-size: 0.9em;
+  word-break: break-all; /* Grug fix: Break long codes */
 }
 
 :deep(pre) {
   background: rgba(0, 0, 0, 0.2);
   padding: 12px;
   border-radius: 6px;
-  overflow-x: auto;
+  overflow-x: auto; /* Grug fix: Scroll code blocks internally */
   margin-bottom: 1em;
 }
 
@@ -392,6 +397,7 @@ onUnmounted(() => {
   background: none;
   padding: 0;
   color: inherit;
+  word-break: normal;
 }
 
 :deep(ul), :deep(ol) {
@@ -409,6 +415,7 @@ onUnmounted(() => {
 
 :deep(img) {
   max-width: 100%;
+  height: auto;
   border-radius: 4px;
 }
 
@@ -416,6 +423,8 @@ onUnmounted(() => {
   width: 100%;
   border-collapse: collapse;
   margin-bottom: 1em;
+  display: block; /* Grug fix: Allow table to scroll */
+  overflow-x: auto; /* Grug fix: Scroll table internally */
 }
 
 :deep(th), :deep(td) {
