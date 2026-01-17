@@ -1,3 +1,4 @@
+<!-- ui/src/components/dashboard/VariableBar.vue -->
 <template>
   <div class="variable-bar">
     <!-- Case A: Has Variables -->
@@ -187,11 +188,13 @@ function handleTextInput(name: string, value: string) {
     padding: 12px;
     flex-direction: column;
     align-items: stretch;
+    gap: 8px; /* Slightly tighter gap between header and grid */
   }
 
   .variables-list {
     display: grid;
-    grid-template-columns: 1fr 1fr; /* 2 columns */
+    /* Auto-fit: 2 columns usually, 1 column on very small screens */
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
     gap: 12px;
     width: 100%;
   }
@@ -214,9 +217,18 @@ function handleTextInput(name: string, value: string) {
   }
 
   .bar-actions {
-    position: absolute;
-    top: 8px;
-    right: 8px;
+    /* Reset desktop positioning */
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-end; /* Keep buttons on right */
+    
+    /* Move to top of flex container */
+    order: -1;
+    
+    /* Visual Tweaks */
+    padding-bottom: 4px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--border);
   }
 }
 </style>

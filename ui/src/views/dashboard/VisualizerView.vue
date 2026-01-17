@@ -1,3 +1,4 @@
+<!-- ui/src/views/dashboard/VisualizerView.vue -->
 <template>
   <div class="visualizer-view">
     <!-- 
@@ -10,7 +11,7 @@
       </div>
     </Transition>
 
-    <!-- Backdrop for Sidebar -->
+    <!-- Backdrop for Sidebar (Mobile Only) -->
     <div 
       v-if="isSidebarOpen" 
       class="sidebar-backdrop"
@@ -66,8 +67,8 @@
         
         <!-- Right: Actions -->
         <div class="toolbar-right">
-          <!-- Grid Columns (Edit Mode Only) -->
-          <div v-if="!dashboardStore.isLocked" class="hidden sm:block">
+          <!-- Grid Columns (Edit Mode Only - Desktop) -->
+          <div v-if="!dashboardStore.isLocked" class="hidden md:block">
             <select 
               :value="dashboardStore.activeDashboard?.columnCount ?? 12"
               @change="handleGridChange"
@@ -112,11 +113,12 @@
             @click="showAddWidget = true" 
             title="Add Widget (N)"
           >
-            + Add Widget
+            <span class="text-lg leading-none">+</span>
+            <span class="hidden sm:inline ml-1">Widget</span>
           </button>
           
-          <!-- Debug -->
-          <button class="btn btn-sm btn-square btn-ghost" @click="showDebugPanel = true" title="Debug Info">
+          <!-- Debug (Hidden on small mobile) -->
+          <button class="btn btn-sm btn-square btn-ghost hidden sm:flex" @click="showDebugPanel = true" title="Debug Info">
             🐞
           </button>
         </div>
@@ -143,11 +145,11 @@
         />
         
         <!-- Empty State -->
-        <div v-else class="h-full flex flex-col items-center justify-center text-base-content/50">
-          <span class="text-6xl mb-4">📊</span>
+        <div v-else class="h-full flex flex-col items-center justify-center text-base-content/50 p-8 text-center">
+          <span class="text-6xl mb-4 opacity-50">📊</span>
           <h3 class="text-xl font-bold">Empty Dashboard</h3>
-          <p class="mt-2 text-sm">
-            <template v-if="!dashboardStore.isLocked">Click <strong>+ Add Widget</strong> to start building.</template>
+          <p class="mt-2 text-sm max-w-xs mx-auto">
+            <template v-if="!dashboardStore.isLocked">Tap <strong>+</strong> to add your first widget.</template>
             <template v-else>Unlock the dashboard to add widgets.</template>
           </p>
         </div>
@@ -226,7 +228,7 @@ const {
 } = useWidgetOperations()
 
 // UI State
-const isSidebarOpen = ref(false) // Changed: Closed by default
+const isSidebarOpen = ref(false)
 const showAddWidget = ref(false)
 const showConfigWidget = ref(false)
 const showShortcutsModal = ref(false)
@@ -335,12 +337,12 @@ const { shortcuts } = useKeyboardShortcuts([
   },
   { 
     key: 'b', 
-    description: 'Toggle Dashboard List', 
+    description: 'Toggle Dashboard Sidebar', 
     handler: toggleSidebar 
   },
   { 
     key: 'a', 
-    description: 'Toggle App Sidebar', 
+    description: 'Toggle App Sidebar',
     handler: () => uiStore.toggleCompact()
   },
   { 
@@ -410,7 +412,7 @@ watch(() => natsStore.isConnected, (connected) => {
 
 watch(() => dashboardStore.activeDashboardId, async () => {
   unsubscribeAllWidgets(false)
-  // Close sidebar on selection for cleaner UX
+  // Close sidebar on selection for cleaner UX on mobile
   if (window.innerWidth < 1024) isSidebarOpen.value = false
   await nextTick()
   if (natsStore.isConnected) subscribeAllWidgets()
@@ -435,11 +437,13 @@ watch(() => dashboardStore.activeWidgets.length, (newCount, oldCount) => {
 .visualizer-view {
   display: flex;
   height: 100%;
+  /* Ensure minimum height to prevent collapse on mobile */
+  min-height: calc(100vh - 8rem);
   overflow: hidden;
   background: oklch(var(--b2));
   border-radius: 0.5rem;
   border: 1px solid oklch(var(--b3));
-  position: relative; /* Important for absolute sidebar */
+  position: relative;
 }
 
 .visualizer-main {
@@ -451,7 +455,7 @@ watch(() => dashboardStore.activeWidgets.length, (newCount, oldCount) => {
   z-index: 1;
 }
 
-/* Sidebar Wrapper for Animation */
+/* Sidebar Wrapper */
 .sidebar-wrapper {
   position: absolute;
   top: 0;
@@ -461,6 +465,27 @@ watch(() => dashboardStore.activeWidgets.length, (newCount, oldCount) => {
   z-index: 20;
   box-shadow: 4px 0 15px rgba(0,0,0,0.1);
   height: 100%;
+}
+
+/* Mobile: Fixed Sidebar to escape container constraints */
+@media (max-width: 1024px) {
+  .sidebar-wrapper {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: 320px; /* Limit width */
+    z-index: 100; /* Above everything */
+    box-shadow: 0 0 20px rgba(0,0,0,0.3);
+  }
+  
+  /* Backdrop needs to be fixed too */
+  .sidebar-backdrop {
+    position: fixed !important;
+    z-index: 99 !important;
+  }
 }
 
 .sidebar-backdrop {
@@ -490,6 +515,7 @@ watch(() => dashboardStore.activeWidgets.length, (newCount, oldCount) => {
   background: oklch(var(--b1));
   border-bottom: 1px solid oklch(var(--b3));
   flex-shrink: 0;
+  gap: 0.5rem;
 }
 
 .toolbar-left, .toolbar-right {
@@ -521,6 +547,7 @@ watch(() => dashboardStore.activeWidgets.length, (newCount, oldCount) => {
   align-items: center;
   gap: 0.75rem;
   margin-left: 0.5rem;
+  min-width: 0; /* Enable truncation flex child */
 }
 
 .dashboard-name {
@@ -540,13 +567,22 @@ watch(() => dashboardStore.activeWidgets.length, (newCount, oldCount) => {
 
 /* Mobile adjustments */
 @media (max-width: 640px) {
-  .dashboard-name {
-    font-size: 1rem;
-    max-width: 150px;
-  }
-  
   .visualizer-toolbar {
     padding: 0.5rem;
+  }
+  
+  .dashboard-name {
+    font-size: 0.9rem;
+    max-width: 120px;
+  }
+  
+  .dashboard-info {
+    gap: 0.25rem;
+    margin-left: 0.25rem;
+  }
+  
+  .sidebar-toggle-btn {
+    font-size: 1rem;
   }
 }
 </style>
