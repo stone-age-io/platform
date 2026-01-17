@@ -1,14 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed, triggerRef } from 'vue'
-
-/**
- * Widget Data Store
- * 
- * Manages message buffers for all widgets with:
- * - Per-widget ring buffers with configurable size
- * - Batch message ingestion for performance
- * - Memory pressure monitoring and pruning
- */
+import { ref, computed, shallowRef, triggerRef } from 'vue'
 
 export interface BufferedMessage {
   timestamp: number
@@ -17,9 +8,10 @@ export interface BufferedMessage {
   subject?: string
 }
 
+// CHANGED: messages is now a Ref, allowing granular updates
 interface WidgetDataBuffer {
   widgetId: string
-  messages: BufferedMessage[]
+  messages:  import('vue').Ref<BufferedMessage[]> 
   maxCount: number
   maxAge?: number
 }
@@ -33,7 +25,8 @@ const MEMORY_LIMITS = {
 
 export const useWidgetDataStore = defineStore('widgetData', () => {
   // State
-  const buffers = ref<Map<string, WidgetDataBuffer>>(new Map())
+  // CHANGED: Use shallowRef for the Map itself. We rarely add/remove widgets compared to messages.
+  const buffers = shallowRef<Map<string, WidgetDataBuffer>>(new Map())
   const memoryWarning = ref<string | null>(null)
   const cumulativeCount = ref(0)
   
@@ -43,7 +36,7 @@ export const useWidgetDataStore = defineStore('widgetData', () => {
   const totalBufferedCount = computed(() => {
     let total = 0
     for (const buffer of buffers.value.values()) {
-      total += buffer.messages.length
+      total += buffer.messages.value.length
     }
     return total
   })
@@ -66,11 +59,11 @@ export const useWidgetDataStore = defineStore('widgetData', () => {
     if (!buffers.value.has(widgetId)) {
       buffers.value.set(widgetId, {
         widgetId,
-        messages: [],
+        messages: shallowRef([]), // CHANGED: Individual reactive ref
         maxCount: safeMaxCount,
         maxAge,
       })
-      triggerRef(buffers)
+      triggerRef(buffers) // Only trigger map structure changes
     }
   }
   
@@ -93,12 +86,13 @@ export const useWidgetDataStore = defineStore('widgetData', () => {
     if (!checkMemoryPressure()) return
 
     for (const buffer of buffers.value.values()) {
-      if (buffer.messages.length > 100) {
-        const toRemove = Math.ceil(buffer.messages.length * 0.2)
-        buffer.messages.splice(0, toRemove)
+      if (buffer.messages.value.length > 100) {
+        const toRemove = Math.ceil(buffer.messages.value.length * 0.2)
+        // Direct array mutation on the value
+        const newMsgs = buffer.messages.value.slice(toRemove)
+        buffer.messages.value = newMsgs
       }
     }
-    triggerRef(buffers)
   }
   
   function addMessage(widgetId: string, value: any, raw?: any, subject?: string) {
@@ -142,54 +136,62 @@ export const useWidgetDataStore = defineStore('widgetData', () => {
       }
 
       const max = buffer.maxCount
+      // Work with a copy to avoid intermediate reactivity triggers
+      let currentMsgs = buffer.messages.value
       const incomingLen = newMessages.length
+
+      let updatedMsgs: BufferedMessage[]
 
       if (incomingLen >= max) {
         // Incoming flood: just keep newest
-        buffer.messages = newMessages.slice(incomingLen - max)
+        updatedMsgs = newMessages.slice(incomingLen - max)
       } else {
         // Normal case: make room and push
-        const currentLen = buffer.messages.length
+        const currentLen = currentMsgs.length
         const availableSpace = max - currentLen
         
         if (incomingLen > availableSpace) {
           const toRemove = incomingLen - availableSpace
-          buffer.messages.splice(0, toRemove)
+          updatedMsgs = currentMsgs.slice(toRemove).concat(newMessages)
+        } else {
+          updatedMsgs = currentMsgs.concat(newMessages)
         }
-        
-        buffer.messages.push(...newMessages)
       }
+      
+      // CHANGED: Update the specific ref for this widget only
+      buffer.messages.value = updatedMsgs
     }
 
     // Check memory occasionally
     if (items.length > 100) {
       pruneIfNeeded()
     }
-
-    triggerRef(buffers)
+    
+    // REMOVED: triggerRef(buffers) - No longer needed for data updates!
   }
   
   function getBuffer(widgetId: string): BufferedMessage[] {
     const buffer = buffers.value.get(widgetId)
-    return buffer ? buffer.messages : []
+    // CHANGED: Return the value of the ref. 
+    // Computed properties using this will now track `buffer.messages`, not `buffers`.
+    return buffer ? buffer.messages.value : []
   }
   
   function getLatest(widgetId: string): any {
     const buffer = buffers.value.get(widgetId)
-    if (!buffer || buffer.messages.length === 0) return null
-    return buffer.messages[buffer.messages.length - 1].value
+    if (!buffer || buffer.messages.value.length === 0) return null
+    return buffer.messages.value[buffer.messages.value.length - 1].value
   }
   
   function getBufferSize(widgetId: string): number {
     const buffer = buffers.value.get(widgetId)
-    return buffer ? buffer.messages.length : 0
+    return buffer ? buffer.messages.value.length : 0
   }
   
   function clearBuffer(widgetId: string) {
     const buffer = buffers.value.get(widgetId)
     if (buffer) {
-      buffer.messages = []
-      triggerRef(buffers)
+      buffer.messages.value = []
     }
   }
   
@@ -213,10 +215,9 @@ export const useWidgetDataStore = defineStore('widgetData', () => {
       const safeMaxCount = Math.min(maxCount, MEMORY_LIMITS.MAX_SINGLE_BUFFER)
       buffer.maxCount = safeMaxCount
       
-      if (buffer.messages.length > safeMaxCount) {
-        const toRemove = buffer.messages.length - safeMaxCount
-        buffer.messages.splice(0, toRemove)
-        triggerRef(buffers)
+      if (buffer.messages.value.length > safeMaxCount) {
+        const toRemove = buffer.messages.value.length - safeMaxCount
+        buffer.messages.value = buffer.messages.value.slice(toRemove)
       }
     }
     if (maxAge !== undefined) buffer.maxAge = maxAge
