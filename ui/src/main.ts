@@ -21,3 +21,15 @@ app.use(router)
  * Mount app
  */
 app.mount('#app')
+
+/**
+ * Register Service Worker for PWA "Install" support
+ * Grug say: Only register if browser support it and we not in dev mode
+ */
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(reg => console.log('SW registered:', reg.scope))
+      .catch(err => console.error('SW registration failed:', err));
+  });
+}
