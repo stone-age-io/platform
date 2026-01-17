@@ -185,7 +185,7 @@ onErrorCaptured((err) => {
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  background: oklch(var(--b2)); /* Base-200 */
+  background: oklch(var(--b3)); /* Base-200 */
   border-bottom: 1px solid oklch(var(--b3));
   flex-shrink: 0;
   gap: 8px;
