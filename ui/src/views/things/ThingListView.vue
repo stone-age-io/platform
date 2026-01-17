@@ -249,19 +249,13 @@ onUnmounted(() => {
           <span v-else class="text-base-content/40">-</span>
         </template>
         
-        <!-- Custom card for type (badge) -->
         <template #card-expand.type.name="{ item }">
-          <div class="flex flex-col">
-            <span class="text-xs font-medium text-base-content/70">Type</span>
-            <div class="mt-1">
-              <span v-if="item.expand?.type" class="badge badge-ghost badge-sm">
-                {{ item.expand.type.name }}
-              </span>
-              <span v-else class="text-sm text-base-content/40">-</span>
-            </div>
-          </div>
+         <span v-if="item.expand?.type" class="badge badge-ghost badge-sm">
+           {{ item.expand.type.name }}
+         </span>
+         <span v-else>-</span>
         </template>
-        
+
         <!-- Custom cell for code (mono font) -->
         <template #cell-code="{ item }">
           <code v-if="item.code" class="text-xs">{{ item.code }}</code>
@@ -272,13 +266,13 @@ onUnmounted(() => {
         <template #actions="{ item }">
           <router-link 
             :to="`/things/${item.id}/edit`" 
-            class="btn btn-ghost btn-sm flex-1 sm:flex-initial"
+            class="btn btn-xs flex-1 sm:flex-initial"
           >
             Edit
           </router-link>
           <button 
             @click="handleDelete(item)" 
-            class="btn btn-ghost btn-sm text-error flex-1 sm:flex-initial"
+            class="btn btn-xs text-error flex-1 sm:flex-initial"
           >
             Delete
           </button>

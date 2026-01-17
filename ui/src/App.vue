@@ -1,3 +1,4 @@
+<!-- ui/src/App.vue -->
 <script setup lang="ts">
 import { onMounted, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
@@ -15,19 +16,23 @@ onMounted(() => {
   uiStore.initializeTheme()
   
   // Restore session
-  // This will trigger the watcher below if a user is found, 
-  // starting the NATS connection process automatically.
   authStore.initializeFromAuth()
 })
 
-// Global Auth Watcher
-// Handles connecting on Login, Logout, and Page Reload
+// 1. Handle Logout
+// We watch isAuthenticated specifically to catch the logout event immediately
 watch(() => authStore.isAuthenticated, (isAuth) => {
-  if (isAuth) {
-    natsStore.tryAutoConnect()
-  } else {
-    // If logged out, kill the NATS connection
+  if (!isAuth) {
     natsStore.disconnect()
+  }
+})
+
+// 2. Handle Login & Context Switching
+// We watch currentMembership because NATS requires the membership-linked identity.
+// This fires when the page loads (after context is fetched) AND when switching Orgs.
+watch(() => authStore.currentMembership, (newMembership) => {
+  if (newMembership) {
+    natsStore.tryAutoConnect()
   }
 })
 </script>

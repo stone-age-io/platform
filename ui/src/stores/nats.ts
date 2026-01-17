@@ -1,3 +1,4 @@
+// ui/src/stores/nats.ts
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { 
@@ -23,6 +24,7 @@ export const useNatsStore = defineStore('nats', () => {
   
   // Stats
   const rtt = ref<number | null>(null)
+  const reconnectCount = ref(0)
   let statsInterval: number | null = null
 
   const isConnected = computed(() => status.value === 'connected')
@@ -72,42 +74,39 @@ export const useNatsStore = defineStore('nats', () => {
       return
     }
 
-    if (!authStore.user) {
+    if (!authStore.isAuthenticated) {
       toast.error('You must be logged in to connect')
       return
     }
 
-    // Check if ID exists on the user record (string check, not object check)
-    // We cast to 'any' to access custom fields safely
-    const natsUserId = (authStore.user as any).nats_user
+    // CHANGED: Get identity from the current organization membership
+    const natsUserId = authStore.currentMembership?.nats_user
+    
     if (!natsUserId) {
-      toast.error('No NATS Identity linked to user account')
+      toast.error('No NATS Identity linked to this organization context')
       return
     }
 
     status.value = 'connecting'
     lastError.value = null
+    reconnectCount.value = 0
 
     try {
-      // 2. Fetch Fresh Credentials
-      // We do NOT rely on authStore expansions here. We fetch the source of truth.
       const natsUserRecord = await pb.collection('nats_users').getOne<NatsUser>(natsUserId)
       
       if (!natsUserRecord.creds_file) {
         throw new Error('Linked NATS identity has no credentials file')
       }
 
-      // 3. Prepare Authenticator
       const encoder = new TextEncoder()
       const credsBytes = encoder.encode(natsUserRecord.creds_file)
       
-      // 4. Connect
       console.log(`Connecting to NATS at ${url} as ${natsUserRecord.nats_username}...`)
       
       nc.value = await wsconnect({ 
         servers: [url],
         authenticator: credsAuthenticator(credsBytes),
-        name: `stone-age-ui-${authStore.user.id}`,
+        name: `stone-age-ui-${authStore.user?.id}`,
       })
 
       status.value = 'connected'
@@ -120,7 +119,6 @@ export const useNatsStore = defineStore('nats', () => {
       console.error('NATS Connection Error:', err)
       status.value = 'disconnected'
       lastError.value = err.message
-      // If it's a fetch 404, the user might have been deleted
       if (err.status === 404) {
         toast.error('Linked NATS Identity no longer exists')
       } else {
@@ -152,6 +150,7 @@ export const useNatsStore = defineStore('nats', () => {
           break
         case 'reconnect':
           status.value = 'connected'
+          reconnectCount.value++
           toast.success('Reconnected to NATS')
           break
         case 'error':
@@ -173,14 +172,14 @@ export const useNatsStore = defineStore('nats', () => {
 
   function tryAutoConnect() {
     loadSettings()
-    // Only attempt if configured AND we have a user ID linked
-    if (autoConnect.value && (authStore.user as any)?.nats_user) {
+    // CHANGED: Check membership instead of user record
+    if (autoConnect.value && authStore.currentMembership?.nats_user) {
       connect()
     }
   }
 
   return {
-    nc, status, lastError, serverUrls, autoConnect, rtt, isConnected,
+    nc, status, lastError, serverUrls, autoConnect, rtt, isConnected, reconnectCount,
     loadSettings, saveSettings, addUrl, removeUrl, connect, disconnect, tryAutoConnect
   }
 })

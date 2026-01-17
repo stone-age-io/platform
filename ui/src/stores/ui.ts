@@ -1,61 +1,48 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-/**
- * UI Store
- * 
- * Manages UI-specific state like theme and sidebar visibility.
- * Keeps UI state separate from business logic.
- */
 export const useUIStore = defineStore('ui', () => {
-  // ============================================================================
-  // STATE
-  // ============================================================================
-  
+  // State
   const theme = ref<'light' | 'dark'>('dark')
-  const sidebarOpen = ref(true)
+  const sidebarOpen = ref(true) // For mobile drawer
+  const sidebarCompact = ref(false) // For desktop compact mode
   
-  // ============================================================================
-  // ACTIONS
-  // ============================================================================
-  
-  /**
-   * Toggle between light and dark theme
-   */
+  // Actions
   function toggleTheme() {
     theme.value = theme.value === 'light' ? 'dark' : 'light'
     document.documentElement.setAttribute('data-theme', theme.value)
     localStorage.setItem('theme', theme.value)
   }
   
-  /**
-   * Toggle sidebar visibility (mainly for mobile)
-   */
   function toggleSidebar() {
     sidebarOpen.value = !sidebarOpen.value
   }
-  
-  /**
-   * Initialize theme from localStorage
-   * Called on app mount
-   */
-  function initializeTheme() {
-    const saved = localStorage.getItem('theme') as 'light' | 'dark' | null
-    if (saved) {
-      theme.value = saved
-    }
-    document.documentElement.setAttribute('data-theme', theme.value)
+
+  function toggleCompact() {
+    sidebarCompact.value = !sidebarCompact.value
+    localStorage.setItem('sidebar_compact', String(sidebarCompact.value))
   }
   
-  // ============================================================================
-  // RETURN PUBLIC API
-  // ============================================================================
+  function initializeTheme() {
+    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null
+    if (savedTheme) {
+      theme.value = savedTheme
+    }
+    document.documentElement.setAttribute('data-theme', theme.value)
+
+    const savedCompact = localStorage.getItem('sidebar_compact')
+    if (savedCompact) {
+      sidebarCompact.value = savedCompact === 'true'
+    }
+  }
   
   return {
     theme,
     sidebarOpen,
+    sidebarCompact,
     toggleTheme,
     toggleSidebar,
+    toggleCompact,
     initializeTheme,
   }
 })

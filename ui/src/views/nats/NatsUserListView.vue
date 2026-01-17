@@ -223,21 +223,15 @@ onUnmounted(() => {
           </span>
         </template>
         
-        <!-- Custom card for status -->
         <template #card-active="{ item }">
-          <div class="flex flex-col">
-            <span class="text-xs font-medium text-base-content/70">Status</span>
-            <div class="mt-1">
-              <span 
-                class="badge badge-sm"
-                :class="item.active ? 'badge-success' : 'badge-error'"
-              >
-                {{ item.active ? 'Active' : 'Inactive' }}
-              </span>
-            </div>
-          </div>
-        </template>
-        
+  	  <span 
+    	    class="badge badge-sm"
+    	    :class="item.active ? 'badge-success' : 'badge-error'"
+  	  >
+    	      {{ item.active ? 'Active' : 'Inactive' }}
+  	  </span>
+	</template>
+
         <!-- Actions -->
         <template #actions="{ item }">
           <router-link 

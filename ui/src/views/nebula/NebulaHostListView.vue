@@ -234,21 +234,15 @@ onUnmounted(() => {
           </span>
         </template>
         
-        <!-- Custom card for type -->
         <template #card-is_lighthouse="{ item }">
-          <div class="flex flex-col">
-            <span class="text-xs font-medium text-base-content/70">Type</span>
-            <div class="mt-1">
-              <span 
-                class="badge badge-sm"
-                :class="item.is_lighthouse ? 'badge-primary' : 'badge-ghost'"
-              >
-                {{ item.is_lighthouse ? 'Lighthouse' : 'Node' }}
-              </span>
-            </div>
-          </div>
-        </template>
-        
+  	  <span 
+    	    class="badge badge-sm"
+    	    :class="item.is_lighthouse ? 'badge-primary' : 'badge-ghost'"
+  	  >
+    	    {{ item.is_lighthouse ? 'Lighthouse' : 'Node' }}
+  	  </span>
+	</template>
+
         <!-- Custom cell for status (badge) -->
         <template #cell-active="{ item }">
           <span 
@@ -259,21 +253,15 @@ onUnmounted(() => {
           </span>
         </template>
         
-        <!-- Custom card for status -->
         <template #card-active="{ item }">
-          <div class="flex flex-col">
-            <span class="text-xs font-medium text-base-content/70">Status</span>
-            <div class="mt-1">
-              <span 
-                class="badge badge-sm"
-                :class="item.active ? 'badge-success' : 'badge-error'"
-              >
-                {{ item.active ? 'Active' : 'Inactive' }}
-              </span>
-            </div>
-          </div>
-        </template>
-        
+  	  <span 
+    	    class="badge badge-sm"
+    	    :class="item.active ? 'badge-success' : 'badge-error'"
+  	  >
+    	    {{ item.active ? 'Active' : 'Inactive' }}
+  	  </span>
+	</template>
+
         <!-- Actions -->
         <template #actions="{ item }">
           <router-link 

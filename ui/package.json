@@ -14,10 +14,15 @@
     "@nats-io/nats-core": "^3.3.0",
     "@vueuse/core": "^10.7.0",
     "date-fns": "^3.0.0",
+    "echarts": "^5.5.1",
+    "grid-layout-plus": "^1.0.5",
+    "jsonpath-plus": "^10.2.0",
     "leaflet": "^1.9.4",
+    "marked": "^12.0.0",
     "pinia": "^2.1.0",
     "pocketbase": "^0.21.0",
     "vue": "^3.4.0",
+    "vue-echarts": "^7.0.3",
     "vue-router": "^4.2.0"
   },
   "devDependencies": {
