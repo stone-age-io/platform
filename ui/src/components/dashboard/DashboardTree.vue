@@ -1,3 +1,4 @@
+<!-- ui/src/components/dashboard/DashboardTree.vue -->
 <template>
   <div class="dashboard-tree">
     <!-- Folders -->
@@ -10,7 +11,7 @@
       >
         <span class="folder-chevron">{{ openFolders[folderName] ? '▼' : '▶' }}</span>
         <span class="folder-icon">📁</span>
-        <span class="folder-name">{{ folderName }}</span>
+        <span class="folder-name truncate">{{ folderName }}</span>
       </div>
       
       <div v-if="openFolders[folderName]" class="folder-content">
@@ -39,7 +40,9 @@
           <span v-if="isStartup(item.key)" title="Startup Dashboard">🏠</span>
           <span v-else>📊</span>
         </span>
-        <span class="item-name">{{ item.name }}</span>
+        
+        <!-- flex-1 + min-width: 0 allows the name to truncate without pushing actions off-screen -->
+        <span class="item-name flex-1 truncate">{{ item.name }}</span>
         
         <!-- Actions menu -->
         <div class="item-actions" @click.stop>
@@ -175,7 +178,6 @@ function handleClickOutside(event: MouseEvent) {
 }
 
 // --- Auto-Expand Logic ---
-
 function containsKey(item: TreeStructure | string, targetKey: string): boolean {
   if (typeof item === 'string') {
     return item === targetKey
@@ -206,84 +208,24 @@ onUnmounted(() => {
 .dashboard-tree {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
 }
 
-.tree-folder {
-  margin-bottom: 1px;
-}
-
-.folder-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 4px;
-  cursor: pointer;
-  border-radius: 6px;
-  color: var(--text-secondary);
-  font-size: 15px;
-  font-weight: 500;
-  user-select: none;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition: all 0.2s;
-}
-
-.folder-header:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text);
-}
-
-.folder-chevron {
-  font-size: 10px;
-  width: 16px;
-  text-align: center;
-  color: var(--muted);
-  transition: transform 0.2s;
-  flex-shrink: 0;
-}
-
-.folder-icon {
-  font-size: 18px;
-  flex-shrink: 0;
-  opacity: 0.8;
-}
-
-.folder-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.folder-content {
-  padding-left: 10px;
-  border-left: 1px solid var(--border);
-  margin-left: 12px;
-  margin-top: 1px;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.tree-item {
-  margin-bottom: 1px;
-}
-
-.dashboard-item {
+.folder-header, .dashboard-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 8px;
+  padding: 10px 8px; /* Grug say: bigger padding for fat fingers */
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s;
   color: var(--text);
-  font-size: 15px;
-  font-weight: 500;
+  font-size: 14px;
+  user-select: none;
   border: 1px solid transparent;
 }
 
-.dashboard-item:hover {
+.folder-header:hover, .dashboard-item:hover {
   background: rgba(255, 255, 255, 0.05);
 }
 
@@ -294,16 +236,24 @@ onUnmounted(() => {
   border-color: var(--color-info-border);
 }
 
-.item-icon {
-  font-size: 18px;
-  opacity: 0.7;
-  width: 18px;
+.folder-chevron {
+  font-size: 9px;
+  width: 14px;
   text-align: center;
+  color: var(--muted);
   flex-shrink: 0;
 }
 
+.folder-icon, .item-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+  opacity: 0.8;
+  width: 20px;
+  text-align: center;
+}
+
 .item-name {
-  flex: 1;
+  min-width: 0; /* Essential for truncate to work inside flexbox */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -316,15 +266,17 @@ onUnmounted(() => {
   align-items: center;
 }
 
+/* --- Action Button Logic --- */
 .action-btn {
-  opacity: 0;
+  /* Grug say: No hide button. User see button, user know button exist. */
+  opacity: 0.4; 
   background: none;
   border: none;
   color: var(--muted);
   cursor: pointer;
-  font-size: 16px;
-  width: 24px;
-  height: 24px;
+  font-size: 18px;
+  width: 30px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -332,15 +284,19 @@ onUnmounted(() => {
   border-radius: 4px;
 }
 
+/* More visible on hover or when open */
 .dashboard-item:hover .action-btn,
 .action-btn.is-open {
   opacity: 1;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.1);
 }
 
-.action-btn:hover,
-.action-btn.is-open {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text);
+/* Mobile: Default to higher visibility since there is no hover */
+@media (max-width: 1024px) {
+  .action-btn {
+    opacity: 0.6;
+  }
 }
 
 /* Action Menu Dropdown */
@@ -352,8 +308,8 @@ onUnmounted(() => {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-  min-width: 160px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  min-width: 180px;
   z-index: 100;
   animation: slideDown 0.15s ease-out;
 }
@@ -367,8 +323,8 @@ onUnmounted(() => {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
+  gap: 12px;
+  padding: 12px 14px; /* Big tap target */
   background: transparent;
   border: none;
   cursor: pointer;
@@ -382,19 +338,34 @@ onUnmounted(() => {
   background: rgba(255, 255, 255, 0.1);
 }
 
+.menu-item.danger {
+  color: var(--color-error);
+}
+
 .menu-item.danger:hover {
   background: var(--color-error-bg);
-  color: var(--color-error);
 }
 
 .menu-icon {
   font-size: 14px;
   line-height: 1;
+  width: 16px;
+  text-align: center;
 }
 
 .menu-divider {
   height: 1px;
   background: var(--border);
   margin: 4px 0;
+}
+
+.folder-content {
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+  margin-left: 14px;
+  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 </style>
