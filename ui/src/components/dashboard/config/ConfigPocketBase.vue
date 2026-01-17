@@ -1,13 +1,29 @@
+<!-- ui/src/components/dashboard/config/ConfigPocketBase.vue -->
 <template>
   <div class="config-pocketbase">
     <div class="form-group">
       <label>Collection</label>
-      <select v-model="form.pbCollection" class="form-input" :disabled="loading">
-        <option value="" disabled>Select Collection</option>
-        <option v-for="col in collections" :key="col.id" :value="col.name">
-          {{ col.name }} ({{ col.type }})
-        </option>
-      </select>
+      <!-- Grug say: Dropdown hard. Input simple. Datalist best of both. -->
+      <input 
+        v-model="form.pbCollection" 
+        list="pb-collections"
+        type="text" 
+        class="form-input"
+        placeholder="e.g. audit_logs"
+      />
+      <datalist id="pb-collections">
+        <option value="audit_logs">Audit Logs</option>
+        <option value="things">Things</option>
+        <option value="edges">Edges</option>
+        <option value="locations">Locations</option>
+        <option value="users">Users</option>
+        <option value="organizations">Organizations</option>
+        <option value="invites">Invites</option>
+        <option value="memberships">Memberships</option>
+      </datalist>
+      <div class="help-text">
+        Enter the collection name (ID or Name).
+      </div>
     </div>
 
     <div class="form-group">
@@ -70,8 +86,6 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { pb } from '@/utils/pb'
 import type { WidgetFormState } from '@/types/config'
 
 defineProps<{
@@ -79,20 +93,7 @@ defineProps<{
   errors: Record<string, string>
 }>()
 
-const collections = ref<any[]>([])
-const loading = ref(false)
-
-onMounted(async () => {
-  loading.value = true
-  try {
-    const result = await pb.collections.getFullList({ sort: 'name' })
-    collections.value = result
-  } catch (e) {
-    console.error('Failed to load collections', e)
-  } finally {
-    loading.value = false
-  }
-})
+// Grug say: No API call needed. User knows collection name or can guess.
 </script>
 
 <style scoped>

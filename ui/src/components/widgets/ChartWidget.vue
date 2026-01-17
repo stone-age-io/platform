@@ -1,3 +1,4 @@
+<!-- ui/src/components/widgets/ChartWidget.vue -->
 <template>
   <div class="chart-widget">
     <v-chart 
@@ -31,7 +32,7 @@ import VChart from 'vue-echarts'
 import { useWidgetDataStore } from '@/stores/widgetData'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useDesignTokens } from '@/composables/useDesignTokens'
-import { useUIStore } from '@/stores/ui' // CHANGED
+import { useUIStore } from '@/stores/ui'
 import type { WidgetConfig } from '@/types/dashboard'
 import { resolveTemplate } from '@/utils/variables'
 
@@ -54,7 +55,7 @@ const props = defineProps<{
 
 const dataStore = useWidgetDataStore()
 const dashboardStore = useDashboardStore()
-const uiStore = useUIStore() // CHANGED
+const uiStore = useUIStore()
 const { chartColors, chartStyling, getChartColorArray } = useDesignTokens()
 
 // Get buffered data
@@ -105,6 +106,7 @@ function generateLineChart(data: any[]) {
     },
     tooltip: {
       trigger: 'axis',
+      confine: true,
       backgroundColor: styling.tooltipBg,
       borderColor: styling.tooltipBorder,
       textStyle: { 
@@ -150,19 +152,17 @@ function generateLineChart(data: any[]) {
         itemStyle: {
           color: colors.color1,
         },
-        areaStyle: {
-          color: {
-            type: 'linear',
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              { offset: 0, color: colors.color1Alpha30 },
-              { offset: 1, color: colors.color1Alpha05 },
-            ],
+        // Grug say: Explicitly tell chart to keep line visible on hover
+        emphasis: {
+          disabled: false,
+          lineStyle: {
+            width: 2,
+            color: colors.color1
           },
-        },
+          itemStyle: {
+            color: colors.color1
+          }
+        }
       },
     ],
     ...props.config.chartConfig?.echartOptions,
@@ -182,6 +182,7 @@ function generateBarChart(data: any[]) {
     },
     tooltip: {
       trigger: 'axis',
+      confine: true,
       backgroundColor: styling.tooltipBg,
       borderColor: styling.tooltipBorder,
       textStyle: { 
@@ -220,6 +221,11 @@ function generateBarChart(data: any[]) {
         itemStyle: {
           color: colors.color2,
         },
+        emphasis: {
+          itemStyle: {
+            color: colors.color2
+          }
+        }
       },
     ],
     ...props.config.chartConfig?.echartOptions,
@@ -323,6 +329,7 @@ function generatePieChart(data: any[]) {
   return {
     tooltip: {
       trigger: 'item',
+      confine: true,
       backgroundColor: styling.tooltipBg,
       borderColor: styling.tooltipBorder,
       textStyle: { 

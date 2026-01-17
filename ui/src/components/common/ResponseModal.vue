@@ -1,7 +1,9 @@
+<!-- ui/src/components/common/ResponseModal.vue -->
 <template>
   <Teleport to="body">
     <div v-if="modelValue" class="modal-overlay" @click.self="close">
-      <div class="modal response-modal" :class="status">
+      <!-- CHANGED: .modal -> .nd-modal to avoid DaisyUI conflict -->
+      <div class="nd-modal response-modal" :class="status">
         <div class="modal-header">
           <div class="header-content">
             <span class="status-icon">{{ statusIcon }}</span>
@@ -75,31 +77,21 @@ async function copyToClipboard() {
       ? JSON.stringify(formattedData.value, null, 2)
       : String(formattedData.value)
 
-    // 1. Try Modern API (HTTPS / Localhost)
     if (navigator.clipboard && navigator.clipboard.writeText) {
       await navigator.clipboard.writeText(text)
-    } 
-    // 2. Fallback for HTTP Dev Server (Old Magic)
-    else {
+    } else {
+      // Fallback
       const textArea = document.createElement("textarea")
       textArea.value = text
-      
-      // Ensure it's not visible but part of DOM
       textArea.style.position = "fixed"
       textArea.style.left = "-9999px"
-      textArea.style.top = "0"
       document.body.appendChild(textArea)
-      
       textArea.focus()
       textArea.select()
-      
-      const successful = document.execCommand('copy')
+      document.execCommand('copy')
       document.body.removeChild(textArea)
-      
-      if (!successful) throw new Error('Copy command failed')
     }
 
-    // Success UI
     copyLabel.value = 'Copied!'
     setTimeout(() => {
       copyLabel.value = 'Copy'
@@ -144,7 +136,8 @@ watch(() => props.modelValue, (isOpen) => {
   to { opacity: 1; }
 }
 
-.modal {
+/* CHANGED: .modal -> .nd-modal */
+.nd-modal {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -164,8 +157,8 @@ watch(() => props.modelValue, (isOpen) => {
 }
 
 /* Status variants */
-.modal.success { border-top: 4px solid var(--color-success); }
-.modal.error { border-top: 4px solid var(--color-error); }
+.nd-modal.success { border-top: 4px solid var(--color-success); }
+.nd-modal.error { border-top: 4px solid var(--color-error); }
 
 .modal-header {
   display: flex;
@@ -182,8 +175,8 @@ watch(() => props.modelValue, (isOpen) => {
 }
 
 .status-icon { font-size: 20px; }
-.modal.success .status-icon { color: var(--color-success); }
-.modal.error .status-icon { color: var(--color-error); }
+.nd-modal.success .status-icon { color: var(--color-success); }
+.nd-modal.error .status-icon { color: var(--color-error); }
 
 .modal-header h3 { margin: 0; font-size: 18px; font-weight: 600; }
 
@@ -282,7 +275,7 @@ watch(() => props.modelValue, (isOpen) => {
 
 /* Mobile adjustments */
 @media (max-width: 480px) {
-  .modal {
+  .nd-modal {
     width: 95%;
     min-width: auto;
   }

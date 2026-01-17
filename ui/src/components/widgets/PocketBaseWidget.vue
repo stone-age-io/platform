@@ -1,3 +1,4 @@
+<!-- ui/src/components/widgets/PocketBaseWidget.vue -->
 <template>
   <div class="pb-widget" :class="{ 'card-layout': layoutMode === 'card' }">
     <!-- Loading -->
@@ -116,12 +117,23 @@ async function fetchData() {
   try {
     const filter = resolveTemplate(cfg.value.filter, dashboardStore.currentVariableValues)
     
-    const result = await pb.collection(cfg.value.collection).getList(1, cfg.value.limit || 10, {
-      filter: filter || undefined,
+    // Grug say: Construct options carefully. Don't send undefined.
+    const options: any = {
       sort: cfg.value.sort || '-created',
-      fields: cfg.value.fields || undefined,
       requestKey: null // Disable auto-cancellation for widget
-    })
+    }
+
+    // Only add filter if it exists and is not empty
+    if (filter && filter.trim() !== '') {
+      options.filter = filter
+    }
+
+    // Only add fields if specified
+    if (cfg.value.fields && cfg.value.fields.trim() !== '') {
+      options.fields = cfg.value.fields
+    }
+
+    const result = await pb.collection(cfg.value.collection).getList(1, cfg.value.limit || 10, options)
     
     items.value = result.items
     lastUpdated.value = new Date().toLocaleTimeString()
