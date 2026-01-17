@@ -38,13 +38,34 @@ const inputBool = ref(true)
 
 /**
  * Helper: Strip the baseKey prefix for display 
- * e.g. "location.bldg-home.proud" -> "proud"
  */
 function displayKey(fullKey: string) {
   if (!props.baseKey) return fullKey
   const prefix = `${props.baseKey}.`
   return fullKey.startsWith(prefix) ? fullKey.replace(prefix, '') : fullKey
 }
+
+// --- Column Definitions ---
+
+// Main property list columns
+const keyColumns: Column<KvEntryWithId>[] = [
+  { key: 'key', label: 'Property', mobileLabel: 'Prop' },
+  // col-span-2 ensures the value takes the full width of the card on mobile
+  { 
+    key: 'value', 
+    label: 'Current Value', 
+    mobileLabel: 'Value', 
+    class: 'col-span-2 border-b border-base-200/50 pb-2 mb-1' 
+  },
+  { key: 'revision', label: 'Revision', mobileLabel: 'Rev', class: 'text-right' }
+]
+
+// History list columns
+const historyColumns: Column<KvEntryWithId>[] = [
+  { key: 'revision', label: 'Revision', mobileLabel: 'Rev' },
+  { key: 'value', label: 'Value', mobileLabel: 'Val', class: 'col-span-2 border-b border-base-200/50 pb-1' },
+  { key: 'created', label: 'Time', mobileLabel: 'Time', class: 'text-right opacity-60' }
+]
 
 // --- Data Processing ---
 
@@ -70,20 +91,6 @@ const paginatedEntries = computed(() => {
   return filteredEntries.value.slice(start, start + itemsPerPage)
 })
 
-// --- Columns ---
-
-const keyColumns: Column<KvEntryWithId>[] = [
-  { key: 'key', label: 'Property', mobileLabel: 'Prop' },
-  { key: 'value', label: 'Value', mobileLabel: 'Value' },
-  { key: 'revision', label: 'Rev', mobileLabel: 'Rev', class: 'text-right w-20' }
-]
-
-const historyColumns: Column<KvEntryWithId>[] = [
-  { key: 'revision', label: 'Rev', mobileLabel: 'Rev', class: 'w-16 font-mono text-xs' },
-  { key: 'value', label: 'Value', mobileLabel: 'Val' },
-  { key: 'created', label: 'Time', mobileLabel: 'Time', class: 'text-right text-xs opacity-60' }
-]
-
 // --- Actions ---
 
 onMounted(() => init())
@@ -91,13 +98,11 @@ watch(searchQuery, () => { currentPage.value = 1 })
 
 async function handleSave() {
   if (!inputKey.value) return toast.error('Property name required')
-  
   let finalValue: any = inputValue.value
   try {
     if (inputType.value === 'number') finalValue = Number(inputValue.value)
     else if (inputType.value === 'boolean') finalValue = inputBool.value
     else if (inputType.value === 'json') finalValue = JSON.parse(inputValue.value)
-    
     await put(inputKey.value, finalValue)
     toast.success(isEditing.value ? 'Updated' : 'Created')
     resetForm()
@@ -110,13 +115,11 @@ async function selectEntry(entry: KvEntryWithId) {
   isEditing.value = true
   showForm.value = true
   inputKey.value = displayKey(entry.key)
-  
   const val = entry.value
   if (typeof val === 'number') inputType.value = 'number'
   else if (typeof val === 'boolean') { inputType.value = 'boolean'; inputBool.value = val }
   else if (typeof val === 'object') { inputType.value = 'json'; inputValue.value = JSON.stringify(val, null, 2) }
   else { inputType.value = 'string'; inputValue.value = String(val) }
-
   loadHistory(entry.key)
 }
 
@@ -133,12 +136,10 @@ async function loadHistory(key: string) {
 function restoreRevision(rev: KvEntryWithId) {
   if (rev.operation === 'DEL') return
   const val = rev.value
-  
   if (typeof val === 'number') { inputType.value = 'number'; inputValue.value = String(val) }
   else if (typeof val === 'boolean') { inputType.value = 'boolean'; inputBool.value = val }
   else if (typeof val === 'object') { inputType.value = 'json'; inputValue.value = JSON.stringify(val, null, 2) }
   else { inputType.value = 'string'; inputValue.value = String(val) }
-  
   toast.info(`Loaded value from Revision ${rev.revision}`)
 }
 
@@ -165,7 +166,7 @@ function resetForm() {
     <!-- Active State -->
     <div v-else class="space-y-4">
       
-      <!-- Toolbar: Wraps on mobile -->
+      <!-- Toolbar -->
       <div class="flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center">
         <div v-if="!showForm" class="flex-1">
           <input 
@@ -186,13 +187,7 @@ function resetForm() {
         >
           + Add Property
         </button>
-        <button 
-          v-else 
-          @click="resetForm" 
-          class="btn btn-xs btn-ghost"
-        >
-          Cancel
-        </button>
+        <button v-else @click="resetForm" class="btn btn-xs btn-ghost">Cancel</button>
       </div>
 
       <!-- Editor Form -->
@@ -202,19 +197,10 @@ function resetForm() {
             <div class="form-control flex-1">
               <label class="label p-0 mb-1"><span class="label-text text-[10px] uppercase font-bold opacity-50">Key</span></label>
               <div class="join w-full">
-                <span class="join-item btn btn-sm btn-disabled font-mono text-[10px] hidden lg:flex">
-                  {{ baseKey }}.
-                </span>
-                <input 
-                  v-model="inputKey" 
-                  type="text" 
-                  placeholder="name" 
-                  class="input input-sm input-bordered join-item flex-1 font-mono" 
-                  :disabled="isEditing" 
-                />
+                <span class="join-item btn btn-sm btn-disabled font-mono text-[10px] hidden lg:flex">{{ baseKey }}.</span>
+                <input v-model="inputKey" type="text" class="input input-sm input-bordered join-item flex-1 font-mono" :disabled="isEditing" />
               </div>
             </div>
-
             <div class="form-control w-full md:w-32">
               <label class="label p-0 mb-1"><span class="label-text text-[10px] uppercase font-bold opacity-50">Type</span></label>
               <select v-model="inputType" class="select select-sm select-bordered w-full">
@@ -225,81 +211,35 @@ function resetForm() {
               </select>
             </div>
           </div>
-
           <div class="form-control">
             <label class="label p-0 mb-1"><span class="label-text text-[10px] uppercase font-bold opacity-50">Value</span></label>
             <input v-if="inputType === 'boolean'" type="checkbox" v-model="inputBool" class="toggle toggle-success" />
-            <textarea 
-              v-else-if="inputType === 'json'" 
-              v-model="inputValue" 
-              class="textarea textarea-bordered textarea-sm w-full font-mono text-xs" 
-              rows="4"
-            ></textarea>
-            <input 
-              v-else 
-              v-model="inputValue" 
-              :type="inputType === 'number' ? 'number' : 'text'" 
-              class="input input-sm input-bordered w-full font-mono text-xs" 
-            />
+            <textarea v-else-if="inputType === 'json'" v-model="inputValue" class="textarea textarea-bordered textarea-sm w-full font-mono text-xs" rows="4"></textarea>
+            <input v-else v-model="inputValue" :type="inputType === 'number' ? 'number' : 'text'" class="input input-sm input-bordered w-full font-mono text-xs" />
           </div>
-          
           <div class="flex justify-end gap-2">
             <button v-if="isEditing" @click="del(`${baseKey}.${inputKey}`); resetForm()" class="btn btn-sm btn-ghost text-error">Delete</button>
             <button @click="handleSave" class="btn btn-sm btn-primary px-6">Save Changes</button>
           </div>
         </div>
 
-        <!-- REVISION HISTORY: Click a row to load -->
+        <!-- Revision History -->
         <div v-if="isEditing" class="border border-base-300 rounded-lg overflow-hidden bg-base-100">
           <div class="bg-base-200 px-4 py-2 flex justify-between items-center border-b border-base-300">
-            <div class="flex flex-col">
-              <span class="text-[10px] font-bold uppercase tracking-widest opacity-60">Revision History</span>
-              <span class="text-[9px] opacity-40 uppercase">Click a row to load version</span>
-            </div>
+            <span class="text-[10px] font-bold uppercase tracking-widest opacity-60">Revision History</span>
             <span v-if="historyLoading" class="loading loading-dots loading-xs text-primary"></span>
           </div>
-
           <div class="max-h-60 overflow-y-auto">
-            <ResponsiveList 
-              :items="historyEntries" 
-              :columns="historyColumns" 
-              :clickable="true"
-              @row-click="restoreRevision"
-            >
-              <template #cell-revision="{ item }">
-                <span class="font-mono text-xs">#{{ item.revision }}</span>
-              </template>
-              <template #cell-value="{ item }">
-                <div class="flex items-center justify-between gap-2 group">
-                  <code class="text-[10px] opacity-70 truncate max-w-[200px] lg:max-w-md font-mono">
-                    {{ item.operation === 'DEL' ? '[DELETED]' : (typeof item.value === 'object' ? JSON.stringify(item.value) : item.value) }}
-                  </code>
-                  <span v-if="item.operation !== 'DEL'" class="text-[9px] font-bold text-primary opacity-0 group-hover:opacity-100 transition-opacity uppercase">
-                    Load ↵
-                  </span>
-                </div>
-              </template>
-              <template #cell-created="{ item }">
-                <span class="text-[10px]">{{ formatDate(item.created, 'MMM d, HH:mm') }}</span>
-              </template>
-
-              <!-- Mobile History Cards -->
+            <ResponsiveList :items="historyEntries" :columns="historyColumns" @row-click="restoreRevision">
               <template #card-revision="{ item }">
-                <div class="flex justify-between items-center w-full">
-                  <span class="badge badge-sm font-mono">Rev {{ item.revision }}</span>
-                  <span class="text-[10px] opacity-50">{{ formatDate(item.created, 'PPp') }}</span>
-                </div>
+                <span class="font-mono text-xs font-bold text-primary">Rev #{{ item.revision }}</span>
               </template>
               <template #card-value="{ item }">
-                <div class="mt-1 bg-base-200 p-2 rounded border border-base-300">
-                   <code class="text-[10px] block break-all font-mono">
-                     {{ item.operation === 'DEL' ? 'DELETED' : (typeof item.value === 'object' ? JSON.stringify(item.value, null, 2) : item.value) }}
+                <div class="bg-base-200 p-2 rounded border border-base-300 mt-1">
+                   <code class="text-[10px] block break-all font-mono opacity-80">
+                     {{ item.operation === 'DEL' ? 'DELETED' : (typeof item.value === 'object' ? JSON.stringify(item.value) : item.value) }}
                    </code>
                 </div>
-              </template>
-
-              <template #empty>
-                <div class="p-4 text-center text-xs opacity-40 italic">No previous revisions found</div>
               </template>
             </ResponsiveList>
           </div>
@@ -309,38 +249,26 @@ function resetForm() {
       <!-- Main Property List -->
       <div v-if="!showForm" class="border border-base-200 rounded-lg overflow-hidden">
         <ResponsiveList :items="paginatedEntries" :columns="keyColumns" @row-click="selectEntry">
-          <!-- Desktop View -->
-          <template #cell-key="{ item }">
-            <div class="flex flex-col">
-              <span class="font-mono text-primary font-bold text-sm">{{ displayKey(item.key) }}</span>
-              <span class="text-[9px] opacity-30 truncate max-w-[150px]">{{ item.key }}</span>
-            </div>
-          </template>
-          <template #cell-value="{ item }">
-            <code class="text-xs opacity-80 break-all">{{ typeof item.value === 'object' ? JSON.stringify(item.value) : item.value }}</code>
-          </template>
-
-          <!-- Mobile Card View -->
+          <!-- Identity Header -->
           <template #card-key="{ item }">
             <div class="flex flex-col">
-              <span class="text-[9px] font-bold text-base-content/40 uppercase tracking-widest">Property</span>
-              <span class="font-mono text-primary font-bold text-base mt-0.5">{{ displayKey(item.key) }}</span>
-              <span class="text-[9px] opacity-30 mt-0.5">{{ item.key }}</span>
+              <span class="font-mono text-primary font-bold text-base">{{ displayKey(item.key) }}</span>
+              <span class="text-[9px] opacity-30">{{ item.key }}</span>
             </div>
           </template>
+
+          <!-- Full Width Value -->
           <template #card-value="{ item }">
-            <div class="flex flex-col mt-1">
-              <span class="text-[9px] font-bold text-base-content/40 uppercase tracking-widest">Current Value</span>
-              <div class="bg-base-200 p-2 rounded mt-1 overflow-x-auto border border-base-300">
-                <code class="text-xs opacity-90 whitespace-pre-wrap">{{ typeof item.value === 'object' ? JSON.stringify(item.value, null, 2) : item.value }}</code>
-              </div>
+            <div class="bg-base-200 p-2 rounded mt-1 overflow-x-auto border border-base-300">
+              <code class="text-xs opacity-90 whitespace-pre-wrap font-mono">
+                {{ typeof item.value === 'object' ? JSON.stringify(item.value, null, 2) : item.value }}
+              </code>
             </div>
           </template>
+
+          <!-- Small Revision Badge -->
           <template #card-revision="{ item }">
-             <div class="flex justify-between items-center mt-2 pt-2 border-t border-base-300">
-               <span class="text-[9px] opacity-50 uppercase font-bold">Revision</span>
-               <span class="badge badge-sm font-mono">{{ item.revision }}</span>
-             </div>
+            <span class="badge badge-ghost font-mono text-[10px]">{{ item.revision }}</span>
           </template>
 
           <template #empty>
@@ -351,7 +279,7 @@ function resetForm() {
         </ResponsiveList>
       </div>
 
-      <!-- Pagination Footer -->
+      <!-- Pagination -->
       <div v-if="!showForm && totalPages > 1" class="flex flex-col sm:flex-row justify-between items-center gap-3 pt-2">
         <span class="text-[10px] opacity-50 uppercase font-bold">
           Showing {{ ((currentPage - 1) * itemsPerPage) + 1 }}-{{ Math.min(currentPage * itemsPerPage, totalItems) }} of {{ totalItems }}
@@ -365,10 +293,3 @@ function resetForm() {
     </div>
   </BaseCard>
 </template>
-
-<style scoped>
-/* Ensure clickable history rows feel distinct */
-:deep(.table tr.hover:hover) {
-  background-color: oklch(var(--b2));
-}
-</style>
