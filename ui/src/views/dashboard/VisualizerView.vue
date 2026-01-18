@@ -1,199 +1,4 @@
 <!-- ui/src/views/dashboard/VisualizerView.vue -->
-<template>
-  <div class="visualizer-view">
-    <!-- 
-      Internal Dashboard Sidebar (Layout Manager) 
-      Now wrapped in a transition and absolutely positioned
-    -->
-    <Transition name="slide-sidebar">
-      <div v-if="isSidebarOpen" class="sidebar-wrapper">
-        <DashboardSidebar ref="sidebarRef" @close="isSidebarOpen = false" />
-      </div>
-    </Transition>
-
-    <!-- Backdrop for Sidebar (Mobile Only) -->
-    <div 
-      v-if="isSidebarOpen" 
-      class="sidebar-backdrop"
-      @click="isSidebarOpen = false"
-    ></div>
-    
-    <!-- Main content area -->
-    <div class="visualizer-main">
-      <!-- Toolbar -->
-      <div class="visualizer-toolbar">
-        <!-- Left: Title & Status -->
-        <div class="toolbar-left">
-          <button 
-            class="sidebar-toggle-btn"
-            :class="{ 'is-active': isSidebarOpen }"
-            @click="isSidebarOpen = !isSidebarOpen"
-            title="Switch Dashboard (B)"
-          >
-            🗄️
-          </button>
-          
-          <div class="dashboard-info">
-            <h1 class="dashboard-name">{{ dashboardStore.activeDashboard?.name || 'No Dashboard Selected' }}</h1>
-            
-            <!-- Status Badges -->
-            <button
-              v-if="dashboardStore.remoteChanged"
-              class="badge badge-warning gap-1 cursor-pointer"
-              @click="handleReloadRemote"
-              title="Remote changes detected. Click to Reload."
-            >
-              Update ↻
-            </button>
-
-            <button
-              v-else-if="dashboardStore.isDirty"
-              class="badge badge-warning gap-1 cursor-pointer"
-              @click="handleSave"
-              title="Unsaved changes. Click to Save."
-            >
-              Save ●
-            </button>
-
-            <span
-              v-else-if="dashboardStore.activeDashboard?.storage === 'kv'"
-              class="badge badge-info gap-1"
-              title="Synced with NATS KV"
-            >
-              Shared
-            </span>
-          </div>
-        </div>
-        
-        <!-- Right: Actions -->
-        <div class="toolbar-right">
-          <!-- Grid Columns (Edit Mode Only - Desktop) -->
-          <div v-if="!dashboardStore.isLocked" class="hidden md:block">
-            <select 
-              :value="dashboardStore.activeDashboard?.columnCount ?? 12"
-              @change="handleGridChange"
-              class="select select-sm select-bordered font-mono"
-              title="Grid Columns"
-            >
-              <option :value="0">Auto</option>
-              <option :value="4">4 Cols</option>
-              <option :value="6">6 Cols</option>
-              <option :value="8">8 Cols</option>
-              <option :value="10">10 Cols</option>
-              <option :value="12">12 Cols</option>
-              <option :value="16">16 Cols</option>
-              <option :value="20">20 Cols</option>
-            </select>
-          </div>
-
-          <!-- Variables Toggle -->
-          <button 
-            v-if="hasVariables || !dashboardStore.isLocked"
-            class="btn btn-sm btn-square"
-            :class="showVariableBar ? 'btn-active' : 'btn-ghost'"
-            @click="showVariableBar = !showVariableBar"
-            title="Toggle Variables (V)"
-          >
-            <span class="font-mono font-bold">{ }</span>
-          </button>
-
-          <!-- Lock Toggle -->
-          <button 
-            class="btn btn-sm btn-square btn-ghost" 
-            :title="dashboardStore.isLocked ? 'Unlock (U)' : 'Lock (L)'"
-            @click="dashboardStore.toggleLock()"
-          >
-            {{ dashboardStore.isLocked ? '🔒' : '🔓' }}
-          </button>
-          
-          <!-- Add Widget -->
-          <button 
-            v-if="!dashboardStore.isLocked"
-            class="btn btn-sm btn-primary" 
-            @click="showAddWidget = true" 
-            title="Add Widget (N)"
-          >
-            <span class="text-lg leading-none">+</span>
-            <span class="hidden sm:inline ml-1">Widget</span>
-          </button>
-          
-          <!-- Debug (Hidden on small mobile) -->
-          <button class="btn btn-sm btn-square btn-ghost hidden sm:flex" @click="showDebugPanel = true" title="Debug Info">
-            🐞
-          </button>
-        </div>
-      </div>
-      
-      <!-- Variable Bar -->
-      <div v-if="showVariableBar" class="border-b border-base-300 bg-base-100">
-        <VariableBar 
-          @edit="showVariableModal = true" 
-          @close="showVariableBar = false"
-        />
-      </div>
-      
-      <!-- Grid Content -->
-      <div class="visualizer-content">
-        <DashboardGrid
-          v-if="dashboardStore.activeWidgets.length > 0"
-          :widgets="dashboardStore.activeWidgets"
-          :column-count="dashboardStore.activeDashboard?.columnCount"
-          @delete-widget="handleDeleteWidget"
-          @configure-widget="handleConfigureWidget"
-          @duplicate-widget="handleDuplicateWidget"
-          @fullscreen-widget="toggleFullScreen"
-        />
-        
-        <!-- Empty State -->
-        <div v-else class="h-full flex flex-col items-center justify-center text-base-content/50 p-8 text-center">
-          <span class="text-6xl mb-4 opacity-50">📊</span>
-          <h3 class="text-xl font-bold">Empty Dashboard</h3>
-          <p class="mt-2 text-sm max-w-xs mx-auto">
-            <template v-if="!dashboardStore.isLocked">Tap <strong>+</strong> to add your first widget.</template>
-            <template v-else>Unlock the dashboard to add widgets.</template>
-          </p>
-        </div>
-      </div>
-    </div>
-    
-    <!-- Modals -->
-    <AddWidgetModal v-model="showAddWidget" @select="handleCreateWidget" />
-    <ConfigureWidgetModal v-model="showConfigWidget" :widget-id="configWidgetId" @saved="handleWidgetConfigSaved" />
-    <KeyboardShortcutsModal v-model="showShortcutsModal" :shortcuts="shortcuts" />
-    <VariableEditorModal v-model="showVariableModal" />
-    <DebugPanel v-model="showDebugPanel" />
-    
-    <!-- Full Screen Modal -->
-    <div v-if="fullScreenWidgetId && fullScreenWidget" class="fixed inset-0 z-[100] bg-base-100 flex flex-col">
-      <div class="p-4 border-b border-base-300 flex justify-between items-center bg-base-200">
-        <h2 class="font-bold text-lg">{{ fullScreenWidget.title }}</h2>
-        <button class="btn btn-sm btn-circle btn-ghost" @click="exitFullScreen">✕</button>
-      </div>
-      <div class="flex-1 p-6 overflow-hidden">
-        <WidgetContainer 
-          :config="fullScreenWidget" 
-          :is-mobile="false"
-          :is-fullscreen="true"
-          @delete="handleDeleteWidget(fullScreenWidget.id)"
-          @configure="handleConfigureWidget(fullScreenWidget.id)"
-          @duplicate="handleDuplicateWidget(fullScreenWidget.id)"
-          @fullscreen="exitFullScreen"
-        />
-      </div>
-    </div>
-    
-    <!-- Confirm Dialog -->
-    <ConfirmDialog
-      v-model="confirmState.show"
-      :title="confirmState.title"
-      :message="confirmState.message"
-      :confirm-text="confirmState.confirmText"
-      variant="warning"
-      @confirm="handleGlobalConfirm"
-    />
-  </div>
-</template>
-
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, computed, nextTick, provide } from 'vue'
 import { useNatsStore } from '@/stores/nats'
@@ -326,45 +131,14 @@ function handleGridChange(event: Event) {
 
 // --- Shortcuts ---
 const { shortcuts } = useKeyboardShortcuts([
-  { 
-    key: 's', 
-    description: 'Save Dashboard', 
-    handler: handleSave 
-  },
-  { 
-    key: 'n', 
-    description: 'Add New Widget', 
-    handler: () => { if (!dashboardStore.isLocked) showAddWidget.value = true }
-  },
-  { 
-    key: 'b', 
-    description: 'Toggle Dashboard Sidebar', 
-    handler: toggleSidebar 
-  },
-  { 
-    key: 'a', 
-    description: 'Toggle App Sidebar',
-    handler: () => uiStore.toggleCompact()
-  },
-  { 
-    key: 'v', 
-    description: 'Toggle Variables', 
-    handler: () => { if (hasVariables.value || !dashboardStore.isLocked) showVariableBar.value = !showVariableBar.value }
-  },
-  { 
-    key: 'l', 
-    description: 'Lock Dashboard', 
-    handler: () => { if (!dashboardStore.isLocked) dashboardStore.toggleLock() } 
-  },
-  { 
-    key: 'u', 
-    description: 'Unlock Dashboard', 
-    handler: () => { if (dashboardStore.isLocked) dashboardStore.toggleLock() } 
-  },
-  { 
-    key: 'Escape', 
-    description: 'Close Modals / Exit Full Screen', 
-    handler: () => {
+  { key: 's', description: 'Save Dashboard', handler: handleSave },
+  { key: 'n', description: 'Add New Widget', handler: () => { if (!dashboardStore.isLocked) showAddWidget.value = true } },
+  { key: 'b', description: 'Toggle Dashboard Sidebar', handler: toggleSidebar },
+  { key: 'a', description: 'Toggle App Sidebar', handler: () => uiStore.toggleCompact() },
+  { key: 'v', description: 'Toggle Variables', handler: () => { if (hasVariables.value || !dashboardStore.isLocked) showVariableBar.value = !showVariableBar.value } },
+  { key: 'l', description: 'Lock Dashboard', handler: () => { if (!dashboardStore.isLocked) dashboardStore.toggleLock() } },
+  { key: 'u', description: 'Unlock Dashboard', handler: () => { if (dashboardStore.isLocked) dashboardStore.toggleLock() } },
+  { key: 'Escape', description: 'Close Modals / Exit Full Screen', handler: () => {
       if (fullScreenWidgetId.value) exitFullScreen()
       else {
         showConfigWidget.value = false
@@ -376,11 +150,7 @@ const { shortcuts } = useKeyboardShortcuts([
       }
     }
   },
-  {
-    key: '?',
-    description: 'Show Shortcuts',
-    handler: () => { showShortcutsModal.value = true }
-  }
+  { key: '?', description: 'Show Shortcuts', handler: () => { showShortcutsModal.value = true } }
 ])
 
 // --- Lifecycle ---
@@ -393,16 +163,15 @@ function handleOrgChange() {
 
 onMounted(() => {
   dashboardStore.loadFromStorage()
-  
   if (natsStore.isConnected) {
     subscribeAllWidgets()
   }
-  
   window.addEventListener('organization-changed', handleOrgChange)
 })
 
 onUnmounted(() => {
-  unsubscribeAllWidgets(false)
+  // Grug say: keepData = true. Do not throw away hard-earned bytes!
+  unsubscribeAllWidgets(true) 
   window.removeEventListener('organization-changed', handleOrgChange)
 })
 
@@ -412,8 +181,8 @@ watch(() => natsStore.isConnected, (connected) => {
 })
 
 watch(() => dashboardStore.activeDashboardId, async () => {
-  unsubscribeAllWidgets(false)
-  // Close sidebar on selection for cleaner UX on mobile
+  // Grug say: keepData = true here too for snappy dashboard switching
+  unsubscribeAllWidgets(true) 
   if (window.innerWidth < 1024) isSidebarOpen.value = false
   await nextTick()
   if (natsStore.isConnected) subscribeAllWidgets()
@@ -421,7 +190,7 @@ watch(() => dashboardStore.activeDashboardId, async () => {
 
 watch(() => dashboardStore.currentVariableValues, () => {
   if (natsStore.isConnected) {
-    unsubscribeAllWidgets(false)
+    unsubscribeAllWidgets(true)
     subscribeAllWidgets()
   }
 }, { deep: true })
@@ -434,41 +203,94 @@ watch(() => dashboardStore.activeWidgets.length, (newCount, oldCount) => {
 })
 </script>
 
+<template>
+  <div class="visualizer-view">
+    <Transition name="slide-sidebar">
+      <div v-if="isSidebarOpen" class="sidebar-wrapper">
+        <DashboardSidebar ref="sidebarRef" @close="isSidebarOpen = false" />
+      </div>
+    </Transition>
+
+    <div v-if="isSidebarOpen" class="sidebar-backdrop" @click="isSidebarOpen = false"></div>
+    
+    <div class="visualizer-main">
+      <div class="visualizer-toolbar">
+        <div class="toolbar-left">
+          <button class="sidebar-toggle-btn" :class="{ 'is-active': isSidebarOpen }" @click="isSidebarOpen = !isSidebarOpen" title="Switch Dashboard (B)">🗄️</button>
+          <div class="dashboard-info">
+            <h1 class="dashboard-name">{{ dashboardStore.activeDashboard?.name || 'No Dashboard Selected' }}</h1>
+            <button v-if="dashboardStore.remoteChanged" class="badge badge-warning gap-1 cursor-pointer" @click="handleReloadRemote">Update ↻</button>
+            <button v-else-if="dashboardStore.isDirty" class="badge badge-warning gap-1 cursor-pointer" @click="handleSave">Save ●</button>
+            <span v-else-if="dashboardStore.activeDashboard?.storage === 'kv'" class="badge badge-info gap-1">Shared</span>
+          </div>
+        </div>
+        
+        <div class="toolbar-right">
+          <div v-if="!dashboardStore.isLocked" class="hidden md:block">
+            <select :value="dashboardStore.activeDashboard?.columnCount ?? 12" @change="handleGridChange" class="select select-sm select-bordered font-mono">
+              <option :value="0">Auto</option>
+              <option :value="4">4 Cols</option>
+              <option :value="6">6 Cols</option>
+              <option :value="8">8 Cols</option>
+              <option :value="10">10 Cols</option>
+              <option :value="12">12 Cols</option>
+              <option :value="16">16 Cols</option>
+              <option :value="20">20 Cols</option>
+            </select>
+          </div>
+          <button v-if="hasVariables || !dashboardStore.isLocked" class="btn btn-sm btn-square" :class="showVariableBar ? 'btn-active' : 'btn-ghost'" @click="showVariableBar = !showVariableBar"><span class="font-mono font-bold">{ }</span></button>
+          <button class="btn btn-sm btn-square btn-ghost" @click="dashboardStore.toggleLock()">{{ dashboardStore.isLocked ? '🔒' : '🔓' }}</button>
+          <button v-if="!dashboardStore.isLocked" class="btn btn-sm btn-primary" @click="showAddWidget = true">+ <span class="hidden sm:inline ml-1">Widget</span></button>
+          <button class="btn btn-sm btn-square btn-ghost hidden sm:flex" @click="showDebugPanel = true">🐞</button>
+        </div>
+      </div>
+      
+      <div v-if="showVariableBar" class="border-b border-base-300 bg-base-100">
+        <VariableBar @edit="showVariableModal = true" @close="showVariableBar = false" />
+      </div>
+      
+      <div class="visualizer-content">
+        <DashboardGrid v-if="dashboardStore.activeWidgets.length > 0" :widgets="dashboardStore.activeWidgets" :column-count="dashboardStore.activeDashboard?.columnCount" @delete-widget="handleDeleteWidget" @configure-widget="handleConfigureWidget" @duplicate-widget="handleDuplicateWidget" @fullscreen-widget="toggleFullScreen" />
+        <div v-else class="h-full flex flex-col items-center justify-center text-base-content/50 p-8 text-center">
+          <span class="text-6xl mb-4 opacity-50">📊</span>
+          <h3 class="text-xl font-bold">Empty Dashboard</h3>
+          <p class="mt-2 text-sm max-w-xs mx-auto">
+            <template v-if="!dashboardStore.isLocked">Tap <strong>+</strong> to add your first widget.</template>
+            <template v-else>Unlock the dashboard to add widgets.</template>
+          </p>
+        </div>
+      </div>
+    </div>
+    
+    <AddWidgetModal v-model="showAddWidget" @select="handleCreateWidget" />
+    <ConfigureWidgetModal v-model="showConfigWidget" :widget-id="configWidgetId" @saved="handleWidgetConfigSaved" />
+    <KeyboardShortcutsModal v-model="showShortcutsModal" :shortcuts="shortcuts" />
+    <VariableEditorModal v-model="showVariableModal" />
+    <DebugPanel v-model="showDebugPanel" />
+    
+    <div v-if="fullScreenWidgetId && fullScreenWidget" class="fixed inset-0 z-[100] bg-base-100 flex flex-col">
+      <div class="p-4 border-b border-base-300 flex justify-between items-center bg-base-200">
+        <h2 class="font-bold text-lg">{{ fullScreenWidget.title }}</h2>
+        <button class="btn btn-sm btn-circle btn-ghost" @click="exitFullScreen">✕</button>
+      </div>
+      <div class="flex-1 p-6 overflow-hidden">
+        <WidgetContainer :config="fullScreenWidget" :is-mobile="false" :is-fullscreen="true" @delete="handleDeleteWidget(fullScreenWidget.id)" @configure="handleConfigureWidget(fullScreenWidget.id)" @duplicate="handleDuplicateWidget(fullScreenWidget.id)" @fullscreen="exitFullScreen" />
+      </div>
+    </div>
+    
+    <ConfirmDialog v-model="confirmState.show" :title="confirmState.title" :message="confirmState.message" :confirm-text="confirmState.confirmText" variant="warning" @confirm="handleGlobalConfirm" />
+  </div>
+</template>
+
 <style scoped>
-/* 
-  VISUALIZER VIEW LAYOUT
-  
-  Grug say: To stop page scrolling when internal grid should scroll, 
-  we must fix the height of this container to the viewport minus header.
-  
-  AppHeader is ~4rem (64px).
-  Padding is 1rem (mobile) or 1.5rem (desktop).
-  
-  We calculate height to fit perfectly.
-*/
 .visualizer-view {
   display: flex;
   flex-direction: column;
-  
-  /* 
-     Height Calculation:
-     100vh (Viewport) 
-     - 4rem (AppHeader) 
-     = Remaining Space
-     
-     We also added negative margins to break out of parent padding.
-     So we set height to fill that exactly.
-  */
   height: calc(100vh - 4rem); 
-  
-  /* Negative margins to break out of MainLayout padding */
   margin: -1rem; 
   width: calc(100% + 2rem);
-  
-  overflow: hidden; /* Important: Prevents parent scrollbar */
+  overflow: hidden;
   background: oklch(var(--b2));
-  
-  /* Remove "card" look */
   border-radius: 0;
   border: none;
   position: relative;
@@ -476,10 +298,6 @@ watch(() => dashboardStore.activeWidgets.length, (newCount, oldCount) => {
 
 @media (min-width: 1024px) {
   .visualizer-view {
-    /* 
-       On desktop, parent padding is 1.5rem (p-6).
-       So we counteract that.
-    */
     margin: -1.5rem;
     width: calc(100% + 3rem);
     height: calc(100vh - 4rem);
@@ -495,7 +313,6 @@ watch(() => dashboardStore.activeWidgets.length, (newCount, oldCount) => {
   z-index: 1;
 }
 
-/* Sidebar Wrapper */
 .sidebar-wrapper {
   position: absolute;
   top: 0;
@@ -507,7 +324,6 @@ watch(() => dashboardStore.activeWidgets.length, (newCount, oldCount) => {
   height: 100%;
 }
 
-/* Mobile: Fixed Sidebar to escape container constraints */
 @media (max-width: 1024px) {
   .sidebar-wrapper {
     position: fixed;
@@ -516,12 +332,10 @@ watch(() => dashboardStore.activeWidgets.length, (newCount, oldCount) => {
     right: 0;
     bottom: 0;
     width: 100%;
-    max-width: 320px; /* Limit width */
-    z-index: 100; /* Above everything */
+    max-width: 320px;
+    z-index: 100;
     box-shadow: 0 0 20px rgba(0,0,0,0.3);
   }
-  
-  /* Backdrop needs to be fixed too */
   .sidebar-backdrop {
     position: fixed !important;
     z-index: 99 !important;
@@ -536,7 +350,6 @@ watch(() => dashboardStore.activeWidgets.length, (newCount, oldCount) => {
   z-index: 15;
 }
 
-/* Slide Animation */
 .slide-sidebar-enter-active,
 .slide-sidebar-leave-active {
   transition: transform 0.3s ease;
@@ -556,8 +369,6 @@ watch(() => dashboardStore.activeWidgets.length, (newCount, oldCount) => {
   border-bottom: 1px solid oklch(var(--b3));
   flex-shrink: 0;
   gap: 0.5rem;
-  
-  /* Sticky backup, though fixed height should solve scrolling */
   position: sticky;
   top: 0;
   z-index: 40;
@@ -587,21 +398,15 @@ watch(() => dashboardStore.activeWidgets.length, (newCount, oldCount) => {
   border: 1px solid transparent;
 }
 
-.sidebar-toggle-btn:hover {
-  background: oklch(var(--b2));
-}
-
-.sidebar-toggle-btn.is-active {
-  background: oklch(var(--b2));
-  border-color: oklch(var(--b3));
-}
+.sidebar-toggle-btn:hover { background: oklch(var(--b2)); }
+.sidebar-toggle-btn.is-active { background: oklch(var(--b2)); border-color: oklch(var(--b3)); }
 
 .dashboard-info {
   display: flex;
   align-items: center;
   gap: 0.75rem;
   margin-left: 0.5rem;
-  min-width: 0; /* Enable truncation flex child */
+  min-width: 0;
   flex: 1;
 }
 
@@ -620,24 +425,10 @@ watch(() => dashboardStore.activeWidgets.length, (newCount, oldCount) => {
   position: relative;
 }
 
-/* Mobile adjustments */
 @media (max-width: 640px) {
-  .visualizer-toolbar {
-    padding: 0.5rem;
-  }
-  
-  .dashboard-name {
-    font-size: 0.9rem;
-    max-width: 120px;
-  }
-  
-  .dashboard-info {
-    gap: 0.25rem;
-    margin-left: 0.25rem;
-  }
-  
-  .sidebar-toggle-btn {
-    font-size: 1rem;
-  }
+  .visualizer-toolbar { padding: 0.5rem; }
+  .dashboard-name { font-size: 0.9rem; max-width: 120px; }
+  .dashboard-info { gap: 0.25rem; margin-left: 0.25rem; }
+  .sidebar-toggle-btn { font-size: 1rem; }
 }
 </style>

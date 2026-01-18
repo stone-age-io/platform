@@ -1,3 +1,4 @@
+<!-- ui/src/components/widgets/MapWidget.vue -->
 <template>
   <div class="map-widget">
     <!-- Map container -->
@@ -43,7 +44,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useLeafletMap } from '@/composables/useLeafletMap'
-import { useUIStore } from '@/stores/ui' // CHANGED
+import { useUIStore } from '@/stores/ui'
 import { useWidgetDataStore } from '@/stores/widgetData'
 import { useDashboardStore } from '@/stores/dashboard'
 import MarkerDetailPanel from './map/MarkerDetailPanel.vue'
@@ -56,7 +57,7 @@ const props = withDefaults(defineProps<{
   isFullscreen: false
 })
 
-const uiStore = useUIStore() // CHANGED
+const uiStore = useUIStore()
 const dataStore = useWidgetDataStore()
 const dashboardStore = useDashboardStore()
 
@@ -113,13 +114,18 @@ async function initializeMap() {
       mapContainerId.value,
       mapCenter.value,
       mapZoom.value,
-      uiStore.theme === 'dark' // CHANGED
+      uiStore.theme === 'dark'
     )
     
+    // 1. Render initial markers
     renderMarkers(markers.value, handleMarkerClick)
+    
+    // 2. Mark as ready
     mapReady.value = true
     initTimeout = null
     
+    // 3. NEW: Grug check Pinia bucket immediately. 
+    // If we have data from a previous visit, use it to move markers right now.
     if (buffer.value.length > 0) {
       updateMarkerPositions(markers.value, buffer.value, dashboardStore.currentVariableValues)
     }
@@ -185,6 +191,7 @@ function updateMarkers() {
     }
   }
   
+  // Re-apply positions whenever markers are re-rendered
   if (buffer.value.length > 0) {
     updateMarkerPositions(markers.value, buffer.value, dashboardStore.currentVariableValues)
   }
@@ -213,15 +220,12 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', checkMobile)
-  
   if (initTimeout) clearTimeout(initTimeout)
   if (resizeObserverTimeout !== null) clearTimeout(resizeObserverTimeout)
   if (resizeObserver) resizeObserver.disconnect()
-  
   cleanup()
 })
 
-// Watch for theme changes
 watch(() => uiStore.theme, (newTheme) => {
   updateTheme(newTheme === 'dark')
 })
@@ -236,6 +240,7 @@ watch([mapCenter, mapZoom], () => {
   initializeMap()
 }, { deep: true })
 
+// Watch for NEW messages arriving via NATS
 watch(buffer, (newMessages) => {
   if (mapReady.value && newMessages.length > 0) {
     updateMarkerPositions(markers.value, newMessages, dashboardStore.currentVariableValues)
@@ -302,9 +307,7 @@ watch(() => dashboardStore.currentVariableValues, () => {
   animation: spin 1s linear infinite;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .no-markers-hint {
   position: absolute;
@@ -324,9 +327,7 @@ watch(() => dashboardStore.currentVariableValues, () => {
   pointer-events: none;
 }
 
-.hint-icon {
-  font-size: 14px;
-}
+.hint-icon { font-size: 14px; }
 
 .map-controls {
   position: absolute;
@@ -354,12 +355,6 @@ watch(() => dashboardStore.currentVariableValues, () => {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
 }
 
-.map-control-btn:hover {
-  background: var(--color-info-bg);
-  border-color: var(--color-info-border);
-}
-
-.map-control-btn:active {
-  transform: scale(0.95);
-}
+.map-control-btn:hover { background: var(--color-info-bg); border-color: var(--color-info-border); }
+.map-control-btn:active { transform: scale(0.95); }
 </style>
