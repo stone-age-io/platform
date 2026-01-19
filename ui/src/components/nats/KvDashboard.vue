@@ -1,6 +1,6 @@
 <!-- ui/src/components/nats/KvDashboard.vue -->
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useNatsKv, type KvEntry } from '@/composables/useNatsKv'
 import { useToast } from '@/composables/useToast'
 import { formatDate } from '@/utils/format'
@@ -25,8 +25,9 @@ const isAddingNew = ref(false)
 const historyLoading = ref(false)
 const historyEntries = ref<KvEntryWithId[]>([])
 
+const searchQuery = ref('') // ADDED: Search state
 const currentPage = ref(1)
-const itemsPerPage = 10 // CHANGED: Increased to 10
+const itemsPerPage = 10 
 
 // --- Form Inputs ---
 const inputKey = ref('')
@@ -48,14 +49,51 @@ const allEntries = computed<KvEntryWithId[]>(() => {
     .map(entry => ({ ...entry, id: entry.key }))
 })
 
-const totalPages = computed(() => Math.ceil(allEntries.value.length / itemsPerPage))
+// ADDED: Filtered entries logic
+const filteredEntries = computed(() => {
+  const q = searchQuery.value.toLowerCase().trim()
+  if (!q) return allEntries.value
+  
+  return allEntries.value.filter(item => {
+    const keyMatch = displayKey(item.key).toLowerCase().includes(q)
+    const valMatch = JSON.stringify(item.value).toLowerCase().includes(q)
+    return keyMatch || valMatch
+  })
+})
+
+// UPDATED: Pagination now uses filteredEntries
+const totalPages = computed(() => Math.ceil(filteredEntries.value.length / itemsPerPage))
 const paginatedEntries = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage
-  return allEntries.value.slice(start, start + itemsPerPage)
+  return filteredEntries.value.slice(start, start + itemsPerPage)
+})
+
+// Reset page when searching
+watch(searchQuery, () => {
+  currentPage.value = 1
 })
 
 // --- Actions ---
 onMounted(() => init())
+
+function mapValueToForm(val: any) {
+  if (typeof val === 'boolean') {
+    inputType.value = 'boolean'
+    inputBool.value = val
+  } else if (typeof val === 'number') {
+    inputType.value = 'number'
+    inputValue.value = String(val)
+  } else if (typeof val === 'object' && val !== null) {
+    inputType.value = 'json'
+    inputValue.value = JSON.stringify(val, null, 2)
+  } else if (typeof val === 'string' && !isNaN(Date.parse(val)) && val.includes('T')) {
+    inputType.value = 'datetime'
+    inputDate.value = val.substring(0, 16)
+  } else {
+    inputType.value = 'string'
+    inputValue.value = String(val)
+  }
+}
 
 async function handleSave() {
   if (!inputKey.value) return toast.error('Property name required')
@@ -87,26 +125,17 @@ function openEdit(entry: KvEntryWithId) {
   isAddingNew.value = false
   selectedEntry.value = entry
   inputKey.value = displayKey(entry.key)
-  
-  const val = entry.value
-  if (typeof val === 'boolean') {
-    inputType.value = 'boolean'
-    inputBool.value = val
-  } else if (typeof val === 'number') {
-    inputType.value = 'number'
-    inputValue.value = String(val)
-  } else if (typeof val === 'object') {
-    inputType.value = 'json'
-    inputValue.value = JSON.stringify(val, null, 2)
-  } else if (typeof val === 'string' && !isNaN(Date.parse(val)) && val.includes('T')) {
-    inputType.value = 'datetime'
-    inputDate.value = val.substring(0, 16)
-  } else {
-    inputType.value = 'string'
-    inputValue.value = String(val)
-  }
-  
+  mapValueToForm(entry.value)
   loadHistory(entry.key)
+}
+
+function restoreRevision(rev: KvEntryWithId) {
+  if (rev.operation === 'DEL' || rev.operation === 'PURGE') {
+    toast.error('Cannot restore a deletion event')
+    return
+  }
+  mapValueToForm(rev.value)
+  toast.info(`Form populated with value from Rev #${rev.revision}`)
 }
 
 function openAdd() {
@@ -154,11 +183,20 @@ function isObject(val: any) {
     <!-- Main Layout -->
     <div v-else class="flex flex-col lg:flex-row min-h-[700px] relative">
       
-      <!-- LEFT: Property List (65% on Desktop) -->
+      <!-- LEFT: Property List -->
       <div class="list-pane">
         <div class="pane-header">
-          <span class="text-[10px] font-bold uppercase tracking-widest opacity-50">Properties ({{ allEntries.length }})</span>
-          <button @click="openAdd" class="btn btn-xs btn-primary">+ Add</button>
+          <div class="flex items-center gap-3 flex-1">
+            <span class="hidden sm:inline text-[10px] font-bold uppercase tracking-widest opacity-50">Properties</span>
+            <!-- ADDED: Search Input -->
+            <input 
+              v-model="searchQuery"
+              type="text"
+              placeholder="Filter properties..."
+              class="input input-xs input-bordered w-full max-w-[240px] font-sans"
+            />
+          </div>
+          <button @click="openAdd" class="btn btn-xs btn-primary ml-2">+ Add</button>
         </div>
 
         <div class="flex-1 overflow-y-auto">
@@ -184,7 +222,6 @@ function isObject(val: any) {
                   </div>
                 </td>
                 <td class="py-4 align-top">
-                  <!-- CHANGED: max-h-[7.5rem] allows for ~5 lines of JSON preview -->
                   <div v-if="isObject(item.value)" class="max-h-[7.5rem] overflow-hidden relative opacity-80">
                     <JsonViewer :data="item.value" />
                     <div class="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-base-100 to-transparent"></div>
@@ -198,13 +235,21 @@ function isObject(val: any) {
                   {{ item.revision }}
                 </td>
               </tr>
+              <!-- Empty Search State -->
+              <tr v-if="paginatedEntries.length === 0">
+                <td colspan="3" class="py-20 text-center opacity-30 italic">
+                  No properties match your search
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
 
         <!-- Pagination Footer -->
         <div class="p-3 border-t border-base-300 flex justify-between items-center bg-base-200/10">
-          <span class="text-[10px] opacity-50">Page {{ currentPage }} of {{ totalPages || 1 }}</span>
+          <span class="text-[10px] opacity-50">
+            {{ filteredEntries.length }} results • Page {{ currentPage }} of {{ totalPages || 1 }}
+          </span>
           <div class="join">
             <button class="join-item btn btn-xs" :disabled="currentPage === 1" @click="currentPage--">«</button>
             <button class="join-item btn btn-xs" :disabled="currentPage >= totalPages" @click="currentPage++">»</button>
@@ -212,17 +257,15 @@ function isObject(val: any) {
         </div>
       </div>
 
-      <!-- RIGHT: Editor Pane (35% on Desktop) -->
+      <!-- RIGHT: Editor Pane -->
       <Transition name="mobile-drawer">
         <div 
           v-if="selectedEntry || isAddingNew || true" 
           class="editor-pane"
           :class="{ 'mobile-active': selectedEntry || isAddingNew }"
         >
-          <!-- Mobile Backdrop -->
           <div class="mobile-backdrop lg:hidden" @click="closeEditor"></div>
 
-          <!-- Editor Content -->
           <div class="editor-content-wrapper">
             <div class="pane-header bg-base-200/50">
               <h3 class="font-bold uppercase text-[10px] tracking-widest opacity-70">
@@ -267,16 +310,25 @@ function isObject(val: any) {
 
                 <!-- History -->
                 <div v-if="!isAddingNew" class="pt-4 border-t border-base-300">
-                  <span class="text-[10px] font-bold uppercase opacity-30 block mb-4">Revision History</span>
+                  <div class="flex justify-between items-center mb-4">
+                    <span class="text-[10px] font-bold uppercase opacity-30">Revision History</span>
+                    <span class="text-[9px] opacity-30 italic">Click to restore value</span>
+                  </div>
+                  
                   <div v-if="historyLoading" class="flex justify-center"><span class="loading loading-dots loading-xs"></span></div>
                   <div v-else class="space-y-4">
-                    <div v-for="rev in historyEntries" :key="rev.revision" class="relative pl-4 border-l border-base-300 group">
+                    <div 
+                      v-for="rev in historyEntries" 
+                      :key="rev.revision" 
+                      class="relative pl-4 border-l border-base-300 group cursor-pointer hover:border-primary transition-all"
+                      @click="restoreRevision(rev)"
+                    >
                       <div class="absolute -left-[4.5px] top-1 w-2 h-2 rounded-full bg-base-300 group-hover:bg-primary transition-colors"></div>
                       <div class="flex justify-between text-[9px] opacity-50 mb-1">
-                        <span class="font-bold">REV #{{ rev.revision }}</span>
+                        <span class="font-bold group-hover:text-primary">REV #{{ rev.revision }}</span>
                         <span>{{ formatDate(rev.created, 'MMM d, HH:mm') }}</span>
                       </div>
-                      <div class="text-[10px] font-mono break-all opacity-80">
+                      <div class="text-[10px] font-mono break-all opacity-80 group-hover:opacity-100">
                         {{ isObject(rev.value) ? JSON.stringify(rev.value) : rev.value }}
                       </div>
                     </div>
