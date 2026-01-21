@@ -1,3 +1,4 @@
+// ui/src/composables/useSubscriptionManager.ts
 import { useNatsStore } from '@/stores/nats'
 import { useWidgetDataStore } from '@/stores/widgetData'
 import { JSONPath } from 'jsonpath-plus'
@@ -9,6 +10,15 @@ import {
 } from '@nats-io/jetstream'
 import { decodeBytes } from '@/utils/encoding'
 import type { DataSourceConfig } from '@/types/dashboard'
+
+/**
+ * Subscription Manager (Modular v3 API + Ordered Consumers)
+ * 
+ * Grug say: 
+ * 1. SDK v3 types use underscores: 'deliver_policy', 'filter_subjects'.
+ * 2. No name in js.consumers.get() = Ordered Consumer.
+ * 3. Ordered Consumers are stateless on server, perfect for 🔄 button.
+ */
 
 interface WidgetListener {
   widgetId: string
@@ -44,7 +54,6 @@ interface SubscriptionStats {
 }
 
 const MAX_QUEUE_SIZE = 5000 
-const JETSTREAM_CONSUMER_INACTIVE_THRESHOLD_MS = 120000 // 2 minutes
 
 export function useSubscriptionManager() {
   const natsStore = useNatsStore()
@@ -63,8 +72,7 @@ export function useSubscriptionManager() {
   let reconnectListenerAttached = false
   let closeListenerAttached = false
   
-  // --- Message Queue ---
-  
+  // --- Message Queue (Batching for Performance) ---
   function flushQueue() {
     if (messageQueue.length === 0) {
       flushPending = false
@@ -78,22 +86,13 @@ export function useSubscriptionManager() {
   
   function queueMessage(widgetId: string, value: any, raw: any, subject?: string) {
     stats.messagesReceived++
-    
     if (messageQueue.length >= MAX_QUEUE_SIZE) {
       const dropCount = 1000
       messageQueue.splice(0, dropCount)
       stats.messagesDropped += dropCount
       stats.lastDropTime = Date.now()
     }
-    
-    messageQueue.push({
-      widgetId,
-      value,
-      raw,
-      subject,
-      timestamp: Date.now()
-    })
-    
+    messageQueue.push({ widgetId, value, raw, subject, timestamp: Date.now() })
     if (!flushPending) {
       flushPending = true
       requestAnimationFrame(flushQueue)
@@ -101,37 +100,31 @@ export function useSubscriptionManager() {
   }
 
   // --- Helpers ---
-
-  function calculateStartTime(windowStr: string | undefined): Date {
+  function calculateStartTime(windowStr: string | undefined): string {
     const now = Date.now()
-    if (!windowStr) return new Date(now - 10 * 60 * 1000)
-    
-    const match = windowStr.match(/^(\d+)([smhd])$/)
-    if (!match) return new Date(now - 10 * 60 * 1000)
-    
-    const val = parseInt(match[1])
-    const unit = match[2]
-    let ms = 0
-    
-    switch (unit) {
-      case 's': ms = val * 1000; break
-      case 'm': ms = val * 60 * 1000; break
-      case 'h': ms = val * 60 * 60 * 1000; break
-      case 'd': ms = val * 24 * 60 * 60 * 1000; break
+    let ms = 5 * 60 * 1000 // Default 5m
+    if (windowStr) {
+      const match = windowStr.match(/^(\d+)([smhd])$/)
+      if (match) {
+        const val = parseInt(match[1])
+        const unit = match[2]
+        switch (unit) {
+          case 's': ms = val * 1000; break
+          case 'm': ms = val * 60 * 1000; break
+          case 'h': ms = val * 60 * 60 * 1000; break
+          case 'd': ms = val * 24 * 60 * 60 * 1000; break
+        }
+      }
     }
-    
-    return new Date(now - ms)
+    return new Date(now - ms).toISOString()
   }
 
   function getSubscriptionKey(widgetId: string, config: DataSourceConfig): string {
-    if (config.useJetStream) {
-      return `js:${widgetId}:${config.subject}`
-    }
+    if (config.useJetStream) return `js:${widgetId}:${config.subject}`
     return `core:${config.subject}`
   }
 
   // --- Event Listeners ---
-
   function ensureReconnectListener() {
     if (reconnectListenerAttached) return
     window.addEventListener('nats:reconnected', handleReconnect)
@@ -146,34 +139,24 @@ export function useSubscriptionManager() {
   }
 
   function handleDisconnect() {
-    for (const subRef of subscriptions.values()) {
-      subRef.isActive = false
-    }
+    for (const subRef of subscriptions.values()) subRef.isActive = false
   }
 
   function handleClose() {
-    for (const subRef of subscriptions.values()) {
-      cleanupSubscription(subRef)
-    }
+    for (const subRef of subscriptions.values()) cleanupSubscription(subRef)
     subscriptions.clear()
   }
 
   async function handleReconnect() {
     const subsToRefresh = Array.from(subscriptions.entries())
-    
     for (const [key, subRef] of subsToRefresh) {
       if (subRef.listeners.size === 0) {
         subscriptions.delete(key)
         continue
       }
-      
       cleanupSubscription(subRef)
-      
-      const firstListener = subRef.listeners.values().next().value
-      if (!firstListener) continue
-      
       try {
-        await createSubscription(subRef, firstListener.jsonPath)
+        await createSubscription(subRef)
       } catch (err) {
         console.error(`[SubMgr] Failed to refresh ${subRef.subject}:`, err)
         subRef.lastError = String(err)
@@ -183,10 +166,8 @@ export function useSubscriptionManager() {
   }
 
   // --- Lifecycle ---
-
   async function subscribe(widgetId: string, config: DataSourceConfig, jsonPath?: string) {
     if (!natsStore.nc) return
-
     const subject = config.subject
     if (!subject) return
     
@@ -203,7 +184,6 @@ export function useSubscriptionManager() {
           subRef = undefined
         }
       }
-      
       subRef = subscriptions.get(key)
       if (subRef) {
         const isDead = !subRef.isActive || (!subRef.isJetStream && subRef.natsSubscription?.isClosed())
@@ -218,8 +198,7 @@ export function useSubscriptionManager() {
     }
     
     const newSubRef: SubscriptionRef = {
-      key,
-      subject,
+      key, subject,
       listeners: new Map([[widgetId, { widgetId, jsonPath }]]),
       isActive: true,
       isJetStream: !!config.useJetStream,
@@ -227,7 +206,7 @@ export function useSubscriptionManager() {
     }
     
     subscriptions.set(key, newSubRef)
-    newSubRef.initPromise = createSubscription(newSubRef, jsonPath)
+    newSubRef.initPromise = createSubscription(newSubRef)
     
     try {
       await newSubRef.initPromise
@@ -240,7 +219,7 @@ export function useSubscriptionManager() {
     }
   }
 
-  async function createSubscription(subRef: SubscriptionRef, _jsonPath?: string): Promise<void> {
+  async function createSubscription(subRef: SubscriptionRef): Promise<void> {
     if (subRef.config.useJetStream) {
       await createJetStreamSubscription(subRef)
     } else {
@@ -250,62 +229,67 @@ export function useSubscriptionManager() {
 
   async function createCoreSubscription(subRef: SubscriptionRef): Promise<void> {
     if (!natsStore.nc) throw new Error('Not connected')
-    
     const natsSub = natsStore.nc.subscribe(subRef.subject)
     subRef.natsSubscription = natsSub
     subRef.isActive = true
-    
     processCoreMessages(subRef)
   }
 
+  /**
+   * Create JetStream Subscription using Ordered Consumer (v3 API)
+   */
   async function createJetStreamSubscription(subRef: SubscriptionRef): Promise<void> {
     if (!natsStore.nc) throw new Error('Not connected')
     
-    const config = subRef.config
+    const js = jetstream(natsStore.nc)
     const jsm = await jetstreamManager(natsStore.nc)
-    
-    let streamName: string
+    const config = subRef.config
+
     try {
-      streamName = await jsm.streams.find(subRef.subject)
-    } catch {
-      const errorMsg = `No stream found for subject: ${subRef.subject}`
+      // 1. Find the stream name for the subject
+      const streamName = await jsm.streams.find(subRef.subject)
+
+      // 2. Build options using underscored keys from types.ts
+      const consumerOpts: any = {
+        filter_subjects: [subRef.subject],
+      }
+
+      switch (config.deliverPolicy) {
+        case 'all': consumerOpts.deliver_policy = 'all'; break
+        case 'last': consumerOpts.deliver_policy = 'last'; break
+        case 'new': consumerOpts.deliver_policy = 'new'; break
+        case 'last_per_subject': consumerOpts.deliver_policy = 'last_per_subject'; break
+        case 'by_start_time':
+          consumerOpts.deliver_policy = 'by_start_time'
+          consumerOpts.opt_start_time = calculateStartTime(config.timeWindow)
+          break
+        default: consumerOpts.deliver_policy = 'last'
+      }
+
+      // 3. Get the consumer (No name provided = Ordered Consumer)
+      const consumer = await js.consumers.get(streamName, consumerOpts)
+      const messages = await consumer.consume()
+      
+      subRef.iterator = messages
+      subRef.isActive = true
+      
+      processJetStreamMessages(subRef)
+    } catch (err: any) {
+      const errorMsg = `JetStream Error: ${err.message}`
       subRef.lastError = errorMsg
       for (const listener of subRef.listeners.values()) {
         queueMessage(listener.widgetId, null, { error: errorMsg }, subRef.subject)
       }
-      throw new Error(errorMsg)
+      throw err
     }
-
-    const js = jetstream(natsStore.nc)
-    
-    const consumerOpts: any = {
-      filter_subjects: [subRef.subject],
-      deliver_policy: config.deliverPolicy || 'last',
-      inactive_threshold: JETSTREAM_CONSUMER_INACTIVE_THRESHOLD_MS
-    }
-
-    if (config.deliverPolicy === 'by_start_time') {
-      consumerOpts.opt_start_time = calculateStartTime(config.timeWindow).toISOString()
-    }
-
-    const consumer = await js.consumers.get(streamName, consumerOpts)
-    const messages = await consumer.consume()
-    
-    subRef.iterator = messages
-    subRef.isActive = true
-    
-    processJetStreamMessages(subRef)
   }
 
   function unsubscribe(widgetId: string, config: DataSourceConfig) {
     if (!config.subject) return
-
     const key = getSubscriptionKey(widgetId, config)
     const subRef = subscriptions.get(key)
     if (!subRef) return
-    
     subRef.listeners.delete(widgetId)
-    
     if (subRef.listeners.size === 0) {
       cleanupSubscription(subRef)
       subscriptions.delete(key)
@@ -313,7 +297,6 @@ export function useSubscriptionManager() {
   }
 
   // --- Processing ---
-  
   async function processCoreMessages(subRef: SubscriptionRef) {
     if (!subRef.natsSubscription) return
     try {
@@ -331,7 +314,6 @@ export function useSubscriptionManager() {
     try {
       for await (const msg of subRef.iterator) {
         if (!subRef.isActive) break
-        msg.ack()
         dispatchMessage(subRef, msg.data, msg.subject)
       }
     } catch (err) {
@@ -370,9 +352,7 @@ export function useSubscriptionManager() {
   }
   
   function cleanupAll() {
-    for (const subRef of subscriptions.values()) {
-      cleanupSubscription(subRef)
-    }
+    for (const subRef of subscriptions.values()) cleanupSubscription(subRef)
     subscriptions.clear()
     messageQueue.length = 0
     stats.messagesReceived = 0
@@ -383,22 +363,17 @@ export function useSubscriptionManager() {
 
   function extractJsonPath(data: any, path: string): any {
     if (!path || path === '$') return data
-    try {
-      return JSONPath({ path, json: data, wrap: false })
-    } catch {
-      return null
-    }
+    try { return JSONPath({ path, json: data, wrap: false }) } catch { return null }
   }
   
   function getStats() {
     const subscriptionList: any[] = []
     for (const [key, subRef] of subscriptions.entries()) {
       subscriptionList.push({
-        key,
-        subject: subRef.subject,
+        key, subject: subRef.subject,
         listenerCount: subRef.listeners.size,
         isActive: subRef.isActive,
-        type: subRef.isJetStream ? 'JetStream' : 'Core',
+        type: subRef.isJetStream ? 'JetStream (Ordered)' : 'Core',
         error: subRef.lastError || null
       })
     }
@@ -420,25 +395,14 @@ export function useSubscriptionManager() {
     return !!subRef && subRef.listeners.has(widgetId)
   }
   
-  return {
-    subscribe,
-    unsubscribe,
-    cleanupAll,
-    extractJsonPath,
-    getStats,
-    isSubscribed,
-  }
+  return { subscribe, unsubscribe, cleanupAll, extractJsonPath, getStats, isSubscribed }
 }
 
 let managerInstance: ReturnType<typeof useSubscriptionManager> | null = null
-
 export function getSubscriptionManager(): ReturnType<typeof useSubscriptionManager> {
-  if (!managerInstance) {
-    managerInstance = useSubscriptionManager()
-  }
+  if (!managerInstance) managerInstance = useSubscriptionManager()
   return managerInstance
 }
-
 export function resetSubscriptionManager(): void {
   if (managerInstance) {
     managerInstance.cleanupAll()

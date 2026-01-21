@@ -13,10 +13,40 @@ export function useWidgetOperations() {
   const natsStore = useNatsStore()
   const subManager = getSubscriptionManager()
 
+  // Grug-helper: parse "5m", "1h" etc to milliseconds
+  function parseWindowToMs(windowStr: string | undefined): number {
+    if (!windowStr) return 300000 // default 5m
+    const match = windowStr.match(/^(\d+)([smhd])$/)
+    if (!match) return 300000
+    const val = parseInt(match[1])
+    const unit = match[2]
+    switch (unit) {
+      case 's': return val * 1000
+      case 'm': return val * 60 * 1000
+      case 'h': return val * 60 * 60 * 1000
+      case 'd': return val * 24 * 60 * 60 * 1000
+      default: return 300000
+    }
+  }
+
   function subscribeWidget(widgetId: string) {
     const widget = dashboardStore.getWidget(widgetId)
     if (!widget) return
     
+    // 1. Grug check: Is existing data too stale for the JetStream window?
+    if (widget.dataSource.useJetStream && widget.dataSource.deliverPolicy === 'by_start_time') {
+      const buffer = dataStore.getBuffer(widgetId)
+      if (buffer.length > 0) {
+        const latest = buffer[buffer.length - 1]
+        const windowMs = parseWindowToMs(widget.dataSource.timeWindow)
+        // If the gap is bigger than the replay window, wipe it to avoid chart gaps
+        if (Date.now() - latest.timestamp > windowMs) {
+          dataStore.clearBuffer(widgetId)
+        }
+      }
+    }
+
+    // 2. Standard initialization
     dataStore.initializeBuffer(widgetId, widget.buffer.maxCount, widget.buffer.maxAge)
     
     if (widget.dataSource.type === 'subscription') {
@@ -97,6 +127,7 @@ export function useWidgetOperations() {
   }
 
   function subscribeAllWidgets() {
+    if (dashboardStore.activeWidgets.length === 0) return
     for (const widget of dashboardStore.activeWidgets) {
       if (needsSubscription(widget.type, widget)) {
         subscribeWidget(widget.id)
@@ -133,6 +164,7 @@ export function useWidgetOperations() {
   }
 
   function applyWidgetDefaults(widget: WidgetConfig, type: WidgetType) {
+    // ... rest of file unchanged ...
     switch (type) {
       case 'text':
         widget.title = 'Text Widget'

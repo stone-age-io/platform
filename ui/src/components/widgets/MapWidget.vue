@@ -92,166 +92,123 @@ const selectedMarker = computed(() => {
   return markers.value.find(m => m.id === selectedMarkerId.value) || null
 })
 
-let initTimeout: number | null = null
-
 function checkMobile() {
   isMobile.value = window.innerWidth < 768
 }
 
-async function initializeMap() {
-  if (initTimeout) {
-    clearTimeout(initTimeout)
-    initTimeout = null
-  }
-
-  await nextTick()
-  
-  initTimeout = window.setTimeout(() => {
-    const container = document.getElementById(mapContainerId.value)
-    if (!container) return
-
-    initMap(
-      mapContainerId.value,
-      mapCenter.value,
-      mapZoom.value,
-      uiStore.theme === 'dark'
-    )
-    
-    // 1. Render initial markers
-    renderMarkers(markers.value, handleMarkerClick)
-    
-    // 2. Mark as ready
-    mapReady.value = true
-    initTimeout = null
-    
-    // 3. NEW: Grug check Pinia bucket immediately. 
-    // If we have data from a previous visit, use it to move markers right now.
-    if (buffer.value.length > 0) {
-      updateMarkerPositions(markers.value, buffer.value, dashboardStore.currentVariableValues)
-    }
-  }, 50)
-}
-
-function handleMarkerClick(markerId: string) {
-  if (selectedMarkerId.value === markerId) {
-    closePanel()
-    return
-  }
-  
-  selectedMarkerId.value = markerId
-  setSelectedMarker(markerId)
-  
-  if (!isMobile.value) {
-    nextTick(() => {
-      invalidateSize()
-    })
-  }
-}
-
-function handleMapClick(event: MouseEvent) {
-  if (isMobile.value) return
-  if (!selectedMarkerId.value) return
-  
-  const target = event.target as HTMLElement
-  const isMapClick = target.closest('.leaflet-container') && 
-                     !target.closest('.leaflet-marker-icon') &&
-                     !target.closest('.marker-detail-panel')
-  
-  if (isMapClick) {
-    closePanel()
-  }
-}
-
-function handleFitAll() {
-  fitAllMarkers()
-}
-
-function closePanel() {
-  selectedMarkerId.value = null
-  setSelectedMarker(null)
-  
-  if (!isMobile.value) {
-    nextTick(() => {
-      invalidateSize()
-    })
-  }
-}
-
-function updateMarkers() {
-  if (!mapReady.value) return
-  
-  renderMarkers(markers.value, handleMarkerClick)
-  
-  if (selectedMarkerId.value) {
-    const stillExists = markers.value.some(m => m.id === selectedMarkerId.value)
-    if (stillExists) {
-      setSelectedMarker(selectedMarkerId.value)
-    } else {
-      closePanel()
-    }
-  }
-  
-  // Re-apply positions whenever markers are re-rendered
-  if (buffer.value.length > 0) {
+/**
+ * Grug-Logic: Centralized Position Sync
+ * Moves markers to their last known positions from the data store.
+ */
+function syncMarkerPositions() {
+  if (mapReady.value && buffer.value.length > 0) {
     updateMarkerPositions(markers.value, buffer.value, dashboardStore.currentVariableValues)
   }
 }
 
-let resizeObserver: ResizeObserver | null = null
-let resizeObserverTimeout: number | null = null
-
-onMounted(() => {
-  checkMobile()
-  window.addEventListener('resize', checkMobile)
+async function initializeMap() {
+  await nextTick()
   
-  initializeMap()
-  
-  resizeObserver = new ResizeObserver(() => {
-    if (mapReady.value) invalidateSize()
-  })
-  
-  resizeObserverTimeout = window.setTimeout(() => {
+  window.setTimeout(() => {
     const container = document.getElementById(mapContainerId.value)
-    if (container?.parentElement && resizeObserver) {
-      resizeObserver.observe(container.parentElement)
-    }
-  }, 100)
+    if (!container) return
+
+    initMap(mapContainerId.value, mapCenter.value, mapZoom.value, uiStore.theme === 'dark')
+    
+    // 1. Render the static marker definitions
+    renderMarkers(markers.value, handleMarkerClick)
+    
+    // 2. Set ready flag - this will trigger the mapReady watcher below
+    mapReady.value = true
+  }, 50)
+}
+
+// --- Watchers ---
+
+// Fix for "Warm Start" and "Refresh":
+// When map becomes ready, immediately sync with whatever is in the buffer
+watch(mapReady, (ready) => {
+  if (ready) syncMarkerPositions()
 })
 
-onUnmounted(() => {
-  window.removeEventListener('resize', checkMobile)
-  if (initTimeout) clearTimeout(initTimeout)
-  if (resizeObserverTimeout !== null) clearTimeout(resizeObserverTimeout)
-  if (resizeObserver) resizeObserver.disconnect()
-  cleanup()
-})
+// Fix for "Live Updates":
+// When new data arrives via NATS, sync if ready
+watch(buffer, () => {
+  syncMarkerPositions()
+}, { deep: true })
 
-watch(() => uiStore.theme, (newTheme) => {
-  updateTheme(newTheme === 'dark')
-})
+// Fix for "Context Switches":
+// When dashboard variables change, re-sync positions
+watch(() => dashboardStore.currentVariableValues, () => {
+  syncMarkerPositions()
+}, { deep: true })
 
-watch(markers, updateMarkers, { deep: true })
+// Standard UI watchers
+watch(() => uiStore.theme, (newTheme) => updateTheme(newTheme === 'dark'))
+
+watch(markers, () => {
+  if (mapReady.value) {
+    renderMarkers(markers.value, handleMarkerClick)
+    syncMarkerPositions()
+  }
+}, { deep: true })
 
 watch([mapCenter, mapZoom], () => {
-  if (initTimeout) clearTimeout(initTimeout)
   cleanup()
   mapReady.value = false
   selectedMarkerId.value = null
   initializeMap()
 }, { deep: true })
 
-// Watch for NEW messages arriving via NATS
-watch(buffer, (newMessages) => {
-  if (mapReady.value && newMessages.length > 0) {
-    updateMarkerPositions(markers.value, newMessages, dashboardStore.currentVariableValues)
-  }
-}, { deep: true })
+// --- Lifecycle ---
 
-watch(() => dashboardStore.currentVariableValues, () => {
-  if (mapReady.value && buffer.value.length > 0) {
-    updateMarkerPositions(markers.value, buffer.value, dashboardStore.currentVariableValues)
+function handleMarkerClick(markerId: string) {
+  if (selectedMarkerId.value === markerId) {
+    closePanel()
+    return
   }
-}, { deep: true })
+  selectedMarkerId.value = markerId
+  setSelectedMarker(markerId)
+  if (!isMobile.value) nextTick(() => invalidateSize())
+}
+
+function handleMapClick(event: MouseEvent) {
+  if (isMobile.value) return
+  if (!selectedMarkerId.value) return
+  const target = event.target as HTMLElement
+  if (target.closest('.leaflet-container') && !target.closest('.leaflet-marker-icon') && !target.closest('.marker-detail-panel')) {
+    closePanel()
+  }
+}
+
+function handleFitAll() { fitAllMarkers() }
+
+function closePanel() {
+  selectedMarkerId.value = null
+  setSelectedMarker(null)
+  if (!isMobile.value) nextTick(() => invalidateSize())
+}
+
+let resizeObserver: ResizeObserver | null = null
+
+onMounted(() => {
+  checkMobile()
+  window.addEventListener('resize', checkMobile)
+  initializeMap()
+  
+  resizeObserver = new ResizeObserver(() => {
+    if (mapReady.value) invalidateSize()
+  })
+  
+  const container = document.getElementById(mapContainerId.value)
+  if (container?.parentElement) resizeObserver.observe(container.parentElement)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', checkMobile)
+  if (resizeObserver) resizeObserver.disconnect()
+  cleanup()
+})
 </script>
 
 <style scoped>
@@ -263,98 +220,17 @@ watch(() => dashboardStore.currentVariableValues, () => {
   border-radius: 4px;
   overflow: hidden;
 }
-
-.map-container {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-}
-
-.map-container :deep(.leaflet-pane),
-.map-container :deep(.leaflet-control-container) {
-  z-index: 0 !important;
-}
-
-.map-container :deep(.leaflet-top),
-.map-container :deep(.leaflet-bottom) {
-  z-index: 1 !important;
-}
-
-.map-container :deep(.marker-selected) {
-  filter: hue-rotate(180deg) saturate(1.5) drop-shadow(0 0 8px rgba(116, 128, 255, 0.8));
-}
-
-.map-loading {
-  position: absolute;
-  inset: 0;
-  z-index: 10;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  background: var(--widget-bg);
-  color: var(--muted);
-  font-size: 14px;
-}
-
-.loading-spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid var(--border);
-  border-top-color: var(--color-accent);
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
+.map-container { position: absolute; inset: 0; z-index: 0; }
+.map-container :deep(.leaflet-pane), .map-container :deep(.leaflet-control-container) { z-index: 0 !important; }
+.map-container :deep(.leaflet-top), .map-container :deep(.leaflet-bottom) { z-index: 1 !important; }
+.map-container :deep(.marker-selected) { filter: hue-rotate(180deg) saturate(1.5) drop-shadow(0 0 8px rgba(116, 128, 255, 0.8)); }
+.map-loading { position: absolute; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: var(--widget-bg); color: var(--muted); font-size: 14px; }
+.loading-spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--color-accent); border-radius: 50%; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-
-.no-markers-hint {
-  position: absolute;
-  bottom: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  font-size: 12px;
-  color: var(--muted);
-  pointer-events: none;
-}
-
+.no-markers-hint { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 5; display: flex; align-items: center; gap: 6px; padding: 6px 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 4px; font-size: 12px; color: var(--muted); pointer-events: none; }
 .hint-icon { font-size: 14px; }
-
-.map-controls {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 5;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.map-control-btn {
-  width: 32px;
-  height: 32px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--text);
-  font-size: 16px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
-}
-
+.map-controls { position: absolute; top: 10px; right: 10px; z-index: 5; display: flex; flex-direction: column; gap: 6px; }
+.map-control-btn { width: 32px; height: 32px; background: var(--panel); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2); }
 .map-control-btn:hover { background: var(--color-info-bg); border-color: var(--color-info-border); }
 .map-control-btn:active { transform: scale(0.95); }
 </style>

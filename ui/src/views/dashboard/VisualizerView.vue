@@ -6,8 +6,9 @@ import { useDashboardStore } from '@/stores/dashboard'
 import { useUIStore } from '@/stores/ui'
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
 import { useWidgetOperations } from '@/composables/useWidgetOperations'
+import { useToast } from '@/composables/useToast' // Added
 
-// Components
+// Components ...
 import DashboardSidebar from '@/components/dashboard/DashboardSidebar.vue'
 import DashboardGrid from '@/components/dashboard/DashboardGrid.vue'
 import WidgetContainer from '@/components/dashboard/WidgetContainer.vue'
@@ -23,6 +24,7 @@ import type { WidgetType } from '@/types/dashboard'
 const natsStore = useNatsStore()
 const dashboardStore = useDashboardStore()
 const uiStore = useUIStore()
+const toast = useToast()
 
 const {
   subscribeWidget,
@@ -33,7 +35,7 @@ const {
   duplicateWidget,
 } = useWidgetOperations()
 
-// UI State
+// UI State ...
 const isSidebarOpen = ref(false)
 const showAddWidget = ref(false)
 const showConfigWidget = ref(false)
@@ -121,6 +123,18 @@ function handleReloadRemote() {
   }
 }
 
+/**
+ * Force Refresh Dashboard
+ * Grug say: Wipe data, stop subs, then start all over.
+ */
+function handleRefreshDashboard() {
+  unsubscribeAllWidgets(false) // false = wipe data
+  nextTick(() => {
+    subscribeAllWidgets()
+    toast.info('Dashboard data refreshed')
+  })
+}
+
 function handleGridChange(event: Event) {
   const select = event.target as HTMLSelectElement
   const val = parseInt(select.value)
@@ -133,6 +147,7 @@ function handleGridChange(event: Event) {
 const { shortcuts } = useKeyboardShortcuts([
   { key: 's', description: 'Save Dashboard', handler: handleSave },
   { key: 'n', description: 'Add New Widget', handler: () => { if (!dashboardStore.isLocked) showAddWidget.value = true } },
+  { key: 'r', description: 'Refresh Dashboard Data', handler: handleRefreshDashboard }, // NEW
   { key: 'b', description: 'Toggle Dashboard Sidebar', handler: toggleSidebar },
   { key: 'a', description: 'Toggle App Sidebar', handler: () => uiStore.toggleCompact() },
   { key: 'v', description: 'Toggle Variables', handler: () => { if (hasVariables.value || !dashboardStore.isLocked) showVariableBar.value = !showVariableBar.value } },
@@ -170,7 +185,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  // Grug say: keepData = true. Do not throw away hard-earned bytes!
+  // Grug say: keep data warm during navigation
   unsubscribeAllWidgets(true) 
   window.removeEventListener('organization-changed', handleOrgChange)
 })
@@ -181,7 +196,6 @@ watch(() => natsStore.isConnected, (connected) => {
 })
 
 watch(() => dashboardStore.activeDashboardId, async () => {
-  // Grug say: keepData = true here too for snappy dashboard switching
   unsubscribeAllWidgets(true) 
   if (window.innerWidth < 1024) isSidebarOpen.value = false
   await nextTick()
@@ -226,6 +240,16 @@ watch(() => dashboardStore.activeWidgets.length, (newCount, oldCount) => {
         </div>
         
         <div class="toolbar-right">
+          <!-- Refresh Button (NEW) -->
+          <button 
+            class="btn btn-sm btn-square btn-ghost" 
+            @click="handleRefreshDashboard"
+            title="Refresh Dashboard Data (R)"
+            :disabled="!natsStore.isConnected"
+          >
+            🔄
+          </button>
+
           <div v-if="!dashboardStore.isLocked" class="hidden md:block">
             <select :value="dashboardStore.activeDashboard?.columnCount ?? 12" @change="handleGridChange" class="select select-sm select-bordered font-mono">
               <option :value="0">Auto</option>
@@ -262,6 +286,7 @@ watch(() => dashboardStore.activeWidgets.length, (newCount, oldCount) => {
       </div>
     </div>
     
+    <!-- Modals ... (Unchanged) -->
     <AddWidgetModal v-model="showAddWidget" @select="handleCreateWidget" />
     <ConfigureWidgetModal v-model="showConfigWidget" :widget-id="configWidgetId" @saved="handleWidgetConfigSaved" />
     <KeyboardShortcutsModal v-model="showShortcutsModal" :shortcuts="shortcuts" />
@@ -283,6 +308,7 @@ watch(() => dashboardStore.activeWidgets.length, (newCount, oldCount) => {
 </template>
 
 <style scoped>
+/* Styles ... (Unchanged) */
 .visualizer-view {
   display: flex;
   flex-direction: column;
