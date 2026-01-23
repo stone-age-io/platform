@@ -13,64 +13,70 @@ const toast = useToast()
 
 const role = ref<NatsRole | null>(null)
 const loading = ref(true)
-
 const roleId = route.params.id as string
 
 /**
- * Load role details
+ * Grug logic for display:
+ * If it's an array, use it. 
+ * If it's a string, try to parse JSON. 
+ * If that fails, split by comma.
  */
+function getSubjectArray(val: any): string[] {
+  if (!val) return []
+  if (Array.isArray(val)) return val
+  
+  if (typeof val === 'string') {
+    const trimmed = val.trim()
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        return JSON.parse(trimmed)
+      } catch (e) {
+        return []
+      }
+    }
+    return trimmed.split(',').map(s => s.trim()).filter(s => s !== '')
+  }
+  return []
+}
+
 async function loadRole() {
   loading.value = true
-  
   try {
     role.value = await pb.collection('nats_roles').getOne<NatsRole>(roleId)
   } catch (err: any) {
-    toast.error(err.message || 'Failed to load role')
+    toast.error('Failed to load role')
     router.push('/nats/roles')
   } finally {
     loading.value = false
   }
 }
 
-/**
- * Handle delete
- */
 async function handleDelete() {
-  if (!role.value) return
-  if (!confirm(`Delete "${role.value.name}"? This cannot be undone.`)) return
-  
+  if (!role.value || !confirm(`Delete "${role.value.name}"?`)) return
   try {
     await pb.collection('nats_roles').delete(role.value.id)
     toast.success('Role deleted')
     router.push('/nats/roles')
   } catch (err: any) {
-    toast.error(err.message || 'Failed to delete role')
+    toast.error(err.message)
   }
 }
 
-/**
- * Format limit value
- */
 function formatLimit(value?: number) {
   if (value === undefined || value === null) return 'Not set'
-  if (value === -1) return 'Unlimited'
-  return value.toString()
+  return value === -1 ? 'Unlimited' : value.toString()
 }
 
-onMounted(() => {
-  loadRole()
-})
+onMounted(loadRole)
 </script>
 
 <template>
   <div class="space-y-6">
-    <!-- Loading State -->
     <div v-if="loading" class="flex justify-center p-12">
       <span class="loading loading-spinner loading-lg"></span>
     </div>
     
     <template v-else-if="role">
-      <!-- Header -->
       <div class="flex flex-col gap-4">
         <div class="breadcrumbs text-sm">
           <ul>
@@ -84,25 +90,15 @@ onMounted(() => {
             <span v-if="role.is_default" class="badge badge-primary">Default</span>
           </div>
           <div class="flex gap-2 w-full sm:w-auto">
-            <router-link :to="`/nats/roles/${role.id}/edit`" class="btn btn-primary flex-1 sm:flex-initial">
-              Edit
-            </router-link>
-            <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial">
-              Delete
-            </button>
+            <router-link :to="`/nats/roles/${role.id}/edit`" class="btn btn-primary flex-1 sm:flex-initial">Edit</router-link>
+            <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial">Delete</button>
           </div>
         </div>
       </div>
       
-      <!-- Details Grid -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- Basic Info -->
         <BaseCard title="Basic Information">
           <dl class="space-y-4">
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">Name</dt>
-              <dd class="mt-1 text-sm">{{ role.name }}</dd>
-            </div>
             <div>
               <dt class="text-sm font-medium text-base-content/70">Description</dt>
               <dd class="mt-1 text-sm">{{ role.description || '-' }}</dd>
@@ -110,73 +106,83 @@ onMounted(() => {
             <div>
               <dt class="text-sm font-medium text-base-content/70">Default Role</dt>
               <dd class="mt-1">
-                <span class="badge" :class="role.is_default ? 'badge-primary' : 'badge-ghost'">
-                  {{ role.is_default ? 'Yes' : 'No' }}
-                </span>
+                <span class="badge" :class="role.is_default ? 'badge-primary' : 'badge-ghost'">{{ role.is_default ? 'Yes' : 'No' }}</span>
               </dd>
             </div>
           </dl>
         </BaseCard>
         
-        <!-- Limits -->
         <BaseCard title="Limits">
-          <dl class="space-y-4">
+          <dl class="grid grid-cols-2 gap-4">
             <div>
               <dt class="text-sm font-medium text-base-content/70">Max Subscriptions</dt>
-              <dd class="mt-1">
-                <code class="text-sm">{{ formatLimit(role.max_subscriptions) }}</code>
-              </dd>
-            </div>
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">Max Data</dt>
-              <dd class="mt-1">
-                <code class="text-sm">{{ formatLimit(role.max_data) }}</code>
-              </dd>
+              <dd class="mt-1 font-mono text-sm">{{ formatLimit(role.max_subscriptions) }}</dd>
             </div>
             <div>
               <dt class="text-sm font-medium text-base-content/70">Max Payload</dt>
-              <dd class="mt-1">
-                <code class="text-sm">{{ formatLimit(role.max_payload) }}</code>
-              </dd>
+              <dd class="mt-1 font-mono text-sm">{{ formatLimit(role.max_payload) }}</dd>
             </div>
           </dl>
         </BaseCard>
         
-        <!-- Permissions -->
-        <BaseCard title="Publish Permissions" class="lg:col-span-2">
-          <div v-if="role.publish_permissions" class="bg-base-200 p-4 rounded font-mono text-xs overflow-x-auto whitespace-pre-wrap break-all">
-            {{ role.publish_permissions }}
+        <!-- PUBLISHING -->
+        <div class="lg:col-span-2 space-y-4">
+          <h3 class="text-lg font-bold flex items-center gap-2">
+            <span>📤</span> Publishing Permissions
+          </h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <BaseCard title="Allow" class="border-t-4 border-t-success">
+              <div v-if="getSubjectArray(role.publish_permissions).length" class="flex flex-wrap gap-2">
+                <!-- Use s directly, avoid quotes -->
+                <code v-for="s in getSubjectArray(role.publish_permissions)" :key="s" class="badge badge-outline font-mono text-xs h-auto py-1.5 px-2">{{ s }}</code>
+              </div>
+              <div v-else class="text-xs opacity-40 italic">No allow rules</div>
+            </BaseCard>
+
+            <BaseCard title="Deny" class="border-t-4 border-t-error">
+              <div v-if="getSubjectArray(role.publish_deny_permissions).length" class="flex flex-wrap gap-2">
+                <code v-for="s in getSubjectArray(role.publish_deny_permissions)" :key="s" class="badge badge-error badge-outline font-mono text-xs h-auto py-1.5 px-2">{{ s }}</code>
+              </div>
+              <div v-else class="text-xs opacity-40 italic">No deny rules</div>
+            </BaseCard>
           </div>
-          <div v-else class="text-sm text-base-content/40">
-            No publish permissions set
+        </div>
+
+        <!-- SUBSCRIBING -->
+        <div class="lg:col-span-2 space-y-4">
+          <h3 class="text-lg font-bold flex items-center gap-2">
+            <span>📥</span> Subscribing Permissions
+          </h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <BaseCard title="Allow" class="border-t-4 border-t-success">
+              <div v-if="getSubjectArray(role.subscribe_permissions).length" class="flex flex-wrap gap-2">
+                <code v-for="s in getSubjectArray(role.subscribe_permissions)" :key="s" class="badge badge-outline font-mono text-xs h-auto py-1.5 px-2">{{ s }}</code>
+              </div>
+              <div v-else class="text-xs opacity-40 italic">No allow rules</div>
+            </BaseCard>
+
+            <BaseCard title="Deny" class="border-t-4 border-t-error">
+              <div v-if="getSubjectArray(role.subscribe_deny_permissions).length" class="flex flex-wrap gap-2">
+                <code v-for="s in getSubjectArray(role.subscribe_deny_permissions)" :key="s" class="badge badge-error badge-outline font-mono text-xs h-auto py-1.5 px-2">{{ s }}</code>
+              </div>
+              <div v-else class="text-xs opacity-40 italic">No deny rules</div>
+            </BaseCard>
           </div>
-        </BaseCard>
+        </div>
         
-        <BaseCard title="Subscribe Permissions" class="lg:col-span-2">
-          <div v-if="role.subscribe_permissions" class="bg-base-200 p-4 rounded font-mono text-xs overflow-x-auto whitespace-pre-wrap break-all">
-            {{ role.subscribe_permissions }}
-          </div>
-          <div v-else class="text-sm text-base-content/40">
-            No subscribe permissions set
-          </div>
-        </BaseCard>
-        
-        <!-- System Info -->
-        <BaseCard title="System Information">
-          <dl class="space-y-4">
+        <BaseCard title="System Information" class="lg:col-span-2">
+          <dl class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
             <div>
-              <dt class="text-sm font-medium text-base-content/70">ID</dt>
-              <dd class="mt-1">
-                <code class="text-xs">{{ role.id }}</code>
-              </dd>
+              <dt class="font-bold opacity-50 uppercase">ID</dt>
+              <dd class="mt-1 font-mono">{{ role.id }}</dd>
             </div>
             <div>
-              <dt class="text-sm font-medium text-base-content/70">Created</dt>
-              <dd class="mt-1 text-sm">{{ formatDate(role.created) }}</dd>
+              <dt class="font-bold opacity-50 uppercase">Created</dt>
+              <dd class="mt-1">{{ formatDate(role.created) }}</dd>
             </div>
             <div>
-              <dt class="text-sm font-medium text-base-content/70">Last Updated</dt>
-              <dd class="mt-1 text-sm">{{ formatDate(role.updated) }}</dd>
+              <dt class="font-bold opacity-50 uppercase">Updated</dt>
+              <dd class="mt-1">{{ formatDate(role.updated) }}</dd>
             </div>
           </dl>
         </BaseCard>

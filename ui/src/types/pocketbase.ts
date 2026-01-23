@@ -174,6 +174,8 @@ export interface NatsRole extends BaseRecord {
   is_default?: boolean
   publish_permissions?: string
   subscribe_permissions?: string
+  publish_deny_permissions?: string
+  subscribe_deny_permissions?: string
   max_subscriptions?: number
   max_data?: number
   max_payload?: number

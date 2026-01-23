@@ -758,7 +758,7 @@
     "authRule": "",
     "manageRule": null,
     "authAlert": {
-      "enabled": true,
+      "enabled": false,
       "emailTemplate": {
         "subject": "Login from a new location",
         "body": "<p>Hello,</p>\n<p>We noticed a login to your {APP_NAME} account from a new location:</p>\n<p><em>{ALERT_INFO}</em></p>\n<p><strong>If this wasn't you, you should immediately change your {APP_NAME} account password to revoke access from all other locations.</strong></p>\n<p>If this was you, you may disregard this email.</p>\n<p>\n  Thanks,<br/>\n  {APP_NAME} team\n</p>"
@@ -774,7 +774,7 @@
       "enabled": false
     },
     "passwordAuth": {
-      "enabled": true,
+      "enabled": false,
       "identityFields": [
         "email"
       ]
@@ -1127,7 +1127,7 @@
     "authRule": "",
     "manageRule": null,
     "authAlert": {
-      "enabled": true,
+      "enabled": false,
       "emailTemplate": {
         "subject": "Login from a new location",
         "body": "<p>Hello,</p>\n<p>We noticed a login to your {APP_NAME} account from a new location:</p>\n<p><em>{ALERT_INFO}</em></p>\n<p><strong>If this wasn't you, you should immediately change your {APP_NAME} account password to revoke access from all other locations.</strong></p>\n<p>If this was you, you may disregard this email.</p>\n<p>\n  Thanks,<br/>\n  {APP_NAME} team\n</p>"
@@ -1143,7 +1143,7 @@
       "enabled": false
     },
     "passwordAuth": {
-      "enabled": true,
+      "enabled": false,
       "identityFields": [
         "email"
       ]
@@ -1607,19 +1607,6 @@
         "type": "relation"
       },
       {
-        "cascadeDelete": false,
-        "collectionId": "pbc_4097575383",
-        "hidden": false,
-        "id": "relation3991680165",
-        "maxSelect": 1,
-        "minSelect": 0,
-        "name": "nats_user",
-        "presentable": false,
-        "required": false,
-        "system": false,
-        "type": "relation"
-      },
-      {
         "hidden": false,
         "id": "autodate2990389176",
         "name": "created",
@@ -1908,7 +1895,6 @@
       "CREATE INDEX idx_audit_record_id ON audit_logs (record_id)",
       "CREATE INDEX idx_audit_timestamp ON audit_logs (timestamp)",
       "CREATE INDEX idx_audit_user ON audit_logs (user)",
-      "CREATE INDEX idx_audit_event_type ON audit_logs (event_type)",
       "CREATE INDEX idx_audit_collection_timestamp ON audit_logs (collection_name, timestamp)",
       "CREATE INDEX idx_audit_user_timestamp ON audit_logs (user, timestamp)"
     ],
@@ -2960,34 +2946,6 @@
         "type": "bool"
       },
       {
-        "autogeneratePattern": "",
-        "hidden": false,
-        "id": "text1222209967",
-        "max": 5000,
-        "min": 0,
-        "name": "publish_permissions",
-        "pattern": "",
-        "presentable": false,
-        "primaryKey": false,
-        "required": false,
-        "system": false,
-        "type": "text"
-      },
-      {
-        "autogeneratePattern": "",
-        "hidden": false,
-        "id": "text4032180518",
-        "max": 5000,
-        "min": 0,
-        "name": "subscribe_permissions",
-        "pattern": "",
-        "presentable": false,
-        "primaryKey": false,
-        "required": false,
-        "system": false,
-        "type": "text"
-      },
-      {
         "hidden": false,
         "id": "number2362752116",
         "max": null,
@@ -3035,6 +2993,66 @@
         "required": false,
         "system": false,
         "type": "relation"
+      },
+      {
+        "hidden": false,
+        "id": "json1222209967",
+        "maxSize": 0,
+        "name": "publish_permissions",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
+      },
+      {
+        "hidden": false,
+        "id": "json4032180518",
+        "maxSize": 0,
+        "name": "subscribe_permissions",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
+      },
+      {
+        "hidden": false,
+        "id": "json517204570",
+        "maxSize": 0,
+        "name": "publish_deny_permissions",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
+      },
+      {
+        "hidden": false,
+        "id": "json3735174119",
+        "maxSize": 0,
+        "name": "subscribe_deny_permissions",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
+      },
+      {
+        "hidden": false,
+        "id": "autodate2990389176",
+        "name": "created",
+        "onCreate": true,
+        "onUpdate": false,
+        "presentable": false,
+        "system": false,
+        "type": "autodate"
+      },
+      {
+        "hidden": false,
+        "id": "autodate3332085495",
+        "name": "updated",
+        "onCreate": true,
+        "onUpdate": true,
+        "presentable": false,
+        "system": false,
+        "type": "autodate"
       }
     ],
     "indexes": [],
@@ -3651,16 +3669,16 @@
       {
         "hidden": false,
         "id": "select490417661",
-        "maxSelect": 2,
+        "maxSelect": 3,
         "name": "capabilities",
         "presentable": false,
         "required": false,
         "system": false,
         "type": "select",
         "values": [
-          "read",
-          "command",
-          "action"
+          "pub",
+          "sub",
+          "req-reply"
         ]
       },
       {
