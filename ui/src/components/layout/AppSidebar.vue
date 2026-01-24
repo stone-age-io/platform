@@ -114,6 +114,7 @@ const menuItems = computed(() => {
 const isActive = (path: string) => {
   if (path === '/types') return route.path.includes('/types')
   if (path === '/' && route.path === '/') return true
+  if (path === '/overview' && route.path === '/overview') return true
   
   if (path !== '/' && route.path.startsWith(path)) {
     if (route.path.includes('/types') && !path.includes('/types')) return false
@@ -208,19 +209,37 @@ const serverInfoJson = computed(() => {
   >
     
     <!-- ====================================================================== -->
-    <!-- SECTION 1: IDENTITY HEADER (Static) -->
+    <!-- SECTION 1: IDENTITY HEADER & TOGGLE -->
     <!-- ====================================================================== -->
     <div class="flex-none p-3 pb-0 flex flex-col gap-2">
       
-      <!-- Brand -->
-      <router-link to="/" class="flex items-center gap-3 px-2 py-2 hover:opacity-80 transition-opacity" @click="closeDrawer">
-        <div class="w-8 h-8 flex items-center justify-center flex-shrink-0 text-primary">
-           <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 256 256" fill="currentColor">
-            <path d="M128,0 C57.343,0 0,57.343 0,128 C0,198.657 57.343,256 128,256 C198.657,256 256,198.657 256,128 C256,57.343 198.657,0 128,0 z M128,28 C181.423,28 224.757,71.334 224.757,124.757 C224.757,139.486 221.04,153.32 214.356,165.42 C198.756,148.231 178.567,138.124 162.876,124.331 C155.723,124.214 128.543,124.043 113.254,124.043 C113.254,147.334 113.254,172.064 113.254,190.513 C100.456,179.347 94.543,156.243 94.543,156.243 C83.432,147.065 31.243,124.757 31.243,124.757 C31.243,71.334 74.577,28 128,28 z"/>
-          </svg>
-        </div>
-        <span v-show="!effectiveCompact" class="font-bold text-lg tracking-tight text-base-content whitespace-nowrap overflow-hidden">Stone-Age.io</span>
-      </router-link>
+      <!-- Top Row: Brand + Toggle -->
+      <!-- Expanded: Row (Space Between), Compact: Column (Gap) -->
+      <div class="flex transition-all duration-300" :class="effectiveCompact ? 'flex-col items-center gap-4 py-2' : 'flex-row items-center justify-between px-2 py-2'">
+        
+        <!-- Brand Link -->
+        <router-link to="/" class="flex items-center gap-3 hover:opacity-80 transition-opacity overflow-hidden" @click="closeDrawer">
+          <div class="w-8 h-8 flex items-center justify-center flex-shrink-0 text-primary">
+             <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 256 256" fill="currentColor">
+              <path d="M128,0 C57.343,0 0,57.343 0,128 C0,198.657 57.343,256 128,256 C198.657,256 256,198.657 256,128 C256,57.343 198.657,0 128,0 z M128,28 C181.423,28 224.757,71.334 224.757,124.757 C224.757,139.486 221.04,153.32 214.356,165.42 C198.756,148.231 178.567,138.124 162.876,124.331 C155.723,124.214 128.543,124.043 113.254,124.043 C113.254,147.334 113.254,172.064 113.254,190.513 C100.456,179.347 94.543,156.243 94.543,156.243 C83.432,147.065 31.243,124.757 31.243,124.757 C31.243,71.334 74.577,28 128,28 z"/>
+            </svg>
+          </div>
+          <span v-show="!effectiveCompact" class="font-bold text-lg tracking-tight text-base-content whitespace-nowrap overflow-hidden">Stone-Age.io</span>
+        </router-link>
+
+        <!-- Toggle Button (Desktop Only) -->
+        <!-- In Compact mode, this sits below the logo. In Expanded, to the right. -->
+        <button 
+          v-if="isLargeScreen"
+          @click="uiStore.toggleCompact" 
+          class="btn btn-ghost btn-sm btn-square opacity-60 hover:opacity-100 transition-opacity"
+          :title="uiStore.sidebarCompact ? 'Expand Sidebar' : 'Collapse Sidebar'"
+        >
+          <span v-if="uiStore.sidebarCompact">»</span>
+          <span v-else>«</span>
+        </button>
+
+      </div>
 
       <!-- User & Org Card (DROPDOWN) -->
       <div 
@@ -410,20 +429,6 @@ const serverInfoJson = computed(() => {
         </li>
       </ul>
     </nav>
-
-    <!-- ====================================================================== -->
-    <!-- SECTION 3: FOOTER (Compact Toggle) -->
-    <!-- ====================================================================== -->
-    <div class="flex-none p-2 border-t border-base-300 hidden lg:flex justify-end">
-      <button 
-        @click="uiStore.toggleCompact" 
-        class="btn btn-ghost btn-sm btn-square"
-        :title="uiStore.sidebarCompact ? 'Expand Sidebar' : 'Collapse Sidebar'"
-      >
-        <span v-if="uiStore.sidebarCompact">»</span>
-        <span v-else>«</span>
-      </button>
-    </div>
 
     <!-- ====================================================================== -->
     <!-- SECTION 4: MODAL (Teleported) -->
