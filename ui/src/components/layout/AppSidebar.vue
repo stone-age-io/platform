@@ -43,7 +43,6 @@ const filteredMemberships = computed(() => {
 const menuItems = computed(() => {
   const items: any[] = [
     { label: 'Dashboard', icon: '📊', path: '/' },
-    { label: 'Overview', icon: '📈', path: '/overview' },
     { label: 'Map', icon: '🗺️', path: '/map' },
     { label: 'Things', icon: '📦', path: '/things' },
     { label: 'Edges', icon: '🔌', path: '/edges' },
@@ -115,7 +114,6 @@ const menuItems = computed(() => {
 const isActive = (path: string) => {
   if (path === '/types') return route.path.includes('/types')
   if (path === '/' && route.path === '/') return true
-  if (path === '/overview' && route.path === '/overview') return true
   
   if (path !== '/' && route.path.startsWith(path)) {
     if (route.path.includes('/types') && !path.includes('/types')) return false

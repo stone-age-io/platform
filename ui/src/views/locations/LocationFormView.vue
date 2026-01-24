@@ -49,7 +49,7 @@ const currentFloorplan = ref<string | null>(null)
 
 // Relation options
 const locationTypes = ref<LocationType[]>([])
-const parentLocations = ref<LocationOption[]>([]) // Updated type
+const parentLocations = ref<LocationOption[]>([])
 
 // State
 const loading = ref(false)
@@ -74,8 +74,8 @@ function sortLocationsHierarchically(items: Location[], currentId?: string): Loc
     }
   })
 
-  // 2. Sort roots alphabetically
-  roots.sort((a, b) => a.name.localeCompare(b.name))
+  // 2. Sort roots alphabetically (Handle possibly undefined name)
+  roots.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
 
   // 3. Recursive Traversal
   function traverse(node: Location, depth: number) {
@@ -85,13 +85,14 @@ function sortLocationsHierarchically(items: Location[], currentId?: string): Loc
     
     result.push({
       ...node,
-      displayName: prefix + node.name,
+      displayName: prefix + (node.name || 'Unnamed'),
       // Disable self to prevent circular parent
       disabled: node.id === currentId
     })
 
     const children = childrenMap.get(node.id) || []
-    children.sort((a, b) => a.name.localeCompare(b.name))
+    // Sort children alphabetically (Handle possibly undefined name)
+    children.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
     
     children.forEach(child => traverse(child, depth + 1))
   }
@@ -106,7 +107,7 @@ function sortLocationsHierarchically(items: Location[], currentId?: string): Loc
   orphans.forEach(orphan => {
     result.push({
       ...orphan,
-      displayName: `[Orphan] ${orphan.name}`,
+      displayName: `[Orphan] ${orphan.name || 'Unnamed'}`,
       disabled: orphan.id === currentId
     })
   })

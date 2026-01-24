@@ -20,21 +20,12 @@ const routes: RouteRecordRaw[] = [
     component: MainLayout,
     meta: { requiresAuth: true },
     children: [
-      // NEW: Visualizer is now the home page
+      // Visualizer is the home page
       {
         path: '',
         name: 'Visualizer',
         component: () => import('@/views/dashboard/VisualizerView.vue'),
       },
-      // MOVED: Old dashboard is now Overview
-      {
-        path: 'overview',
-        name: 'Overview',
-        component: () => import('@/views/dashboard/DashboardView.vue'),
-      },
-
-      // ... (Rest of the routes remain unchanged) ...
-      
       // Admin
       {
         path: 'organizations',
