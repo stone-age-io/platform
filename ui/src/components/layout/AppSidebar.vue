@@ -50,7 +50,7 @@ const menuItems = computed(() => {
       icon: '📡', 
       path: '/nats',
       children: [
-        { label: 'Accounts', path: '/nats/accounts' },
+        { label: 'Account', path: '/nats/account' },
         { label: 'Users', path: '/nats/users' },
         { label: 'Roles', path: '/nats/roles' },
       ]
@@ -60,7 +60,7 @@ const menuItems = computed(() => {
       icon: '🌐', 
       path: '/nebula',
       children: [
-        { label: 'CAs', path: '/nebula/cas' },
+        { label: 'Certificate Authority', path: '/nebula/ca' },
         { label: 'Networks', path: '/nebula/networks' },
         { label: 'Hosts', path: '/nebula/hosts' },
       ]

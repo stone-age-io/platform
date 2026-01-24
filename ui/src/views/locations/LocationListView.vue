@@ -33,9 +33,7 @@ const filteredLocations = computed(() => {
   const q = searchQuery.value.toLowerCase().trim()
   
   if (!q) {
-    // If no search, show Tree Root items (parents) only? 
-    // Or show all? Grug says: Lists usually show everything or roots.
-    // Let's stick to the previous behavior: Show Roots only if no search.
+    // Default: Root level only when not searching
     return allLocations.value.filter(l => !l.parent)
   }
   
@@ -132,16 +130,40 @@ onUnmounted(() => {
   <div class="space-y-6">
     <!-- Header & Controls -->
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-      <div>
-        <h1 class="text-3xl font-bold">Locations</h1>
+      
+      <!-- Left Side: Title & Mobile Toggle -->
+      <div class="w-full sm:w-auto">
+        <div class="flex justify-between items-center">
+          <h1 class="text-3xl font-bold">Locations</h1>
+          
+          <!-- Mobile Toggle: Next to title -->
+          <div class="join shadow-sm border border-base-300 sm:hidden">
+            <button 
+              class="join-item btn btn-sm px-3" 
+              :class="{ 'btn-active': viewMode === 'list' }"
+              @click="viewMode = 'list'"
+            >
+              📋
+            </button>
+            <button 
+              class="join-item btn btn-sm px-3" 
+              :class="{ 'btn-active': viewMode === 'map' }"
+              @click="viewMode = 'map'"
+            >
+              🗺️
+            </button>
+          </div>
+        </div>
         <p class="text-base-content/70 mt-1">
           Manage physical sites and facilities
         </p>
       </div>
       
+      <!-- Right Side: Desktop Toggle & New Button -->
       <div class="flex gap-3 w-full sm:w-auto">
-        <!-- View Toggle -->
-        <div class="join shadow-sm border border-base-300">
+        
+        <!-- Desktop Toggle: Hidden on mobile -->
+        <div class="hidden sm:inline-flex join shadow-sm border border-base-300">
           <button 
             class="join-item btn btn-sm" 
             :class="{ 'btn-active': viewMode === 'list' }"
@@ -158,9 +180,9 @@ onUnmounted(() => {
           </button>
         </div>
 
-        <router-link to="/locations/new" class="btn btn-primary btn-sm h-full">
+        <router-link to="/locations/new" class="btn btn-primary w-full sm:w-auto">
           <span class="text-lg">+</span>
-          <span class="hidden sm:inline">New Location</span>
+          <span>New Location</span>
         </router-link>
       </div>
     </div>
@@ -189,7 +211,7 @@ onUnmounted(() => {
       
       <!-- List Card -->
       <BaseCard :no-padding="true">
-        <div v-if="loading" class="flex justify-center p-12">
+        <div v-if="loading && allLocations.length === 0" class="flex justify-center p-12">
           <span class="loading loading-spinner loading-lg"></span>
         </div>
 
@@ -197,7 +219,7 @@ onUnmounted(() => {
           <span class="text-6xl">📍</span>
           <h3 class="text-xl font-bold mt-4">No locations found</h3>
           <p class="text-base-content/70 mt-2">
-            Create your first location to get started.
+            Create your first root location to get started.
           </p>
         </div>
 

@@ -1,50 +1,74 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
 import { formatDate, formatBytes } from '@/utils/format'
+import { useAuthStore } from '@/stores/auth'
 import type { NatsAccount } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 
-const router = useRouter()
-const route = useRoute()
 const toast = useToast()
+const authStore = useAuthStore()
 
 const account = ref<NatsAccount | null>(null)
 const loading = ref(true)
 const rotating = ref(false)
 const showRotateModal = ref(false)
 
-const accountId = route.params.id as string
-
 /**
- * Load account details
+ * Load account by Organization ID (Singleton)
  */
 async function loadAccount() {
+  if (!authStore.currentOrgId) return
+  
   loading.value = true
+  account.value = null
+  
   try {
-    account.value = await pb.collection('nats_accounts').getOne<NatsAccount>(accountId)
+    // Fetch the FIRST account for this org
+    account.value = await pb.collection('nats_accounts').getFirstListItem<NatsAccount>(
+      `organization = "${authStore.currentOrgId}"`
+    )
   } catch (err: any) {
-    toast.error(err.message || 'Failed to load NATS account')
-    router.push('/nats/accounts')
+    if (err.status !== 404) {
+      toast.error(err.message || 'Failed to load NATS account')
+    }
+    // 404 is acceptable here (handled in template)
   } finally {
     loading.value = false
   }
 }
 
 /**
- * Format limit values (-1 means Unlimited)
+ * Self-Healing: Provision Account manually if missing
  */
+async function provisionAccount() {
+  if (!authStore.currentOrgId || !authStore.currentOrg) return
+  loading.value = true
+  try {
+    await pb.collection('nats_accounts').create({
+      name: authStore.currentOrg.name,
+      organization: authStore.currentOrgId,
+      active: true,
+      max_connections: 10,
+      max_subscriptions: 50,
+      max_payload: 1048576
+    })
+    toast.success('NATS Account provisioned')
+    await loadAccount()
+  } catch (err: any) {
+    toast.error(err.message)
+  } finally {
+    loading.value = false
+  }
+}
+
 function formatLimit(value?: number, isBytes = false) {
   if (value === undefined || value === null) return 'Not set'
   if (value === -1) return 'Unlimited'
   return isBytes ? formatBytes(value) : value.toLocaleString()
 }
 
-/**
- * Copy helper
- */
 async function copyToClipboard(text: string, label: string) {
   try {
     await navigator.clipboard.writeText(text)
@@ -54,19 +78,14 @@ async function copyToClipboard(text: string, label: string) {
   }
 }
 
-/**
- * Trigger Key Rotation
- */
 async function confirmRotateKeys() {
   if (!account.value) return
   
   rotating.value = true
   try {
-    // Setting rotate_keys to true triggers the backend hook
     await pb.collection('nats_accounts').update(account.value.id, {
       rotate_keys: true
     })
-    
     toast.success('Keys rotated successfully')
     showRotateModal.value = false
     await loadAccount()
@@ -77,8 +96,18 @@ async function confirmRotateKeys() {
   }
 }
 
+// Watch for org changes
+function handleOrgChange() {
+  loadAccount()
+}
+
 onMounted(() => {
   loadAccount()
+  window.addEventListener('organization-changed', handleOrgChange)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('organization-changed', handleOrgChange)
 })
 </script>
 
@@ -89,15 +118,29 @@ onMounted(() => {
       <span class="loading loading-spinner loading-lg"></span>
     </div>
     
-    <template v-else-if="account">
-      <!-- Header -->
+    <!-- Empty State / Provisioning -->
+    <div v-else-if="!account" class="text-center py-12">
+      <span class="text-6xl">📡</span>
+      <h3 class="text-xl font-bold mt-4">No NATS Account Found</h3>
+      <p class="text-base-content/70 mt-2 max-w-md mx-auto">
+        Your organization does not have a NATS account provisioned yet.
+      </p>
+      <button @click="provisionAccount" class="btn btn-primary mt-6">
+        Provision NATS Account
+      </button>
+    </div>
+
+    <!-- Details -->
+    <template v-else>
       <div class="flex flex-col gap-4">
+        <!-- Simplified Breadcrumbs -->
         <div class="breadcrumbs text-sm">
           <ul>
-            <li><router-link to="/nats/accounts">NATS Accounts</router-link></li>
-            <li class="truncate max-w-[200px]">{{ account.name }}</li>
+            <li>NATS</li>
+            <li>Account Settings</li>
           </ul>
         </div>
+        
         <div class="flex flex-col sm:flex-row justify-between items-start gap-4">
           <div class="flex items-center gap-3">
             <h1 class="text-3xl font-bold break-words">{{ account.name }}</h1>
@@ -106,17 +149,13 @@ onMounted(() => {
               <span class="text-xs font-medium">{{ account.active ? 'Active' : 'Inactive' }}</span>
             </div>
           </div>
-          <!-- No Actions needed in header for NATS Account since it's system managed -->
         </div>
       </div>
       
-      <!-- Content Grid -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         
-        <!-- Left Column: Info & Limits -->
+        <!-- Left Column -->
         <div class="space-y-6">
-          
-          <!-- Basic Info -->
           <BaseCard title="Basic Information">
             <dl class="space-y-4">
               <div>
@@ -134,11 +173,8 @@ onMounted(() => {
             </dl>
           </BaseCard>
 
-          <!-- Resource Limits -->
           <BaseCard title="Resource Limits">
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              
-              <!-- Connectivity -->
               <div class="space-y-3">
                 <h4 class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Connectivity</h4>
                 <div>
@@ -151,7 +187,6 @@ onMounted(() => {
                 </div>
               </div>
 
-              <!-- Data -->
               <div class="space-y-3">
                 <h4 class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Data</h4>
                 <div>
@@ -164,7 +199,6 @@ onMounted(() => {
                 </div>
               </div>
 
-              <!-- JetStream -->
               <div class="space-y-3 sm:col-span-2 border-t border-base-200 pt-3">
                 <h4 class="text-xs font-bold text-base-content/50 uppercase tracking-wider">JetStream Storage</h4>
                 <div class="grid grid-cols-2 gap-6">
@@ -182,7 +216,7 @@ onMounted(() => {
           </BaseCard>
         </div>
         
-        <!-- Right Column: Security -->
+        <!-- Right Column -->
         <div class="space-y-6">
           <BaseCard>
             <template #header>
@@ -200,7 +234,6 @@ onMounted(() => {
             </template>
 
             <div class="space-y-6">
-              <!-- Public Key -->
               <div>
                 <div class="flex justify-between items-center mb-1">
                   <div class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Account Public Key</div>
@@ -211,7 +244,6 @@ onMounted(() => {
                 </div>
               </div>
 
-              <!-- Signing Key -->
               <div>
                 <div class="flex justify-between items-center mb-1">
                   <div class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Signing Public Key</div>
@@ -222,7 +254,6 @@ onMounted(() => {
                 </div>
               </div>
 
-              <!-- JWT -->
               <div>
                 <div class="flex justify-between items-center mb-1">
                   <div class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Account JWT</div>
@@ -245,29 +276,16 @@ onMounted(() => {
         <p class="py-4">
           This will generate new signing keys and update the Account JWT. 
           <br><br>
-          <strong>Warning:</strong> Existing users may need to have their credentials updated if they rely on the old signing key chain, although account rotation is generally designed to be non-disruptive if operators are updated.
+          <strong>Warning:</strong> Existing users may need to have their credentials updated if they rely on the old signing key chain.
         </p>
         <div class="modal-action">
-          <button 
-            class="btn" 
-            @click="showRotateModal = false"
-            :disabled="rotating"
-          >
-            Cancel
-          </button>
-          <button 
-            class="btn btn-warning" 
-            @click="confirmRotateKeys"
-            :disabled="rotating"
-          >
-            <span v-if="rotating" class="loading loading-spinner"></span>
-            Rotate Keys
+          <button class="btn" @click="showRotateModal = false" :disabled="rotating">Cancel</button>
+          <button class="btn btn-warning" @click="confirmRotateKeys" :disabled="rotating">
+            <span v-if="rotating" class="loading loading-spinner"></span> Rotate Keys
           </button>
         </div>
       </div>
-      <form method="dialog" class="modal-backdrop">
-        <button @click="showRotateModal = false">close</button>
-      </form>
+      <form method="dialog" class="modal-backdrop" @click="showRotateModal = false"><button>close</button></form>
     </dialog>
   </div>
 </template>

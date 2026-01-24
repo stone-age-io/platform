@@ -71,9 +71,8 @@ const routes: RouteRecordRaw[] = [
       { path: 'locations/:id/edit', name: 'LocationEdit', component: () => import('@/views/locations/LocationFormView.vue') },
       
       // NATS
-      { path: 'nats', redirect: '/nats/accounts' },
-      { path: 'nats/accounts', name: 'NatsAccounts', component: () => import('@/views/nats/NatsAccountListView.vue') },
-      { path: 'nats/accounts/:id', name: 'NatsAccountDetail', component: () => import('@/views/nats/NatsAccountDetailView.vue') },
+      { path: 'nats', redirect: '/nats/account' },
+      { path: 'nats/account', name: 'NatsAccountDetail', component: () => import('@/views/nats/NatsAccountDetailView.vue') },
       { path: 'nats/users', name: 'NatsUsers', component: () => import('@/views/nats/NatsUserListView.vue') },
       { path: 'nats/users/new', name: 'NatsUserNew', component: () => import('@/views/nats/NatsUserFormView.vue') },
       { path: 'nats/users/:id', name: 'NatsUserDetail', component: () => import('@/views/nats/NatsUserDetailView.vue') },
@@ -84,9 +83,8 @@ const routes: RouteRecordRaw[] = [
       { path: 'nats/roles/:id/edit', name: 'NatsRoleEdit', component: () => import('@/views/nats/NatsRoleFormView.vue') },
       
       // Nebula
-      { path: 'nebula', redirect: '/nebula/cas' },
-      { path: 'nebula/cas', name: 'NebulaCAs', component: () => import('@/views/nebula/NebulaCAListView.vue') },
-      { path: 'nebula/cas/:id', name: 'NebulaCADetail', component: () => import('@/views/nebula/NebulaCADetailView.vue') },
+      { path: 'nebula', redirect: '/nebula/ca' },
+      { path: 'nebula/ca', name: 'NebulaCADetail', component: () => import('@/views/nebula/NebulaCADetailView.vue') },
       { path: 'nebula/networks', name: 'NebulaNetworks', component: () => import('@/views/nebula/NebulaNetworkListView.vue') },
       { path: 'nebula/networks/new', name: 'NebulaNetworkNew', component: () => import('@/views/nebula/NebulaNetworkFormView.vue') },
       { path: 'nebula/networks/:id', name: 'NebulaNetworkDetail', component: () => import('@/views/nebula/NebulaNetworkDetailView.vue') },

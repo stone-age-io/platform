@@ -1,47 +1,61 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
 import { formatDate } from '@/utils/format'
+import { useAuthStore } from '@/stores/auth'
 import type { NebulaCA } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 
-const router = useRouter()
-const route = useRoute()
 const toast = useToast()
+const authStore = useAuthStore()
 
 const ca = ref<NebulaCA | null>(null)
 const loading = ref(true)
 
-const caId = route.params.id as string
-
-/**
- * Check if CA is currently valid
- */
 const isValid = computed(() => {
   if (!ca.value?.expires_at) return false
   return new Date(ca.value.expires_at) > new Date()
 })
 
-/**
- * Load CA details
- */
 async function loadCA() {
+  if (!authStore.currentOrgId) return
+  
   loading.value = true
+  ca.value = null
+  
   try {
-    ca.value = await pb.collection('nebula_ca').getOne<NebulaCA>(caId)
+    ca.value = await pb.collection('nebula_ca').getFirstListItem<NebulaCA>(
+      `organization = "${authStore.currentOrgId}"`
+    )
   } catch (err: any) {
-    toast.error(err.message || 'Failed to load Nebula CA')
-    router.push('/nebula/cas')
+    if (err.status !== 404) {
+      toast.error(err.message || 'Failed to load Nebula CA')
+    }
   } finally {
     loading.value = false
   }
 }
 
-/**
- * Copy to clipboard
- */
+async function provisionCA() {
+  if (!authStore.currentOrgId || !authStore.currentOrg) return
+  loading.value = true
+  try {
+    await pb.collection('nebula_ca').create({
+      name: `${authStore.currentOrg.name} CA`,
+      organization: authStore.currentOrgId,
+      validity_years: 10,
+      curve: 'P256'
+    })
+    toast.success('Nebula CA provisioned')
+    await loadCA()
+  } catch (err: any) {
+    toast.error(err.message)
+  } finally {
+    loading.value = false
+  }
+}
+
 async function copyToClipboard(text: string, label: string) {
   try {
     await navigator.clipboard.writeText(text)
@@ -51,9 +65,6 @@ async function copyToClipboard(text: string, label: string) {
   }
 }
 
-/**
- * Download CA Cert
- */
 function downloadCert() {
   if (!ca.value?.certificate) return
   
@@ -66,12 +77,20 @@ function downloadCert() {
   link.click()
   document.body.removeChild(link)
   URL.revokeObjectURL(url)
-  
   toast.success('Certificate downloaded')
+}
+
+function handleOrgChange() {
+  loadCA()
 }
 
 onMounted(() => {
   loadCA()
+  window.addEventListener('organization-changed', handleOrgChange)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('organization-changed', handleOrgChange)
 })
 </script>
 
@@ -82,13 +101,25 @@ onMounted(() => {
       <span class="loading loading-spinner loading-lg"></span>
     </div>
     
-    <template v-else-if="ca">
+    <!-- Empty State -->
+    <div v-else-if="!ca" class="text-center py-12">
+      <span class="text-6xl">🔐</span>
+      <h3 class="text-xl font-bold mt-4">No Nebula CA Found</h3>
+      <p class="text-base-content/70 mt-2 max-w-md mx-auto">
+        Your organization does not have a Nebula Certificate Authority provisioned yet.
+      </p>
+      <button @click="provisionCA" class="btn btn-primary mt-6">
+        Provision CA
+      </button>
+    </div>
+
+    <template v-else>
       <!-- Header -->
       <div class="flex flex-col gap-4">
         <div class="breadcrumbs text-sm">
           <ul>
-            <li><router-link to="/nebula/cas">Nebula CAs</router-link></li>
-            <li class="truncate max-w-[200px]">{{ ca.name }}</li>
+            <li>Nebula</li>
+            <li>Certificate Authority</li>
           </ul>
         </div>
         <div class="flex flex-col sm:flex-row justify-between items-start gap-4">
