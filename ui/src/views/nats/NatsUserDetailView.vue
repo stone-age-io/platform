@@ -156,7 +156,7 @@ onMounted(() => {
                 <dd class="mt-1">
                   <router-link 
                     v-if="user.expand?.account_id"
-                    :to="`/nats/accounts/${user.account_id}`"
+                    :to="`/nats/account`"
                     class="link link-primary hover:no-underline"
                   >
                     📡 {{ user.expand.account_id.name }}

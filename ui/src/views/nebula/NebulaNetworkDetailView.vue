@@ -138,7 +138,7 @@ onMounted(() => {
                 <dd class="mt-1">
                   <router-link 
                     v-if="network.expand?.ca_id" 
-                    :to="`/nebula/cas/${network.ca_id}`"
+                    :to="`/nebula/ca`"
                     class="link link-primary hover:no-underline flex items-center gap-1"
                   >
                     🔐 {{ network.expand.ca_id.name }}
