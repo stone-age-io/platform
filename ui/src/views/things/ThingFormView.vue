@@ -1,3 +1,4 @@
+<!-- ui/src/views/things/ThingFormView.vue -->
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -9,6 +10,12 @@ import BaseCard from '@/components/ui/BaseCard.vue'
 import NatsUserFormView from '@/views/nats/NatsUserFormView.vue'
 import NebulaHostFormView from '@/views/nebula/NebulaHostFormView.vue'
 import LocationFormView from '@/views/locations/LocationFormView.vue'
+
+// Define a local interface for the dropdown options
+interface LocationOption extends Location {
+  displayName: string
+  disabled?: boolean
+}
 
 const router = useRouter()
 const route = useRoute()
@@ -42,7 +49,7 @@ const formData = ref({
 
 // Relation options
 const thingTypes = ref<ThingType[]>([])
-const locations = ref<Location[]>([])
+const locations = ref<LocationOption[]>([]) // Updated type
 const natsUsers = ref<NatsUser[]>([])
 const nebulaHosts = ref<NebulaHost[]>([])
 
@@ -54,6 +61,63 @@ const loadingOptions = ref(true)
 const showNatsModal = ref(false)
 const showNebulaModal = ref(false)
 const showLocationModal = ref(false)
+
+/**
+ * Helper: Sort locations into a hierarchy and return a flat list with indentation
+ */
+function sortLocationsHierarchically(items: Location[]): LocationOption[] {
+  const result: LocationOption[] = []
+  const childrenMap = new Map<string, Location[]>()
+  const roots: Location[] = []
+
+  // 1. Build Adjacency Map
+  items.forEach(item => {
+    if (!item.parent) {
+      roots.push(item)
+    } else {
+      const list = childrenMap.get(item.parent) || []
+      list.push(item)
+      childrenMap.set(item.parent, list)
+    }
+  })
+
+  // 2. Sort roots alphabetically
+  roots.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+
+  // 3. Recursive Traversal
+  function traverse(node: Location, depth: number) {
+    // Grug logic: Indent based on depth
+    // \u00A0 is non-breaking space
+    const prefix = depth > 0 ? '\u00A0\u00A0\u00A0'.repeat(depth) + '└ ' : ''
+    
+    result.push({
+      ...node,
+      displayName: prefix + (node.name || 'Unnamed'),
+      disabled: false // Things can be placed in any location
+    })
+
+    const children = childrenMap.get(node.id) || []
+    children.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    
+    children.forEach(child => traverse(child, depth + 1))
+  }
+
+  roots.forEach(root => traverse(root, 0))
+  
+  // 4. Handle Orphans (items whose parents were filtered out or don't exist)
+  const processedIds = new Set(result.map(r => r.id))
+  const orphans = items.filter(i => !processedIds.has(i.id))
+  
+  orphans.forEach(orphan => {
+    result.push({
+      ...orphan,
+      displayName: `[Orphan] ${orphan.name || 'Unnamed'}`,
+      disabled: false
+    })
+  })
+
+  return result
+}
 
 /**
  * Load form options (types, locations, nats users, nebula hosts)
@@ -71,9 +135,12 @@ async function loadOptions() {
     ])
     
     thingTypes.value = typesRes
-    locations.value = locsRes
     natsUsers.value = natsRes
     nebulaHosts.value = nebulaRes
+
+    // Process hierarchy for locations
+    locations.value = sortLocationsHierarchically(locsRes)
+
   } catch (err: any) {
     toast.error('Failed to load form options')
   } finally {
@@ -204,10 +271,9 @@ function onNebulaCreated(record: NebulaHost) {
   showNebulaModal.value = false
 }
 
-function onLocationCreated(record: Location) {
-  locations.value.push(record)
-  // Re-sort with null checks
-  locations.value.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+async function onLocationCreated(record: Location) {
+  // Grug say: Reload options to rebuild the tree with correct indentation
+  await loadOptions()
   formData.value.location = record.id
   showLocationModal.value = false
 }
@@ -305,10 +371,15 @@ onMounted(() => {
                   <span class="label-text">Location</span>
                 </label>
                 <div class="flex gap-2">
-                  <select v-model="formData.location" class="select select-bordered flex-1">
+                  <select v-model="formData.location" class="select select-bordered flex-1 font-mono text-sm">
                     <option value="">Select Location...</option>
-                    <option v-for="loc in locations" :key="loc.id" :value="loc.id">
-                      {{ loc.name }}
+                    <option 
+                      v-for="loc in locations" 
+                      :key="loc.id" 
+                      :value="loc.id"
+                      :disabled="loc.disabled"
+                    >
+                      {{ loc.displayName }}
                     </option>
                   </select>
                   <button 

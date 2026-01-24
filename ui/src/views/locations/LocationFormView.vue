@@ -1,3 +1,4 @@
+<!-- ui/src/views/locations/LocationFormView.vue -->
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -6,6 +7,12 @@ import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import type { Location, LocationType } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
+
+// Define a local interface for the dropdown options
+interface LocationOption extends Location {
+  displayName: string
+  disabled?: boolean
+}
 
 const props = defineProps<{
   embedded?: boolean
@@ -42,15 +49,73 @@ const currentFloorplan = ref<string | null>(null)
 
 // Relation options
 const locationTypes = ref<LocationType[]>([])
-const parentLocations = ref<Location[]>([])
+const parentLocations = ref<LocationOption[]>([]) // Updated type
 
 // State
 const loading = ref(false)
 const loadingOptions = ref(true)
 
 /**
+ * Helper: Sort locations into a hierarchy and return a flat list with indentation
+ */
+function sortLocationsHierarchically(items: Location[], currentId?: string): LocationOption[] {
+  const result: LocationOption[] = []
+  const childrenMap = new Map<string, Location[]>()
+  const roots: Location[] = []
+
+  // 1. Build Adjacency Map
+  items.forEach(item => {
+    if (!item.parent) {
+      roots.push(item)
+    } else {
+      const list = childrenMap.get(item.parent) || []
+      list.push(item)
+      childrenMap.set(item.parent, list)
+    }
+  })
+
+  // 2. Sort roots alphabetically
+  roots.sort((a, b) => a.name.localeCompare(b.name))
+
+  // 3. Recursive Traversal
+  function traverse(node: Location, depth: number) {
+    // Grug logic: Indent based on depth
+    // \u00A0 is non-breaking space
+    const prefix = depth > 0 ? '\u00A0\u00A0\u00A0'.repeat(depth) + '└ ' : ''
+    
+    result.push({
+      ...node,
+      displayName: prefix + node.name,
+      // Disable self to prevent circular parent
+      disabled: node.id === currentId
+    })
+
+    const children = childrenMap.get(node.id) || []
+    children.sort((a, b) => a.name.localeCompare(b.name))
+    
+    children.forEach(child => traverse(child, depth + 1))
+  }
+
+  roots.forEach(root => traverse(root, 0))
+  
+  // 4. Handle Orphans (items whose parents were filtered out or don't exist)
+  // If we missed any items in the traversal (e.g. circular refs or missing parents), add them at the end
+  const processedIds = new Set(result.map(r => r.id))
+  const orphans = items.filter(i => !processedIds.has(i.id))
+  
+  orphans.forEach(orphan => {
+    result.push({
+      ...orphan,
+      displayName: `[Orphan] ${orphan.name}`,
+      disabled: orphan.id === currentId
+    })
+  })
+
+  return result
+}
+
+/**
  * Load form options (types and parent locations)
- * Backend automatically filters these by organization
  */
 async function loadOptions() {
   loadingOptions.value = true
@@ -62,8 +127,10 @@ async function loadOptions() {
     ])
     
     locationTypes.value = typesResult
-    // Filter out current location from parent options (prevent self-reference)
-    parentLocations.value = locationsResult.filter(l => l.id !== locationId)
+    
+    // Process hierarchy
+    parentLocations.value = sortLocationsHierarchically(locationsResult, locationId)
+    
   } catch (err: any) {
     toast.error('Failed to load form options')
   } finally {
@@ -337,10 +404,15 @@ onMounted(() => {
                 <label class="label">
                   <span class="label-text">Parent Location</span>
                 </label>
-                <select v-model="formData.parent" class="select select-bordered">
+                <select v-model="formData.parent" class="select select-bordered font-mono text-sm">
                   <option value="">None (top level)</option>
-                  <option v-for="location in parentLocations" :key="location.id" :value="location.id">
-                    {{ location.name }}
+                  <option 
+                    v-for="location in parentLocations" 
+                    :key="location.id" 
+                    :value="location.id"
+                    :disabled="location.disabled"
+                  >
+                    {{ location.displayName }}
                   </option>
                 </select>
                 <label class="label">
