@@ -22,7 +22,7 @@ const form = ref({
   capabilities: [] as string[],
 })
 
-const availableCapabilities = ['read', 'command', 'action']
+const availableCapabilities = ['pub', 'sub', 'req-reply']
 
 async function loadData() {
   if (!id) return

@@ -82,27 +82,6 @@ export interface Thing extends AuthRecord {
   nebula_host?: string
 }
 
-// Edge Type
-export interface EdgeType extends BaseRecord {
-  organization?: string
-  name?: string
-  description?: string
-  code?: string
-  features?: Record<string, any>
-}
-
-// Edge
-export interface Edge extends AuthRecord {
-  organization?: string
-  name?: string
-  description?: string
-  type?: string // Edge Type ID
-  code?: string
-  metadata?: Record<string, any>
-  nats_user?: string
-  nebula_host?: string
-}
-
 // Location Type
 export interface LocationType extends BaseRecord {
   organization?: string

@@ -14,7 +14,7 @@ const toast = useToast()
 const authStore = useAuthStore()
 
 const org = ref<Organization | null>(null)
-const stats = ref({ members: 0, things: 0, edges: 0 })
+const stats = ref({ members: 0, things: 0 })
 const loading = ref(true)
 
 const id = route.params.id as string
@@ -25,13 +25,12 @@ async function loadData() {
     org.value = await pb.collection('organizations').getOne(id)
     
     // Load Stats (Superuser bypasses rules, so we must manually filter by org id)
-    const [m, t, e] = await Promise.all([
+    const [m, t] = await Promise.all([
       pb.collection('memberships').getList(1, 1, { filter: `organization = "${id}"` }),
       pb.collection('things').getList(1, 1, { filter: `organization = "${id}"` }),
-      pb.collection('edges').getList(1, 1, { filter: `organization = "${id}"` }),
     ])
     
-    stats.value = { members: m.totalItems, things: t.totalItems, edges: e.totalItems }
+    stats.value = { members: m.totalItems, things: t.totalItems }
   } catch (err: any) {
     toast.error('Failed to load organization')
     router.push('/organizations')
@@ -92,10 +91,6 @@ onMounted(() => loadData())
           <div class="stat">
             <div class="stat-title">Things</div>
             <div class="stat-value text-primary">{{ stats.things }}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-title">Edges</div>
-            <div class="stat-value text-secondary">{{ stats.edges }}</div>
           </div>
         </div>
 

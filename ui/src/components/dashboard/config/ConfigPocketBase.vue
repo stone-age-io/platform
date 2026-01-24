@@ -14,7 +14,6 @@
       <datalist id="pb-collections">
         <option value="audit_logs">Audit Logs</option>
         <option value="things">Things</option>
-        <option value="edges">Edges</option>
         <option value="locations">Locations</option>
         <option value="users">Users</option>
         <option value="organizations">Organizations</option>

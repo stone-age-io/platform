@@ -61,15 +61,6 @@ const routes: RouteRecordRaw[] = [
       { path: 'things/:id', name: 'ThingDetail', component: () => import('@/views/things/ThingDetailView.vue') },
       { path: 'things/:id/edit', name: 'ThingEdit', component: () => import('@/views/things/ThingFormView.vue') },
       
-      // Edges
-      { path: 'edges/types', name: 'EdgeTypes', component: () => import('@/views/edges/EdgeTypeListView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
-      { path: 'edges/types/new', name: 'EdgeTypeNew', component: () => import('@/views/edges/EdgeTypeFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
-      { path: 'edges/types/:id/edit', name: 'EdgeTypeEdit', component: () => import('@/views/edges/EdgeTypeFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
-      { path: 'edges', name: 'Edges', component: () => import('@/views/edges/EdgeListView.vue') },
-      { path: 'edges/new', name: 'EdgeNew', component: () => import('@/views/edges/EdgeFormView.vue') },
-      { path: 'edges/:id', name: 'EdgeDetail', component: () => import('@/views/edges/EdgeDetailView.vue') },
-      { path: 'edges/:id/edit', name: 'EdgeEdit', component: () => import('@/views/edges/EdgeFormView.vue') },
-      
       // Locations
       { path: 'locations/types', name: 'LocationTypes', component: () => import('@/views/locations/LocationTypeListView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
       { path: 'locations/types/new', name: 'LocationTypeNew', component: () => import('@/views/locations/LocationTypeFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },

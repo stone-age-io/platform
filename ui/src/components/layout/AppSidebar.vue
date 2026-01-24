@@ -45,7 +45,6 @@ const menuItems = computed(() => {
     { label: 'Dashboard', icon: '📊', path: '/' },
     { label: 'Map', icon: '🗺️', path: '/map' },
     { label: 'Things', icon: '📦', path: '/things' },
-    { label: 'Edges', icon: '🔌', path: '/edges' },
     { label: 'Locations', icon: '📍', path: '/locations' },
     { 
       label: 'NATS', 
@@ -76,7 +75,6 @@ const menuItems = computed(() => {
       path: '/types', 
       children: [
         { label: 'Thing Types', path: '/things/types' },
-        { label: 'Edge Types', path: '/edges/types' },
         { label: 'Location Types', path: '/locations/types' },
       ]
     })
