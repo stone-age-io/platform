@@ -70,9 +70,6 @@ const routes: RouteRecordRaw[] = [
       { path: 'locations/:id', name: 'LocationDetail', component: () => import('@/views/locations/LocationDetailView.vue') },
       { path: 'locations/:id/edit', name: 'LocationEdit', component: () => import('@/views/locations/LocationFormView.vue') },
       
-      // Map
-      { path: 'map', name: 'Map', component: () => import('@/views/map/MapView.vue') },
-      
       // NATS
       { path: 'nats', redirect: '/nats/accounts' },
       { path: 'nats/accounts', name: 'NatsAccounts', component: () => import('@/views/nats/NatsAccountListView.vue') },

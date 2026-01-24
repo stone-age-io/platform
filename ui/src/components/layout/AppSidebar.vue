@@ -43,7 +43,6 @@ const filteredMemberships = computed(() => {
 const menuItems = computed(() => {
   const items: any[] = [
     { label: 'Dashboard', icon: '📊', path: '/' },
-    { label: 'Map', icon: '🗺️', path: '/map' },
     { label: 'Things', icon: '📦', path: '/things' },
     { label: 'Locations', icon: '📍', path: '/locations' },
     { 

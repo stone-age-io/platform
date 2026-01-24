@@ -56,8 +56,6 @@ export interface User extends AuthRecord {
   name?: string
   avatar?: string
   current_organization?: string // Relation to Organization - this sets the org context
-  nats_user?: string
-  nebula_host?: string
 }
 
 // Thing Type

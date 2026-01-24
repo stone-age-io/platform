@@ -12,15 +12,14 @@ const TILE_URLS = {
 const TILE_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
 
 export function useMap() {
-  // Use shallowRef for external library instances to prevent deep reactivity overhead and type mismatches
   const map = shallowRef<L.Map | null>(null)
   const markersLayer = shallowRef<L.LayerGroup | null>(null)
   const currentTileLayer = shallowRef<L.TileLayer | null>(null)
   const mapInitialized = ref(false)
+  
+  // NEW: Store bounds to allow resetting view
+  const markersBounds = shallowRef<L.LatLngBounds | null>(null)
 
-  /**
-   * Fixes missing Leaflet markers in Vite/Webpack builds
-   */
   const fixLeafletIcons = () => {
     // @ts-ignore
     delete L.Icon.Default.prototype._getIconUrl
@@ -31,38 +30,30 @@ export function useMap() {
     })
   }
 
-  /**
-   * Initialize Map
-   */
   const initMap = (containerId: string, isDarkMode: boolean) => {
     if (map.value) return
 
     fixLeafletIcons()
 
-    // 1. Create Map Instance
     const mapInstance = L.map(containerId, {
-      center: [39.8283, -98.5795], // Default US Center
+      center: [39.8283, -98.5795],
       zoom: 4,
-      zoomControl: false, 
+      zoomControl: false, // We usually hide this or move it, standard is TopRight
     })
 
-    // Store in shallow ref
     map.value = mapInstance
 
+    // Add zoom control explicitly if not present
     L.control.zoom({ position: 'topright' }).addTo(mapInstance)
 
-    // 2. Add Tile Layer
     updateTheme(isDarkMode)
 
-    // 3. Create Layer Group for Markers
     const layerGroup = L.layerGroup()
     layerGroup.addTo(mapInstance)
     markersLayer.value = layerGroup
 
-    // 4. Handle resize events
     window.addEventListener('resize', handleResize)
     
-    // 5. Force a resize check after a tick to ensure container dimension is picked up
     nextTick(() => {
       map.value?.invalidateSize()
     })
@@ -70,49 +61,36 @@ export function useMap() {
     mapInitialized.value = true
   }
 
-  /**
-   * Update Tiles based on Theme
-   */
   const updateTheme = (isDarkMode: boolean) => {
     if (!map.value) return
-
     if (currentTileLayer.value) {
       map.value.removeLayer(currentTileLayer.value)
     }
-
     const url = isDarkMode ? TILE_URLS.dark : TILE_URLS.light
-    
     const tileLayer = L.tileLayer(url, {
       attribution: TILE_ATTRIBUTION,
       maxZoom: 19
     })
-    
     tileLayer.addTo(map.value)
     currentTileLayer.value = tileLayer
   }
 
-  /**
-   * Render Markers from PocketBase Locations
-   */
   const renderMarkers = (locations: Location[]) => {
     if (!map.value || !markersLayer.value) return
 
     markersLayer.value.clearLayers()
     
-    // Explicitly type as tuple array for fitBounds
-    const validBounds: [number, number][] = []
+    // Collect coordinates
+    const latLngs: [number, number][] = []
 
     locations.forEach(loc => {
       if (!loc.coordinates || !loc.coordinates.lat || !loc.coordinates.lon) return
 
       const { lat, lon } = loc.coordinates
-      validBounds.push([lat, lon])
+      latLngs.push([lat, lon])
 
-      const marker = L.marker([lat, lon], {
-        title: loc.name
-      })
+      const marker = L.marker([lat, lon], { title: loc.name })
 
-      // Popup Content
       const popupContent = `
         <div class="p-1">
           <h3 class="font-bold text-sm">${loc.name}</h3>
@@ -125,9 +103,20 @@ export function useMap() {
       markersLayer.value!.addLayer(marker)
     })
 
-    // Fit bounds if we have markers
-    if (validBounds.length > 0) {
-      map.value.fitBounds(validBounds, { padding: [50, 50], maxZoom: 15 })
+    // Calculate and store bounds
+    if (latLngs.length > 0) {
+      const bounds = L.latLngBounds(latLngs)
+      markersBounds.value = bounds
+      fitToMarkers()
+    } else {
+      markersBounds.value = null
+    }
+  }
+
+  // NEW: Fit map to stored bounds
+  const fitToMarkers = () => {
+    if (map.value && markersBounds.value) {
+      map.value.fitBounds(markersBounds.value, { padding: [50, 50], maxZoom: 15 })
     }
   }
 
@@ -141,6 +130,7 @@ export function useMap() {
       map.value.remove()
       map.value = null
     }
+    markersBounds.value = null
   }
 
   onUnmounted(() => {
@@ -152,6 +142,7 @@ export function useMap() {
     initMap,
     renderMarkers,
     updateTheme,
+    fitToMarkers, // Exported
     cleanup
   }
 }
