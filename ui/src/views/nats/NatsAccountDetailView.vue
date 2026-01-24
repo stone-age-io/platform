@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
 import { formatDate, formatBytes } from '@/utils/format'
