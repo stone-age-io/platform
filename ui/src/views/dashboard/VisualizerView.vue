@@ -6,7 +6,7 @@ import { useDashboardStore } from '@/stores/dashboard'
 import { useUIStore } from '@/stores/ui'
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
 import { useWidgetOperations } from '@/composables/useWidgetOperations'
-import { useToast } from '@/composables/useToast' // Added
+import { useToast } from '@/composables/useToast'
 
 // Components ...
 import DashboardSidebar from '@/components/dashboard/DashboardSidebar.vue'
@@ -308,10 +308,10 @@ watch(() => dashboardStore.activeWidgets.length, (newCount, oldCount) => {
 </template>
 
 <style scoped>
-/* Styles ... (Unchanged) */
 .visualizer-view {
   display: flex;
   flex-direction: column;
+  /* Mobile: Keep header subtraction */
   height: calc(100vh - 4rem); 
   margin: -1rem; 
   width: calc(100% + 2rem);
@@ -326,7 +326,8 @@ watch(() => dashboardStore.activeWidgets.length, (newCount, oldCount) => {
   .visualizer-view {
     margin: -1.5rem;
     width: calc(100% + 3rem);
-    height: calc(100vh - 4rem);
+    /* Desktop: Use full viewport height since AppHeader is hidden */
+    height: 100vh;
   }
 }
 
