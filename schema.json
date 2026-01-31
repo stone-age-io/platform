@@ -530,7 +530,7 @@
         "id": "bool1547992806",
         "name": "emailVisibility",
         "presentable": false,
-        "required": true,
+        "required": false,
         "system": true,
         "type": "bool"
       },

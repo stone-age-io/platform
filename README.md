@@ -5,7 +5,7 @@ A comprehensive, single-binary IoT and Event-Driven platform built on [PocketBas
 ## 🏗 Architecture
 
 The platform is designed as a **Single Deployment Unit**:
-*   **Backend**: Go (1.23+) extending PocketBase.
+*   **Backend**: Go (1.25+) extending PocketBase.
 *   **Frontend**: Vue 3 + TypeScript (Embedded in the binary).
 *   **Database**: SQLite (managed by PocketBase).
 
@@ -23,7 +23,7 @@ The platform is designed as a **Single Deployment Unit**:
 ## 🚀 Getting Started
 
 ### Prerequisites
-*   Go 1.23+
+*   Go 1.25+
 *   Node.js 20+ (for building the UI)
 
 ### 1. Build the Frontend
@@ -102,12 +102,30 @@ npm run dev
 
 ---
 
+## 📦 Schema Management
+
+The platform uses a simple, declarative approach to schema management:
+
+*   **`schema.json`**: The single source of truth for all PocketBase collections. This file is embedded in the binary and imported on every startup.
+*   **Extend Mode**: The import uses `deleteMissing=false`, meaning it adds/updates collections from the schema but preserves any collections created by packages that aren't in the file.
+
+### Updating the Schema
+
+1.  Make changes in the PocketBase Admin UI (`http://localhost:8090/_/`)
+2.  Export collections from **Settings → Export collections**
+3.  Replace `schema.json` with the exported file
+4.  Commit the updated `schema.json`
+5.  Rebuild the binary - the new schema is embedded automatically
+
+---
+
 ## 🧠 Hooks & Glue Logic
 
 The `main.go` file contains critical business logic hooks:
 
-*   **`OnBootstrap`**: Injects the `organization` relation field into NATS and Nebula collections if missing.
+*   **`OnBootstrap`**: Imports `schema.json` to ensure all collections and fields are up to date.
 *   **`OnRecordAfterCreateSuccess` (Organizations)**:
     1.  Creates a **NATS Account** specifically for that organization.
     2.  Creates a **Nebula CA** specifically for that organization.
 *   **`OnServe`**: Registers the custom router handler that serves the embedded `pb_public` filesystem, handling SPA history mode (redirecting unknown routes to `index.html`).
+
