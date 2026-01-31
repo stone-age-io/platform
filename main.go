@@ -21,6 +21,9 @@ import (
 //go:embed all:pb_public/*
 var embeddedFS embed.FS
 
+//go:embed schema.json
+var schemaJSON []byte
+
 // loadConfig handles the Viper initialization
 func loadConfig() {
 	// 1. Check for --config flag manually
@@ -143,42 +146,20 @@ func main() {
 		log.Fatalf("Failed to register Nebula setup: %v", err)
 	}
 
-	// Schema Injection
+	// Schema Import - imports schema.json on every startup (extend mode preserves package-created collections)
 	app.OnBootstrap().BindFunc(func(e *core.BootstrapEvent) error {
 		if err := e.Next(); err != nil {
 			return err
 		}
 
-		orgsCollection, err := app.FindCollectionByNameOrId(tenancyOptions.OrganizationsCollection)
-		if err != nil {
-			return nil
+		// Import schema in extend mode (deleteMissing=false)
+		// This preserves any collections created by packages that aren't in schema.json
+		if err := app.ImportCollectionsByMarshaledJSON(schemaJSON, false); err != nil {
+			log.Printf("⚠️ Schema import warning: %v", err)
+		} else {
+			log.Println("✅ Schema imported from embedded schema.json")
 		}
 
-		collectionsToUpdate := []string{
-			natsOptions.AccountCollectionName,
-			natsOptions.UserCollectionName,
-			natsOptions.RoleCollectionName,
-			nebulaOptions.CACollectionName,
-			nebulaOptions.NetworkCollectionName,
-			nebulaOptions.HostCollectionName,
-		}
-
-		for _, name := range collectionsToUpdate {
-			col, err := app.FindCollectionByNameOrId(name)
-			if err != nil {
-				continue
-			}
-
-			if col.Fields.GetByName("organization") == nil {
-				log.Printf("➕ Injecting organization field into '%s'...", name)
-				col.Fields.Add(&core.RelationField{
-					Name:         "organization",
-					CollectionId: orgsCollection.Id,
-					MaxSelect:    1,
-				})
-				app.Save(col)
-			}
-		}
 		return nil
 	})
 
@@ -269,3 +250,4 @@ func main() {
 		log.Fatal(err)
 	}
 }
+
