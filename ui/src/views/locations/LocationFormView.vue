@@ -202,35 +202,39 @@ function validateMetadata(): boolean {
  * Validate coordinates
  */
 function validateCoordinates(): boolean {
-  const hasLat = formData.value.latitude.trim() !== ''
-  const hasLng = formData.value.longitude.trim() !== ''
-  
+  // Convert to string to handle both string and number types from number input
+  const latStr = String(formData.value.latitude ?? '').trim()
+  const lngStr = String(formData.value.longitude ?? '').trim()
+
+  const hasLat = latStr !== ''
+  const hasLng = lngStr !== ''
+
   // Both must be provided or both must be empty
   if (hasLat !== hasLng) {
     toast.error('Both latitude and longitude are required for coordinates')
     return false
   }
-  
+
   if (hasLat && hasLng) {
-    const lat = parseFloat(formData.value.latitude)
-    const lng = parseFloat(formData.value.longitude)
-    
+    const lat = parseFloat(latStr)
+    const lng = parseFloat(lngStr)
+
     if (isNaN(lat) || isNaN(lng)) {
       toast.error('Latitude and longitude must be valid numbers')
       return false
     }
-    
+
     if (lat < -90 || lat > 90) {
       toast.error('Latitude must be between -90 and 90')
       return false
     }
-    
+
     if (lng < -180 || lng > 180) {
       toast.error('Longitude must be between -180 and 180')
       return false
     }
   }
-  
+
   return true
 }
 
@@ -253,10 +257,13 @@ async function handleSubmit() {
     formDataToSend.append('parent', formData.value.parent || '')
     
     // Coordinates (as JSON object or empty)
-    if (formData.value.latitude && formData.value.longitude) {
+    const latStr = String(formData.value.latitude ?? '').trim()
+    const lngStr = String(formData.value.longitude ?? '').trim()
+
+    if (latStr !== '' && lngStr !== '') {
       const coordinates = {
-        lat: parseFloat(formData.value.latitude),
-        lon: parseFloat(formData.value.longitude),
+        lat: parseFloat(latStr),
+        lon: parseFloat(lngStr),
       }
       formDataToSend.append('coordinates', JSON.stringify(coordinates))
     } else {
@@ -525,3 +532,4 @@ onMounted(() => {
     </form>
   </div>
 </template>
+
