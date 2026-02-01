@@ -28,5 +28,25 @@ export default defineConfig({
   build: {
     outDir: '../pb_public',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // Split large dependencies into separate chunks for better caching
+        manualChunks: {
+          // Charting library (largest dependency ~1MB)
+          'echarts': ['echarts', 'vue-echarts'],
+          // Mapping library
+          'leaflet': ['leaflet'],
+          // NATS messaging libraries
+          'nats': ['@nats-io/nats-core', '@nats-io/jetstream', '@nats-io/kv'],
+          // Grid layout
+          'grid': ['grid-layout-plus'],
+          // Vue core (cached across deployments)
+          'vue-vendor': ['vue', 'vue-router', 'pinia'],
+        },
+      },
+    },
+    // Warn if a chunk exceeds 500KB
+    chunkSizeWarningLimit: 500,
   },
 })
+

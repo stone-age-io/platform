@@ -56,26 +56,28 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onErrorCaptured } from 'vue'
+import { computed, ref, onErrorCaptured, defineAsyncComponent } from 'vue'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useNatsStore } from '@/stores/nats'
 import type { WidgetConfig } from '@/types/dashboard'
 
-// Import Widgets
+// Lightweight widgets - imported synchronously
 import TextWidget from '@/components/widgets/TextWidget.vue'
-import ChartWidget from '@/components/widgets/ChartWidget.vue'
 import ButtonWidget from '@/components/widgets/ButtonWidget.vue'
-import KvWidget from '@/components/widgets/KvWidget.vue'
 import SwitchWidget from '@/components/widgets/SwitchWidget.vue'
 import SliderWidget from '@/components/widgets/SliderWidget.vue'
 import StatCardWidget from '@/components/widgets/StatCardWidget.vue'
-import GaugeWidget from '@/components/widgets/GaugeWidget.vue'
-import MapWidget from '@/components/widgets/MapWidget.vue'
-import ConsoleWidget from '@/components/widgets/ConsoleWidget.vue'
-import PublisherWidget from '@/components/widgets/PublisherWidget.vue'
 import StatusWidget from '@/components/widgets/StatusWidget.vue'
-import MarkdownWidget from '@/components/widgets/MarkdownWidget.vue'
-import PocketBaseWidget from '@/components/widgets/PocketBaseWidget.vue'
+
+// Heavy widgets - lazy-loaded to reduce initial bundle size
+const ChartWidget = defineAsyncComponent(() => import('@/components/widgets/ChartWidget.vue'))
+const GaugeWidget = defineAsyncComponent(() => import('@/components/widgets/GaugeWidget.vue'))
+const MapWidget = defineAsyncComponent(() => import('@/components/widgets/MapWidget.vue'))
+const KvWidget = defineAsyncComponent(() => import('@/components/widgets/KvWidget.vue'))
+const ConsoleWidget = defineAsyncComponent(() => import('@/components/widgets/ConsoleWidget.vue'))
+const PublisherWidget = defineAsyncComponent(() => import('@/components/widgets/PublisherWidget.vue'))
+const MarkdownWidget = defineAsyncComponent(() => import('@/components/widgets/MarkdownWidget.vue'))
+const PocketBaseWidget = defineAsyncComponent(() => import('@/components/widgets/PocketBaseWidget.vue'))
 
 const props = defineProps<{
   config?: WidgetConfig
@@ -266,3 +268,4 @@ onErrorCaptured((err) => {
 .error-icon { font-size: 24px; margin-bottom: 4px; }
 .error-message { font-size: 12px; line-height: 1.4; }
 </style>
+

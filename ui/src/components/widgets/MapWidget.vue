@@ -108,19 +108,32 @@ function syncMarkerPositions() {
 
 async function initializeMap() {
   await nextTick()
-  
-  window.setTimeout(() => {
+
+  // Wait for CSS to be applied and container to have dimensions
+  // This is especially important on mobile where lazy-loaded CSS needs time
+  const tryInit = (attempts = 0) => {
     const container = document.getElementById(mapContainerId.value)
-    if (!container) return
+
+    // Retry if container not ready (max 10 attempts over 500ms)
+    if (!container || (container.clientHeight === 0 && attempts < 10)) {
+      window.setTimeout(() => tryInit(attempts + 1), 50)
+      return
+    }
 
     initMap(mapContainerId.value, mapCenter.value, mapZoom.value, uiStore.theme === 'dark')
-    
+
     // 1. Render the static marker definitions
     renderMarkers(markers.value, handleMarkerClick)
-    
+
     // 2. Set ready flag - this will trigger the mapReady watcher below
     mapReady.value = true
-  }, 50)
+
+    // 3. Extra invalidateSize calls for mobile reliability
+    window.setTimeout(() => invalidateSize(), 100)
+    window.setTimeout(() => invalidateSize(), 300)
+  }
+
+  window.setTimeout(() => tryInit(), 50)
 }
 
 // --- Watchers ---
@@ -195,13 +208,16 @@ onMounted(() => {
   checkMobile()
   window.addEventListener('resize', checkMobile)
   initializeMap()
-  
-  resizeObserver = new ResizeObserver(() => {
-    if (mapReady.value) invalidateSize()
-  })
-  
-  const container = document.getElementById(mapContainerId.value)
-  if (container?.parentElement) resizeObserver.observe(container.parentElement)
+
+  // Setup resize observer after a delay to ensure container exists
+  window.setTimeout(() => {
+    resizeObserver = new ResizeObserver(() => {
+      if (mapReady.value) invalidateSize()
+    })
+
+    const container = document.getElementById(mapContainerId.value)
+    if (container?.parentElement) resizeObserver.observe(container.parentElement)
+  }, 100)
 })
 
 onUnmounted(() => {
@@ -234,3 +250,4 @@ onUnmounted(() => {
 .map-control-btn:hover { background: var(--color-info-bg); border-color: var(--color-info-border); }
 .map-control-btn:active { transform: scale(0.95); }
 </style>
+

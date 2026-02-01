@@ -1,4 +1,4 @@
-@import 'leaflet/dist/leaflet.css';
+/* Leaflet CSS is loaded dynamically via useLeafletMap.ts when map widgets are used */
 
 @tailwind base;
 @tailwind components;
@@ -22,4 +22,5 @@
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--bc) / 0.3);
 }
+
 
