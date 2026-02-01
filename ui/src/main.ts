@@ -18,9 +18,20 @@ app.use(createPinia())
 app.use(router)
 
 /**
- * Mount app
+ * Mount app and fade out the loading screen
  */
 app.mount('#app')
+
+// Smooth fade-out of the initial loader
+const appLoader = document.getElementById('app-loader')
+if (appLoader) {
+  // Small delay to ensure Vue has rendered
+  requestAnimationFrame(() => {
+    appLoader.classList.add('fade-out')
+    // Remove from DOM after transition completes
+    setTimeout(() => appLoader.remove(), 300)
+  })
+}
 
 /**
  * Register Service Worker for PWA "Install" support
@@ -33,3 +44,4 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
       .catch(err => console.error('SW registration failed:', err));
   });
 }
+

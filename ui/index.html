@@ -22,34 +22,67 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 1rem;
+        gap: 1.5rem;
         background: #0a0a0a;
         color: #a0a0a0;
         font-family: system-ui, -apple-system, sans-serif;
+        z-index: 9999;
+        opacity: 1;
+        transition: opacity 0.3s ease-out;
       }
-      .app-loader-spinner {
-        width: 40px;
-        height: 40px;
-        border: 3px solid #333;
-        border-top-color: #58a6ff;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
+      .app-loader.fade-out {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .app-loader-logo {
+        width: 64px;
+        height: 64px;
+        color: #58a6ff;
+        animation: pulse-glow 2s ease-in-out infinite;
       }
       .app-loader-text {
-        font-size: 14px;
-        opacity: 0.7;
+        font-size: 13px;
+        font-weight: 500;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        opacity: 0.5;
       }
-      @keyframes spin {
-        to { transform: rotate(360deg); }
+      .app-loader-bar {
+        width: 120px;
+        height: 3px;
+        background: #222;
+        border-radius: 3px;
+        overflow: hidden;
+      }
+      .app-loader-bar-fill {
+        height: 100%;
+        width: 30%;
+        background: #58a6ff;
+        border-radius: 3px;
+        animation: loading-bar 1.5s ease-in-out infinite;
+      }
+      @keyframes pulse-glow {
+        0%, 100% { opacity: 0.7; filter: drop-shadow(0 0 8px rgba(88, 166, 255, 0.3)); }
+        50% { opacity: 1; filter: drop-shadow(0 0 16px rgba(88, 166, 255, 0.6)); }
+      }
+      @keyframes loading-bar {
+        0% { transform: translateX(-100%); }
+        50% { transform: translateX(250%); }
+        100% { transform: translateX(250%); }
       }
     </style>
   </head>
   <body>
     <div id="app">
-      <!-- Inline loader shown until Vue mounts -->
-      <div class="app-loader">
-        <div class="app-loader-spinner"></div>
-        <div class="app-loader-text">Loading...</div>
+      <!-- Branded loader shown until Vue mounts -->
+      <div class="app-loader" id="app-loader">
+        <svg class="app-loader-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor">
+          <path d="M128,0 C57.343,0 0,57.343 0,128 C0,198.657 57.343,256 128,256 C198.657,256 256,198.657 256,128 C256,57.343 198.657,0 128,0 z M128,28 C181.423,28 224.757,71.334 224.757,124.757 C224.757,139.486 221.04,153.32 214.356,165.42 C198.756,148.231 178.567,138.124 162.876,124.331 C155.723,124.214 128.543,124.043 113.254,124.043 C113.254,147.334 113.254,172.064 113.254,190.513 C100.456,179.347 94.543,156.243 94.543,156.243 C83.432,147.065 31.243,124.757 31.243,124.757 C31.243,71.334 74.577,28 128,28 z"/>
+        </svg>
+        <div class="app-loader-bar">
+          <div class="app-loader-bar-fill"></div>
+        </div>
+        <div class="app-loader-text">Loading</div>
       </div>
     </div>
     <script type="module" src="/src/main.ts"></script>
