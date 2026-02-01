@@ -22,6 +22,7 @@ const effectiveCompact = computed(() => uiStore.sidebarCompact && isLargeScreen.
 
 // Modal State
 const showNatsModal = ref(false)
+const showServerInfo = ref(false)
 
 // Org Search State
 const orgSearchQuery = ref('')
@@ -197,6 +198,21 @@ const serverInfoJson = computed(() => {
   if (!natsStore.nc || !natsStore.nc.info) return 'No server info available.'
   return JSON.stringify(natsStore.nc.info, null, 2)
 })
+
+// NATS Connection Controls
+const canConnect = computed(() => {
+  return authStore.isAuthenticated
+    && authStore.currentMembership?.nats_user
+    && natsStore.serverUrls.length > 0
+})
+
+async function handleConnect() {
+  await natsStore.connect()
+}
+
+async function handleDisconnect() {
+  await natsStore.disconnect()
+}
 </script>
 
 <template>
@@ -433,44 +449,104 @@ const serverInfoJson = computed(() => {
     <Teleport to="body">
       <dialog class="modal" :class="{ 'modal-open': showNatsModal }">
         <div class="modal-box max-w-2xl">
+          <!-- Header -->
           <div class="flex justify-between items-center mb-4">
             <h3 class="font-bold text-lg flex items-center gap-2">
-              <span class="text-2xl">📡</span> Server Information
+              <span class="text-2xl">📡</span> NATS Connection
             </h3>
             <button @click="showNatsModal = false" class="btn btn-sm btn-circle btn-ghost">✕</button>
           </div>
-          
-          <div v-if="natsStore.isConnected" class="space-y-4">
-            <!-- Stats Bar -->
-            <div class="stats shadow w-full bg-base-200">
-              <div class="stat place-items-center py-2">
-                <div class="stat-title text-xs">RTT</div>
-                <div class="stat-value text-lg font-mono">{{ natsStore.rtt }}ms</div>
-              </div>
-              <div class="stat place-items-center py-2">
-                <div class="stat-title text-xs">Connected To</div>
-                <div class="stat-value text-lg font-mono text-primary break-all text-center leading-tight">
-                  {{ natsStore.nc?.getServer() || 'Unknown' }}
-                </div>
-              </div>
-            </div>
 
-            <!-- Raw Info JSON -->
-            <div class="mockup-code bg-base-300 text-base-content text-xs">
-              <pre class="px-4 py-2"><code>{{ serverInfoJson }}</code></pre>
+          <!-- Connection Status & Controls -->
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-4 p-3 bg-base-200 rounded-box">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full shrink-0" :class="natsStatusColor"></span>
+              <span class="font-medium">{{ natsStatusText }}</span>
+              <span v-if="natsStore.reconnectCount > 0" class="badge badge-ghost badge-sm">
+                {{ natsStore.reconnectCount }}x
+              </span>
+            </div>
+            <div class="flex gap-2">
+              <button
+                v-if="!natsStore.isConnected && natsStore.status !== 'connecting'"
+                @click="handleConnect"
+                :disabled="!canConnect"
+                class="btn btn-success btn-sm"
+              >
+                Connect
+              </button>
+              <button
+                v-if="natsStore.status === 'connecting'"
+                disabled
+                class="btn btn-sm"
+              >
+                <span class="loading loading-spinner loading-xs"></span>
+                Connecting
+              </button>
+              <button
+                v-if="natsStore.isConnected || natsStore.status === 'reconnecting'"
+                @click="handleDisconnect"
+                class="btn btn-error btn-sm"
+              >
+                Disconnect
+              </button>
             </div>
           </div>
 
-          <div v-else class="text-center py-8">
-            <span class="text-4xl opacity-50">🔌</span>
-            <h3 class="font-bold mt-2">Not Connected</h3>
-            <p class="text-sm opacity-70 mb-4">Connect to a NATS server in settings to view diagnostics.</p>
-            <router-link to="/settings" class="btn btn-primary btn-sm" @click="showNatsModal = false">
-              Go to Settings
+          <!-- Error Message -->
+          <div v-if="natsStore.lastError" class="alert alert-error mb-4 text-sm">
+            <span>{{ natsStore.lastError }}</span>
+          </div>
+
+          <!-- No Identity Warning -->
+          <div v-if="!authStore.currentMembership?.nats_user" class="alert alert-warning mb-4 text-sm">
+            <span>No NATS identity linked to this organization. Configure one in Settings.</span>
+          </div>
+
+          <!-- Connected State: Show Server Info -->
+          <div v-if="natsStore.isConnected" class="space-y-3">
+            <!-- Stats -->
+            <div class="grid grid-cols-2 gap-3">
+              <div class="bg-base-200 rounded-box p-3 text-center">
+                <div class="text-xs opacity-60 mb-1">RTT</div>
+                <div class="text-xl font-mono font-semibold">{{ natsStore.rtt ?? '—' }}<span class="text-sm opacity-60">ms</span></div>
+              </div>
+              <div class="bg-base-200 rounded-box p-3 text-center">
+                <div class="text-xs opacity-60 mb-1">Server</div>
+                <div class="text-sm font-mono text-primary break-all">{{ natsStore.nc?.getServer() || 'Unknown' }}</div>
+              </div>
+            </div>
+
+            <!-- Server Info JSON (collapsible) -->
+            <div class="bg-base-200 rounded-box overflow-hidden">
+              <button
+                @click="showServerInfo = !showServerInfo"
+                class="w-full flex items-center justify-between p-3 text-sm font-medium hover:bg-base-300 transition-colors"
+              >
+                <span>Server Info</span>
+                <span class="text-xs opacity-60">{{ showServerInfo ? '▲' : '▼' }}</span>
+              </button>
+              <div v-show="showServerInfo" class="border-t border-base-300">
+                <pre class="p-3 text-xs overflow-x-auto"><code>{{ serverInfoJson }}</code></pre>
+              </div>
+            </div>
+          </div>
+
+          <!-- Disconnected State -->
+          <div v-else-if="natsStore.status === 'disconnected'" class="text-center py-8">
+            <span class="text-4xl opacity-40">🔌</span>
+            <p class="text-sm opacity-60 mt-2">
+              {{ authStore.currentMembership?.nats_user
+                ? 'Click Connect to establish a connection.'
+                : 'Link a NATS identity in Settings to enable connections.' }}
+            </p>
+          </div>
+
+          <!-- Footer -->
+          <div class="modal-action mt-6">
+            <router-link to="/settings" class="btn btn-ghost" @click="showNatsModal = false">
+              Settings
             </router-link>
-          </div>
-
-          <div class="modal-action">
             <button class="btn" @click="showNatsModal = false">Close</button>
           </div>
         </div>
@@ -487,3 +563,4 @@ details[open] > summary {
   margin-bottom: 0;
 }
 </style>
+
