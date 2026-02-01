@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 import { formatDate } from '@/utils/format'
 import type { NatsRole } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
@@ -10,6 +11,7 @@ import BaseCard from '@/components/ui/BaseCard.vue'
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
+const { confirm } = useConfirm()
 
 const role = ref<NatsRole | null>(null)
 const loading = ref(true)
@@ -52,7 +54,16 @@ async function loadRole() {
 }
 
 async function handleDelete() {
-  if (!role.value || !confirm(`Delete "${role.value.name}"?`)) return
+  if (!role.value) return
+  const confirmed = await confirm({
+    title: 'Delete NATS Role',
+    message: `Are you sure you want to delete "${role.value.name}"?`,
+    details: 'Users with this role will not be deleted but may lose their permissions.',
+    confirmText: 'Delete',
+    variant: 'danger'
+  })
+  if (!confirmed) return
+
   try {
     await pb.collection('nats_roles').delete(role.value.id)
     toast.success('Role deleted')

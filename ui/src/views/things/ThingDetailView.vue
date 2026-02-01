@@ -4,6 +4,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 import { useNatsStore } from '@/stores/nats'
 import type { Thing, NatsUser, NebulaHost, Location } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
@@ -12,6 +13,7 @@ import KvDashboard from '@/components/nats/KvDashboard.vue'
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
+const { confirm } = useConfirm()
 const natsStore = useNatsStore()
 
 const thing = ref<Thing | null>(null)
@@ -133,8 +135,15 @@ function downloadNebulaConfig() {
 
 async function handleDelete() {
   if (!thing.value) return
-  if (!confirm(`Delete "${thing.value.name}"? This cannot be undone.`)) return
-  
+  const confirmed = await confirm({
+    title: 'Delete Thing',
+    message: `Are you sure you want to delete "${thing.value.name}"?`,
+    details: 'This action cannot be undone.',
+    confirmText: 'Delete',
+    variant: 'danger'
+  })
+  if (!confirmed) return
+
   try {
     await pb.collection('things').delete(thing.value.id)
     toast.success('Thing deleted')

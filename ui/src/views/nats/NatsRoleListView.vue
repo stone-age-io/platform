@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
 import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 import { pb } from '@/utils/pb'
 import { formatDate } from '@/utils/format'
 import type { NatsRole } from '@/types/pocketbase'
@@ -12,6 +13,7 @@ import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 
 const router = useRouter()
 const toast = useToast()
+const { confirm } = useConfirm()
 
 // Pagination
 const {
@@ -88,8 +90,15 @@ function handleRowClick(role: NatsRole) {
  * Handle delete
  */
 async function handleDelete(role: NatsRole) {
-  if (!confirm(`Delete role "${role.name}"? This cannot be undone.`)) return
-  
+  const confirmed = await confirm({
+    title: 'Delete NATS Role',
+    message: `Are you sure you want to delete "${role.name}"?`,
+    details: 'Users with this role will not be deleted but may lose their permissions.',
+    confirmText: 'Delete',
+    variant: 'danger'
+  })
+  if (!confirmed) return
+
   try {
     await pb.collection('nats_roles').delete(role.id)
     toast.success('Role deleted')

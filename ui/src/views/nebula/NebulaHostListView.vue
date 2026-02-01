@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
 import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 import { pb } from '@/utils/pb'
 import { formatDate } from '@/utils/format'
 import type { NebulaHost } from '@/types/pocketbase'
@@ -12,6 +13,7 @@ import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 
 const router = useRouter()
 const toast = useToast()
+const { confirm } = useConfirm()
 
 // Pagination
 const {
@@ -102,8 +104,15 @@ function handleRowClick(host: NebulaHost) {
  * Handle delete
  */
 async function handleDelete(host: NebulaHost) {
-  if (!confirm(`Delete Nebula host "${host.hostname}"? This cannot be undone.`)) return
-  
+  const confirmed = await confirm({
+    title: 'Delete Nebula Host',
+    message: `Are you sure you want to delete "${host.hostname}"?`,
+    details: 'This will invalidate the host certificate. The host will no longer be able to connect to the overlay network.',
+    confirmText: 'Delete',
+    variant: 'danger'
+  })
+  if (!confirmed) return
+
   try {
     await pb.collection('nebula_hosts').delete(host.id)
     toast.success('Nebula host deleted')

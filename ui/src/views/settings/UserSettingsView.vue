@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useUIStore } from '@/stores/ui'
 import { useNatsStore } from '@/stores/nats'
 import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 import { pb } from '@/utils/pb'
 import type { User, NatsUser } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
@@ -12,6 +13,7 @@ const authStore = useAuthStore()
 const uiStore = useUIStore()
 const natsStore = useNatsStore()
 const toast = useToast()
+const { confirm } = useConfirm()
 
 // --- Profile State ---
 const profileForm = ref({ name: '' })
@@ -151,13 +153,20 @@ async function updateContextIdentity(event: Event) {
 
 async function handleLeaveOrg() {
   const orgName = authStore.currentOrg?.name
-  if (!confirm(`Are you sure you want to leave ${orgName}? You will lose access immediately.`)) return
-  
+  const confirmed = await confirm({
+    title: 'Leave Organization',
+    message: `Are you sure you want to leave ${orgName}?`,
+    details: 'You will lose access to all resources in this organization immediately.',
+    confirmText: 'Leave Organization',
+    variant: 'danger'
+  })
+  if (!confirmed) return
+
   try {
     if (authStore.currentOrgId) {
       await authStore.leaveOrganization(authStore.currentOrgId)
       toast.success(`Left ${orgName}`)
-      // Router will handle redirect if current route becomes invalid, 
+      // Router will handle redirect if current route becomes invalid,
       // but usually authStore.loadContext() switches to another org automatically.
     }
   } catch (e: any) {

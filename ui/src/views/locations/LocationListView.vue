@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 import { pb } from '@/utils/pb'
 import { formatDate } from '@/utils/format'
 import type { Location } from '@/types/pocketbase'
@@ -12,6 +13,7 @@ import LocationMapViz from '@/components/locations/LocationMapViz.vue'
 
 const router = useRouter()
 const toast = useToast()
+const { confirm } = useConfirm()
 
 // View Mode
 const viewMode = ref<'list' | 'map'>('list')
@@ -95,8 +97,15 @@ function handleRowClick(location: Location) {
 }
 
 async function handleDelete(location: Location) {
-  if (!confirm(`Delete "${location.name}"? This cannot be undone.`)) return
-  
+  const confirmed = await confirm({
+    title: 'Delete Location',
+    message: `Are you sure you want to delete "${location.name}"?`,
+    details: 'Sub-locations and things at this location will not be deleted but will lose their parent reference.',
+    confirmText: 'Delete',
+    variant: 'danger'
+  })
+  if (!confirmed) return
+
   try {
     await pb.collection('locations').delete(location.id)
     toast.success('Location deleted')

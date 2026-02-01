@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 import { pb } from '@/utils/pb'
 import type { Membership, NatsUser, User, Organization } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
@@ -24,6 +25,7 @@ const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const toast = useToast()
+const { confirm } = useConfirm()
 
 // --- State ---
 // Use the locally defined interface here
@@ -109,9 +111,16 @@ async function updateNatsIdentity(event: Event) {
 async function removeMember() {
   if (!membership.value) return
   const userName = membership.value.expand.user.name || membership.value.expand.user.email
-  
-  if (!confirm(`Are you sure you want to remove ${userName} from the organization?`)) return
-  
+
+  const confirmed = await confirm({
+    title: 'Remove Member',
+    message: `Are you sure you want to remove ${userName} from the organization?`,
+    details: 'They will lose access to all organization resources immediately.',
+    confirmText: 'Remove',
+    variant: 'danger'
+  })
+  if (!confirmed) return
+
   try {
     await pb.collection('memberships').delete(membership.value.id)
     toast.success('Member removed')

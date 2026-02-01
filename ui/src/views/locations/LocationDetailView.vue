@@ -3,6 +3,7 @@ import { ref, onMounted, computed, watch, nextTick, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 import { useMap } from '@/composables/useMap'
 import { usePagination } from '@/composables/usePagination'
 import { useUIStore } from '@/stores/ui'
@@ -18,6 +19,7 @@ import KvDashboard from '@/components/nats/KvDashboard.vue'
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
+const { confirm } = useConfirm()
 const uiStore = useUIStore()
 const natsStore = useNatsStore()
 const { initMap, renderMarkers, updateTheme, cleanup: cleanupMap } = useMap()
@@ -188,7 +190,16 @@ function openNavigation() {
 }
 
 async function handleDelete() {
-  if (!location.value || !confirm(`Delete "${location.value.name}"?`)) return
+  if (!location.value) return
+  const confirmed = await confirm({
+    title: 'Delete Location',
+    message: `Are you sure you want to delete "${location.value.name}"?`,
+    details: 'Sub-locations and things at this location will not be deleted.',
+    confirmText: 'Delete',
+    variant: 'danger'
+  })
+  if (!confirmed) return
+
   try {
     await pb.collection('locations').delete(location.value.id)
     toast.success('Location deleted')

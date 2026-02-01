@@ -80,6 +80,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useDashboardStore } from '@/stores/dashboard'
+import { useConfirm } from '@/composables/useConfirm'
 import type { DashboardVariable } from '@/types/dashboard'
 
 defineProps<{
@@ -91,6 +92,7 @@ const emit = defineEmits<{
 }>()
 
 const dashboardStore = useDashboardStore()
+const { confirm } = useConfirm()
 const editingIndex = ref<number | null>(null)
 
 const variables = computed(() => dashboardStore.activeDashboard?.variables || [])
@@ -108,11 +110,18 @@ function addVariable() {
   editingIndex.value = variables.value.length - 1
 }
 
-function removeVariable(index: number) {
-  if (confirm('Delete this variable?')) {
-    dashboardStore.removeVariable(index)
-    if (editingIndex.value === index) editingIndex.value = null
-  }
+async function removeVariable(index: number) {
+  const confirmed = await confirm({
+    title: 'Delete Variable',
+    message: 'Are you sure you want to delete this variable?',
+    details: 'Widgets using this variable will show the raw template syntax.',
+    confirmText: 'Delete',
+    variant: 'danger'
+  })
+  if (!confirmed) return
+
+  dashboardStore.removeVariable(index)
+  if (editingIndex.value === index) editingIndex.value = null
 }
 
 function toggleEdit(index: number) {

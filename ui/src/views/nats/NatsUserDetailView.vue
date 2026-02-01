@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 import { formatDate } from '@/utils/format'
 import type { NatsUser } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
@@ -10,6 +11,7 @@ import BaseCard from '@/components/ui/BaseCard.vue'
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
+const { confirm } = useConfirm()
 
 const user = ref<NatsUser | null>(null)
 const loading = ref(true)
@@ -40,8 +42,15 @@ async function loadUser() {
  */
 async function handleDelete() {
   if (!user.value) return
-  if (!confirm(`Delete NATS user "${user.value.nats_username}"? This cannot be undone.`)) return
-  
+  const confirmed = await confirm({
+    title: 'Delete NATS User',
+    message: `Are you sure you want to delete "${user.value.nats_username}"?`,
+    details: 'This will invalidate any credentials issued to this user.',
+    confirmText: 'Delete',
+    variant: 'danger'
+  })
+  if (!confirmed) return
+
   try {
     await pb.collection('nats_users').delete(user.value.id)
     toast.success('NATS user deleted')

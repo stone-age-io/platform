@@ -59,6 +59,7 @@
 import { computed, ref, onErrorCaptured, defineAsyncComponent } from 'vue'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useNatsStore } from '@/stores/nats'
+import { useConfirm } from '@/composables/useConfirm'
 import type { WidgetConfig } from '@/types/dashboard'
 
 // Lightweight widgets - imported synchronously
@@ -94,6 +95,7 @@ const emit = defineEmits<{
 
 const dashboardStore = useDashboardStore()
 const natsStore = useNatsStore()
+const { confirm } = useConfirm()
 const error = ref<string | null>(null)
 
 const widgetComponent = computed(() => {
@@ -123,9 +125,15 @@ const shouldShowHeader = computed(() => {
   return true
 })
 
-function handleDelete() {
+async function handleDelete() {
   if (!props.config) return
-  if (confirm(`Delete widget "${props.config.title}"?`)) {
+  const confirmed = await confirm({
+    title: 'Delete Widget',
+    message: `Are you sure you want to delete "${props.config.title}"?`,
+    confirmText: 'Delete',
+    variant: 'danger'
+  })
+  if (confirmed) {
     emit('delete')
   }
 }

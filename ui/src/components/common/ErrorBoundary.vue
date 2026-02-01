@@ -27,6 +27,9 @@
 
 <script setup lang="ts">
 import { ref, onErrorCaptured } from 'vue'
+import { useConfirm } from '@/composables/useConfirm'
+
+const { confirm } = useConfirm()
 
 /**
  * Error Boundary Component
@@ -65,16 +68,23 @@ function handleReload() {
  * Reset application state and reload
  * Clears localStorage to give a fresh start
  */
-function handleReset() {
-  if (confirm('This will clear all saved dashboards and settings. Continue?')) {
-    try {
-      localStorage.clear()
-      window.location.reload()
-    } catch (err) {
-      console.error('Failed to clear storage:', err)
-      // Fallback: just reload
-      window.location.reload()
-    }
+async function handleReset() {
+  const confirmed = await confirm({
+    title: 'Reset Application',
+    message: 'Are you sure you want to reset the application?',
+    details: 'This will clear all saved dashboards and settings. You will need to reconfigure the application.',
+    confirmText: 'Reset & Clear Data',
+    variant: 'danger'
+  })
+  if (!confirmed) return
+
+  try {
+    localStorage.clear()
+    window.location.reload()
+  } catch (err) {
+    console.error('Failed to clear storage:', err)
+    // Fallback: just reload
+    window.location.reload()
   }
 }
 </script>

@@ -29,6 +29,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
   const kvBucketName = ref('dashboards')
   const enableSharedDashboards = ref(true)
   const startupDashboard = ref<{ id: string, storage: StorageType } | null>(null)
+  const lastSelectedDashboard = ref<{ id: string, storage: StorageType } | null>(null)
   
   // UI State
   const storageError = ref<string | null>(null)
@@ -40,6 +41,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
   const SETTINGS_KEY = 'nats_dashboard_settings'
 
   let activeWatcher: any = null
+  let hasInitializedOnce = false
 
   // Computed
   const activeDashboardId = computed(() => activeDashboard.value?.id || null)
@@ -147,6 +149,9 @@ export const useDashboardStore = defineStore('dashboard', () => {
 
   // Local Storage
   function loadFromStorage() {
+    const isInitialLoad = !hasInitializedOnce
+    hasInitializedOnce = true
+
     try {
       storageError.value = null
       const storedSettings = localStorage.getItem(SETTINGS_KEY)
@@ -155,6 +160,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
         kvBucketName.value = parsed.kvBucketName || 'dashboards'
         enableSharedDashboards.value = parsed.enableSharedDashboards ?? true
         startupDashboard.value = parsed.startupDashboard || null
+        lastSelectedDashboard.value = parsed.lastSelectedDashboard || null
       }
 
       const stored = localStorage.getItem(STORAGE_KEY)
@@ -162,14 +168,30 @@ export const useDashboardStore = defineStore('dashboard', () => {
         const parsed = JSON.parse(stored)
         localDashboards.value = parsed.dashboards || []
         localDashboards.value.forEach(d => { if (d.isLocked === undefined) d.isLocked = false })
-        
+
         let dashboardToLoad: Dashboard | undefined
-        if (startupDashboard.value?.storage === 'local') {
-          dashboardToLoad = localDashboards.value.find(d => d.id === startupDashboard.value?.id)
+
+        // On initial app load: use startupDashboard
+        // On navigation back: use lastSelectedDashboard to restore previous state
+        const targetDashboard = isInitialLoad ? startupDashboard.value : lastSelectedDashboard.value
+
+        if (targetDashboard?.storage === 'local') {
+          dashboardToLoad = localDashboards.value.find(d => d.id === targetDashboard.id)
+        } else if (targetDashboard?.storage === 'kv' && enableSharedDashboards.value) {
+          // Remote dashboard will be loaded after NATS connects (handled by watcher)
+          // Don't load a local dashboard if user was viewing a remote one
         }
-        if (!dashboardToLoad && parsed.activeDashboardId) {
-           dashboardToLoad = localDashboards.value.find(d => d.id === parsed.activeDashboardId)
+
+        // Fallback to activeDashboardId or first dashboard if target not found
+        if (!dashboardToLoad && !targetDashboard?.storage) {
+          if (parsed.activeDashboardId) {
+            dashboardToLoad = localDashboards.value.find(d => d.id === parsed.activeDashboardId)
+          }
+          if (!dashboardToLoad && localDashboards.value.length > 0) {
+            dashboardToLoad = localDashboards.value[0]
+          }
         }
+
         if (dashboardToLoad) setActiveDashboard(dashboardToLoad)
       } else {
         const defaultDash = createDefaultDashboard('My Dashboard')
@@ -191,7 +213,8 @@ export const useDashboardStore = defineStore('dashboard', () => {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify({
         kvBucketName: kvBucketName.value,
         enableSharedDashboards: enableSharedDashboards.value,
-        startupDashboard: startupDashboard.value
+        startupDashboard: startupDashboard.value,
+        lastSelectedDashboard: lastSelectedDashboard.value
       }))
       const data = {
         dashboards: localDashboards.value,
@@ -441,7 +464,14 @@ export const useDashboardStore = defineStore('dashboard', () => {
     initVariables(dashboard.variables)
     isDirty.value = false
     remoteChanged.value = false
-    if (dashboard.storage === 'local') saveToStorage()
+
+    // Track last selected dashboard for navigation restoration
+    const idOrKey = dashboard.storage === 'kv' ? dashboard.kvKey : dashboard.id
+    if (idOrKey) {
+      lastSelectedDashboard.value = { id: idOrKey, storage: dashboard.storage || 'local' }
+    }
+
+    saveToStorage()
   }
 
   function createDashboard(name: string): Dashboard | null {
@@ -679,8 +709,17 @@ export const useDashboardStore = defineStore('dashboard', () => {
   watch(() => natsStore.isConnected, (connected) => {
     if (connected) {
       if (enableSharedDashboards.value) refreshRemoteKeys()
-      if (startupDashboard.value?.storage === 'kv' && enableSharedDashboards.value) {
-        loadRemoteDashboard(startupDashboard.value.id)
+
+      // Load remote dashboard if the last selected (or startup) was a KV dashboard
+      // Prioritize lastSelected to restore navigation state, fallback to startup for initial load
+      const kvDashboardToLoad = lastSelectedDashboard.value?.storage === 'kv'
+        ? lastSelectedDashboard.value
+        : startupDashboard.value?.storage === 'kv'
+          ? startupDashboard.value
+          : null
+
+      if (kvDashboardToLoad && enableSharedDashboards.value) {
+        loadRemoteDashboard(kvDashboardToLoad.id)
       }
     }
   })

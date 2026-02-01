@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 import { formatDate } from '@/utils/format'
 import type { NebulaHost } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
@@ -10,6 +11,7 @@ import BaseCard from '@/components/ui/BaseCard.vue'
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
+const { confirm } = useConfirm()
 
 const host = ref<NebulaHost | null>(null)
 const loading = ref(true)
@@ -54,8 +56,15 @@ async function loadHost() {
 
 async function handleDelete() {
   if (!host.value) return
-  if (!confirm(`Delete Nebula host "${host.value.hostname}"? This cannot be undone.`)) return
-  
+  const confirmed = await confirm({
+    title: 'Delete Nebula Host',
+    message: `Are you sure you want to delete "${host.value.hostname}"?`,
+    details: 'This will invalidate the host certificate. The host will no longer be able to connect to the overlay network.',
+    confirmText: 'Delete',
+    variant: 'danger'
+  })
+  if (!confirmed) return
+
   try {
     await pb.collection('nebula_hosts').delete(host.value.id)
     toast.success('Nebula host deleted')

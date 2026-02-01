@@ -174,6 +174,9 @@ import { useNatsStore } from '@/stores/nats'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useWidgetDataStore } from '@/stores/widgetData'
 import { getSubscriptionManager } from '@/composables/useSubscriptionManager'
+import { useConfirm } from '@/composables/useConfirm'
+
+const { confirm } = useConfirm()
 
 const props = defineProps<{ modelValue: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
@@ -200,11 +203,18 @@ function close() {
   emit('update:modelValue', false)
 }
 
-function clearBuffers() {
-  if (confirm('Clear all message buffers? This cannot be undone.')) {
-    dataStore.clearAllBuffers()
-    refreshStats()
-  }
+async function clearBuffers() {
+  const confirmed = await confirm({
+    title: 'Clear Buffers',
+    message: 'Are you sure you want to clear all message buffers?',
+    details: 'This will remove all buffered data from widgets. This cannot be undone.',
+    confirmText: 'Clear Buffers',
+    variant: 'warning'
+  })
+  if (!confirmed) return
+
+  dataStore.clearAllBuffers()
+  refreshStats()
 }
 
 function copyDebugInfo() {

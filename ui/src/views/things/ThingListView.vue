@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
 import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 import { pb } from '@/utils/pb'
 import { formatDate } from '@/utils/format'
 import type { Thing } from '@/types/pocketbase'
@@ -12,6 +13,7 @@ import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 
 const router = useRouter()
 const toast = useToast()
+const { confirm } = useConfirm()
 
 // Pagination
 const {
@@ -111,8 +113,15 @@ function handleRowClick(thing: Thing) {
  * Handle delete
  */
 async function handleDelete(thing: Thing) {
-  if (!confirm(`Delete "${thing.name}"? This cannot be undone.`)) return
-  
+  const confirmed = await confirm({
+    title: 'Delete Thing',
+    message: `Are you sure you want to delete "${thing.name}"?`,
+    details: 'This action cannot be undone.',
+    confirmText: 'Delete',
+    variant: 'danger'
+  })
+  if (!confirmed) return
+
   try {
     await pb.collection('things').delete(thing.id)
     toast.success('Thing deleted')

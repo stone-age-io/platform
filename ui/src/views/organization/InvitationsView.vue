@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { usePagination } from '@/composables/usePagination'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 import { pb } from '@/utils/pb'
 import { formatRelativeTime } from '@/utils/format'
 import type { Invitation } from '@/types/pocketbase'
@@ -12,6 +13,7 @@ import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 
 const authStore = useAuthStore()
 const toast = useToast()
+const { confirm } = useConfirm()
 
 // Pagination for invitations list
 const {
@@ -181,8 +183,15 @@ async function handleResend(invite: Invitation) {
  * Handle deleting invitation
  */
 async function handleDelete(invite: Invitation) {
-  if (!confirm(`Revoke invitation for ${invite.email}?`)) return
-  
+  const confirmed = await confirm({
+    title: 'Revoke Invitation',
+    message: `Are you sure you want to revoke the invitation for ${invite.email}?`,
+    details: 'The invitation link will no longer be valid.',
+    confirmText: 'Revoke',
+    variant: 'warning'
+  })
+  if (!confirmed) return
+
   try {
     await pb.collection('invites').delete(invite.id)
     toast.success('Invitation revoked')

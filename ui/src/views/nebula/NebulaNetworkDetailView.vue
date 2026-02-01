@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 import { formatDate } from '@/utils/format'
 import type { NebulaNetwork, NebulaHost } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
@@ -12,6 +13,7 @@ import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
+const { confirm } = useConfirm()
 
 const network = ref<NebulaNetwork | null>(null)
 const hosts = ref<NebulaHost[]>([])
@@ -64,8 +66,15 @@ async function loadNetwork() {
 
 async function handleDelete() {
   if (!network.value) return
-  if (!confirm(`Delete network "${network.value.name}"? This cannot be undone.`)) return
-  
+  const confirmed = await confirm({
+    title: 'Delete Nebula Network',
+    message: `Are you sure you want to delete "${network.value.name}"?`,
+    details: 'All hosts in this network will lose connectivity.',
+    confirmText: 'Delete',
+    variant: 'danger'
+  })
+  if (!confirmed) return
+
   try {
     await pb.collection('nebula_networks').delete(network.value.id)
     toast.success('Network deleted')

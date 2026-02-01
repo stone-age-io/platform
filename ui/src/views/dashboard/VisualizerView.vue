@@ -176,18 +176,28 @@ function handleOrgChange() {
   }
 }
 
+// Warn user before leaving with unsaved changes
+function handleBeforeUnload(e: BeforeUnloadEvent) {
+  if (dashboardStore.isDirty) {
+    e.preventDefault()
+    e.returnValue = '' // Required for Chrome
+  }
+}
+
 onMounted(() => {
   dashboardStore.loadFromStorage()
   if (natsStore.isConnected) {
     subscribeAllWidgets()
   }
   window.addEventListener('organization-changed', handleOrgChange)
+  window.addEventListener('beforeunload', handleBeforeUnload)
 })
 
 onUnmounted(() => {
   // Grug say: keep data warm during navigation
-  unsubscribeAllWidgets(true) 
+  unsubscribeAllWidgets(true)
   window.removeEventListener('organization-changed', handleOrgChange)
+  window.removeEventListener('beforeunload', handleBeforeUnload)
 })
 
 // Watchers

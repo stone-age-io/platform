@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
 import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 import { pb } from '@/utils/pb'
 import { formatDate } from '@/utils/format'
 import type { Organization } from '@/types/pocketbase'
@@ -12,6 +13,7 @@ import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 
 const router = useRouter()
 const toast = useToast()
+const { confirm } = useConfirm()
 
 const { items, loading, load, nextPage, prevPage, page, totalPages, totalItems } = usePagination<Organization>('organizations', 20)
 const searchQuery = ref('')
@@ -33,7 +35,15 @@ function handleRowClick(item: Organization) {
 }
 
 async function handleDelete(item: Organization) {
-  if (!confirm(`Delete "${item.name}"? This will delete ALL data associated with this organization.`)) return
+  const confirmed = await confirm({
+    title: 'Delete Organization',
+    message: `Are you sure you want to delete "${item.name}"?`,
+    details: 'This will delete ALL data associated with this organization including users, things, locations, and configurations. This action cannot be undone.',
+    confirmText: 'Delete Organization',
+    variant: 'danger'
+  })
+  if (!confirmed) return
+
   try {
     await pb.collection('organizations').delete(item.id)
     toast.success('Organization deleted')

@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
 import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 import { pb } from '@/utils/pb'
 import { formatDate } from '@/utils/format'
 import type { NatsUser } from '@/types/pocketbase'
@@ -12,6 +13,7 @@ import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 
 const router = useRouter()
 const toast = useToast()
+const { confirm } = useConfirm()
 
 // Pagination
 const {
@@ -96,8 +98,15 @@ function handleRowClick(user: NatsUser) {
  * Handle delete
  */
 async function handleDelete(user: NatsUser) {
-  if (!confirm(`Delete NATS user "${user.nats_username}"? This cannot be undone.`)) return
-  
+  const confirmed = await confirm({
+    title: 'Delete NATS User',
+    message: `Are you sure you want to delete "${user.nats_username}"?`,
+    details: 'This will invalidate any credentials issued to this user.',
+    confirmText: 'Delete',
+    variant: 'danger'
+  })
+  if (!confirmed) return
+
   try {
     await pb.collection('nats_users').delete(user.id)
     toast.success('NATS user deleted')

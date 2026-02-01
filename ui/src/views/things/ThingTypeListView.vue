@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
 import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 import { pb } from '@/utils/pb'
 import { formatDate } from '@/utils/format'
 import type { ThingType } from '@/types/pocketbase'
@@ -12,6 +13,7 @@ import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 
 const router = useRouter()
 const toast = useToast()
+const { confirm } = useConfirm()
 
 const { items, page, totalPages, totalItems, loading, load, nextPage, prevPage } = usePagination<ThingType>('thing_types', 20)
 const searchQuery = ref('')
@@ -35,7 +37,14 @@ const columns: Column<ThingType>[] = [
 async function loadData() { await load({ sort: 'name' }) }
 function handleRowClick(item: ThingType) { router.push(`/things/types/${item.id}/edit`) }
 async function handleDelete(item: ThingType) {
-  if (!confirm(`Delete type "${item.name}"?`)) return
+  const confirmed = await confirm({
+    title: 'Delete Thing Type',
+    message: `Are you sure you want to delete "${item.name}"?`,
+    details: 'Things using this type will not be deleted but will lose their type reference.',
+    confirmText: 'Delete',
+    variant: 'danger'
+  })
+  if (!confirmed) return
   try {
     await pb.collection('thing_types').delete(item.id)
     toast.success('Deleted')

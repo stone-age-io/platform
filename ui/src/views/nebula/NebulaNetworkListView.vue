@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
 import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 import { pb } from '@/utils/pb'
 import { formatDate } from '@/utils/format'
 import type { NebulaNetwork } from '@/types/pocketbase'
@@ -12,6 +13,7 @@ import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 
 const router = useRouter()
 const toast = useToast()
+const { confirm } = useConfirm()
 
 // Pagination
 const {
@@ -96,8 +98,15 @@ function handleRowClick(network: NebulaNetwork) {
  * Handle delete
  */
 async function handleDelete(network: NebulaNetwork) {
-  if (!confirm(`Delete network "${network.name}"? This cannot be undone.`)) return
-  
+  const confirmed = await confirm({
+    title: 'Delete Nebula Network',
+    message: `Are you sure you want to delete "${network.name}"?`,
+    details: 'All hosts in this network will lose connectivity.',
+    confirmText: 'Delete',
+    variant: 'danger'
+  })
+  if (!confirmed) return
+
   try {
     await pb.collection('nebula_networks').delete(network.id)
     toast.success('Network deleted')
