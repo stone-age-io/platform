@@ -79,6 +79,8 @@ github.com/skeeeon/pb-audit v0.0.0-20251104211928-996aeeebaaac h1:dtisbOFVs5IfJU
 github.com/skeeeon/pb-audit v0.0.0-20251104211928-996aeeebaaac/go.mod h1:IR+vQjINvi2fVnQlY1k7P+7iSCag9TRUsG6JChEykTc=
 github.com/skeeeon/pb-nats v0.0.0-20260110000918-667b2c8eb8ac h1:l6ew86T/Fyj1Tlx6cS1z798Tl04g2MW9dBhx0BPeDYk=
 github.com/skeeeon/pb-nats v0.0.0-20260110000918-667b2c8eb8ac/go.mod h1:MVxRBAkZTbbm3qhIutnZNn9SjStKpepsaHizj72MYik=
+github.com/skeeeon/pb-nats v0.0.0-20260123023112-4c056d1b34cb h1:UvSl/3FGYOBUNo3ALYSjVqrTfiH8+S5pOCVYvu33mUs=
+github.com/skeeeon/pb-nats v0.0.0-20260123023112-4c056d1b34cb/go.mod h1:MVxRBAkZTbbm3qhIutnZNn9SjStKpepsaHizj72MYik=
 github.com/skeeeon/pb-nebula v0.0.0-20251225022029-8676cb81a299 h1:VeYYC7RXcZkoZXuLtaU7WPbomam2CP1YBvGgXU7bINE=
 github.com/skeeeon/pb-nebula v0.0.0-20251225022029-8676cb81a299/go.mod h1:EU+Xo9EjJZg85ipnHzaCzTFQXvPudCOaT5W2Gy641ug=
 github.com/skeeeon/pb-tenancy v0.0.0-20251126004748-da57c8293c1f h1:RxYPD+atn3RJ6mBnxbKzjwxM/85P3yWbQdp0xdz30oc=
@@ -127,6 +129,8 @@ golang.org/x/sys v0.0.0-20190215142949-d0b11bdaac8a/go.mod h1:STP8DvDyc/dI5b8T5h
 golang.org/x/sys v0.6.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/sys v0.39.0 h1:CvCKL8MeisomCi6qNZ+wbb0DN9E5AATixKsvNtMoMFk=
 golang.org/x/sys v0.39.0/go.mod h1:OgkHotnGiDImocRcuBABYBEXf8A9a87e/uXjp9XT3ks=
+golang.org/x/term v0.38.0 h1:PQ5pkm/rLO6HnxFR7N2lJHOZX6Kez5Y1gDSJla6jo7Q=
+golang.org/x/term v0.38.0/go.mod h1:bSEAKrOT1W+VSu9TSCMtoGEOUcKxOKgl3LE5QEF/xVg=
 golang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=
 golang.org/x/text v0.3.2/go.mod h1:bEr9sfX3Q8Zfm5fL9x+3itogRgK3+ptLWKqgva+5dAk=
 golang.org/x/text v0.32.0 h1:ZD01bjUt1FQ9WJ0ClOL5vxgxOI/sVCNgX1YtKwcY0mU=

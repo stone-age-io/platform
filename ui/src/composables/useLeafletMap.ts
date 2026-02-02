@@ -151,7 +151,7 @@ export function useLeafletMap() {
       marker.bindTooltip(label, {
         permanent: false,
         direction: 'top',
-        offset: [0, -40]
+        offset: [-15, -15]
       })
 
       markerInstances.set(id, marker)
