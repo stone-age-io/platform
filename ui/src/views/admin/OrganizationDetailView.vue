@@ -4,16 +4,20 @@ import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
 import { formatDate } from '@/utils/format'
-import { useAuthStore } from '@/stores/auth'
-import type { Organization } from '@/types/pocketbase'
+import type { Organization, User } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
-const authStore = useAuthStore()
 
-const org = ref<Organization | null>(null)
+interface OrganizationWithExpand extends Organization {
+  expand?: {
+    owner?: User
+  }
+}
+
+const org = ref<OrganizationWithExpand | null>(null)
 const stats = ref({ members: 0, things: 0 })
 const loading = ref(true)
 
@@ -22,14 +26,16 @@ const id = route.params.id as string
 async function loadData() {
   loading.value = true
   try {
-    org.value = await pb.collection('organizations').getOne(id)
-    
-    // Load Stats (Superuser bypasses rules, so we must manually filter by org id)
+    org.value = await pb.collection('organizations').getOne<OrganizationWithExpand>(id, {
+      expand: 'owner',
+    })
+
+    // Load Stats (Operator bypasses rules, so we must manually filter by org id)
     const [m, t] = await Promise.all([
       pb.collection('memberships').getList(1, 1, { filter: `organization = "${id}"` }),
       pb.collection('things').getList(1, 1, { filter: `organization = "${id}"` }),
     ])
-    
+
     stats.value = { members: m.totalItems, things: t.totalItems }
   } catch (err: any) {
     toast.error('Failed to load organization')
@@ -37,13 +43,6 @@ async function loadData() {
   } finally {
     loading.value = false
   }
-}
-
-// "God Mode" Switch
-async function switchToOrg() {
-  await authStore.switchOrganization(id)
-  toast.success(`Switched context to ${org.value?.name}`)
-  router.push('/')
 }
 
 onMounted(() => loadData())
@@ -72,9 +71,6 @@ onMounted(() => loadData())
           </div>
         </div>
         <div class="flex gap-2">
-          <button @click="switchToOrg" class="btn btn-outline">
-            👁️ Switch Context
-          </button>
           <router-link :to="`/organizations/${org.id}/edit`" class="btn btn-primary">
             Edit
           </router-link>
@@ -103,8 +99,17 @@ onMounted(() => loadData())
                 <dd class="font-mono text-sm">{{ org.id }}</dd>
               </div>
               <div>
+                <dt class="text-sm font-medium opacity-70">Owner</dt>
+                <dd>
+                  {{ org.expand?.owner?.email || 'Unknown' }}
+                  <span v-if="org.expand?.owner?.name" class="opacity-70">
+                    ({{ org.expand.owner.name }})
+                  </span>
+                </dd>
+              </div>
+              <div>
                 <dt class="text-sm font-medium opacity-70">Description</dt>
-                <dd>{{ org.description || '-' }}</dd>
+                <dd>{{ org.description || '—' }}</dd>
               </div>
               <div>
                 <dt class="text-sm font-medium opacity-70">Created</dt>
