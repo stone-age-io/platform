@@ -301,6 +301,16 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 				log.Printf("✅ Created user '%s'", email)
 			}
 
+			// Set user as operator (for org management access)
+			if !user.GetBool("is_operator") {
+				user.Set("is_operator", true)
+				if err := app.Save(user); err != nil {
+					log.Printf("⚠️ Failed to set operator flag: %v", err)
+				} else {
+					log.Printf("✅ User '%s' set as operator", email)
+				}
+			}
+
 			// 3. Create/Get Organization
 			orgCol, err := app.FindCollectionByNameOrId(orgColName)
 			if err != nil {

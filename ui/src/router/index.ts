@@ -26,30 +26,30 @@ const routes: RouteRecordRaw[] = [
         name: 'Visualizer',
         component: () => import('@/views/dashboard/VisualizerView.vue'),
       },
-      // Admin
+      // Organizations (Operators and Super Users)
       {
         path: 'organizations',
         name: 'AdminOrgList',
         component: () => import('@/views/admin/OrganizationListView.vue'),
-        meta: { requiresSuperUser: true },
+        meta: { requiresOperator: true },
       },
       {
         path: 'organizations/new',
         name: 'AdminOrgNew',
         component: () => import('@/views/admin/OrganizationFormView.vue'),
-        meta: { requiresSuperUser: true },
+        meta: { requiresOperator: true },
       },
       {
         path: 'organizations/:id',
         name: 'AdminOrgDetail',
         component: () => import('@/views/admin/OrganizationDetailView.vue'),
-        meta: { requiresSuperUser: true },
+        meta: { requiresOperator: true },
       },
       {
         path: 'organizations/:id/edit',
         name: 'AdminOrgEdit',
         component: () => import('@/views/admin/OrganizationFormView.vue'),
-        meta: { requiresSuperUser: true },
+        meta: { requiresOperator: true },
       },
 
       // Things
@@ -123,13 +123,19 @@ const router = createRouter({
 
 router.beforeEach((to, _from, next) => {
   const authStore = useAuthStore()
-  
+
   if (to.meta.requiresAuth !== false && !authStore.isAuthenticated) {
     next('/login')
     return
   }
-  
+
   if (to.meta.requiresSuperUser && !authStore.isSuperAdmin) {
+    next('/')
+    return
+  }
+
+  // Operator routes: accessible to operators and super users
+  if (to.meta.requiresOperator && !authStore.canManageOrganizations) {
     next('/')
     return
   }
@@ -141,7 +147,7 @@ router.beforeEach((to, _from, next) => {
       return
     }
   }
-  
+
   next()
 })
 

@@ -53,6 +53,15 @@ export const useAuthStore = defineStore('auth', () => {
   const canManageUsers = computed(() => {
     return ['owner', 'admin'].includes(userRole.value)
   })
+
+  // Operator: can manage all organizations (create/edit/delete orgs, invite to any org)
+  const isOperator = computed(() => {
+    if (isSuperAdmin.value) return true
+    return (user.value as User)?.is_operator === true
+  })
+
+  // Can access /organizations routes for org management
+  const canManageOrganizations = computed(() => isOperator.value)
   
   // ============================================================================
   // ACTIONS
@@ -220,6 +229,8 @@ export const useAuthStore = defineStore('auth', () => {
     currentNatsUser,
     userRole,
     canManageUsers,
+    isOperator,
+    canManageOrganizations,
     
     // Actions
     login,

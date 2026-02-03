@@ -6,7 +6,7 @@ import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { pb } from '@/utils/pb'
 import { formatRelativeTime } from '@/utils/format'
-import type { Invitation } from '@/types/pocketbase'
+import type { Invitation, Organization } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
@@ -27,13 +27,39 @@ const {
   prevPage,
 } = usePagination<Invitation>('invites', 20)
 
+// All organizations (for operators to select from)
+const allOrganizations = ref<Organization[]>([])
+const loadingOrgs = ref(false)
+
 // Form state
 const showInviteForm = ref(false)
 const inviteForm = ref({
   email: '',
   role: 'member' as 'admin' | 'member',
+  organization: '' as string, // For operators to select target org
 })
 const submitting = ref(false)
+
+/**
+ * Load all organizations for operator org selector
+ */
+async function loadOrganizations() {
+  if (!authStore.isOperator) return
+  loadingOrgs.value = true
+  try {
+    allOrganizations.value = await pb.collection('organizations').getFullList<Organization>({
+      sort: 'name',
+    })
+    // Default to current org if available
+    if (authStore.currentOrgId && !inviteForm.value.organization) {
+      inviteForm.value.organization = authStore.currentOrgId
+    }
+  } catch (err) {
+    console.error('Failed to load organizations:', err)
+  } finally {
+    loadingOrgs.value = false
+  }
+}
 
 // Search
 const searchQuery = ref('')
@@ -134,26 +160,39 @@ async function handleSendInvite() {
     toast.error('Email is required')
     return
   }
-  
+
+  // Determine target organization
+  const targetOrgId = authStore.isOperator
+    ? inviteForm.value.organization
+    : authStore.currentOrgId
+
+  if (!targetOrgId) {
+    toast.error('Please select an organization')
+    return
+  }
+
   submitting.value = true
-  
+
   try {
     // Simply create the invitation record
     // The pb-tenancy library handles sending the email automatically
     await pb.collection('invites').create({
       email: inviteForm.value.email,
       role: inviteForm.value.role,
-      organization: authStore.currentOrgId,
+      organization: targetOrgId,
       invited_by: authStore.user?.id,
     })
-    
+
     toast.success('Invitation sent!')
-    
+
     // Reset form and reload list
     inviteForm.value.email = ''
     inviteForm.value.role = 'member'
+    if (authStore.isOperator && authStore.currentOrgId) {
+      inviteForm.value.organization = authStore.currentOrgId
+    }
     showInviteForm.value = false
-    
+
     await loadInvitations()
   } catch (err: any) {
     toast.error(err.message || 'Failed to send invitation')
@@ -212,6 +251,7 @@ function handleOrgChange() {
 
 onMounted(() => {
   loadInvitations()
+  loadOrganizations()
   window.addEventListener('organization-changed', handleOrgChange)
 })
 
@@ -242,14 +282,41 @@ onUnmounted(() => {
     <!-- Invite Form -->
     <BaseCard v-if="showInviteForm" title="Send New Invitation">
       <form @submit.prevent="handleSendInvite" class="space-y-4">
+        <!-- Organization (Operators only) -->
+        <div v-if="authStore.isOperator" class="form-control">
+          <label class="label">
+            <span class="label-text">Organization *</span>
+          </label>
+          <select
+            v-model="inviteForm.organization"
+            class="select select-bordered"
+            :disabled="submitting || loadingOrgs"
+            required
+          >
+            <option value="" disabled>Select organization...</option>
+            <option
+              v-for="org in allOrganizations"
+              :key="org.id"
+              :value="org.id"
+            >
+              {{ org.name }}
+            </option>
+          </select>
+          <label class="label">
+            <span class="label-text-alt">
+              As an operator, you can invite users to any organization
+            </span>
+          </label>
+        </div>
+
         <!-- Email -->
         <div class="form-control">
           <label class="label">
             <span class="label-text">Email Address *</span>
           </label>
-          <input 
+          <input
             v-model="inviteForm.email"
-            type="email" 
+            type="email"
             placeholder="colleague@example.com"
             class="input input-bordered"
             required

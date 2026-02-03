@@ -1608,6 +1608,15 @@
       },
       {
         "hidden": false,
+        "id": "bool_is_operator",
+        "name": "is_operator",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "bool"
+      },
+      {
+        "hidden": false,
         "id": "autodate2990389176",
         "name": "created",
         "onCreate": true,
@@ -2017,7 +2026,7 @@
     "id": "pbc_2452428166",
     "listRule": "// 1. The invitation must belong to the user's active organization context.\n// 2. The user must be the Organization Owner OR have an Admin/Owner membership in that org.\norganization = @request.auth.current_organization && \n(\n  (organization.owner = @request.auth.id) || \n  (organization.memberships_via_organization.user ?= @request.auth.id && \n   organization.memberships_via_organization.role ?!= \"member\")\n)",
     "viewRule": "// 1. The invitation must belong to the user's active organization context.\n// 2. The user must be the Organization Owner OR have an Admin/Owner membership in that org.\norganization = @request.auth.current_organization && \n(\n  (organization.owner = @request.auth.id) || \n  (organization.memberships_via_organization.user ?= @request.auth.id && \n   organization.memberships_via_organization.role ?!= \"member\")\n)",
-    "createRule": "// 1. Requester must be a User.\n// 2. The new invitation must be assigned to the user's current organization.\n// 3. The user must have management permissions for that organization.\n@request.auth.collectionName = \"users\" && \n@request.body.organization = @request.auth.current_organization && \n(\n  (@collection.organizations.id ?= @request.body.organization && @collection.organizations.owner ?= @request.auth.id) ||\n  (@collection.memberships.user ?= @request.auth.id && \n   @collection.memberships.organization ?= @request.body.organization && \n   @collection.memberships.role ?!= \"member\")\n)",
+    "createRule": "// Operators can invite to any org, OR admin/owner of the target org\n@request.auth.collectionName = \"users\" && \n(\n  @request.auth.is_operator = true ||\n  (\n    @request.body.organization = @request.auth.current_organization &&\n    (\n      (@collection.organizations.id ?= @request.body.organization && @collection.organizations.owner ?= @request.auth.id) ||\n      (@collection.memberships.user ?= @request.auth.id && \n       @collection.memberships.organization ?= @request.body.organization && \n       @collection.memberships.role ?!= \"member\")\n    )\n  )\n)",
     "updateRule": "// 1. Must be in the active organization context.\n// 2. Requester must be an Admin/Owner.\n// 3. Moving an invitation to a different organization is forbidden.\norganization = @request.auth.current_organization && \n(\n  (organization.owner = @request.auth.id) || \n  (organization.memberships_via_organization.user ?= @request.auth.id && \n   organization.memberships_via_organization.role ?!= \"member\")\n) && \n@request.body.organization:changed = false",
     "deleteRule": "// 1. Must be in the active organization context.\n// 2. Only Admins/Owners can revoke (delete) a pending invitation.\norganization = @request.auth.current_organization && \n(\n  (organization.owner = @request.auth.id) || \n  (organization.memberships_via_organization.user ?= @request.auth.id && \n   organization.memberships_via_organization.role ?!= \"member\")\n)",
     "name": "invites",
@@ -3469,11 +3478,11 @@
   },
   {
     "id": "pbc_2873630990",
-    "listRule": "@request.auth.id != '' && (@collection.memberships.user.id ?= @request.auth.id && @collection.memberships.organization.id ?= id)",
-    "viewRule": "@request.auth.id != '' && (@collection.memberships.user.id ?= @request.auth.id && @collection.memberships.organization.id ?= id)",
-    "createRule": "@request.auth.id != ''",
-    "updateRule": "owner = @request.auth.id",
-    "deleteRule": "owner = @request.auth.id",
+    "listRule": "@request.auth.id != '' && (@request.auth.is_operator = true || (@collection.memberships.user.id ?= @request.auth.id && @collection.memberships.organization.id ?= id))",
+    "viewRule": "@request.auth.id != '' && (@request.auth.is_operator = true || (@collection.memberships.user.id ?= @request.auth.id && @collection.memberships.organization.id ?= id))",
+    "createRule": "@request.auth.id != '' && @request.auth.is_operator = true",
+    "updateRule": "@request.auth.is_operator = true || owner = @request.auth.id",
+    "deleteRule": "@request.auth.is_operator = true || owner = @request.auth.id",
     "name": "organizations",
     "type": "base",
     "fields": [
