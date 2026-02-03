@@ -183,143 +183,153 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="max-w-2xl mx-auto space-y-6">
-    <div class="breadcrumbs text-sm">
-      <ul>
-        <li><router-link to="/organizations">Organizations</router-link></li>
-        <li>{{ isEdit ? 'Edit' : 'New' }}</li>
-      </ul>
+  <div class="space-y-6">
+    <!-- Header -->
+    <div>
+      <div class="breadcrumbs text-sm">
+        <ul>
+          <li><router-link to="/organizations">Organizations</router-link></li>
+          <li>{{ isEdit ? 'Edit' : 'New' }}</li>
+        </ul>
+      </div>
+      <h1 class="text-3xl font-bold">{{ isEdit ? 'Edit' : 'Create' }} Organization</h1>
     </div>
 
-    <h1 class="text-3xl font-bold">{{ isEdit ? 'Edit' : 'Create' }} Organization</h1>
-
-    <form @submit.prevent="submit">
-      <BaseCard>
-        <div class="space-y-4">
-          <!-- Name -->
-          <div class="form-control">
-            <label class="label"><span class="label-text">Name *</span></label>
-            <input v-model="form.name" type="text" class="input input-bordered" required :disabled="loading" />
-          </div>
-
-          <!-- Description -->
-          <div class="form-control">
-            <label class="label"><span class="label-text">Description</span></label>
-            <textarea v-model="form.description" class="textarea textarea-bordered" rows="3" :disabled="loading"></textarea>
-          </div>
-
-          <!-- Owner Selection -->
-          <div class="form-control">
-            <label class="label"><span class="label-text">Owner *</span></label>
-
-            <!-- Mode Toggle -->
-            <div class="tabs tabs-boxed mb-3 w-fit">
-              <a
-                class="tab"
-                :class="{ 'tab-active': ownerMode === 'existing' }"
-                @click="ownerMode = 'existing'"
-              >
-                Select Existing User
-              </a>
-              <a
-                class="tab"
-                :class="{ 'tab-active': ownerMode === 'new' }"
-                @click="ownerMode = 'new'"
-              >
-                Create New User
-              </a>
-            </div>
-
-            <!-- Existing User Dropdown -->
-            <div v-if="ownerMode === 'existing'">
-              <select
-                v-model="form.owner"
-                class="select select-bordered w-full"
-                required
-                :disabled="loadingUsers || loading"
-              >
-                <option value="" disabled>Select owner...</option>
-                <option v-for="u in users" :key="u.id" :value="u.id">
-                  {{ u.email }}{{ u.name ? ` (${u.name})` : '' }}
-                </option>
-              </select>
-              <label class="label">
-                <span class="label-text-alt">The owner has full control over this organization</span>
-              </label>
-            </div>
-
-            <!-- New User Form -->
-            <div v-else class="space-y-3 p-4 bg-base-200 rounded-lg">
+    <form @submit.prevent="submit" class="space-y-6">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        <!-- Left Column: Organization Details -->
+        <div class="space-y-6">
+          <BaseCard title="Organization Details">
+            <div class="space-y-4">
+              <!-- Name -->
               <div class="form-control">
-                <label class="label py-1"><span class="label-text">Email *</span></label>
-                <input
-                  v-model="newUserForm.email"
-                  type="email"
-                  class="input input-bordered input-sm"
-                  placeholder="user@example.com"
-                  :disabled="loading"
-                />
+                <label class="label"><span class="label-text">Name *</span></label>
+                <input v-model="form.name" type="text" class="input input-bordered" required :disabled="loading" />
               </div>
 
+              <!-- Description -->
               <div class="form-control">
-                <label class="label py-1"><span class="label-text">Name</span></label>
-                <input
-                  v-model="newUserForm.name"
-                  type="text"
-                  class="input input-bordered input-sm"
-                  placeholder="John Doe"
-                  :disabled="loading"
-                />
+                <label class="label"><span class="label-text">Description</span></label>
+                <textarea v-model="form.description" class="textarea textarea-bordered" rows="3" :disabled="loading"></textarea>
               </div>
 
+              <!-- Active Toggle -->
               <div class="form-control">
-                <label class="label cursor-pointer justify-start gap-3 py-1">
-                  <input
-                    v-model="newUserForm.generatePassword"
-                    type="checkbox"
-                    class="checkbox checkbox-sm"
-                    :disabled="loading"
-                  />
-                  <span class="label-text">Auto-generate password</span>
+                <label class="label cursor-pointer justify-start gap-4">
+                  <input v-model="form.active" type="checkbox" class="toggle toggle-success" :disabled="loading" />
+                  <span class="label-text">Active</span>
+                </label>
+              </div>
+            </div>
+          </BaseCard>
+        </div>
+
+        <!-- Right Column: Owner -->
+        <div class="space-y-6">
+          <BaseCard title="Owner">
+            <div class="space-y-4">
+              <!-- Mode Toggle -->
+              <div class="tabs tabs-boxed w-fit">
+                <a
+                  class="tab"
+                  :class="{ 'tab-active': ownerMode === 'existing' }"
+                  @click="ownerMode = 'existing'"
+                >
+                  Select Existing User
+                </a>
+                <a
+                  class="tab"
+                  :class="{ 'tab-active': ownerMode === 'new' }"
+                  @click="ownerMode = 'new'"
+                >
+                  Create New User
+                </a>
+              </div>
+
+              <!-- Existing User Dropdown -->
+              <div v-if="ownerMode === 'existing'">
+                <select
+                  v-model="form.owner"
+                  class="select select-bordered w-full"
+                  required
+                  :disabled="loadingUsers || loading"
+                >
+                  <option value="" disabled>Select owner...</option>
+                  <option v-for="u in users" :key="u.id" :value="u.id">
+                    {{ u.email }}{{ u.name ? ` (${u.name})` : '' }}
+                  </option>
+                </select>
+                <label class="label">
+                  <span class="label-text-alt">The owner has full control over this organization</span>
                 </label>
               </div>
 
-              <div v-if="!newUserForm.generatePassword" class="form-control">
-                <label class="label py-1"><span class="label-text">Password *</span></label>
-                <input
-                  v-model="newUserForm.password"
-                  type="password"
-                  class="input input-bordered input-sm"
-                  placeholder="Minimum 8 characters"
-                  :disabled="loading"
-                />
+              <!-- New User Form -->
+              <div v-else class="space-y-3 p-4 bg-base-200 rounded-lg">
+                <div class="form-control">
+                  <label class="label py-1"><span class="label-text">Email *</span></label>
+                  <input
+                    v-model="newUserForm.email"
+                    type="email"
+                    class="input input-bordered input-sm"
+                    placeholder="user@example.com"
+                    :disabled="loading"
+                  />
+                </div>
+
+                <div class="form-control">
+                  <label class="label py-1"><span class="label-text">Name</span></label>
+                  <input
+                    v-model="newUserForm.name"
+                    type="text"
+                    class="input input-bordered input-sm"
+                    placeholder="John Doe"
+                    :disabled="loading"
+                  />
+                </div>
+
+                <div class="form-control">
+                  <label class="label cursor-pointer justify-start gap-3 py-1">
+                    <input
+                      v-model="newUserForm.generatePassword"
+                      type="checkbox"
+                      class="checkbox checkbox-sm"
+                      :disabled="loading"
+                    />
+                    <span class="label-text">Auto-generate password</span>
+                  </label>
+                </div>
+
+                <div v-if="!newUserForm.generatePassword" class="form-control">
+                  <label class="label py-1"><span class="label-text">Password *</span></label>
+                  <input
+                    v-model="newUserForm.password"
+                    type="password"
+                    class="input input-bordered input-sm"
+                    placeholder="Minimum 8 characters"
+                    :disabled="loading"
+                  />
+                </div>
+
+                <p class="text-xs opacity-70">
+                  The user can use "Forgot Password" to set their own password later.
+                </p>
               </div>
-
-              <p class="text-xs opacity-70">
-                The user can use "Forgot Password" to set their own password later.
-              </p>
             </div>
-          </div>
-
-          <!-- Active Toggle -->
-          <div class="form-control">
-            <label class="label cursor-pointer justify-start gap-4">
-              <input v-model="form.active" type="checkbox" class="toggle toggle-success" :disabled="loading" />
-              <span class="label-text">Active</span>
-            </label>
-          </div>
+          </BaseCard>
         </div>
+      </div>
 
-        <div class="flex justify-end gap-2 mt-6">
-          <button type="button" class="btn btn-ghost" @click="router.back()" :disabled="loading">
-            Cancel
-          </button>
-          <button type="submit" class="btn btn-primary" :disabled="loading">
-            <span v-if="loading" class="loading loading-spinner"></span>
-            Save
-          </button>
-        </div>
-      </BaseCard>
+      <!-- Action Buttons -->
+      <div class="flex flex-col sm:flex-row justify-end gap-2 sm:gap-4">
+        <button type="button" class="btn btn-ghost order-2 sm:order-1" @click="router.back()" :disabled="loading">
+          Cancel
+        </button>
+        <button type="submit" class="btn btn-primary order-1 sm:order-2" :disabled="loading">
+          <span v-if="loading" class="loading loading-spinner"></span>
+          Save
+        </button>
+      </div>
     </form>
 
     <!-- Generated Password Modal -->
