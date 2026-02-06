@@ -232,7 +232,7 @@ onUnmounted(() => {
         <template #actions="{ item }">
           <button 
             @click.stop="handleRowClick(item)"
-            class="btn btn-ghost btn-sm"
+            class="btn btn-xs flex-1 sm:flex-initial"
           >
             {{ authStore.canManageUsers ? 'Manage' : 'View' }}
           </button>

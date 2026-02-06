@@ -534,7 +534,7 @@ onUnmounted(() => {
         <template #actions="{ item }">
           <button 
             @click="handleResend(item)"
-            class="btn btn-ghost btn-sm flex-1 sm:flex-initial"
+            class="btn btn-sm flex-1 sm:flex-initial"
             :disabled="!isExpired(item)"
             :title="isExpired(item) ? 'Resend invitation' : 'Cannot resend active invitation'"
           >
@@ -542,7 +542,7 @@ onUnmounted(() => {
           </button>
           <button 
             @click="handleDelete(item)" 
-            class="btn btn-ghost btn-sm text-error flex-1 sm:flex-initial"
+            class="btn btn-sm text-error flex-1 sm:flex-initial"
           >
             Revoke
           </button>
