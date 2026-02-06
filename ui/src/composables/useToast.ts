@@ -60,11 +60,11 @@ export function useToast() {
     toasts.value = []
   }
   
-  // Convenience methods
-  const success = (msg: string, duration?: number) => show(msg, 'success', duration)
-  const error = (msg: string, duration?: number) => show(msg, 'error', duration)
-  const info = (msg: string, duration?: number) => show(msg, 'info', duration)
-  const warning = (msg: string, duration?: number) => show(msg, 'warning', duration)
+  // Convenience methods with type-appropriate default durations
+  const success = (msg: string, duration?: number) => show(msg, 'success', duration ?? 3000)
+  const error = (msg: string, duration?: number) => show(msg, 'error', duration ?? 5000)
+  const info = (msg: string, duration?: number) => show(msg, 'info', duration ?? 3000)
+  const warning = (msg: string, duration?: number) => show(msg, 'warning', duration ?? 4000)
   
   return {
     toasts,

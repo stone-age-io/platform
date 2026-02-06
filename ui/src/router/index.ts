@@ -114,6 +114,8 @@ const routes: RouteRecordRaw[] = [
       { path: 'settings', name: 'Settings', component: () => import('@/views/settings/UserSettingsView.vue') },
     ],
   },
+  // Catch-all: redirect unknown paths to home
+  { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 
 const router = createRouter({
