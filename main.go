@@ -282,7 +282,7 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 			// 2. Create/Get User
 			usersCol, err := app.FindCollectionByNameOrId("users")
 			if err != nil {
-				log.Fatal(err)
+				log.Fatalf("❌ Failed to find users collection: %v", err)
 			}
 
 			var user *core.Record
@@ -301,10 +301,20 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 				log.Printf("✅ Created user '%s'", email)
 			}
 
+			// Set user as operator (for org management access)
+			if !user.GetBool("is_operator") {
+				user.Set("is_operator", true)
+				if err := app.Save(user); err != nil {
+					log.Printf("⚠️ Failed to set operator flag: %v", err)
+				} else {
+					log.Printf("✅ User '%s' set as operator", email)
+				}
+			}
+
 			// 3. Create/Get Organization
 			orgCol, err := app.FindCollectionByNameOrId(orgColName)
 			if err != nil {
-				log.Fatal(err)
+				log.Fatalf("❌ Failed to find organizations collection '%s': %v", orgColName, err)
 			}
 
 			var org *core.Record
@@ -425,7 +435,7 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 			// 8. Create Membership (Owner)
 			memberCol, err := app.FindCollectionByNameOrId(memberColName)
 			if err != nil {
-				log.Fatal(err)
+				log.Fatalf("❌ Failed to find memberships collection '%s': %v", memberColName, err)
 			}
 
 			existingMember, _ := app.FindFirstRecordByFilter(memberColName, "user = {:user} && organization = {:org}", map[string]interface{}{

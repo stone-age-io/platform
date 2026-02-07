@@ -92,11 +92,11 @@ const menuItems = computed(() => {
     })
   }
 
-  if (authStore.isSuperAdmin) {
-    items.push({ 
-      label: 'Organizations', 
-      icon: '🏢', 
-      path: '/organizations' 
+  if (authStore.canManageOrganizations) {
+    items.push({
+      label: 'Organizations',
+      icon: '🏢',
+      path: '/organizations'
     })
   }
 
@@ -338,7 +338,7 @@ async function handleDisconnect() {
             
             <!-- Footer Actions -->
             <div class="border-t border-base-300 bg-base-100 p-1">
-              <li v-if="authStore.isSuperAdmin">
+              <li v-if="authStore.canManageOrganizations">
                 <router-link to="/organizations/new" class="text-xs" @click="closeUserDropdown">
                   + New Organization
                 </router-link>

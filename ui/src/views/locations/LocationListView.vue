@@ -279,8 +279,8 @@ onUnmounted(() => {
             </template>
             
             <template #actions="{ item }">
-              <router-link :to="`/locations/${item.id}/edit`" class="btn btn-xs flex-1" @click.stop>Edit</router-link>
-              <button @click.stop="handleDelete(item)" class="btn btn-xs text-error flex-1">Delete</button>
+              <router-link :to="`/locations/${item.id}/edit`" class="btn btn-xs flex-1 sm:flex-initial" @click.stop>Edit</router-link>
+              <button @click.stop="handleDelete(item)" class="btn btn-xs text-error flex-1 sm:flex-initial">Delete</button>
             </template>
           </ResponsiveList>
           

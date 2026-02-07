@@ -18,6 +18,7 @@ const {
   totalPages,
   totalItems,
   loading,
+  error,
   load,
   nextPage,
   prevPage,
@@ -131,7 +132,17 @@ onUnmounted(() => {
     <div v-if="loading && members.length === 0" class="flex justify-center p-12">
       <span class="loading loading-spinner loading-lg"></span>
     </div>
-    
+
+    <!-- Error State -->
+    <BaseCard v-else-if="error && members.length === 0">
+      <div class="text-center py-12">
+        <span class="text-6xl">&#9888;</span>
+        <h3 class="text-xl font-bold mt-4">Failed to load members</h3>
+        <p class="text-base-content/70 mt-2">{{ error }}</p>
+        <button @click="loadMembers" class="btn btn-primary mt-4">Retry</button>
+      </div>
+    </BaseCard>
+
     <!-- Empty State -->
     <BaseCard v-else-if="members.length === 0">
       <div class="text-center py-12">
@@ -221,7 +232,7 @@ onUnmounted(() => {
         <template #actions="{ item }">
           <button 
             @click.stop="handleRowClick(item)"
-            class="btn btn-ghost btn-sm"
+            class="btn btn-xs flex-1 sm:flex-initial"
           >
             {{ authStore.canManageUsers ? 'Manage' : 'View' }}
           </button>

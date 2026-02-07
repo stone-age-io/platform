@@ -56,6 +56,7 @@ export interface User extends AuthRecord {
   name?: string
   avatar?: string
   current_organization?: string // Relation to Organization - this sets the org context
+  is_operator?: boolean // Platform operator flag - can manage all organizations
 }
 
 // Thing Type

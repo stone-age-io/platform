@@ -15,14 +15,26 @@ const router = useRouter()
 const toast = useToast()
 const { confirm } = useConfirm()
 
-const { items, page, totalPages, totalItems, loading, load, nextPage, prevPage } = usePagination<ThingType>('thing_types', 20)
+// Pagination
+const {
+  items,
+  page,
+  totalPages,
+  totalItems,
+  loading,
+  error,
+  load,
+  nextPage,
+  prevPage,
+} = usePagination<ThingType>('thing_types', 20)
+
 const searchQuery = ref('')
 
 const filteredItems = computed(() => {
   const query = searchQuery.value.toLowerCase().trim()
   if (!query) return items.value
-  return items.value.filter(item => 
-    item.name?.toLowerCase().includes(query) || 
+  return items.value.filter(item =>
+    item.name?.toLowerCase().includes(query) ||
     item.code?.toLowerCase().includes(query)
   )
 })
@@ -34,8 +46,14 @@ const columns: Column<ThingType>[] = [
   { key: 'created', label: 'Created', mobileLabel: 'Created', format: (val) => formatDate(val, 'PP') },
 ]
 
-async function loadData() { await load({ sort: 'name' }) }
-function handleRowClick(item: ThingType) { router.push(`/things/types/${item.id}/edit`) }
+async function loadData() {
+  await load({ sort: 'name' })
+}
+
+function handleRowClick(item: ThingType) {
+  router.push(`/things/types/${item.id}/edit`)
+}
+
 async function handleDelete(item: ThingType) {
   const confirmed = await confirm({
     title: 'Delete Thing Type',
@@ -49,59 +67,131 @@ async function handleDelete(item: ThingType) {
     await pb.collection('thing_types').delete(item.id)
     toast.success('Deleted')
     loadData()
-  } catch (err: any) { toast.error(err.message) }
+  } catch (err: any) {
+    toast.error(err.message)
+  }
 }
-function handleOrgChange() { loadData() }
+
+function handleOrgChange() {
+  searchQuery.value = ''
+  loadData()
+}
 
 onMounted(() => {
   loadData()
   window.addEventListener('organization-changed', handleOrgChange)
 })
-onUnmounted(() => window.removeEventListener('organization-changed', handleOrgChange))
+
+onUnmounted(() => {
+  window.removeEventListener('organization-changed', handleOrgChange)
+})
 </script>
 
 <template>
   <div class="space-y-6">
+    <!-- Header -->
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
       <div>
         <h1 class="text-3xl font-bold">Thing Types</h1>
         <p class="text-base-content/70 mt-1">Classify your devices</p>
       </div>
-      <router-link to="/things/types/new" class="btn btn-primary">+ New Type</router-link>
+      <router-link to="/things/types/new" class="btn btn-primary w-full sm:w-auto">
+        <span class="text-lg">+</span>
+        <span>New Type</span>
+      </router-link>
     </div>
 
+    <!-- Search -->
     <div class="form-control">
-      <input v-model="searchQuery" type="text" placeholder="Search..." class="input input-bordered" />
+      <input v-model="searchQuery" type="text" placeholder="Search thing types by name or code..." class="input input-bordered w-full" />
     </div>
 
-    <BaseCard :no-padding="true">
+    <!-- Loading State -->
+    <div v-if="loading && items.length === 0" class="flex justify-center p-12">
+      <span class="loading loading-spinner loading-lg"></span>
+    </div>
+
+    <!-- Error State -->
+    <BaseCard v-else-if="error && items.length === 0">
+      <div class="text-center py-12">
+        <span class="text-6xl">&#9888;</span>
+        <h3 class="text-xl font-bold mt-4">Failed to load thing types</h3>
+        <p class="text-base-content/70 mt-2">{{ error }}</p>
+        <button @click="loadData" class="btn btn-primary mt-4">Retry</button>
+      </div>
+    </BaseCard>
+
+    <!-- Empty State -->
+    <BaseCard v-else-if="items.length === 0">
+      <div class="text-center py-12">
+        <span class="text-6xl">🏷️</span>
+        <h3 class="text-xl font-bold mt-4">No thing types found</h3>
+        <p class="text-base-content/70 mt-2">
+          Create your first thing type to classify devices
+        </p>
+        <router-link to="/things/types/new" class="btn btn-primary mt-4">
+          Create Thing Type
+        </router-link>
+      </div>
+    </BaseCard>
+
+    <!-- No Search Results -->
+    <BaseCard v-else-if="filteredItems.length === 0">
+      <div class="text-center py-12">
+        <span class="text-6xl">🔍</span>
+        <h3 class="text-xl font-bold mt-4">No matching thing types</h3>
+        <button @click="searchQuery = ''" class="btn btn-ghost mt-4">
+          Clear Search
+        </button>
+      </div>
+    </BaseCard>
+
+    <!-- Responsive List -->
+    <BaseCard v-else :no-padding="true">
       <ResponsiveList :items="filteredItems" :columns="columns" :loading="loading" @row-click="handleRowClick">
         <template #cell-code="{ item }">
           <code v-if="item.code" class="bg-base-200 px-1 rounded text-xs">{{ item.code }}</code>
-          <span v-else class="opacity-50">-</span>
+          <span v-else class="text-base-content/40">-</span>
         </template>
-        
+
         <template #cell-capabilities="{ item }">
           <div class="flex flex-wrap gap-1">
             <span v-for="cap in item.capabilities" :key="cap" class="badge badge-sm badge-outline">
               {{ cap }}
             </span>
-            <span v-if="!item.capabilities?.length" class="opacity-50 text-xs">-</span>
+            <span v-if="!item.capabilities?.length" class="text-base-content/40 text-xs">-</span>
           </div>
         </template>
 
         <template #actions="{ item }">
-          <router-link :to="`/things/types/${item.id}/edit`" class="btn btn-xs flex-1">Edit</router-link>
-          <button @click.stop="handleDelete(item)" class="btn btn-xs text-error flex-1">Delete</button>
+          <router-link :to="`/things/types/${item.id}/edit`" class="btn btn-xs flex-1 sm:flex-initial">Edit</router-link>
+          <button @click.stop="handleDelete(item)" class="btn btn-xs text-error flex-1 sm:flex-initial">Delete</button>
         </template>
       </ResponsiveList>
-      
-      <div v-if="!searchQuery" class="flex justify-between items-center p-4 border-t border-base-300">
-        <span class="text-sm opacity-70">Showing {{ items.length }} of {{ totalItems }}</span>
+
+      <!-- Pagination -->
+      <div v-if="!searchQuery" class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
+        <span class="text-sm text-base-content/70 text-center sm:text-left">
+          Showing {{ items.length }} of {{ totalItems }} thing types
+        </span>
         <div class="join">
-          <button class="join-item btn btn-sm" :disabled="page === 1" @click="prevPage()">«</button>
-          <button class="join-item btn btn-sm">Page {{ page }}</button>
-          <button class="join-item btn btn-sm" :disabled="page === totalPages" @click="nextPage()">»</button>
+          <button
+            class="join-item btn btn-sm"
+            :disabled="page === 1 || loading"
+            @click="prevPage({ sort: 'name' })"
+          >
+            «
+          </button>
+          <button class="join-item btn btn-sm">
+            {{ page }} / {{ totalPages }}
+          </button>
+          <button
+            class="join-item btn btn-sm"
+            :disabled="page === totalPages || loading"
+            @click="nextPage({ sort: 'name' })"
+          >
+            »
+          </button>
         </div>
       </div>
     </BaseCard>

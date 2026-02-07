@@ -27,7 +27,6 @@ const uiStore = useUIStore()
 const toast = useToast()
 
 const {
-  subscribeWidget,
   subscribeAllWidgets,
   unsubscribeAllWidgets,
   createWidget,
@@ -219,12 +218,10 @@ watch(() => dashboardStore.currentVariableValues, () => {
   }
 }, { deep: true })
 
-watch(() => dashboardStore.activeWidgets.length, (newCount, oldCount) => {
-  if (natsStore.isConnected && newCount > oldCount) {
-    const newWidget = dashboardStore.activeWidgets[newCount - 1]
-    subscribeWidget(newWidget.id)
-  }
-})
+// Note: createWidget() already calls subscribeWidget() internally.
+// This watcher is only needed for widgets added through non-createWidget paths
+// (e.g., dashboard load, remote sync). Since those paths use subscribeAllWidgets(),
+// this watcher was causing double-subscriptions. Removed.
 </script>
 
 <template>

@@ -13,10 +13,4 @@ export const pb = new PocketBase('/')
 // This prevents requests from being cancelled when component unmounts
 pb.autoCancellation(false)
 
-// Enable persistent auth storage
-// User stays logged in across page refreshes
-pb.authStore.onChange(() => {
-  // You could add global auth change handlers here if needed
-})
-
 export default pb

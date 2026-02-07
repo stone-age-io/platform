@@ -268,7 +268,7 @@ export function useWidgetOperations() {
     const widget = dashboardStore.getWidget(widgetId)
     if (!widget) return
     if (needsSubscription(widget.type, widget)) {
-      unsubscribeWidget(widgetId, false) 
+      unsubscribeWidget(widgetId, false)
     }
     dashboardStore.updateWidget(widgetId, updates)
     const updatedWidget = dashboardStore.getWidget(widgetId)!
