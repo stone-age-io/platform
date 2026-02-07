@@ -696,10 +696,16 @@ export function useWidgetForm(options: UseWidgetFormOptions) {
 
     // Standard data source update for visualization widgets
     if (STANDARD_DATA_SOURCE_TYPES.includes(widget.type)) {
+      const trimmedSubject = form.value.subject.trim()
+      // Console widget manages its own subjects array (multi-subject).
+      // All other widget types derive subjects from the single subject field.
+      const resolvedSubjects = widget.type === 'console'
+        ? form.value.subjects
+        : trimmedSubject ? [trimmedSubject] : []
       updates.dataSource = {
         ...widget.dataSource,
-        subject: form.value.subject.trim(),
-        subjects: form.value.subjects,
+        subject: trimmedSubject,
+        subjects: resolvedSubjects,
         useJetStream: form.value.useJetStream,
         deliverPolicy: form.value.deliverPolicy,
         timeWindow: form.value.jetstreamTimeWindow,
@@ -713,14 +719,6 @@ export function useWidgetForm(options: UseWidgetFormOptions) {
     if (handler?.buildUpdates) {
       Object.assign(updates, handler.buildUpdates(form.value, widget))
     }
-
-    // DEBUG: trace subject through save pipeline
-    console.log('[WidgetForm] save()', {
-      widgetType: widget.type,
-      formSubject: form.value.subject,
-      updatesDataSourceSubject: updates.dataSource?.subject,
-      updatesDataSource: JSON.parse(JSON.stringify(updates.dataSource || {})),
-    })
 
     updateWidgetConfiguration(options.widgetId.value, updates)
     options.onSaved()

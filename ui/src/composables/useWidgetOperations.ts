@@ -60,8 +60,6 @@ export function useWidgetOperations() {
 
   function subscribeToDataSource(widgetId: string, widget: WidgetConfig) {
     const subjects = getWidgetSubjects(widget)
-    // DEBUG: trace subscription subjects
-    console.log('[WidgetOps] subscribeToDataSource', { widgetId, subjects, dataSourceSubject: widget.dataSource.subject })
     for (const rawSubject of subjects) {
       const subject = resolveTemplate(rawSubject, dashboardStore.currentVariableValues)
       if (!subject) continue
@@ -269,15 +267,11 @@ export function useWidgetOperations() {
   function updateWidgetConfiguration(widgetId: string, updates: Partial<WidgetConfig>) {
     const widget = dashboardStore.getWidget(widgetId)
     if (!widget) return
-    // DEBUG: trace subject through update pipeline
-    console.log('[WidgetOps] BEFORE update - widget.dataSource.subject:', widget.dataSource.subject)
-    console.log('[WidgetOps] updates.dataSource?.subject:', (updates as any).dataSource?.subject)
     if (needsSubscription(widget.type, widget)) {
       unsubscribeWidget(widgetId, false)
     }
     dashboardStore.updateWidget(widgetId, updates)
     const updatedWidget = dashboardStore.getWidget(widgetId)!
-    console.log('[WidgetOps] AFTER update - updatedWidget.dataSource.subject:', updatedWidget.dataSource.subject)
     if (natsStore.isConnected && needsSubscription(updatedWidget.type, updatedWidget)) {
       subscribeWidget(widgetId)
     }
