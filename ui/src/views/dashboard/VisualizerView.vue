@@ -27,7 +27,6 @@ const uiStore = useUIStore()
 const toast = useToast()
 
 const {
-  subscribeWidget,
   subscribeAllWidgets,
   unsubscribeAllWidgets,
   createWidget,
