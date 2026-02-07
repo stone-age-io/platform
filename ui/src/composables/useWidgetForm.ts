@@ -714,6 +714,14 @@ export function useWidgetForm(options: UseWidgetFormOptions) {
       Object.assign(updates, handler.buildUpdates(form.value, widget))
     }
 
+    // DEBUG: trace subject through save pipeline
+    console.log('[WidgetForm] save()', {
+      widgetType: widget.type,
+      formSubject: form.value.subject,
+      updatesDataSourceSubject: updates.dataSource?.subject,
+      updatesDataSource: JSON.parse(JSON.stringify(updates.dataSource || {})),
+    })
+
     updateWidgetConfiguration(options.widgetId.value, updates)
     options.onSaved()
     close()
