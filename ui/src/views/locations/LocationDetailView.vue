@@ -1,3 +1,6 @@
+================================================
+FILE: ui/src/views/locations/LocationDetailView.vue
+================================================
 <script setup lang="ts">
 import { ref, onMounted, computed, watch, nextTick, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -15,6 +18,7 @@ import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 import FloorPlanMap from '@/components/map/FloorPlanMap.vue'
 import KvDashboard from '@/components/nats/KvDashboard.vue'
+import OccupancyList from '@/components/locations/OccupancyList.vue' // NEW IMPORT
 
 const router = useRouter()
 const route = useRoute()
@@ -365,8 +369,7 @@ onUnmounted(() => cleanupMap())
       <!-- Lower Section: Lists & Digital Twin -->
       <div class="space-y-6">
         
-        <!-- Sub-Locations List -->
-        <!-- Fixed: Condition includes Search query and Loading state to prevent disappearing -->
+        <!-- 2. Sub-Locations List -->
         <BaseCard :no-padding="true" v-if="subLocations.length > 0 || subLocSearch || subLocLoading">
           <template #header>
             <div class="flex justify-between items-center mb-2">
@@ -401,8 +404,7 @@ onUnmounted(() => cleanupMap())
           </div>
         </BaseCard>
 
-        <!-- Associated Things List -->
-        <!-- Fixed: Condition includes Search query and Loading state to prevent disappearing -->
+        <!-- 3. Associated Things List -->
         <BaseCard :no-padding="true" v-if="things.length > 0 || thingSearch || thingLoading">
           <template #header>
             <div class="flex justify-between items-center mb-2">
@@ -439,7 +441,21 @@ onUnmounted(() => cleanupMap())
           </div>
         </BaseCard>
 
-        <!-- Digital Twin / KV Dashboard (Last Item) -->
+        <!-- 4. Digital Twin / KV Dashboard (Last Item) -->
+        <template v-if="location.code">
+          <div v-if="location.code && natsStore.isConnected" class="mt-6">
+	    <OccupancyList :location-code="location.code" />
+          </div>
+          <div v-else class="alert shadow-sm border border-base-300 bg-base-100">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-info shrink-0 w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <div class="text-xs">
+              <div class="font-bold">Occupany Offline</div>
+              <span class="opacity-70">Connect to NATS in <router-link to="/settings" class="link">Settings</router-link> to view live data for this location.</span>
+            </div>
+          </div>
+        </template>
+
+        <!-- 4. Digital Twin / KV Dashboard (Last Item) -->
         <template v-if="location.code">
           <div v-if="location.code && natsStore.isConnected" class="mt-6">
             <KvDashboard 
