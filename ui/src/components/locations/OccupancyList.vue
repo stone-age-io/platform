@@ -32,49 +32,69 @@
       <p class="text-xs mt-1">Waiting for OwnTracks events...</p>
     </div>
 
+    <!-- No Results -->
+    <div v-else-if="filteredOccupants.length === 0" class="text-center py-12">
+      <span class="text-4xl block mb-2">🔍</span>
+      <span class="text-sm font-bold">No matching users</span>
+      <button @click="search = ''" class="btn btn-ghost btn-xs mt-2">Clear Search</button>
+    </div>
+
     <!-- List -->
-    <ResponsiveList
-      v-else
-      :items="filteredOccupants"
-      :columns="columns"
-      :clickable="true"
-      @row-click="handleRowClick"
-    >
-      <!-- User Identity Column -->
-      <template #cell-user_id="{ item }">
-        <div class="flex items-center gap-3">
-          <div class="avatar placeholder">
-            <div class="bg-neutral text-neutral-content rounded-full w-8">
-              <span class="text-xs font-bold">{{ item.user_id.substring(0,2).toUpperCase() }}</span>
+    <template v-else>
+      <ResponsiveList
+        :items="paginatedOccupants"
+        :columns="columns"
+        :clickable="true"
+        @row-click="handleRowClick"
+      >
+        <!-- User Identity Column -->
+        <template #cell-user_id="{ item }">
+          <div class="flex items-center gap-3">
+            <div class="avatar placeholder">
+              <div class="bg-neutral text-neutral-content rounded-full w-8">
+                <span class="text-xs font-bold">{{ item.user_id.substring(0,2).toUpperCase() }}</span>
+              </div>
+            </div>
+            <div class="font-medium font-mono text-sm">{{ item.user_id }}</div>
+          </div>
+        </template>
+
+        <!-- Time Column -->
+        <template #cell-timestamp="{ item }">
+          <div class="flex flex-col">
+            <span class="text-sm font-medium">{{ formatRelativeTime(item.timestamp) }}</span>
+            <span class="text-xs opacity-50 font-mono">{{ formatDate(item.timestamp, 'HH:mm:ss') }}</span>
+          </div>
+        </template>
+
+        <!-- Mobile Card View Override -->
+        <template #card-user_id="{ item }">
+          <div class="flex items-center gap-3">
+            <div class="avatar placeholder">
+              <div class="bg-neutral text-neutral-content rounded-full w-10">
+                <span class="text-sm font-bold">{{ item.user_id.substring(0,2).toUpperCase() }}</span>
+              </div>
+            </div>
+            <div>
+              <div class="font-bold font-mono">{{ item.user_id }}</div>
+              <div class="text-xs opacity-60">Seen {{ formatRelativeTime(item.timestamp) }}</div>
             </div>
           </div>
-          <div class="font-medium font-mono text-sm">{{ item.user_id }}</div>
-        </div>
-      </template>
+        </template>
+      </ResponsiveList>
 
-      <!-- Time Column -->
-      <template #cell-timestamp="{ item }">
-        <div class="flex flex-col">
-          <span class="text-sm font-medium">{{ formatRelativeTime(item.timestamp) }}</span>
-          <span class="text-xs opacity-50 font-mono">{{ formatDate(item.timestamp, 'HH:mm:ss') }}</span>
+      <!-- Pagination -->
+      <div v-if="totalPages > 1" class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
+        <span class="text-sm text-base-content/70 text-center sm:text-left">
+          Showing {{ paginatedOccupants.length }} of {{ filteredOccupants.length }} users
+        </span>
+        <div class="join">
+          <button class="join-item btn btn-sm" :disabled="currentPage === 1" @click="currentPage--">«</button>
+          <button class="join-item btn btn-sm">Page {{ currentPage }}</button>
+          <button class="join-item btn btn-sm" :disabled="currentPage === totalPages" @click="currentPage++">»</button>
         </div>
-      </template>
-
-      <!-- Mobile Card View Override -->
-      <template #card-user_id="{ item }">
-        <div class="flex items-center gap-3">
-          <div class="avatar placeholder">
-            <div class="bg-neutral text-neutral-content rounded-full w-10">
-              <span class="text-sm font-bold">{{ item.user_id.substring(0,2).toUpperCase() }}</span>
-            </div>
-          </div>
-          <div>
-            <div class="font-bold font-mono">{{ item.user_id }}</div>
-            <div class="text-xs opacity-60">Seen {{ formatRelativeTime(item.timestamp) }}</div>
-          </div>
-        </div>
-      </template>
-    </ResponsiveList>
+      </div>
+    </template>
 
     <!-- Detail Modal -->
     <Teleport to="body">
@@ -107,7 +127,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useOccupancy, type Occupant } from '@/composables/useOccupancy'
 import { formatRelativeTime, formatDate } from '@/utils/format'
 import BaseCard from '@/components/ui/BaseCard.vue'
@@ -123,6 +143,10 @@ const { occupants, loading } = useOccupancy(() => props.locationCode)
 const search = ref('')
 const selectedOccupant = ref<Occupant | null>(null)
 
+// Pagination
+const currentPage = ref(1)
+const itemsPerPage = 20
+
 const columns: Column<any>[] = [
   { key: 'user_id', label: 'User', mobileLabel: 'User' },
   { key: 'timestamp', label: 'Last Seen', mobileLabel: 'Seen' },
@@ -133,6 +157,19 @@ const filteredOccupants = computed(() => {
   if (!search.value) return occupants.value
   const q = search.value.toLowerCase()
   return occupants.value.filter(o => o.user_id.toLowerCase().includes(q))
+})
+
+// Client-side pagination
+const totalPages = computed(() => Math.ceil(filteredOccupants.value.length / itemsPerPage))
+
+const paginatedOccupants = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage
+  return filteredOccupants.value.slice(start, start + itemsPerPage)
+})
+
+// Reset page on search change
+watch(search, () => {
+  currentPage.value = 1
 })
 
 function handleRowClick(item: Occupant) {

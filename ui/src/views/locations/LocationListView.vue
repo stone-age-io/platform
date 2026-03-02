@@ -174,14 +174,14 @@ onUnmounted(() => {
         <!-- Desktop Toggle: Hidden on mobile -->
         <div class="hidden sm:inline-flex join shadow-sm border border-base-300">
           <button 
-            class="join-item btn btn-sm" 
+            class="join-item btn" 
             :class="{ 'btn-active': viewMode === 'list' }"
             @click="viewMode = 'list'"
           >
             📋 List
           </button>
           <button 
-            class="join-item btn btn-sm" 
+            class="join-item btn" 
             :class="{ 'btn-active': viewMode === 'map' }"
             @click="viewMode = 'map'"
           >

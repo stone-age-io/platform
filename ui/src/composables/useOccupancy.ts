@@ -6,6 +6,7 @@ import { decodeBytes } from '@/utils/encoding'
 export interface Occupant {
   user_id: string
   timestamp: string
+  sortKey: number // cached ms for sort performance
   lat?: number
   lon?: number
   rawData: Record<string, any>
@@ -13,20 +14,21 @@ export interface Occupant {
 
 export function useOccupancy(locationCode: () => string | undefined) {
   const natsStore = useNatsStore()
-  
+
   const occupants = ref<Occupant[]>([])
   const loading = ref(false)
-  
+
   // Internal buffer
   const occupantBuffer = new Map<string, Occupant>()
-  
+
   let kvWatcher: any = null
   let flushHandle: number | null = null
+  let initialLoad = false
 
   const flushBuffer = () => {
     occupants.value = Array.from(occupantBuffer.values())
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-    
+      .sort((a, b) => b.sortKey - a.sortKey)
+
     flushHandle = null
   }
 
@@ -36,20 +38,24 @@ export function useOccupancy(locationCode: () => string | undefined) {
     }
   }
 
-  // Helper: Normalize incoming timestamp to ISO String
-  function normalizeTimestamp(val: any): string {
-    if (!val) return new Date().toISOString()
-    
+  // Helper: Normalize incoming timestamp to ms number + ISO string
+  function normalizeTimestamp(val: any): { iso: string; ms: number } {
+    if (!val) {
+      const now = Date.now()
+      return { iso: new Date(now).toISOString(), ms: now }
+    }
+
     // If it's a number (OwnTracks sends Unix Seconds: 1772232560)
     if (typeof val === 'number') {
       // Check if it's seconds (small) or milliseconds (big)
       // 10000000000 is roughly the year 2286. If smaller, it's seconds.
       const ms = val < 10000000000 ? val * 1000 : val
-      return new Date(ms).toISOString()
+      return { iso: new Date(ms).toISOString(), ms }
     }
-    
-    // If it's already a string (legacy data), return as is
-    return String(val)
+
+    // If it's already a string (legacy data), parse it
+    const ms = new Date(String(val)).getTime() || Date.now()
+    return { iso: String(val), ms }
   }
 
   async function startWatching() {
@@ -57,6 +63,7 @@ export function useOccupancy(locationCode: () => string | undefined) {
     if (!code || !natsStore.isConnected || !natsStore.nc) return
 
     loading.value = true
+    initialLoad = true
     occupantBuffer.clear()
     occupants.value = []
 
@@ -71,70 +78,87 @@ export function useOccupancy(locationCode: () => string | undefined) {
         loading.value = false
         return
       }
-      
-      // Watch keys starting with the location code
-      const iter = await kv.watch({ key: `${code}.*` })
+
+      // Watch keys matching the location code prefix.
+      // Using .> to match one or more tokens after the code,
+      // guarding against user IDs that might contain dots.
+      const iter = await kv.watch({ key: `${code}.>` })
       kvWatcher = iter
 
       ;(async () => {
         for await (const e of iter) {
-          const parts = e.key.split('.')
-          const userId = parts[parts.length - 1]
+          // Clear loading after initial values are delivered
+          if (initialLoad && e.delta === 0) {
+            initialLoad = false
+            loading.value = false
+          }
+
+          const codePrefix = code + '.'
+          const userId = e.key.startsWith(codePrefix)
+            ? e.key.slice(codePrefix.length)
+            : e.key.split('.').pop()!
 
           if (e.operation === 'DEL' || e.operation === 'PURGE') {
             occupantBuffer.delete(userId)
           } else {
             try {
               const data = JSON.parse(decodeBytes(e.value!))
-              
+              const ts = normalizeTimestamp(data.timestamp)
+
               occupantBuffer.set(userId, {
                 user_id: userId,
-                timestamp: normalizeTimestamp(data.timestamp),
+                timestamp: ts.iso,
+                sortKey: ts.ms,
                 lat: data.lat,
                 lon: data.lon,
                 rawData: data
               })
-            } catch (err) { 
+            } catch (err) {
               // Ignore malformed
             }
           }
           scheduleUpdate()
         }
+
+        // If the iterator ends without hitting delta === 0
+        // (empty bucket), clear loading
+        if (initialLoad) {
+          initialLoad = false
+          loading.value = false
+        }
       })()
     } catch (err) {
       console.error('[Occupancy] Watch error:', err)
-    } finally {
       loading.value = false
     }
   }
 
   function stopWatching() {
-    if (kvWatcher) { 
-      // FIX: kvWatcher.stop() returns void in some versions/contexts.
-      // Removed .catch() to prevent "Cannot read properties of undefined" error.
+    if (kvWatcher) {
       try {
         kvWatcher.stop()
       } catch (err) {
         // Ignore errors if already stopped
       }
-      kvWatcher = null 
+      kvWatcher = null
     }
-    if (flushHandle) { 
+    if (flushHandle) {
       cancelAnimationFrame(flushHandle)
-      flushHandle = null 
+      flushHandle = null
     }
+    initialLoad = false
     occupantBuffer.clear()
     occupants.value = []
   }
 
-  onMounted(() => { 
-    if (natsStore.isConnected) startWatching() 
+  onMounted(() => {
+    if (natsStore.isConnected) startWatching()
   })
-  
+
   onUnmounted(() => {
     stopWatching()
   })
-  
+
   watch([() => natsStore.isConnected, locationCode], ([conn, loc], [oldConn, oldLoc]) => {
     if (conn !== oldConn || loc !== oldLoc) {
       stopWatching()
