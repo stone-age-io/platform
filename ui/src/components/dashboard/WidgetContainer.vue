@@ -15,26 +15,28 @@
     
     <template v-else>
       <!-- HEADER -->
-      <div 
-        v-if="shouldShowHeader" 
+      <div
+        v-if="shouldShowHeader"
         class="widget-header vue-draggable-handle"
+        :class="{ 'mobile-compact': mobileCompact }"
       >
-        <div v-if="!isMobile" class="widget-title" :title="config.title">{{ config.title }}</div>
-        <div v-else class="widget-title mobile-spacer"></div>
+        <div class="widget-title" :title="config.title">{{ config.title }}</div>
 
-        <div v-if="!natsStore.isConnected" class="offline-indicator" title="Disconnected from NATS">
-          ⚠️
-        </div>
+        <template v-if="!mobileCompact">
+          <div v-if="!natsStore.isConnected" class="offline-indicator" title="Disconnected from NATS">
+            ⚠️
+          </div>
 
-        <div class="widget-actions">
-          <button class="icon-btn" title="Full Screen" @click="$emit('fullscreen')">⛶</button>
-          
-          <template v-if="!dashboardStore.isLocked">
-            <button class="icon-btn" title="Duplicate" @click="$emit('duplicate')">📋</button>
-            <button class="icon-btn" title="Configure" @click="$emit('configure')">⚙️</button>
-            <button class="icon-btn danger" title="Delete" @click="handleDelete">✕</button>
-          </template>
-        </div>
+          <div class="widget-actions">
+            <button class="icon-btn" title="Full Screen" @click="$emit('fullscreen')">⛶</button>
+
+            <template v-if="!dashboardStore.isLocked">
+              <button class="icon-btn" title="Duplicate" @click="$emit('duplicate')">📋</button>
+              <button class="icon-btn" title="Configure" @click="$emit('configure')">⚙️</button>
+              <button class="icon-btn danger" title="Delete" @click="handleDelete">✕</button>
+            </template>
+          </div>
+        </template>
       </div>
       
       <div class="widget-body">
@@ -121,11 +123,8 @@ const widgetComponent = computed(() => {
   }
 })
 
-const shouldShowHeader = computed(() => {
-  if (!dashboardStore.isLocked) return true
-  if (props.isMobile) return false
-  return true
-})
+const shouldShowHeader = computed(() => true)
+const mobileCompact = computed(() => props.isMobile && dashboardStore.isLocked)
 
 async function handleDelete() {
   if (!props.config) return
@@ -216,8 +215,13 @@ onErrorCaptured((err) => {
   flex: 1;
 }
 
-.widget-title.mobile-spacer {
-  flex: 1;
+.widget-header.mobile-compact {
+  height: 28px;
+  padding: 2px 10px;
+}
+
+.mobile-compact .widget-title {
+  font-size: 11px;
 }
 
 .widget-actions {

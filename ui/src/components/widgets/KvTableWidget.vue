@@ -20,7 +20,7 @@
     <!-- Data -->
     <template v-else>
       <!-- Search -->
-      <div v-if="layoutMode !== 'card' && tableRows.length > 0" class="search-bar">
+      <div v-if="tableRows.length > 0" class="search-bar">
         <input
           v-model="searchQuery"
           type="text"
@@ -58,7 +58,7 @@
       </div>
 
       <!-- Footer -->
-      <div v-if="layoutMode !== 'card'" class="widget-footer">
+      <div class="widget-footer">
         <span class="text-[10px] opacity-50">
           {{ filteredRows.length }}{{ filteredRows.length !== tableRows.length ? `/${tableRows.length}` : '' }}
           row{{ filteredRows.length !== 1 ? 's' : '' }}
