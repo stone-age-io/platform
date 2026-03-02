@@ -58,7 +58,8 @@ const filteredOccupancyLocations = computed(() => {
       const nameMatch = l.name?.toLowerCase().includes(q)
       const codeMatch = l.code?.toLowerCase().includes(q)
       const typeMatch = l.expand?.type?.name?.toLowerCase().includes(q)
-      return nameMatch || codeMatch || typeMatch
+      const parentMatch = (l.expand?.parent as Location)?.name?.toLowerCase().includes(q)
+      return nameMatch || codeMatch || typeMatch || parentMatch
     })
   }
 
@@ -457,9 +458,14 @@ onUnmounted(() => {
               @row-click="handleOccupancyRowClick"
             >
               <template #cell-name="{ item }">
-                <div class="flex items-center gap-2">
-                  <span class="font-medium">{{ item.name }}</span>
-                  <span v-if="item.expand?.type" class="badge badge-ghost badge-sm">{{ item.expand.type.name }}</span>
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="font-medium">{{ item.name }}</span>
+                    <span v-if="item.expand?.type" class="badge badge-ghost badge-sm">{{ item.expand.type.name }}</span>
+                  </div>
+                  <div v-if="item.expand?.parent" class="text-xs text-base-content/70">
+                    {{ (item.expand.parent as Location).name }}
+                  </div>
                 </div>
               </template>
 
@@ -480,6 +486,9 @@ onUnmounted(() => {
                 <div class="flex justify-between items-center w-full">
                   <div>
                     <div class="font-semibold">{{ item.name }}</div>
+                    <div v-if="item.expand?.parent" class="text-xs text-base-content/70">
+                      {{ (item.expand.parent as Location).name }}
+                    </div>
                     <code class="text-xs text-base-content/70 font-mono">{{ item.code }}</code>
                   </div>
                   <span v-if="getOccupancyCount(item.code) > 0" class="badge badge-success font-mono">
