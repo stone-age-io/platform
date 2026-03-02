@@ -137,14 +137,14 @@ const sortedWidgets = computed(() => {
 })
 
 function isIntrinsicallyFullWidth(widget: WidgetConfig): boolean {
-  if (['map', 'chart', 'console', 'publisher', 'markdown'].includes(widget.type)) return true
+  if (['map', 'chart', 'console', 'publisher', 'markdown', 'kvtable'].includes(widget.type)) return true
   if (widget.type === 'kv' && (widget.w > 2 || widget.h > 2)) return true
   if (['slider', 'gauge', 'stat'].includes(widget.type)) return true
   return false
 }
 
 function isTallWidget(widget: WidgetConfig): boolean {
-  if (['map', 'chart', 'console', 'publisher', 'markdown'].includes(widget.type)) return true
+  if (['map', 'chart', 'console', 'publisher', 'markdown', 'kvtable'].includes(widget.type)) return true
   if (['gauge', 'stat'].includes(widget.type)) return true
   if (widget.type === 'kv' && widget.h > 2) return true
   return false

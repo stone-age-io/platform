@@ -43,11 +43,10 @@
             </span>
           </template>
 
-          <template v-for="col in tableColumns" :key="col.key" #[`card-${col.key}`]="{ value }">
-            <div class="flex flex-col">
-              <span class="text-[10px] opacity-50 uppercase font-bold">{{ col.label }}</span>
-              <span class="text-sm truncate">{{ value }}</span>
-            </div>
+          <!-- Mobile card: first column = bold identity header, rest = value only (ResponsiveList adds labels) -->
+          <template v-for="(col, idx) in tableColumns" :key="col.key" #[`card-${col.key}`]="{ value }">
+            <span v-if="idx === 0" class="text-sm font-bold text-primary truncate">{{ value || '-' }}</span>
+            <span v-else class="text-xs font-medium text-base-content/80 truncate">{{ value || '-' }}</span>
           </template>
 
           <template #empty>
