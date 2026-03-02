@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useNatsStore } from '@/stores/nats'
@@ -81,7 +81,21 @@ watch(() => props.location.id, () => {
   loadData()
 })
 
-onMounted(loadData)
+// Escape key to close occupancy modal
+function handleEscape(e: KeyboardEvent) {
+  if (e.key === 'Escape' && showOccupancy.value) {
+    showOccupancy.value = false
+  }
+}
+
+onMounted(() => {
+  loadData()
+  window.addEventListener('keydown', handleEscape)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleEscape)
+})
 </script>
 
 <template>

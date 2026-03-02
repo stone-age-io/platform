@@ -7,7 +7,7 @@
           <div v-if="occupants.length > 0" class="badge badge-success gap-1 font-mono">
             {{ occupants.length }} <span class="hidden sm:inline">Present</span>
           </div>
-          <div v-else-if="!loading" class="badge badge-ghost opacity-50">Empty</div>
+          <div v-else-if="!loading" class="badge badge-ghost text-base-content/70">Empty</div>
         </div>
 
         <!-- Simple Search -->
@@ -26,10 +26,10 @@
     </div>
 
     <!-- Empty State -->
-    <div v-else-if="occupants.length === 0" class="text-center py-12 opacity-50">
+    <div v-else-if="occupants.length === 0" class="text-center py-12 text-base-content/70">
       <span class="text-4xl block mb-2">👻</span>
       <span class="text-sm font-bold">No occupants detected</span>
-      <p class="text-xs mt-1">Waiting for OwnTracks events...</p>
+      <p class="text-xs mt-1">Waiting for presence events...</p>
     </div>
 
     <!-- No Results -->
@@ -63,7 +63,7 @@
         <template #cell-timestamp="{ item }">
           <div class="flex flex-col">
             <span class="text-sm font-medium">{{ formatRelativeTime(item.timestamp) }}</span>
-            <span class="text-xs opacity-50 font-mono">{{ formatDate(item.timestamp, 'HH:mm:ss') }}</span>
+            <span class="text-xs text-base-content/70 font-mono">{{ formatDate(item.timestamp, 'HH:mm:ss') }}</span>
           </div>
         </template>
 
@@ -77,7 +77,7 @@
             </div>
             <div>
               <div class="font-bold font-mono">{{ item.user_id }}</div>
-              <div class="text-xs opacity-60">Seen {{ formatRelativeTime(item.timestamp) }}</div>
+              <div class="text-xs text-base-content/70">Seen {{ formatRelativeTime(item.timestamp) }}</div>
             </div>
           </div>
         </template>
@@ -86,7 +86,7 @@
       <!-- Pagination -->
       <div v-if="totalPages > 1" class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
         <span class="text-sm text-base-content/70 text-center sm:text-left">
-          Showing {{ paginatedOccupants.length }} of {{ filteredOccupants.length }} users
+          {{ rangeStart }}–{{ rangeEnd }} of {{ filteredOccupants.length }} users
         </span>
         <div class="join">
           <button class="join-item btn btn-sm" :disabled="currentPage === 1" @click="currentPage--">«</button>
@@ -109,7 +109,7 @@
               </div>
               <div>
                 <h3 class="font-bold font-mono">{{ selectedOccupant.user_id }}</h3>
-                <p class="text-xs text-base-content/60">Last seen {{ formatRelativeTime(selectedOccupant.timestamp) }}</p>
+                <p class="text-xs text-base-content/70">Last seen {{ formatRelativeTime(selectedOccupant.timestamp) }}</p>
               </div>
             </div>
             <button class="btn btn-sm btn-circle btn-ghost" @click="selectedOccupant = null">✕</button>
@@ -127,7 +127,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useOccupancy, type Occupant } from '@/composables/useOccupancy'
 import { formatRelativeTime, formatDate } from '@/utils/format'
 import BaseCard from '@/components/ui/BaseCard.vue'
@@ -145,7 +145,7 @@ const selectedOccupant = ref<Occupant | null>(null)
 
 // Pagination
 const currentPage = ref(1)
-const itemsPerPage = 20
+const itemsPerPage = 10
 
 const columns: Column<any>[] = [
   { key: 'user_id', label: 'User', mobileLabel: 'User' },
@@ -162,17 +162,41 @@ const filteredOccupants = computed(() => {
 // Client-side pagination
 const totalPages = computed(() => Math.ceil(filteredOccupants.value.length / itemsPerPage))
 
+const rangeStart = computed(() => (currentPage.value - 1) * itemsPerPage + 1)
+const rangeEnd = computed(() => Math.min(currentPage.value * itemsPerPage, filteredOccupants.value.length))
+
 const paginatedOccupants = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage
   return filteredOccupants.value.slice(start, start + itemsPerPage)
 })
 
-// Reset page on search change
+// Reset page when search changes or when occupant count shifts pages
 watch(search, () => {
   currentPage.value = 1
+})
+
+watch(totalPages, (pages) => {
+  if (currentPage.value > pages && pages > 0) {
+    currentPage.value = pages
+  }
+})
+
+// Clear stale modal when location changes
+watch(() => props.locationCode, () => {
+  selectedOccupant.value = null
 })
 
 function handleRowClick(item: Occupant) {
   selectedOccupant.value = item
 }
+
+// Escape key to close detail modal
+function handleEscape(e: KeyboardEvent) {
+  if (e.key === 'Escape' && selectedOccupant.value) {
+    selectedOccupant.value = null
+  }
+}
+
+onMounted(() => window.addEventListener('keydown', handleEscape))
+onUnmounted(() => window.removeEventListener('keydown', handleEscape))
 </script>
