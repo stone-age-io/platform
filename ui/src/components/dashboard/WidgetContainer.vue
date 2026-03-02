@@ -22,6 +22,9 @@
       >
         <div class="widget-title" :title="config.title">{{ config.title }}</div>
 
+        <!-- Mobile expand button for data-dense widgets -->
+        <button v-if="mobileExpandable" class="icon-btn" title="Expand" @click="$emit('fullscreen')">⛶</button>
+
         <template v-if="!mobileCompact">
           <div v-if="!natsStore.isConnected" class="offline-indicator" title="Disconnected from NATS">
             ⚠️
@@ -123,7 +126,10 @@ const widgetComponent = computed(() => {
   }
 })
 
-const MOBILE_TITLED_TYPES = new Set(['kvtable', 'pocketbase'])
+const MOBILE_TITLED_TYPES = new Set([
+  'kvtable', 'pocketbase', 'gauge', 'markdown', 'stat', 'chart', 'map'
+])
+const MOBILE_EXPANDABLE_TYPES = new Set(['kvtable', 'map'])
 
 const shouldShowHeader = computed(() => {
   if (!dashboardStore.isLocked) return true
@@ -131,6 +137,9 @@ const shouldShowHeader = computed(() => {
   return true
 })
 const mobileCompact = computed(() => props.isMobile && dashboardStore.isLocked)
+const mobileExpandable = computed(() =>
+  mobileCompact.value && MOBILE_EXPANDABLE_TYPES.has(props.config?.type || '')
+)
 
 async function handleDelete() {
   if (!props.config) return

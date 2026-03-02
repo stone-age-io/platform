@@ -145,14 +145,14 @@ function isIntrinsicallyFullWidth(widget: WidgetConfig): boolean {
 }
 
 function isTallWidget(widget: WidgetConfig): boolean {
-  if (['map', 'chart', 'console', 'publisher', 'markdown'].includes(widget.type)) return true
+  if (['chart', 'console', 'publisher', 'markdown'].includes(widget.type)) return true
   if (['gauge', 'stat'].includes(widget.type)) return true
   if (widget.type === 'kv' && widget.h > 2) return true
   return false
 }
 
 function isDataTallWidget(widget: WidgetConfig): boolean {
-  return ['kvtable', 'pocketbase'].includes(widget.type)
+  return ['kvtable', 'pocketbase', 'map'].includes(widget.type)
 }
 
 const mobileWidgetLayout = computed(() => {
