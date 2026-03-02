@@ -1,5 +1,5 @@
 // ui/src/types/config.ts
-import type { ThresholdRule, MapMarker, StatusMapping } from './dashboard'
+import type { ThresholdRule, MapMarker, StatusMapping, KvTableColumn } from './dashboard'
 
 export interface WidgetFormState {
   // Common
@@ -94,6 +94,13 @@ export interface WidgetFormState {
   pbLimit: number
   pbRefreshInterval: number
 
+  // KV Table Widget
+  kvTableBucket: string
+  kvTableKeyPattern: string
+  kvTableColumns: KvTableColumn[]
+  kvTableDefaultSortColumn: string
+  kvTableDefaultSortDirection: 'asc' | 'desc'
+
   // JetStream
   useJetStream: boolean
   deliverPolicy: 'all' | 'last' | 'new' | 'last_per_subject' | 'by_start_time'
@@ -166,6 +173,13 @@ export function createEmptyFormState(): WidgetFormState {
     pbFields: '',
     pbLimit: 10,
     pbRefreshInterval: 0,
+
+    // KV Table Defaults
+    kvTableBucket: '',
+    kvTableKeyPattern: '>',
+    kvTableColumns: [],
+    kvTableDefaultSortColumn: '',
+    kvTableDefaultSortDirection: 'desc',
 
     useJetStream: false,
     deliverPolicy: 'last',

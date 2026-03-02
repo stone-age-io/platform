@@ -1,12 +1,10 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { pb } from '@/utils/pb'
-import { useNatsStore } from '@/stores/nats'
 import type { Location, Thing } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
-import OccupancyList from '@/components/locations/OccupancyList.vue'
 
 const props = defineProps<{
   location: Location
@@ -18,14 +16,12 @@ const emit = defineEmits<{
 }>()
 
 const router = useRouter()
-const natsStore = useNatsStore()
 
 const activeTab = ref<'sub-locations' | 'things'>('sub-locations')
 const subLocations = ref<Location[]>([])
 const things = ref<Thing[]>([])
 const loadingSubs = ref(false)
 const loadingThings = ref(false)
-const showOccupancy = ref(false)
 
 const subLocColumns: Column<Location>[] = [
   { key: 'name', label: 'Name', mobileLabel: 'Name' },
@@ -77,24 +73,11 @@ function handleThingClick(item: Thing) {
 }
 
 watch(() => props.location.id, () => {
-  showOccupancy.value = false
   loadData()
 })
-
-// Escape key to close occupancy modal
-function handleEscape(e: KeyboardEvent) {
-  if (e.key === 'Escape' && showOccupancy.value) {
-    showOccupancy.value = false
-  }
-}
 
 onMounted(() => {
   loadData()
-  window.addEventListener('keydown', handleEscape)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('keydown', handleEscape)
 })
 </script>
 
@@ -179,14 +162,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Footer -->
-    <div class="p-3 border-t border-base-300 bg-base-200/30 shrink-0 space-y-2">
-      <button
-        v-if="location.code && natsStore.isConnected"
-        class="btn btn-sm btn-primary w-full"
-        @click="showOccupancy = true"
-      >
-        Live Occupancy
-      </button>
+    <div class="p-3 border-t border-base-300 bg-base-200/30 shrink-0">
       <router-link
         :to="`/locations/${location.id}`"
         class="btn btn-sm btn-ghost w-full"
@@ -194,21 +170,5 @@ onUnmounted(() => {
         View Details
       </router-link>
     </div>
-
-    <!-- Occupancy Modal -->
-    <Teleport to="body">
-      <div v-if="showOccupancy" class="modal modal-open" @click.self="showOccupancy = false">
-        <div class="modal-box max-w-2xl max-h-[85vh]">
-          <div class="flex justify-between items-center mb-4">
-            <h3 class="font-bold text-lg">{{ location.name }} - Occupancy</h3>
-            <button class="btn btn-sm btn-circle btn-ghost" @click="showOccupancy = false">✕</button>
-          </div>
-          <OccupancyList :location-code="location.code" />
-          <div class="modal-action">
-            <button class="btn btn-sm" @click="showOccupancy = false">Close</button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
   </div>
 </template>

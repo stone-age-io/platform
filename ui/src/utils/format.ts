@@ -46,6 +46,51 @@ export function formatRelativeTime(date: string | Date): string {
 }
 
 /**
+ * Normalize incoming timestamp to ms number + ISO string.
+ * Handles Unix seconds (OwnTracks), Unix milliseconds, and ISO strings.
+ */
+export function normalizeTimestamp(val: any): { iso: string; ms: number } {
+  if (!val) {
+    const now = Date.now()
+    return { iso: new Date(now).toISOString(), ms: now }
+  }
+
+  if (typeof val === 'number') {
+    // 10000000000 is roughly the year 2286 — if smaller, it's seconds
+    const ms = val < 10000000000 ? val * 1000 : val
+    return { iso: new Date(ms).toISOString(), ms }
+  }
+
+  const ms = new Date(String(val)).getTime() || Date.now()
+  return { iso: new Date(ms).toISOString(), ms }
+}
+
+/**
+ * Format a KV table column value based on its configured format.
+ */
+export function formatColumnValue(value: any, columnFormat: string, formatOptions?: string): string {
+  if (value === null || value === undefined) return '-'
+
+  switch (columnFormat) {
+    case 'number': {
+      const num = Number(value)
+      if (isNaN(num)) return String(value)
+      return num.toLocaleString()
+    }
+    case 'relative-time': {
+      const ts = normalizeTimestamp(value)
+      return formatRelativeTime(new Date(ts.ms))
+    }
+    case 'datetime': {
+      const ts = normalizeTimestamp(value)
+      return formatDate(new Date(ts.ms), formatOptions || 'PPpp')
+    }
+    default:
+      return String(value)
+  }
+}
+
+/**
  * Truncate string with ellipsis
  */
 export function truncate(str: string, length: number): string {

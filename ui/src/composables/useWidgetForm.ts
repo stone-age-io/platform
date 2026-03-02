@@ -26,6 +26,7 @@ import ConfigPublisher from '@/components/dashboard/config/ConfigPublisher.vue'
 import ConfigStatus from '@/components/dashboard/config/ConfigStatus.vue'
 import ConfigMarkdown from '@/components/dashboard/config/ConfigMarkdown.vue'
 import ConfigPocketBase from '@/components/dashboard/config/ConfigPocketBase.vue'
+import ConfigKvTable from '@/components/dashboard/config/ConfigKvTable.vue'
 
 // ============================================================================
 // TYPES
@@ -67,6 +68,7 @@ const configComponents: Record<string, Component> = {
   status: ConfigStatus,
   markdown: ConfigMarkdown,
   pocketbase: ConfigPocketBase,
+  kvtable: ConfigKvTable,
 }
 
 // ============================================================================
@@ -560,6 +562,44 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
     },
   },
 
+  // --- kvtable ---
+  kvtable: {
+    hydrate(widget, state) {
+      if (widget.kvtableConfig) {
+        state.kvTableBucket = widget.kvtableConfig.kvBucket || ''
+        state.kvTableKeyPattern = widget.kvtableConfig.keyPattern || '>'
+        state.kvTableColumns = JSON.parse(JSON.stringify(widget.kvtableConfig.columns || []))
+        state.kvTableDefaultSortColumn = widget.kvtableConfig.defaultSortColumn || ''
+        state.kvTableDefaultSortDirection = widget.kvtableConfig.defaultSortDirection || 'desc'
+      }
+    },
+    validate(form, errors) {
+      if (!form.kvTableBucket.trim()) errors.kvTableBucket = 'Bucket is required'
+      if (!form.kvTableKeyPattern.trim()) errors.kvTableKeyPattern = 'Key pattern is required'
+      if (form.kvTableColumns.length === 0) {
+        errors.kvTableColumns = 'At least one column is required'
+      } else {
+        for (const col of form.kvTableColumns) {
+          if (!col.label.trim() || !col.path.trim()) {
+            errors.kvTableColumns = 'All columns need a label and path'
+            break
+          }
+        }
+      }
+    },
+    buildUpdates(form) {
+      return {
+        kvtableConfig: {
+          kvBucket: form.kvTableBucket.trim(),
+          keyPattern: form.kvTableKeyPattern.trim(),
+          columns: JSON.parse(JSON.stringify(form.kvTableColumns)),
+          defaultSortColumn: form.kvTableDefaultSortColumn || undefined,
+          defaultSortDirection: form.kvTableDefaultSortDirection,
+        },
+      }
+    },
+  },
+
   // --- pocketbase ---
   pocketbase: {
     hydrate(widget, state) {
@@ -617,8 +657,8 @@ export function useWidgetForm(options: UseWidgetFormOptions) {
 
   const showDataSourceConfig = computed(() => {
     if (!widgetType.value) return false
-    // Status, markdown, pocketbase manage their own data source UI
-    if (widgetType.value === 'status' || widgetType.value === 'markdown' || widgetType.value === 'pocketbase') return false
+    // Status, markdown, pocketbase, kvtable manage their own data source UI
+    if (widgetType.value === 'status' || widgetType.value === 'markdown' || widgetType.value === 'pocketbase' || widgetType.value === 'kvtable') return false
     return STANDARD_DATA_SOURCE_TYPES.includes(widgetType.value)
   })
 

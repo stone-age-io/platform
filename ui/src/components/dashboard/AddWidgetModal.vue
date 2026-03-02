@@ -8,94 +8,100 @@
           <button class="close-btn" @click="close">✕</button>
         </div>
         <div class="modal-body">
-          <p>Select widget type to add:</p>
-          <div class="widget-type-buttons">
-            <!-- ... buttons ... -->
-            <!-- Visualization Widgets -->
-            <button class="widget-type-btn" @click="selectType('text')">
-              <div class="widget-type-icon">📝</div>
-              <div class="widget-type-name">Text Widget</div>
-              <div class="widget-type-desc">Display latest value</div>
-            </button>
-            <button class="widget-type-btn" @click="selectType('status')">
-              <div class="widget-type-icon">🚦</div>
-              <div class="widget-type-name">Status Indicator</div>
-              <div class="widget-type-desc">State mapping & watchdog</div>
-            </button>
-            <button class="widget-type-btn" @click="selectType('chart')">
-              <div class="widget-type-icon">📈</div>
-              <div class="widget-type-name">Chart Widget</div>
-              <div class="widget-type-desc">Line chart over time</div>
-            </button>
-            <button class="widget-type-btn" @click="selectType('stat')">
-              <div class="widget-type-icon">📊</div>
-              <div class="widget-type-name">Stat Card</div>
-              <div class="widget-type-desc">KPI with trend</div>
-            </button>
-            <button class="widget-type-btn" @click="selectType('gauge')">
-              <div class="widget-type-icon">⏲️</div>
-              <div class="widget-type-name">Gauge Widget</div>
-              <div class="widget-type-desc">Circular meter</div>
-            </button>
-            
-            <!-- Control Widgets -->
-            <button class="widget-type-btn" @click="selectType('button')">
-              <div class="widget-type-icon">📤</div>
-              <div class="widget-type-name">Button Widget</div>
-              <div class="widget-type-desc">Publish messages</div>
-            </button>
-            <button class="widget-type-btn" @click="selectType('switch')">
-              <div class="widget-type-icon">🔄</div>
-              <div class="widget-type-name">Switch Widget</div>
-              <div class="widget-type-desc">Toggle control</div>
-            </button>
-            <button class="widget-type-btn" @click="selectType('slider')">
-              <div class="widget-type-icon">🎚️</div>
-              <div class="widget-type-name">Slider Widget</div>
-              <div class="widget-type-desc">Range control</div>
-            </button>
-            
-            <!-- Data Widgets -->
-            <button class="widget-type-btn" @click="selectType('kv')">
-              <div class="widget-type-icon">🗄️</div>
-              <div class="widget-type-name">KV Widget</div>
-              <div class="widget-type-desc">Display KV values</div>
-            </button>
+          <!-- Data Display -->
+          <div class="widget-category">
+            <div class="category-label">Data Display</div>
+            <div class="widget-type-buttons">
+              <button class="widget-type-btn" @click="selectType('text')">
+                <div class="widget-type-icon">📝</div>
+                <div class="widget-type-name">Text</div>
+                <div class="widget-type-desc">Display latest value</div>
+              </button>
+              <button class="widget-type-btn" @click="selectType('stat')">
+                <div class="widget-type-icon">📊</div>
+                <div class="widget-type-name">Stat Card</div>
+                <div class="widget-type-desc">KPI with trend</div>
+              </button>
+              <button class="widget-type-btn" @click="selectType('gauge')">
+                <div class="widget-type-icon">⏲️</div>
+                <div class="widget-type-name">Gauge</div>
+                <div class="widget-type-desc">Circular meter</div>
+              </button>
+              <button class="widget-type-btn" @click="selectType('status')">
+                <div class="widget-type-icon">🚦</div>
+                <div class="widget-type-name">Status</div>
+                <div class="widget-type-desc">State mapping & watchdog</div>
+              </button>
+              <button class="widget-type-btn" @click="selectType('chart')">
+                <div class="widget-type-icon">📈</div>
+                <div class="widget-type-name">Chart</div>
+                <div class="widget-type-desc">Line chart over time</div>
+              </button>
+              <button class="widget-type-btn" @click="selectType('kv')">
+                <div class="widget-type-icon">🗄️</div>
+                <div class="widget-type-name">KV Value</div>
+                <div class="widget-type-desc">Single KV entry</div>
+              </button>
+              <button class="widget-type-btn" @click="selectType('kvtable')">
+                <div class="widget-type-icon">📋</div>
+                <div class="widget-type-name">KV Table</div>
+                <div class="widget-type-desc">Live KV bucket table</div>
+              </button>
+              <button class="widget-type-btn" @click="selectType('pocketbase')">
+                <div class="widget-type-icon">🐬</div>
+                <div class="widget-type-name">PocketBase</div>
+                <div class="widget-type-desc">Query database records</div>
+              </button>
+            </div>
+          </div>
 
-            <!-- PocketBase Widget -->
-            <button class="widget-type-btn" @click="selectType('pocketbase')">
-              <div class="widget-type-icon">🐬</div>
-              <div class="widget-type-name">PocketBase</div>
-              <div class="widget-type-desc">Query database records</div>
-            </button>
-            
-            <!-- Map Widget -->
-            <button class="widget-type-btn" @click="selectType('map')">
-              <div class="widget-type-icon">🗺️</div>
-              <div class="widget-type-name">Map Widget</div>
-              <div class="widget-type-desc">Geographic location</div>
-            </button>
+          <!-- Controls -->
+          <div class="widget-category">
+            <div class="category-label">Controls</div>
+            <div class="widget-type-buttons">
+              <button class="widget-type-btn" @click="selectType('button')">
+                <div class="widget-type-icon">📤</div>
+                <div class="widget-type-name">Button</div>
+                <div class="widget-type-desc">Publish messages</div>
+              </button>
+              <button class="widget-type-btn" @click="selectType('switch')">
+                <div class="widget-type-icon">🔄</div>
+                <div class="widget-type-name">Switch</div>
+                <div class="widget-type-desc">Toggle control</div>
+              </button>
+              <button class="widget-type-btn" @click="selectType('slider')">
+                <div class="widget-type-icon">🎚️</div>
+                <div class="widget-type-name">Slider</div>
+                <div class="widget-type-desc">Range control</div>
+              </button>
+              <button class="widget-type-btn" @click="selectType('publisher')">
+                <div class="widget-type-icon">📨</div>
+                <div class="widget-type-name">Publisher</div>
+                <div class="widget-type-desc">Send ad-hoc messages</div>
+              </button>
+            </div>
+          </div>
 
-            <!-- Console Widget -->
-            <button class="widget-type-btn" @click="selectType('console')">
-              <div class="widget-type-icon">📟</div>
-              <div class="widget-type-name">Console</div>
-              <div class="widget-type-desc">Live log stream</div>
-            </button>
-
-            <!-- Publisher Widget -->
-            <button class="widget-type-btn" @click="selectType('publisher')">
-              <div class="widget-type-icon">📨</div>
-              <div class="widget-type-name">Publisher</div>
-              <div class="widget-type-desc">Send ad-hoc messages</div>
-            </button>
-
-            <!-- Markdown Widget -->
-            <button class="widget-type-btn" @click="selectType('markdown')">
-              <div class="widget-type-icon">📝</div>
-              <div class="widget-type-name">Markdown</div>
-              <div class="widget-type-desc">Static text & images</div>
-            </button>
+          <!-- Layout -->
+          <div class="widget-category">
+            <div class="category-label">Layout</div>
+            <div class="widget-type-buttons">
+              <button class="widget-type-btn" @click="selectType('markdown')">
+                <div class="widget-type-icon">📝</div>
+                <div class="widget-type-name">Markdown</div>
+                <div class="widget-type-desc">Static text & images</div>
+              </button>
+              <button class="widget-type-btn" @click="selectType('map')">
+                <div class="widget-type-icon">🗺️</div>
+                <div class="widget-type-name">Map</div>
+                <div class="widget-type-desc">Geographic location</div>
+              </button>
+              <button class="widget-type-btn" @click="selectType('console')">
+                <div class="widget-type-icon">📟</div>
+                <div class="widget-type-name">Console</div>
+                <div class="widget-type-desc">Live log stream</div>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -187,10 +193,22 @@ function selectType(type: WidgetType) {
   overflow-y: auto;
 }
 
-.modal-body p {
-  margin: 0 0 16px 0;
-  color: oklch(var(--bc));
-  font-size: 14px;
+.widget-category {
+  margin-bottom: 16px;
+}
+
+.widget-category:last-child {
+  margin-bottom: 0;
+}
+
+.category-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: oklch(var(--bc) / 0.5);
+  margin-bottom: 8px;
+  padding-left: 2px;
 }
 
 .widget-type-buttons {

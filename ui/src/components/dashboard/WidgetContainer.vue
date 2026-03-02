@@ -79,6 +79,7 @@ const ConsoleWidget = defineAsyncComponent(() => import('@/components/widgets/Co
 const PublisherWidget = defineAsyncComponent(() => import('@/components/widgets/PublisherWidget.vue'))
 const MarkdownWidget = defineAsyncComponent(() => import('@/components/widgets/MarkdownWidget.vue'))
 const PocketBaseWidget = defineAsyncComponent(() => import('@/components/widgets/PocketBaseWidget.vue'))
+const KvTableWidget = defineAsyncComponent(() => import('@/components/widgets/KvTableWidget.vue'))
 
 const props = defineProps<{
   config?: WidgetConfig
@@ -115,6 +116,7 @@ const widgetComponent = computed(() => {
     case 'status': return StatusWidget
     case 'markdown': return MarkdownWidget
     case 'pocketbase': return PocketBaseWidget
+    case 'kvtable': return KvTableWidget
     default: return null
   }
 })

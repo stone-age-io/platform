@@ -145,7 +145,7 @@ export function useWidgetOperations() {
 
   function needsSubscription(widgetType: WidgetType, config?: WidgetConfig): boolean {
     if (widgetType === 'map') return true
-    const selfManagedTypes: WidgetType[] = ['button', 'kv', 'switch', 'slider', 'publisher', 'pocketbase'] 
+    const selfManagedTypes: WidgetType[] = ['button', 'kv', 'kvtable', 'switch', 'slider', 'publisher', 'pocketbase']
     if (selfManagedTypes.includes(widgetType)) return false
     if (widgetType === 'status') return config?.dataSource?.type !== 'kv'
     if (widgetType === 'markdown') return !!(config?.dataSource?.subject)
@@ -238,6 +238,17 @@ export function useWidgetOperations() {
           limit: 10,
           sort: '-created',
           refreshInterval: 0
+        }
+        break
+      case 'kvtable':
+        widget.title = 'KV Table'
+        widget.kvtableConfig = {
+          kvBucket: '',
+          keyPattern: '>',
+          columns: [
+            { id: 'col_1', label: 'Key', path: '__key_suffix__', format: 'text' }
+          ],
+          defaultSortDirection: 'desc'
         }
         break
     }

@@ -3,21 +3,22 @@
 /**
  * Widget Types
  */
-export type WidgetType = 
-  | 'chart' 
-  | 'text' 
-  | 'button' 
-  | 'kv' 
-  | 'switch' 
-  | 'slider' 
-  | 'stat' 
-  | 'gauge' 
-  | 'map' 
-  | 'console' 
-  | 'publisher' 
-  | 'status' 
-  | 'markdown' 
-  | 'pocketbase' // Added
+export type WidgetType =
+  | 'chart'
+  | 'text'
+  | 'button'
+  | 'kv'
+  | 'kvtable'
+  | 'switch'
+  | 'slider'
+  | 'stat'
+  | 'gauge'
+  | 'map'
+  | 'console'
+  | 'publisher'
+  | 'status'
+  | 'markdown'
+  | 'pocketbase'
 
 export type DataSourceType = 'subscription' | 'consumer' | 'kv'
 export type ChartType = 'line' | 'bar' | 'pie' | 'gauge'
@@ -198,6 +199,25 @@ export interface PocketBaseWidgetConfig {
   fields?: string // comma separated list
 }
 
+// --- KV Table Widget Types ---
+export type KvTableColumnFormat = 'text' | 'number' | 'relative-time' | 'datetime'
+
+export interface KvTableColumn {
+  id: string
+  label: string
+  path: string         // JSONPath (e.g., "$.temperature") or meta-path ("__key_suffix__")
+  format: KvTableColumnFormat
+  formatOptions?: string  // e.g., date-fns format string for 'datetime'
+}
+
+export interface KvTableWidgetConfig {
+  kvBucket: string
+  keyPattern: string    // e.g., "{{location_code}}.>"
+  columns: KvTableColumn[]
+  defaultSortColumn?: string   // column id
+  defaultSortDirection?: 'asc' | 'desc'
+}
+
 // --- Map Widget Types ---
 export const MAP_LIMITS = {
   MAX_MARKERS: 50,
@@ -311,7 +331,8 @@ export interface WidgetConfig {
   publisherConfig?: PublisherWidgetConfig
   statusConfig?: StatusWidgetConfig
   markdownConfig?: MarkdownWidgetConfig
-  pocketbaseConfig?: PocketBaseWidgetConfig // Added
+  pocketbaseConfig?: PocketBaseWidgetConfig
+  kvtableConfig?: KvTableWidgetConfig
 }
 
 export type StorageType = 'local' | 'kv'
@@ -345,7 +366,8 @@ export const DEFAULT_WIDGET_SIZES: Record<WidgetType, { w: number; h: number }> 
   publisher: { w: 4, h: 4 },
   status: { w: 2, h: 2 },
   markdown: { w: 4, h: 4 },
-  pocketbase: { w: 6, h: 4 }, // Added
+  pocketbase: { w: 6, h: 4 },
+  kvtable: { w: 6, h: 4 },
 }
 
 export const DEFAULT_BUFFER_CONFIG: BufferConfig = {
@@ -482,6 +504,17 @@ export function createDefaultWidget(type: WidgetType, position: { x: number; y: 
         limit: 10,
         sort: '-created',
         refreshInterval: 0
+      }
+      break
+    case 'kvtable':
+      base.title = 'KV Table'
+      base.kvtableConfig = {
+        kvBucket: '',
+        keyPattern: '>',
+        columns: [
+          { id: 'col_1', label: 'Key', path: '__key_suffix__', format: 'text' }
+        ],
+        defaultSortDirection: 'desc'
       }
       break
   }
