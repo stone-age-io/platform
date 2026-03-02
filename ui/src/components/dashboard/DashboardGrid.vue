@@ -10,9 +10,10 @@
         v-for="widget in sortedWidgets" 
         :key="widget.id"
         class="mobile-widget-wrapper"
-        :class="{ 
+        :class="{
           'span-full': shouldSpanFullMobile(widget.id),
-          'is-tall': isTallWidget(widget)
+          'is-tall': isTallWidget(widget),
+          'is-data-tall': isDataTallWidget(widget)
         }"
       >
         <WidgetContainer
@@ -144,10 +145,14 @@ function isIntrinsicallyFullWidth(widget: WidgetConfig): boolean {
 }
 
 function isTallWidget(widget: WidgetConfig): boolean {
-  if (['map', 'chart', 'console', 'publisher', 'markdown', 'kvtable'].includes(widget.type)) return true
+  if (['map', 'chart', 'console', 'publisher', 'markdown'].includes(widget.type)) return true
   if (['gauge', 'stat'].includes(widget.type)) return true
   if (widget.type === 'kv' && widget.h > 2) return true
   return false
+}
+
+function isDataTallWidget(widget: WidgetConfig): boolean {
+  return ['kvtable', 'pocketbase'].includes(widget.type)
 }
 
 const mobileWidgetLayout = computed(() => {
@@ -293,6 +298,10 @@ onUnmounted(() => {
 
 .mobile-widget-wrapper.is-tall {
   min-height: 250px;
+}
+
+.mobile-widget-wrapper.is-data-tall {
+  min-height: 400px;
 }
 
 .mobile-layout.is-editing .mobile-widget-wrapper.span-full {

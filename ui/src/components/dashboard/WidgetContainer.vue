@@ -123,7 +123,13 @@ const widgetComponent = computed(() => {
   }
 })
 
-const shouldShowHeader = computed(() => true)
+const MOBILE_TITLED_TYPES = new Set(['kvtable', 'pocketbase'])
+
+const shouldShowHeader = computed(() => {
+  if (!dashboardStore.isLocked) return true
+  if (props.isMobile) return MOBILE_TITLED_TYPES.has(props.config?.type || '')
+  return true
+})
 const mobileCompact = computed(() => props.isMobile && dashboardStore.isLocked)
 
 async function handleDelete() {
