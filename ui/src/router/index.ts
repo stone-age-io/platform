@@ -66,6 +66,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'locations/types/new', name: 'LocationTypeNew', component: () => import('@/views/locations/LocationTypeFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
       { path: 'locations/types/:id/edit', name: 'LocationTypeEdit', component: () => import('@/views/locations/LocationTypeFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
       { path: 'locations', name: 'Locations', component: () => import('@/views/locations/LocationListView.vue') },
+      { path: 'locations/occupancy', name: 'Occupancy', component: () => import('@/views/locations/OccupancyView.vue') },
       { path: 'locations/new', name: 'LocationNew', component: () => import('@/views/locations/LocationFormView.vue') },
       { path: 'locations/:id', name: 'LocationDetail', component: () => import('@/views/locations/LocationDetailView.vue') },
       { path: 'locations/:id/edit', name: 'LocationEdit', component: () => import('@/views/locations/LocationFormView.vue') },

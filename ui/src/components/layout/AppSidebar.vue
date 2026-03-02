@@ -45,7 +45,15 @@ const menuItems = computed(() => {
   const items: any[] = [
     { label: 'Dashboard', icon: '📊', path: '/' },
     { label: 'Things', icon: '📦', path: '/things' },
-    { label: 'Locations', icon: '📍', path: '/locations' },
+    {
+      label: 'Locations',
+      icon: '📍',
+      path: '/locations',
+      children: [
+        { label: 'All Locations', path: '/locations' },
+        { label: 'Occupancy', path: '/locations/occupancy' },
+      ]
+    },
     { 
       label: 'NATS', 
       icon: '📡', 
