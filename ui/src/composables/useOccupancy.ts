@@ -24,6 +24,7 @@ export function useOccupancy(locationCode: () => string | undefined) {
   let kvWatcher: any = null
   let flushHandle: number | null = null
   let initialLoad = false
+  let loadingTimeout: ReturnType<typeof setTimeout> | null = null
 
   const flushBuffer = () => {
     occupants.value = Array.from(occupantBuffer.values())
@@ -85,12 +86,22 @@ export function useOccupancy(locationCode: () => string | undefined) {
       const iter = await kv.watch({ key: `${code}.>` })
       kvWatcher = iter
 
+      // Fallback: if no keys match this prefix the iterator blocks
+      // forever — clear loading after a short grace period.
+      loadingTimeout = setTimeout(() => {
+        if (initialLoad) {
+          initialLoad = false
+          loading.value = false
+        }
+      }, 500)
+
       ;(async () => {
         for await (const e of iter) {
           // Clear loading after initial values are delivered
           if (initialLoad && e.delta === 0) {
             initialLoad = false
             loading.value = false
+            if (loadingTimeout) { clearTimeout(loadingTimeout); loadingTimeout = null }
           }
 
           const codePrefix = code + '.'
@@ -145,6 +156,10 @@ export function useOccupancy(locationCode: () => string | undefined) {
     if (flushHandle) {
       cancelAnimationFrame(flushHandle)
       flushHandle = null
+    }
+    if (loadingTimeout) {
+      clearTimeout(loadingTimeout)
+      loadingTimeout = null
     }
     initialLoad = false
     occupantBuffer.clear()
