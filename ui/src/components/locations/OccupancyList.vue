@@ -1,6 +1,3 @@
-================================================
-FILE: ui/src/components/locations/OccupancyList.vue
-================================================
 <template>
   <BaseCard :no-padding="true">
     <template #header>
@@ -12,9 +9,9 @@ FILE: ui/src/components/locations/OccupancyList.vue
           </div>
           <div v-else-if="!loading" class="badge badge-ghost opacity-50">Empty</div>
         </div>
-        
+
         <!-- Simple Search -->
-        <input 
+        <input
           v-model="search"
           type="text"
           placeholder="Filter users..."
@@ -36,11 +33,12 @@ FILE: ui/src/components/locations/OccupancyList.vue
     </div>
 
     <!-- List -->
-    <ResponsiveList 
+    <ResponsiveList
       v-else
-      :items="filteredOccupants" 
-      :columns="columns" 
-      :clickable="false"
+      :items="filteredOccupants"
+      :columns="columns"
+      :clickable="true"
+      @row-click="handleRowClick"
     >
       <!-- User Identity Column -->
       <template #cell-user_id="{ item }">
@@ -72,20 +70,49 @@ FILE: ui/src/components/locations/OccupancyList.vue
           </div>
           <div>
             <div class="font-bold font-mono">{{ item.user_id }}</div>
-            <div class="text-xs opacity-60">Arrived {{ formatRelativeTime(item.timestamp) }}</div>
+            <div class="text-xs opacity-60">Seen {{ formatRelativeTime(item.timestamp) }}</div>
           </div>
         </div>
       </template>
     </ResponsiveList>
+
+    <!-- Detail Modal -->
+    <Teleport to="body">
+      <div v-if="selectedOccupant" class="modal modal-open" @click.self="selectedOccupant = null">
+        <div class="modal-box max-w-lg">
+          <div class="flex justify-between items-center mb-4">
+            <div class="flex items-center gap-3">
+              <div class="avatar placeholder">
+                <div class="bg-neutral text-neutral-content rounded-full w-10">
+                  <span class="text-sm font-bold">{{ selectedOccupant.user_id.substring(0,2).toUpperCase() }}</span>
+                </div>
+              </div>
+              <div>
+                <h3 class="font-bold font-mono">{{ selectedOccupant.user_id }}</h3>
+                <p class="text-xs text-base-content/60">Last seen {{ formatRelativeTime(selectedOccupant.timestamp) }}</p>
+              </div>
+            </div>
+            <button class="btn btn-sm btn-circle btn-ghost" @click="selectedOccupant = null">✕</button>
+          </div>
+          <div class="bg-base-200 rounded-lg p-4 overflow-auto max-h-96 border border-base-300">
+            <JsonViewer :data="selectedOccupant.rawData" />
+          </div>
+          <div class="modal-action">
+            <button class="btn btn-sm" @click="selectedOccupant = null">Close</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </BaseCard>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useOccupancy } from '@/composables/useOccupancy'
+import { useOccupancy, type Occupant } from '@/composables/useOccupancy'
 import { formatRelativeTime, formatDate } from '@/utils/format'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList, { type Column } from '@/components/ui/ResponsiveList.vue'
+import JsonViewer from '@/components/common/JsonViewer.vue'
 
 const props = defineProps<{
   locationCode?: string
@@ -94,10 +121,11 @@ const props = defineProps<{
 // Use the composable
 const { occupants, loading } = useOccupancy(() => props.locationCode)
 const search = ref('')
+const selectedOccupant = ref<Occupant | null>(null)
 
 const columns: Column<any>[] = [
   { key: 'user_id', label: 'User', mobileLabel: 'User' },
-  { key: 'timestamp', label: 'Arrival', mobileLabel: 'Arrived' },
+  { key: 'timestamp', label: 'Last Seen', mobileLabel: 'Seen' },
 ]
 
 // Client-side filtering
@@ -106,4 +134,8 @@ const filteredOccupants = computed(() => {
   const q = search.value.toLowerCase()
   return occupants.value.filter(o => o.user_id.toLowerCase().includes(q))
 })
+
+function handleRowClick(item: Occupant) {
+  selectedOccupant.value = item
+}
 </script>

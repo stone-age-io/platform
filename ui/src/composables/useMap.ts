@@ -16,9 +16,13 @@ export function useMap() {
   const markersLayer = shallowRef<L.LayerGroup | null>(null)
   const currentTileLayer = shallowRef<L.TileLayer | null>(null)
   const mapInitialized = ref(false)
-  
-  // NEW: Store bounds to allow resetting view
+
+  // Store bounds to allow resetting view
   const markersBounds = shallowRef<L.LatLngBounds | null>(null)
+
+  // Track markers by location ID for selection highlighting
+  const markerMap = new Map<string, L.Marker>()
+  let selectedId: string | null = null
 
   const fixLeafletIcons = () => {
     // @ts-ignore
@@ -38,12 +42,11 @@ export function useMap() {
     const mapInstance = L.map(containerId, {
       center: [39.8283, -98.5795],
       zoom: 4,
-      zoomControl: false, // We usually hide this or move it, standard is TopRight
+      zoomControl: false,
     })
 
     map.value = mapInstance
 
-    // Add zoom control explicitly if not present
     L.control.zoom({ position: 'topright' }).addTo(mapInstance)
 
     updateTheme(isDarkMode)
@@ -53,7 +56,7 @@ export function useMap() {
     markersLayer.value = layerGroup
 
     window.addEventListener('resize', handleResize)
-    
+
     nextTick(() => {
       map.value?.invalidateSize()
     })
@@ -75,12 +78,13 @@ export function useMap() {
     currentTileLayer.value = tileLayer
   }
 
-  const renderMarkers = (locations: Location[]) => {
+  const renderMarkers = (locations: Location[], onMarkerClick?: (location: Location) => void) => {
     if (!map.value || !markersLayer.value) return
 
     markersLayer.value.clearLayers()
-    
-    // Collect coordinates
+    markerMap.clear()
+    selectedId = null
+
     const latLngs: [number, number][] = []
 
     locations.forEach(loc => {
@@ -91,19 +95,24 @@ export function useMap() {
 
       const marker = L.marker([lat, lon], { title: loc.name })
 
-      const popupContent = `
-        <div class="p-1">
-          <h3 class="font-bold text-sm">${loc.name}</h3>
-          <div class="text-xs text-gray-500 mb-1">${loc.expand?.type?.name || 'Unknown Type'}</div>
-          ${loc.description ? `<p class="text-xs mb-2">${loc.description}</p>` : ''}
-          <a href="/locations/${loc.id}" class="text-xs text-primary hover:underline">View Details</a>
-        </div>
-      `
-      marker.bindPopup(popupContent)
+      if (onMarkerClick) {
+        marker.on('click', () => onMarkerClick(loc))
+      } else {
+        const popupContent = `
+          <div class="p-1">
+            <h3 class="font-bold text-sm">${loc.name}</h3>
+            <div class="text-xs text-gray-500 mb-1">${loc.expand?.type?.name || 'Unknown Type'}</div>
+            ${loc.description ? `<p class="text-xs mb-2">${loc.description}</p>` : ''}
+            <a href="/locations/${loc.id}" class="text-xs text-primary hover:underline">View Details</a>
+          </div>
+        `
+        marker.bindPopup(popupContent)
+      }
+
+      markerMap.set(loc.id, marker)
       markersLayer.value!.addLayer(marker)
     })
 
-    // Calculate and store bounds
     if (latLngs.length > 0) {
       const bounds = L.latLngBounds(latLngs)
       markersBounds.value = bounds
@@ -113,11 +122,36 @@ export function useMap() {
     }
   }
 
-  // NEW: Fit map to stored bounds
+  const setSelectedMarker = (locationId: string | null) => {
+    // Clear previous selection
+    if (selectedId) {
+      const prev = markerMap.get(selectedId)
+      if (prev) {
+        const el = prev.getElement()
+        if (el) el.classList.remove('marker-selected')
+      }
+    }
+
+    selectedId = locationId
+
+    // Apply new selection
+    if (locationId) {
+      const marker = markerMap.get(locationId)
+      if (marker) {
+        const el = marker.getElement()
+        if (el) el.classList.add('marker-selected')
+      }
+    }
+  }
+
   const fitToMarkers = () => {
     if (map.value && markersBounds.value) {
       map.value.fitBounds(markersBounds.value, { padding: [50, 50], maxZoom: 15 })
     }
+  }
+
+  const invalidateSize = () => {
+    map.value?.invalidateSize()
   }
 
   const handleResize = () => {
@@ -130,6 +164,8 @@ export function useMap() {
       map.value.remove()
       map.value = null
     }
+    markerMap.clear()
+    selectedId = null
     markersBounds.value = null
   }
 
@@ -141,8 +177,10 @@ export function useMap() {
     map,
     initMap,
     renderMarkers,
+    setSelectedMarker,
     updateTheme,
-    fitToMarkers, // Exported
+    fitToMarkers,
+    invalidateSize,
     cleanup
   }
 }

@@ -8,6 +8,7 @@ export interface Occupant {
   timestamp: string
   lat?: number
   lon?: number
+  rawData: Record<string, any>
 }
 
 export function useOccupancy(locationCode: () => string | undefined) {
@@ -61,16 +62,15 @@ export function useOccupancy(locationCode: () => string | undefined) {
 
     try {
       const kvm = new Kvm(natsStore.nc)
-      
+
+      let kv
       try {
-        await kvm.open('occupancy')
+        kv = await kvm.open('occupancy')
       } catch (e) {
         // Bucket might not exist yet
         loading.value = false
         return
       }
-
-      const kv = await kvm.open('occupancy')
       
       // Watch keys starting with the location code
       const iter = await kv.watch({ key: `${code}.*` })
@@ -87,11 +87,12 @@ export function useOccupancy(locationCode: () => string | undefined) {
             try {
               const data = JSON.parse(decodeBytes(e.value!))
               
-              occupantBuffer.set(userId, { 
+              occupantBuffer.set(userId, {
                 user_id: userId,
                 timestamp: normalizeTimestamp(data.timestamp),
                 lat: data.lat,
-                lon: data.lon
+                lon: data.lon,
+                rawData: data
               })
             } catch (err) { 
               // Ignore malformed

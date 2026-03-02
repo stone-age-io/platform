@@ -1,28 +1,57 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { pb } from '@/utils/pb'
 import { useAuthStore } from '@/stores/auth'
 import { useUIStore } from '@/stores/ui'
 import { useMap } from '@/composables/useMap'
 import type { Location } from '@/types/pocketbase'
+import LocationMapDrawer from '@/components/locations/LocationMapDrawer.vue'
 
 const authStore = useAuthStore()
 const uiStore = useUIStore()
-// Import the new function
-const { initMap, renderMarkers, updateTheme, fitToMarkers, cleanup } = useMap()
+const { initMap, renderMarkers, setSelectedMarker, updateTheme, fitToMarkers, invalidateSize, cleanup } = useMap()
 
 const loading = ref(true)
 const locations = ref<Location[]>([])
+const selectedLocation = ref<Location | null>(null)
+const isMobile = ref(false)
 const mapContainerId = 'location-list-map-container'
+
+function checkMobile() {
+  isMobile.value = window.innerWidth < 768
+}
+
+function handleMarkerClick(location: Location) {
+  if (selectedLocation.value?.id === location.id) {
+    closeDrawer()
+    return
+  }
+  selectedLocation.value = location
+  setSelectedMarker(location.id)
+  if (!isMobile.value) nextTick(() => invalidateSize())
+}
+
+function handleMapClick(event: MouseEvent) {
+  if (isMobile.value) return
+  if (!selectedLocation.value) return
+  const target = event.target as HTMLElement
+  if (target.closest('.leaflet-marker-icon') || target.closest('.location-map-drawer')) return
+  closeDrawer()
+}
+
+function closeDrawer() {
+  selectedLocation.value = null
+  setSelectedMarker(null)
+  if (!isMobile.value) nextTick(() => invalidateSize())
+}
 
 async function loadData() {
   if (!authStore.currentOrgId) return
-  
+
   loading.value = true
   try {
     const result = await pb.collection('locations').getFullList<Location>({
-      filter: 'coordinates != ""', 
-      fields: 'id,name,description,coordinates,expand.type.name',
+      filter: 'coordinates != ""',
       expand: 'type',
     })
 
@@ -32,7 +61,7 @@ async function loadData() {
       return lat !== 0 || lon !== 0
     })
 
-    renderMarkers(locations.value)
+    renderMarkers(locations.value, handleMarkerClick)
   } catch (err) {
     console.error('Failed to load map data:', err)
   } finally {
@@ -41,20 +70,28 @@ async function loadData() {
 }
 
 watch(() => uiStore.theme, (newTheme) => updateTheme(newTheme === 'dark'))
-watch(() => authStore.currentOrgId, loadData)
-
-onMounted(async () => {
-  await loadData()
-  initMap(mapContainerId, uiStore.theme === 'dark')
-  renderMarkers(locations.value)
+watch(() => authStore.currentOrgId, () => {
+  closeDrawer()
+  loadData()
 })
 
-onUnmounted(cleanup)
+onMounted(async () => {
+  checkMobile()
+  window.addEventListener('resize', checkMobile)
+  await loadData()
+  initMap(mapContainerId, uiStore.theme === 'dark')
+  renderMarkers(locations.value, handleMarkerClick)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', checkMobile)
+  cleanup()
+})
 </script>
 
 <template>
   <div class="h-full flex flex-col relative min-h-[600px] bg-base-300 rounded-xl overflow-hidden shadow-lg border border-base-300">
-    
+
     <!-- Stats Overlay (Top Left) -->
     <div class="absolute top-4 left-4 z-[400]">
       <div class="badge badge-lg bg-base-100/90 backdrop-blur border-base-300 shadow-sm gap-2">
@@ -64,10 +101,10 @@ onUnmounted(cleanup)
       </div>
     </div>
 
-    <!-- Map Controls (Top Right, below standard zoom if present, or just positioned manually) -->
+    <!-- Map Controls (Top Right) -->
     <div v-if="locations.length > 0" class="absolute top-[80px] right-[10px] z-[400] flex flex-col gap-2">
-      <button 
-        class="btn btn-sm btn-square bg-base-100 border-base-300 shadow-sm hover:bg-base-200" 
+      <button
+        class="btn btn-sm btn-square bg-base-100 border-base-300 shadow-sm hover:bg-base-200"
         @click="fitToMarkers"
         title="Fit all locations"
       >
@@ -76,7 +113,7 @@ onUnmounted(cleanup)
     </div>
 
     <!-- Leaflet Target -->
-    <div :id="mapContainerId" class="absolute inset-0 z-0"></div>
+    <div :id="mapContainerId" class="absolute inset-0 z-0" @click="handleMapClick"></div>
 
     <!-- Loading Overlay -->
     <div v-if="loading" class="absolute inset-0 z-10 bg-base-100/50 backdrop-blur-sm flex items-center justify-center">
@@ -93,6 +130,15 @@ onUnmounted(cleanup)
         </p>
       </div>
     </div>
+
+    <!-- Location Drawer -->
+    <LocationMapDrawer
+      v-if="selectedLocation"
+      :location="selectedLocation"
+      :is-mobile="isMobile"
+      class="location-map-drawer"
+      @close="closeDrawer"
+    />
   </div>
 </template>
 
@@ -101,6 +147,9 @@ onUnmounted(cleanup)
   background-color: oklch(var(--b1));
   color: oklch(var(--bc));
   border-radius: 0.5rem;
+}
+:deep(.marker-selected) {
+  filter: hue-rotate(180deg) saturate(1.5) drop-shadow(0 0 8px rgba(116, 128, 255, 0.8));
 }
 /* Ensure controls sit above map tiles */
 .absolute { pointer-events: auto; }
