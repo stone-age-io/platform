@@ -222,7 +222,23 @@ export interface KvTableWidgetConfig {
 export const MAP_LIMITS = {
   MAX_MARKERS: 50,
   MAX_ITEMS_PER_MARKER: 10,
+  MAX_DYNAMIC_MARKERS: 500,
 } as const
+
+export interface DynamicMarkerPopupField {
+  label: string
+  path: string              // JSONPath or meta-path (__key_suffix__, __revision__, __timestamp__)
+  format?: KvTableColumnFormat  // reuse: text, number, relative-time, datetime
+}
+
+export interface DynamicMarkerSource {
+  kvBucket: string          // supports {{variable}}
+  keyPattern: string        // e.g. "vehicles.>" — supports {{variable}}
+  latPath: string           // JSONPath e.g. "$.lat"
+  lonPath: string           // JSONPath e.g. "$.lon"
+  labelPath: string         // JSONPath or "__key_suffix__"
+  popupFields?: DynamicMarkerPopupField[]
+}
 
 export type MapItemType = 'publish' | 'switch' | 'text' | 'kv'
 
@@ -303,6 +319,9 @@ export interface MapWidgetConfig {
   }
   zoom: number
   markers: MapMarker[]
+  dynamicMarkers?: DynamicMarkerSource
+  enableClustering?: boolean
+  fitBoundsOnLoad?: boolean
 }
 
 // --- Main Widget Configuration ---

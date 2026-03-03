@@ -1,5 +1,5 @@
 // ui/src/types/config.ts
-import type { ThresholdRule, MapMarker, StatusMapping, KvTableColumn } from './dashboard'
+import type { ThresholdRule, MapMarker, StatusMapping, KvTableColumn, DynamicMarkerPopupField } from './dashboard'
 
 export interface WidgetFormState {
   // Common
@@ -64,6 +64,15 @@ export interface WidgetFormState {
   mapCenterLon: number
   mapZoom: number
   mapMarkers: MapMarker[]
+  mapDynamicEnabled: boolean
+  mapDynamicBucket: string
+  mapDynamicKeyPattern: string
+  mapDynamicLatPath: string
+  mapDynamicLonPath: string
+  mapDynamicLabelPath: string
+  mapDynamicPopupFields: DynamicMarkerPopupField[]
+  mapEnableClustering: boolean
+  mapFitBoundsOnLoad: boolean
   
   // Console Widget
   consoleFontSize: number
@@ -152,6 +161,15 @@ export function createEmptyFormState(): WidgetFormState {
     mapCenterLon: -98.5795,
     mapZoom: 4,
     mapMarkers: [],
+    mapDynamicEnabled: false,
+    mapDynamicBucket: '',
+    mapDynamicKeyPattern: '>',
+    mapDynamicLatPath: '$.lat',
+    mapDynamicLonPath: '$.lon',
+    mapDynamicLabelPath: '__key_suffix__',
+    mapDynamicPopupFields: [],
+    mapEnableClustering: false,
+    mapFitBoundsOnLoad: false,
     consoleFontSize: 12,
     consoleShowTimestamp: true,
     publisherDefaultSubject: '',

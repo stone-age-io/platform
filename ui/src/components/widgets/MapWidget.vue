@@ -2,39 +2,55 @@
 <template>
   <div class="map-widget">
     <!-- Map container -->
-    <div 
-      :id="mapContainerId" 
+    <div
+      :id="mapContainerId"
       class="map-container"
       @click="handleMapClick"
     />
-    
+
     <!-- Loading overlay -->
     <div v-if="!mapReady" class="map-loading">
       <div class="loading-spinner"></div>
       <span>Loading map...</span>
     </div>
-    
+
     <!-- No markers hint -->
-    <div v-if="mapReady && markers.length === 0" class="no-markers-hint">
+    <div v-if="mapReady && totalMarkerCount === 0 && !dynamicLoading" class="no-markers-hint">
       <span class="hint-icon">📍</span>
       <span class="hint-text">No markers configured</span>
     </div>
-    
+
+    <!-- Dynamic markers loading -->
+    <div v-if="mapReady && dynamicLoading" class="no-markers-hint">
+      <span class="hint-icon">⏳</span>
+      <span class="hint-text">Loading dynamic markers...</span>
+    </div>
+
     <!-- Map Controls -->
-    <div v-if="mapReady && markers.length > 1" class="map-controls">
-      <button 
-        class="map-control-btn" 
+    <div v-if="mapReady && totalMarkerCount > 1" class="map-controls">
+      <button
+        class="map-control-btn"
         @click="handleFitAll"
         title="Fit all markers"
       >
         ⊡
       </button>
     </div>
-    
-    <!-- Marker Detail Panel -->
+
+    <!-- Static Marker Detail Panel -->
     <MarkerDetailPanel
-      v-if="selectedMarker"
-      :marker="selectedMarker"
+      v-if="selectedStaticMarker"
+      :marker="selectedStaticMarker"
+      :is-mobile="isMobile"
+      @close="closePanel"
+    />
+
+    <!-- Dynamic Marker Detail Panel -->
+    <DynamicMarkerPanel
+      v-if="selectedDynamicRow"
+      :row="selectedDynamicRow"
+      :popup-fields="dynamicPopupFields"
+      :label="selectedDynamicLabel"
       :is-mobile="isMobile"
       @close="closePanel"
     />
@@ -44,10 +60,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useLeafletMap } from '@/composables/useLeafletMap'
+import { useNatsKvWatcher, type KvRow } from '@/composables/useNatsKvWatcher'
 import { useUIStore } from '@/stores/ui'
 import { useWidgetDataStore } from '@/stores/widgetData'
 import { useDashboardStore } from '@/stores/dashboard'
+import { resolveTemplate } from '@/utils/variables'
+import { JSONPath } from 'jsonpath-plus'
 import MarkerDetailPanel from './map/MarkerDetailPanel.vue'
+import DynamicMarkerPanel from './map/DynamicMarkerPanel.vue'
 import type { WidgetConfig } from '@/types/dashboard'
 
 const props = withDefaults(defineProps<{
@@ -60,16 +80,18 @@ const props = withDefaults(defineProps<{
 const uiStore = useUIStore()
 const dataStore = useWidgetDataStore()
 const dashboardStore = useDashboardStore()
-
-const { 
-  initMap, 
-  updateTheme, 
-  renderMarkers, 
+const {
+  initMap,
+  updateTheme,
+  renderMarkers,
+  updateDynamicMarkers,
+  clearDynamicMarkers,
   setSelectedMarker,
   updateMarkerPositions,
   fitAllMarkers,
-  invalidateSize, 
-  cleanup 
+  invalidateSize,
+  getTotalMarkerCount,
+  cleanup
 } = useLeafletMap()
 
 const mapContainerId = computed(() => {
@@ -79,26 +101,75 @@ const mapContainerId = computed(() => {
 
 const mapReady = ref(false)
 const selectedMarkerId = ref<string | null>(null)
+const selectedMarkerType = ref<'static' | 'dynamic' | null>(null)
 const isMobile = ref(false)
 
 const markers = computed(() => props.config.mapConfig?.markers || [])
 const mapCenter = computed(() => props.config.mapConfig?.center || { lat: 39.8283, lon: -98.5795 })
 const mapZoom = computed(() => props.config.mapConfig?.zoom || 4)
+const enableClustering = computed(() => props.config.mapConfig?.enableClustering ?? false)
+const fitBoundsOnLoad = computed(() => props.config.mapConfig?.fitBoundsOnLoad ?? false)
 
 const buffer = computed(() => dataStore.getBuffer(props.config.id))
 
-const selectedMarker = computed(() => {
-  if (!selectedMarkerId.value) return null
+// --- Dynamic KV markers ---
+const dynamicCfg = computed(() => props.config.mapConfig?.dynamicMarkers)
+const hasDynamic = computed(() => !!dynamicCfg.value?.kvBucket)
+
+const resolvedDynBucket = computed(() =>
+  hasDynamic.value
+    ? resolveTemplate(dynamicCfg.value!.kvBucket, dashboardStore.currentVariableValues)
+    : ''
+)
+const resolvedDynPattern = computed(() =>
+  hasDynamic.value
+    ? resolveTemplate(dynamicCfg.value!.keyPattern, dashboardStore.currentVariableValues)
+    : ''
+)
+
+const { rows: dynamicRows, loading: dynamicLoading } = useNatsKvWatcher(
+  () => resolvedDynBucket.value,
+  () => resolvedDynPattern.value
+)
+
+const dynamicPopupFields = computed(() => dynamicCfg.value?.popupFields || [])
+
+// --- Selection state ---
+const selectedStaticMarker = computed(() => {
+  if (selectedMarkerType.value !== 'static' || !selectedMarkerId.value) return null
   return markers.value.find(m => m.id === selectedMarkerId.value) || null
 })
+
+const selectedDynamicRow = computed<KvRow | null>(() => {
+  if (selectedMarkerType.value !== 'dynamic' || !selectedMarkerId.value) return null
+  return dynamicRows.value.get(selectedMarkerId.value) || null
+})
+
+const selectedDynamicLabel = computed(() => {
+  if (!selectedDynamicRow.value || !dynamicCfg.value) return ''
+  return extractDynamicLabel(selectedDynamicRow.value, dynamicCfg.value.labelPath)
+})
+
+const totalMarkerCount = computed(() => getTotalMarkerCount())
+
+function extractDynamicLabel(row: KvRow, labelPath: string): string {
+  if (labelPath === '__key__') return row.key
+  if (labelPath === '__key_suffix__') return row.keySuffix
+  if (labelPath === '__revision__') return String(row.revision)
+  try {
+    const result = JSONPath({ path: labelPath, json: row.data, wrap: false })
+    return result != null ? String(result) : row.keySuffix
+  } catch {
+    return row.keySuffix
+  }
+}
 
 function checkMobile() {
   isMobile.value = window.innerWidth < 768
 }
 
 /**
- * Grug-Logic: Centralized Position Sync
- * Moves markers to their last known positions from the data store.
+ * Centralized Position Sync for static markers with dynamic position config
  */
 function syncMarkerPositions() {
   if (mapReady.value && buffer.value.length > 0) {
@@ -109,26 +180,27 @@ function syncMarkerPositions() {
 async function initializeMap() {
   await nextTick()
 
-  // Wait for CSS to be applied and container to have dimensions
-  // This is especially important on mobile where lazy-loaded CSS needs time
   const tryInit = (attempts = 0) => {
     const container = document.getElementById(mapContainerId.value)
 
-    // Retry if container not ready (max 10 attempts over 500ms)
     if (!container || (container.clientHeight === 0 && attempts < 10)) {
       window.setTimeout(() => tryInit(attempts + 1), 50)
       return
     }
 
-    initMap(mapContainerId.value, mapCenter.value, mapZoom.value, uiStore.theme === 'dark')
+    initMap(
+      mapContainerId.value,
+      mapCenter.value,
+      mapZoom.value,
+      uiStore.theme === 'dark',
+      enableClustering.value
+    )
 
-    // 1. Render the static marker definitions
-    renderMarkers(markers.value, handleMarkerClick)
+    // Render static markers
+    renderMarkers(markers.value, handleStaticMarkerClick)
 
-    // 2. Set ready flag - this will trigger the mapReady watcher below
     mapReady.value = true
 
-    // 3. Extra invalidateSize calls for mobile reliability
     window.setTimeout(() => invalidateSize(), 100)
     window.setTimeout(() => invalidateSize(), 300)
   }
@@ -138,50 +210,89 @@ async function initializeMap() {
 
 // --- Watchers ---
 
-// Fix for "Warm Start" and "Refresh":
-// When map becomes ready, immediately sync with whatever is in the buffer
+// When map becomes ready, sync static marker positions + handle initial dynamic markers
 watch(mapReady, (ready) => {
-  if (ready) syncMarkerPositions()
+  if (ready) {
+    syncMarkerPositions()
+    // If dynamic markers are already loaded, render them
+    if (hasDynamic.value && dynamicRows.value.size > 0 && dynamicCfg.value) {
+      updateDynamicMarkers(dynamicRows.value, dynamicCfg.value, handleDynamicMarkerClick)
+    }
+    // Fit bounds on load if configured
+    if (fitBoundsOnLoad.value) {
+      window.setTimeout(() => fitAllMarkers(), 500)
+    }
+  }
 })
 
-// Fix for "Live Updates":
-// When new data arrives via NATS, sync if ready
+// Live updates for static dynamic-position markers
 watch(buffer, () => {
   syncMarkerPositions()
 }, { deep: true })
 
-// Fix for "Context Switches":
-// When dashboard variables change, re-sync positions
+// Dashboard variable changes
 watch(() => dashboardStore.currentVariableValues, () => {
   syncMarkerPositions()
 }, { deep: true })
+
+// Dynamic KV marker updates
+watch(dynamicRows, (newRows) => {
+  if (mapReady.value && dynamicCfg.value) {
+    updateDynamicMarkers(newRows, dynamicCfg.value, handleDynamicMarkerClick)
+  }
+}, { deep: true })
+
+// When dynamic config changes (e.g., variable substitution changes bucket/pattern)
+watch([resolvedDynBucket, resolvedDynPattern], () => {
+  if (mapReady.value) {
+    clearDynamicMarkers()
+    // Close panel if a dynamic marker was selected
+    if (selectedMarkerType.value === 'dynamic') {
+      closePanel()
+    }
+  }
+})
 
 // Standard UI watchers
 watch(() => uiStore.theme, (newTheme) => updateTheme(newTheme === 'dark'))
 
 watch(markers, () => {
   if (mapReady.value) {
-    renderMarkers(markers.value, handleMarkerClick)
+    renderMarkers(markers.value, handleStaticMarkerClick)
     syncMarkerPositions()
   }
 }, { deep: true })
 
-watch([mapCenter, mapZoom], () => {
+// Reinitialize map when center/zoom/clustering changes
+watch([mapCenter, mapZoom, enableClustering], () => {
   cleanup()
   mapReady.value = false
   selectedMarkerId.value = null
+  selectedMarkerType.value = null
   initializeMap()
 }, { deep: true })
 
-// --- Lifecycle ---
+// --- Click handlers ---
 
-function handleMarkerClick(markerId: string) {
-  if (selectedMarkerId.value === markerId) {
+function handleStaticMarkerClick(markerId: string) {
+  if (selectedMarkerId.value === markerId && selectedMarkerType.value === 'static') {
     closePanel()
     return
   }
   selectedMarkerId.value = markerId
+  selectedMarkerType.value = 'static'
   setSelectedMarker(markerId)
+  if (!isMobile.value) nextTick(() => invalidateSize())
+}
+
+function handleDynamicMarkerClick(kvKey: string) {
+  if (selectedMarkerId.value === kvKey && selectedMarkerType.value === 'dynamic') {
+    closePanel()
+    return
+  }
+  selectedMarkerId.value = kvKey
+  selectedMarkerType.value = 'dynamic'
+  setSelectedMarker(kvKey)
   if (!isMobile.value) nextTick(() => invalidateSize())
 }
 
@@ -198,6 +309,7 @@ function handleFitAll() { fitAllMarkers() }
 
 function closePanel() {
   selectedMarkerId.value = null
+  selectedMarkerType.value = null
   setSelectedMarker(null)
   if (!isMobile.value) nextTick(() => invalidateSize())
 }
@@ -209,7 +321,6 @@ onMounted(() => {
   window.addEventListener('resize', checkMobile)
   initializeMap()
 
-  // Setup resize observer after a delay to ensure container exists
   window.setTimeout(() => {
     resizeObserver = new ResizeObserver(() => {
       if (mapReady.value) invalidateSize()
@@ -250,4 +361,3 @@ onUnmounted(() => {
 .map-control-btn:hover { background: var(--color-info-bg); border-color: var(--color-info-border); }
 .map-control-btn:active { transform: scale(0.95); }
 </style>
-

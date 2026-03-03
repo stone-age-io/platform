@@ -415,16 +415,41 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
         state.mapCenterLon = widget.mapConfig.center?.lon ?? -98.5795
         state.mapZoom = widget.mapConfig.zoom ?? 4
         state.mapMarkers = JSON.parse(JSON.stringify(widget.mapConfig.markers || []))
+        state.mapEnableClustering = widget.mapConfig.enableClustering ?? false
+        state.mapFitBoundsOnLoad = widget.mapConfig.fitBoundsOnLoad ?? false
+        const dm = widget.mapConfig.dynamicMarkers
+        state.mapDynamicEnabled = !!dm
+        if (dm) {
+          state.mapDynamicBucket = dm.kvBucket || ''
+          state.mapDynamicKeyPattern = dm.keyPattern || '>'
+          state.mapDynamicLatPath = dm.latPath || '$.lat'
+          state.mapDynamicLonPath = dm.lonPath || '$.lon'
+          state.mapDynamicLabelPath = dm.labelPath || '__key_suffix__'
+          state.mapDynamicPopupFields = JSON.parse(JSON.stringify(dm.popupFields || []))
+        }
       }
     },
     buildUpdates(form) {
-      return {
-        mapConfig: {
-          center: { lat: form.mapCenterLat, lon: form.mapCenterLon },
-          zoom: form.mapZoom,
-          markers: JSON.parse(JSON.stringify(form.mapMarkers)),
-        },
+      const config: any = {
+        center: { lat: form.mapCenterLat, lon: form.mapCenterLon },
+        zoom: form.mapZoom,
+        markers: JSON.parse(JSON.stringify(form.mapMarkers)),
+        enableClustering: form.mapEnableClustering,
+        fitBoundsOnLoad: form.mapFitBoundsOnLoad,
       }
+      if (form.mapDynamicEnabled && form.mapDynamicBucket) {
+        config.dynamicMarkers = {
+          kvBucket: form.mapDynamicBucket,
+          keyPattern: form.mapDynamicKeyPattern,
+          latPath: form.mapDynamicLatPath,
+          lonPath: form.mapDynamicLonPath,
+          labelPath: form.mapDynamicLabelPath,
+          popupFields: form.mapDynamicPopupFields.length > 0
+            ? JSON.parse(JSON.stringify(form.mapDynamicPopupFields))
+            : undefined,
+        }
+      }
+      return { mapConfig: config }
     },
   },
 
