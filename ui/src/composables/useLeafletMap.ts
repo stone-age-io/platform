@@ -436,13 +436,6 @@ export function useLeafletMap() {
   }
 
   /**
-   * Get total marker count (static + dynamic)
-   */
-  function getTotalMarkerCount(): number {
-    return markerInstances.size + dynamicMarkerInstances.size
-  }
-
-  /**
    * Cleanup map instance
    */
   function cleanup() {
@@ -473,7 +466,6 @@ export function useLeafletMap() {
     fitAllMarkers,
     invalidateSize,
     getMarker,
-    getTotalMarkerCount,
     cleanup,
   }
 }

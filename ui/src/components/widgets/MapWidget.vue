@@ -21,7 +21,7 @@
     </div>
 
     <!-- Dynamic markers loading -->
-    <div v-if="mapReady && dynamicLoading" class="no-markers-hint">
+    <div v-if="mapReady && hasDynamic && dynamicLoading" class="no-markers-hint">
       <span class="hint-icon">⏳</span>
       <span class="hint-text">Loading dynamic markers...</span>
     </div>
@@ -90,7 +90,6 @@ const {
   updateMarkerPositions,
   fitAllMarkers,
   invalidateSize,
-  getTotalMarkerCount,
   cleanup
 } = useLeafletMap()
 
@@ -150,7 +149,7 @@ const selectedDynamicLabel = computed(() => {
   return extractDynamicLabel(selectedDynamicRow.value, dynamicCfg.value.labelPath)
 })
 
-const totalMarkerCount = computed(() => getTotalMarkerCount())
+const totalMarkerCount = computed(() => markers.value.length + dynamicRows.value.size)
 
 function extractDynamicLabel(row: KvRow, labelPath: string): string {
   if (labelPath === '__key__') return row.key
