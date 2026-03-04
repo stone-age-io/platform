@@ -91,7 +91,7 @@ function cancel() {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 9999;
+  z-index: 10100;  /* Above all other modals (z-index: 9999) so confirms always appear on top */
   backdrop-filter: blur(2px);
   animation: fadeIn 0.2s ease-out;
 }

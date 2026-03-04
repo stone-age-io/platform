@@ -6,6 +6,7 @@ export const useUIStore = defineStore('ui', () => {
   const theme = ref<'light' | 'dark'>('dark')
   const sidebarOpen = ref(true) // For mobile drawer
   const sidebarCompact = ref(false) // For desktop compact mode
+  const kioskMode = ref(false) // Kiosk: hides all chrome for presentation/wall displays
   
   // Actions
   function toggleTheme() {
@@ -21,6 +22,10 @@ export const useUIStore = defineStore('ui', () => {
   function toggleCompact() {
     sidebarCompact.value = !sidebarCompact.value
     localStorage.setItem('sidebar_compact', String(sidebarCompact.value))
+  }
+
+  function toggleKiosk() {
+    kioskMode.value = !kioskMode.value
   }
   
   function initializeTheme() {
@@ -40,9 +45,11 @@ export const useUIStore = defineStore('ui', () => {
     theme,
     sidebarOpen,
     sidebarCompact,
+    kioskMode,
     toggleTheme,
     toggleSidebar,
     toggleCompact,
+    toggleKiosk,
     initializeTheme,
   }
 })

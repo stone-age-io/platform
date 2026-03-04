@@ -47,6 +47,31 @@ const fullScreenWidgetId = ref<string | null>(null)
 
 const hasVariables = computed(() => (dashboardStore.activeDashboard?.variables?.length || 0) > 0)
 
+// --- Kiosk Mode ---
+const isKioskMode = computed(() => uiStore.kioskMode)
+const showKioskHint = ref(false)
+let kioskHintTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(isKioskMode, (active) => {
+  if (active) {
+    // Close sidebar & modals when entering kiosk
+    isSidebarOpen.value = false
+    showConfigWidget.value = false
+    showAddWidget.value = false
+    showShortcutsModal.value = false
+    showDebugPanel.value = false
+    showVariableModal.value = false
+
+    // Show hint briefly
+    showKioskHint.value = true
+    if (kioskHintTimer) clearTimeout(kioskHintTimer)
+    kioskHintTimer = setTimeout(() => { showKioskHint.value = false }, 3000)
+  } else {
+    showKioskHint.value = false
+    if (kioskHintTimer) { clearTimeout(kioskHintTimer); kioskHintTimer = null }
+  }
+})
+
 const fullScreenWidget = computed(() => {
   if (!fullScreenWidgetId.value) return null
   return dashboardStore.getWidget(fullScreenWidgetId.value)
@@ -89,6 +114,7 @@ function handleDeleteWidget(widgetId: string) {
 
 function handleDuplicateWidget(widgetId: string) {
   duplicateWidget(widgetId)
+  toast.success('Widget duplicated')
 }
 
 function handleConfigureWidget(widgetId: string) {
@@ -98,6 +124,7 @@ function handleConfigureWidget(widgetId: string) {
 
 function handleWidgetConfigSaved() {
   showConfigWidget.value = false
+  toast.success('Widget updated')
 }
 
 function toggleFullScreen(widgetId: string) {
@@ -114,6 +141,7 @@ function handleSave() {
   } else {
     dashboardStore.saveToStorage()
   }
+  toast.success('Dashboard saved')
 }
 
 function handleReloadRemote() {
@@ -150,10 +178,12 @@ const { shortcuts } = useKeyboardShortcuts([
   { key: 'b', description: 'Toggle Dashboard Sidebar', handler: toggleSidebar },
   { key: 'a', description: 'Toggle App Sidebar', handler: () => uiStore.toggleCompact() },
   { key: 'v', description: 'Toggle Variables', handler: () => { if (hasVariables.value || !dashboardStore.isLocked) showVariableBar.value = !showVariableBar.value } },
-  { key: 'l', description: 'Lock Dashboard', handler: () => { if (!dashboardStore.isLocked) dashboardStore.toggleLock() } },
-  { key: 'u', description: 'Unlock Dashboard', handler: () => { if (dashboardStore.isLocked) dashboardStore.toggleLock() } },
-  { key: 'Escape', description: 'Close Modals / Exit Full Screen', handler: () => {
-      if (fullScreenWidgetId.value) exitFullScreen()
+  { key: 'l', description: 'Lock Dashboard', handler: () => { if (!dashboardStore.isLocked) { dashboardStore.toggleLock(); toast.info('Dashboard locked') } } },
+  { key: 'u', description: 'Unlock Dashboard', handler: () => { if (dashboardStore.isLocked) { dashboardStore.toggleLock(); toast.info('Dashboard unlocked') } } },
+  { key: 'k', description: 'Toggle Kiosk Mode', handler: () => uiStore.toggleKiosk() },
+  { key: 'Escape', description: 'Close Modals / Exit Full Screen / Exit Kiosk', handler: () => {
+      if (uiStore.kioskMode) { uiStore.kioskMode = false }
+      else if (fullScreenWidgetId.value) exitFullScreen()
       else {
         showConfigWidget.value = false
         showAddWidget.value = false
@@ -197,6 +227,9 @@ onUnmounted(() => {
   unsubscribeAllWidgets(true)
   window.removeEventListener('organization-changed', handleOrgChange)
   window.removeEventListener('beforeunload', handleBeforeUnload)
+  if (kioskHintTimer) clearTimeout(kioskHintTimer)
+  // Exit kiosk on navigating away so MainLayout returns to normal
+  if (uiStore.kioskMode) uiStore.kioskMode = false
 })
 
 // Watchers
@@ -225,7 +258,7 @@ watch(() => dashboardStore.currentVariableValues, () => {
 </script>
 
 <template>
-  <div class="visualizer-view">
+  <div class="visualizer-view" :class="{ 'kiosk-active': isKioskMode }">
     <Transition name="slide-sidebar">
       <div v-if="isSidebarOpen" class="sidebar-wrapper">
         <DashboardSidebar ref="sidebarRef" @close="isSidebarOpen = false" />
@@ -235,7 +268,7 @@ watch(() => dashboardStore.currentVariableValues, () => {
     <div v-if="isSidebarOpen" class="sidebar-backdrop" @click="isSidebarOpen = false"></div>
     
     <div class="visualizer-main">
-      <div class="visualizer-toolbar">
+      <div v-show="!isKioskMode" class="visualizer-toolbar">
         <div class="toolbar-left">
           <button class="sidebar-toggle-btn" :class="{ 'is-active': isSidebarOpen }" @click="isSidebarOpen = !isSidebarOpen" title="Switch Dashboard (B)">🗄️</button>
           <div class="dashboard-info">
@@ -270,13 +303,13 @@ watch(() => dashboardStore.currentVariableValues, () => {
             </select>
           </div>
           <button v-if="hasVariables || !dashboardStore.isLocked" class="btn btn-sm btn-square" :class="showVariableBar ? 'btn-active' : 'btn-ghost'" @click="showVariableBar = !showVariableBar"><span class="font-mono font-bold">{ }</span></button>
-          <button class="btn btn-sm btn-square btn-ghost" @click="dashboardStore.toggleLock()">{{ dashboardStore.isLocked ? '🔒' : '🔓' }}</button>
+          <button class="btn btn-sm btn-square btn-ghost" @click="dashboardStore.toggleLock(); toast.info(dashboardStore.isLocked ? 'Dashboard locked' : 'Dashboard unlocked')">{{ dashboardStore.isLocked ? '🔒' : '🔓' }}</button>
           <button v-if="!dashboardStore.isLocked" class="btn btn-sm btn-primary" @click="showAddWidget = true">+ <span class="hidden sm:inline ml-1">Widget</span></button>
           <button class="btn btn-sm btn-square btn-ghost hidden sm:flex" @click="showDebugPanel = true">🐞</button>
         </div>
       </div>
       
-      <div v-if="showVariableBar" class="border-b border-base-300 bg-base-100">
+      <div v-if="showVariableBar && !isKioskMode" class="border-b border-base-300 bg-base-100">
         <VariableBar @edit="showVariableModal = true" @close="showVariableBar = false" />
       </div>
       
@@ -311,6 +344,13 @@ watch(() => dashboardStore.currentVariableValues, () => {
     </div>
     
     <ConfirmDialog v-model="confirmState.show" :title="confirmState.title" :message="confirmState.message" :confirm-text="confirmState.confirmText" variant="warning" @confirm="handleGlobalConfirm" />
+
+    <!-- Kiosk mode hint -->
+    <Transition name="kiosk-hint">
+      <div v-if="showKioskHint" class="kiosk-hint">
+        Kiosk mode — press <kbd>K</kbd> or <kbd>Esc</kbd> to exit
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -464,5 +504,54 @@ watch(() => dashboardStore.currentVariableValues, () => {
   .dashboard-name { font-size: 0.9rem; max-width: 120px; }
   .dashboard-info { gap: 0.25rem; margin-left: 0.25rem; }
   .sidebar-toggle-btn { font-size: 1rem; }
+}
+
+/* Kiosk mode: fill entire viewport since AppHeader + toolbar are hidden */
+.visualizer-view.kiosk-active {
+  height: 100vh;
+}
+
+/* Kiosk hint toast */
+.kiosk-hint {
+  position: fixed;
+  top: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: oklch(var(--n));
+  color: oklch(var(--nc));
+  padding: 0.625rem 1.25rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  z-index: 200;
+  pointer-events: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.kiosk-hint kbd {
+  background: rgba(255, 255, 255, 0.15);
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8125rem;
+  margin: 0 0.125rem;
+}
+
+.kiosk-hint-enter-active {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.kiosk-hint-leave-active {
+  transition: opacity 0.8s ease, transform 0.8s ease;
+}
+
+.kiosk-hint-enter-from {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-0.5rem);
+}
+
+.kiosk-hint-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-0.5rem);
 }
 </style>
