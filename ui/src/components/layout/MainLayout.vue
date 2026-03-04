@@ -40,8 +40,10 @@ const uiStore = useUIStore()
   display: none !important;
 }
 
-/* Remove padding from main content area in kiosk mode */
+/* Remove padding and disable scrollbars on main content area in kiosk mode —
+   the visualizer manages its own overflow internally */
 .kiosk-active main {
   padding: 0 !important;
+  overflow: hidden !important;
 }
 </style>

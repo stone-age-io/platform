@@ -506,9 +506,13 @@ watch(() => dashboardStore.currentVariableValues, () => {
   .sidebar-toggle-btn { font-size: 1rem; }
 }
 
-/* Kiosk mode: fill entire viewport since AppHeader + toolbar are hidden */
+/* Kiosk mode: fill entire viewport since AppHeader + toolbar are hidden.
+   Reset the negative-margin/expanded-width trick — MainLayout already removes
+   the <main> padding in kiosk mode so the breakout is no longer needed. */
 .visualizer-view.kiosk-active {
   height: 100vh;
+  margin: 0;
+  width: 100%;
 }
 
 /* Kiosk hint toast */
