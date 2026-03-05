@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import type { User } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import { generateRandomPassword } from '@/utils/password'
 
 const router = useRouter()
 const route = useRoute()
@@ -71,11 +72,6 @@ async function loadData() {
   } finally {
     loading.value = false
   }
-}
-
-function generateRandomPassword(length = 16) {
-  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*'
-  return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
 }
 
 async function createNewUser(): Promise<string | null> {
