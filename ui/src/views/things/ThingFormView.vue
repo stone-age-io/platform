@@ -86,27 +86,30 @@ const showNatsModal = ref(false)
 const showNebulaModal = ref(false)
 const showLocationModal = ref(false)
 
-// Derived emails for auto-provisioning
+// Slugify helper (shared logic with auto-slug watcher)
+function slugify(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+}
+
+// Derived emails for auto-provisioning using slugified org name
+const orgSlug = computed(() => slugify(authStore.currentOrg?.name || ''))
 const thingEmail = computed(() => {
   if (!formData.value.code) return ''
-  return `${formData.value.code}@${authStore.currentOrgId}.thing.local`
+  return `${formData.value.code}@${orgSlug.value}.thing.local`
 })
 const natsEmail = computed(() => {
   if (!formData.value.code) return ''
-  return `${formData.value.code}@${authStore.currentOrgId}.nats.local`
+  return `${formData.value.code}@${orgSlug.value}.nats.local`
 })
 const nebulaEmail = computed(() => {
   if (!formData.value.code) return ''
-  return `${formData.value.code}@${authStore.currentOrgId}.nebula.local`
+  return `${formData.value.code}@${orgSlug.value}.nebula.local`
 })
 
 // Auto-slug: name → code (only in create mode, until manually edited)
 watch(() => formData.value.name, (newName) => {
   if (!codeManuallyEdited.value && !isEdit.value) {
-    formData.value.code = newName
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '')
+    formData.value.code = slugify(newName)
   }
 })
 
