@@ -11,6 +11,7 @@ import (
 
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/plugins/migratecmd"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/term"
@@ -19,6 +20,8 @@ import (
 	pbnats "github.com/skeeeon/pb-nats"
 	pbnebula "github.com/skeeeon/pb-nebula"
 	pbtenancy "github.com/skeeeon/pb-tenancy"
+
+	"platform/migrations"
 )
 
 //go:embed all:pb_public/*
@@ -101,6 +104,14 @@ func main() {
 
 	app := pocketbase.New()
 
+	// Pass embedded schema to initial migration
+	migrations.SchemaJSON = schemaJSON
+
+	// Register migrate command (auto-generates migration files in dev)
+	migratecmd.MustRegister(app, app.RootCmd, migratecmd.Config{
+		Automigrate: true,
+	})
+
 	// Register the config flag with Cobra
 	app.RootCmd.PersistentFlags().String("config", "", "Path to config file")
 
@@ -154,21 +165,6 @@ func main() {
 
 	// Register CLI Commands (for generating configs, keys, etc.)
 	pbnats.RegisterCommands(app)
-
-	// Schema Import
-	app.OnBootstrap().BindFunc(func(e *core.BootstrapEvent) error {
-		if err := e.Next(); err != nil {
-			return err
-		}
-
-		if err := app.ImportCollectionsByMarshaledJSON(schemaJSON, false); err != nil {
-			log.Printf("⚠️ Schema import warning: %v", err)
-		} else {
-			log.Println("✅ Schema imported from embedded schema.json")
-		}
-
-		return nil
-	})
 
 	// Infrastructure Provisioning Hook
 	app.OnRecordAfterCreateSuccess(tenancyOptions.OrganizationsCollection).BindFunc(func(e *core.RecordEvent) error {
