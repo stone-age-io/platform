@@ -691,13 +691,13 @@ onMounted(() => {
           <BaseCard title="NATS Connectivity">
             <!-- Mode tabs (create mode only) -->
             <div v-if="!isEdit" class="tabs tabs-boxed mb-4">
-              <a class="tab tab-sm sm:tab-md" :class="{ 'tab-active': natsMode === 'auto' }" @click="natsMode = 'auto'">
+              <a class="tab tab-sm sm:tab-md flex-1 min-w-0 truncate" :class="{ 'tab-active': natsMode === 'auto' }" @click="natsMode = 'auto'">
                 Auto-Provision
               </a>
-              <a class="tab tab-sm sm:tab-md" :class="{ 'tab-active': natsMode === 'link' }" @click="natsMode = 'link'">
+              <a class="tab tab-sm sm:tab-md flex-1 min-w-0 truncate" :class="{ 'tab-active': natsMode === 'link' }" @click="natsMode = 'link'">
                 Link Existing
               </a>
-              <a class="tab tab-sm sm:tab-md" :class="{ 'tab-active': natsMode === 'none' }" @click="natsMode = 'none'">
+              <a class="tab tab-sm sm:tab-md flex-1 min-w-0 truncate" :class="{ 'tab-active': natsMode === 'none' }" @click="natsMode = 'none'">
                 None
               </a>
             </div>
@@ -773,13 +773,13 @@ onMounted(() => {
           <BaseCard title="Nebula Connectivity">
             <!-- Mode tabs (create mode only) -->
             <div v-if="!isEdit" class="tabs tabs-boxed mb-4">
-              <a class="tab tab-sm sm:tab-md" :class="{ 'tab-active': nebulaMode === 'auto' }" @click="nebulaMode = 'auto'">
+              <a class="tab tab-sm sm:tab-md flex-1 min-w-0 truncate" :class="{ 'tab-active': nebulaMode === 'auto' }" @click="nebulaMode = 'auto'">
                 Auto-Provision
               </a>
-              <a class="tab tab-sm sm:tab-md" :class="{ 'tab-active': nebulaMode === 'link' }" @click="nebulaMode = 'link'">
+              <a class="tab tab-sm sm:tab-md flex-1 min-w-0 truncate" :class="{ 'tab-active': nebulaMode === 'link' }" @click="nebulaMode = 'link'">
                 Link Existing
               </a>
-              <a class="tab tab-sm sm:tab-md" :class="{ 'tab-active': nebulaMode === 'none' }" @click="nebulaMode = 'none'">
+              <a class="tab tab-sm sm:tab-md flex-1 min-w-0 truncate" :class="{ 'tab-active': nebulaMode === 'none' }" @click="nebulaMode = 'none'">
                 None
               </a>
             </div>
