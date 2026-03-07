@@ -337,10 +337,11 @@ onUnmounted(() => {
           >
             <option value="member">Member</option>
             <option value="admin">Admin</option>
+            <option value="badge">Badge</option>
           </select>
           <label class="label">
             <span class="label-text-alt">
-              Admins can invite and manage other members
+              Admins can manage members. Badge users only see their badge and dashboard.
             </span>
           </label>
         </div>

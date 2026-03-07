@@ -1839,7 +1839,8 @@
         "type": "select",
         "values": [
           "admin",
-          "member"
+          "member",
+          "badge"
         ]
       },
       {
@@ -2191,7 +2192,8 @@
         "values": [
           "owner",
           "admin",
-          "member"
+          "member",
+          "badge"
         ]
       },
       {

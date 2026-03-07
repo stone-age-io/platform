@@ -41,7 +41,18 @@ const filteredMemberships = computed(() => {
   )
 })
 
+// Badge users: home is /badge, others: /
+const homeRoute = computed(() => authStore.isBadgeUser ? '/badge' : '/')
+
 const menuItems = computed(() => {
+  // Badge users: minimal nav — only badge card + dashboard
+  if (authStore.isBadgeUser) {
+    return [
+      { label: 'Badge', icon: '🪪', path: '/badge' },
+      { label: 'Dashboard', icon: '📊', path: '/badge/dashboard' },
+    ]
+  }
+
   const items: any[] = [
     { label: 'Dashboard', icon: '📊', path: '/' },
     { label: 'Things', icon: '📦', path: '/things' },
@@ -100,16 +111,17 @@ const menuItems = computed(() => {
     })
   }
 
-  items.push({ 
-    label: 'Audit Logs', 
-    icon: '📋', 
-    path: '/audit' 
+  items.push({
+    label: 'Audit Logs',
+    icon: '📋',
+    path: '/audit'
   })
   
   return items
 })
 
 const isActive = (path: string) => {
+  if (path === '/badge' && route.path === '/badge') return true
   if (path === '/types') return route.path.includes('/types')
   if (path === '/' && route.path === '/') return true
   if (path === '/overview' && route.path === '/overview') return true
@@ -231,7 +243,7 @@ async function handleDisconnect() {
       <div class="flex transition-all duration-300" :class="effectiveCompact ? 'flex-col items-center gap-4 py-2' : 'flex-row items-center justify-between px-2 py-2'">
         
         <!-- Brand Link -->
-        <router-link to="/" class="flex items-center gap-3 hover:opacity-80 transition-opacity overflow-hidden" @click="closeDrawer">
+        <router-link :to="homeRoute" class="flex items-center gap-3 hover:opacity-80 transition-opacity overflow-hidden" @click="closeDrawer">
           <div class="w-8 h-8 flex items-center justify-center flex-shrink-0 text-primary">
              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 256 256" fill="currentColor">
               <path d="M128,0 C57.343,0 0,57.343 0,128 C0,198.657 57.343,256 128,256 C198.657,256 256,198.657 256,128 C256,57.343 198.657,0 128,0 z M128,28 C181.423,28 224.757,71.334 224.757,124.757 C224.757,139.486 221.04,153.32 214.356,165.42 C198.756,148.231 178.567,138.124 162.876,124.331 C155.723,124.214 128.543,124.043 113.254,124.043 C113.254,147.334 113.254,172.064 113.254,190.513 C100.456,179.347 94.543,156.243 94.543,156.243 C83.432,147.065 31.243,124.757 31.243,124.757 C31.243,71.334 74.577,28 128,28 z"/>
@@ -343,8 +355,13 @@ async function handleDisconnect() {
                   + New Organization
                 </router-link>
               </li>
+              <li v-if="!authStore.isBadgeUser">
+                <router-link to="/my-badge" @click="closeUserDropdown(); closeDrawer()">
+                  🪪 My Badge
+                </router-link>
+              </li>
               <li>
-                <router-link to="/settings" @click="closeUserDropdown">
+                <router-link :to="authStore.isBadgeUser ? '/badge/settings' : '/settings'" @click="closeUserDropdown">
                   ⚙️ Settings
                 </router-link>
               </li>

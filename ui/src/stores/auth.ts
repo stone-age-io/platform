@@ -54,6 +54,12 @@ export const useAuthStore = defineStore('auth', () => {
     return ['owner', 'admin'].includes(userRole.value)
   })
 
+  // Badge user: restricted to badge + dashboard views only
+  const isBadgeUser = computed(() => {
+    if (isSuperAdmin.value) return false
+    return currentMembership.value?.role === 'badge'
+  })
+
   // Operator: can manage all organizations (create/edit/delete orgs, invite to any org)
   const isOperator = computed(() => {
     if (isSuperAdmin.value) return true
@@ -229,6 +235,7 @@ export const useAuthStore = defineStore('auth', () => {
     currentNatsUser,
     userRole,
     canManageUsers,
+    isBadgeUser,
     isOperator,
     canManageOrganizations,
     
