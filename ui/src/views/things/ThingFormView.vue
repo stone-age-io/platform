@@ -610,7 +610,7 @@ onMounted(() => {
                   <span class="label-text">Location</span>
                 </label>
                 <div class="flex gap-2">
-                  <select v-model="formData.location" class="select select-bordered flex-1 font-mono text-sm">
+                  <select v-model="formData.location" class="select select-bordered flex-1 min-w-0 font-mono text-sm">
                     <option value="">Select Location...</option>
                     <option
                       v-for="loc in locations"
@@ -635,7 +635,7 @@ onMounted(() => {
               <!-- Email preview (create mode only) -->
               <div v-if="!isEdit && formData.code" class="bg-base-200 rounded-lg p-3">
                 <span class="text-xs text-base-content/50 uppercase block mb-1">Generated Identity</span>
-                <span class="font-mono text-sm select-all">{{ thingEmail }}</span>
+                <span class="font-mono text-sm select-all break-all">{{ thingEmail }}</span>
               </div>
             </div>
           </BaseCard>
@@ -690,14 +690,14 @@ onMounted(() => {
           <!-- NATS Connectivity -->
           <BaseCard title="NATS Connectivity">
             <!-- Mode tabs (create mode only) -->
-            <div v-if="!isEdit" class="tabs tabs-boxed w-fit mb-4">
-              <a class="tab" :class="{ 'tab-active': natsMode === 'auto' }" @click="natsMode = 'auto'">
+            <div v-if="!isEdit" class="tabs tabs-boxed mb-4">
+              <a class="tab tab-sm sm:tab-md" :class="{ 'tab-active': natsMode === 'auto' }" @click="natsMode = 'auto'">
                 Auto-Provision
               </a>
-              <a class="tab" :class="{ 'tab-active': natsMode === 'link' }" @click="natsMode = 'link'">
+              <a class="tab tab-sm sm:tab-md" :class="{ 'tab-active': natsMode === 'link' }" @click="natsMode = 'link'">
                 Link Existing
               </a>
-              <a class="tab" :class="{ 'tab-active': natsMode === 'none' }" @click="natsMode = 'none'">
+              <a class="tab tab-sm sm:tab-md" :class="{ 'tab-active': natsMode === 'none' }" @click="natsMode = 'none'">
                 None
               </a>
             </div>
@@ -740,7 +740,7 @@ onMounted(() => {
                   <span class="label-text">NATS User</span>
                 </label>
                 <div class="flex gap-2">
-                  <select v-model="formData.nats_user" class="select select-bordered font-mono flex-1">
+                  <select v-model="formData.nats_user" class="select select-bordered font-mono flex-1 min-w-0">
                     <option value="">None</option>
                     <option v-for="user in natsUsers" :key="user.id" :value="user.id">
                       {{ user.nats_username }}
@@ -772,14 +772,14 @@ onMounted(() => {
           <!-- Nebula Connectivity -->
           <BaseCard title="Nebula Connectivity">
             <!-- Mode tabs (create mode only) -->
-            <div v-if="!isEdit" class="tabs tabs-boxed w-fit mb-4">
-              <a class="tab" :class="{ 'tab-active': nebulaMode === 'auto' }" @click="nebulaMode = 'auto'">
+            <div v-if="!isEdit" class="tabs tabs-boxed mb-4">
+              <a class="tab tab-sm sm:tab-md" :class="{ 'tab-active': nebulaMode === 'auto' }" @click="nebulaMode = 'auto'">
                 Auto-Provision
               </a>
-              <a class="tab" :class="{ 'tab-active': nebulaMode === 'link' }" @click="nebulaMode = 'link'">
+              <a class="tab tab-sm sm:tab-md" :class="{ 'tab-active': nebulaMode === 'link' }" @click="nebulaMode = 'link'">
                 Link Existing
               </a>
-              <a class="tab" :class="{ 'tab-active': nebulaMode === 'none' }" @click="nebulaMode = 'none'">
+              <a class="tab tab-sm sm:tab-md" :class="{ 'tab-active': nebulaMode === 'none' }" @click="nebulaMode = 'none'">
                 None
               </a>
             </div>
@@ -830,7 +830,7 @@ onMounted(() => {
                   <span class="label-text">Nebula Host</span>
                 </label>
                 <div class="flex gap-2">
-                  <select v-model="formData.nebula_host" class="select select-bordered font-mono flex-1">
+                  <select v-model="formData.nebula_host" class="select select-bordered font-mono flex-1 min-w-0">
                     <option value="">None</option>
                     <option v-for="host in nebulaHosts" :key="host.id" :value="host.id">
                       {{ host.hostname }} ({{ host.overlay_ip }})
