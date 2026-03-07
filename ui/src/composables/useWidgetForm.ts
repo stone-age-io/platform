@@ -27,6 +27,7 @@ import ConfigStatus from '@/components/dashboard/config/ConfigStatus.vue'
 import ConfigMarkdown from '@/components/dashboard/config/ConfigMarkdown.vue'
 import ConfigPocketBase from '@/components/dashboard/config/ConfigPocketBase.vue'
 import ConfigKvTable from '@/components/dashboard/config/ConfigKvTable.vue'
+import ConfigScanner from '@/components/dashboard/config/ConfigScanner.vue'
 
 // ============================================================================
 // TYPES
@@ -69,6 +70,7 @@ const configComponents: Record<string, Component> = {
   markdown: ConfigMarkdown,
   pocketbase: ConfigPocketBase,
   kvtable: ConfigKvTable,
+  scanner: ConfigScanner,
 }
 
 // ============================================================================
@@ -620,6 +622,52 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
           columns: JSON.parse(JSON.stringify(form.kvTableColumns)),
           defaultSortColumn: form.kvTableDefaultSortColumn || undefined,
           defaultSortDirection: form.kvTableDefaultSortDirection,
+        },
+      }
+    },
+  },
+
+  // --- scanner ---
+  scanner: {
+    hydrate(widget, state) {
+      if (widget.scannerConfig) {
+        state.scannerKvEnabled = widget.scannerConfig.kvEnabled ?? false
+        state.scannerKvBucket = widget.scannerConfig.kvBucket || ''
+        state.scannerKvKeyTemplate = widget.scannerConfig.kvKeyTemplate || '{value}'
+        state.scannerPbEnabled = widget.scannerConfig.pbEnabled ?? true
+        state.scannerPbCollection = widget.scannerConfig.pbCollection || ''
+        state.scannerPbFilter = widget.scannerConfig.pbFilter || ''
+        state.scannerPbFields = widget.scannerConfig.pbFields || ''
+        state.scannerPublishEnabled = widget.scannerConfig.publishEnabled ?? false
+        state.scannerPublishSubject = widget.scannerConfig.publishSubject || ''
+      }
+    },
+    validate(form, errors) {
+      if (form.scannerKvEnabled && !form.scannerKvBucket.trim()) {
+        errors.scannerKvBucket = 'KV bucket is required when enabled'
+      }
+      if (form.scannerPbEnabled && !form.scannerPbCollection.trim()) {
+        errors.scannerPbCollection = 'Collection is required when enabled'
+      }
+      if (form.scannerPublishEnabled && !form.scannerPublishSubject.trim()) {
+        errors.scannerPublishSubject = 'Subject is required when enabled'
+      }
+      if (!form.scannerKvEnabled && !form.scannerPbEnabled) {
+        errors.scannerKvBucket = 'At least one lookup source must be enabled'
+      }
+    },
+    buildUpdates(form) {
+      return {
+        scannerConfig: {
+          kvEnabled: form.scannerKvEnabled,
+          kvBucket: form.scannerKvBucket.trim(),
+          kvKeyTemplate: form.scannerKvKeyTemplate.trim() || '{value}',
+          pbEnabled: form.scannerPbEnabled,
+          pbCollection: form.scannerPbCollection.trim(),
+          pbFilter: form.scannerPbFilter.trim(),
+          pbFields: form.scannerPbFields.trim(),
+          publishEnabled: form.scannerPublishEnabled,
+          publishSubject: form.scannerPublishSubject.trim(),
         },
       }
     },

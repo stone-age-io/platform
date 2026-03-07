@@ -103,6 +103,18 @@
               </button>
             </div>
           </div>
+
+          <!-- Tools -->
+          <div class="widget-category">
+            <div class="category-label">Tools</div>
+            <div class="widget-type-buttons">
+              <button v-show="isAllowed('scanner')" class="widget-type-btn" @click="selectType('scanner')">
+                <div class="widget-type-icon">📷</div>
+                <div class="widget-type-name">Scanner</div>
+                <div class="widget-type-desc">QR code lookup</div>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

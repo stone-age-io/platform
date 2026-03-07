@@ -19,6 +19,7 @@ export type WidgetType =
   | 'status'
   | 'markdown'
   | 'pocketbase'
+  | 'scanner'
 
 export type DataSourceType = 'subscription' | 'consumer' | 'kv'
 export type ChartType = 'line' | 'bar' | 'pie' | 'gauge'
@@ -199,6 +200,24 @@ export interface PocketBaseWidgetConfig {
   fields?: string // comma separated list
 }
 
+// --- Scanner Widget Config ---
+export interface ScannerWidgetConfig {
+  // KV lookup (optional)
+  kvEnabled?: boolean
+  kvBucket?: string
+  kvKeyTemplate?: string    // e.g. "badges.{value}" — {value} replaced with scanned content
+
+  // PocketBase lookup (optional)
+  pbEnabled?: boolean
+  pbCollection?: string
+  pbFilter?: string          // e.g. 'public_key = "{value}"'
+  pbFields?: string
+
+  // Optional: publish scan event to NATS subject for audit trail
+  publishEnabled?: boolean
+  publishSubject?: string    // e.g. "scans.badge"
+}
+
 // --- KV Table Widget Types ---
 export type KvTableColumnFormat = 'text' | 'number' | 'relative-time' | 'datetime'
 
@@ -352,6 +371,7 @@ export interface WidgetConfig {
   markdownConfig?: MarkdownWidgetConfig
   pocketbaseConfig?: PocketBaseWidgetConfig
   kvtableConfig?: KvTableWidgetConfig
+  scannerConfig?: ScannerWidgetConfig
 }
 
 export type StorageType = 'local' | 'kv'
@@ -387,6 +407,7 @@ export const DEFAULT_WIDGET_SIZES: Record<WidgetType, { w: number; h: number }> 
   markdown: { w: 4, h: 4 },
   pocketbase: { w: 6, h: 4 },
   kvtable: { w: 6, h: 4 },
+  scanner: { w: 4, h: 4 },
 }
 
 export const DEFAULT_BUFFER_CONFIG: BufferConfig = {
@@ -534,6 +555,20 @@ export function createDefaultWidget(type: WidgetType, position: { x: number; y: 
           { id: 'col_1', label: 'Key', path: '__key_suffix__', format: 'text' }
         ],
         defaultSortDirection: 'desc'
+      }
+      break
+    case 'scanner':
+      base.title = 'Scanner'
+      base.scannerConfig = {
+        kvEnabled: false,
+        kvBucket: '',
+        kvKeyTemplate: '{value}',
+        pbEnabled: true,
+        pbCollection: 'nats_users',
+        pbFilter: 'public_key = "{value}"',
+        pbFields: '',
+        publishEnabled: false,
+        publishSubject: 'scans.badge',
       }
       break
   }

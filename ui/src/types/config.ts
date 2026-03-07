@@ -110,6 +110,17 @@ export interface WidgetFormState {
   kvTableDefaultSortColumn: string
   kvTableDefaultSortDirection: 'asc' | 'desc'
 
+  // Scanner Widget
+  scannerKvEnabled: boolean
+  scannerKvBucket: string
+  scannerKvKeyTemplate: string
+  scannerPbEnabled: boolean
+  scannerPbCollection: string
+  scannerPbFilter: string
+  scannerPbFields: string
+  scannerPublishEnabled: boolean
+  scannerPublishSubject: string
+
   // JetStream
   useJetStream: boolean
   deliverPolicy: 'all' | 'last' | 'new' | 'last_per_subject' | 'by_start_time'
@@ -191,6 +202,17 @@ export function createEmptyFormState(): WidgetFormState {
     pbFields: '',
     pbLimit: 10,
     pbRefreshInterval: 0,
+
+    // Scanner Defaults
+    scannerKvEnabled: false,
+    scannerKvBucket: '',
+    scannerKvKeyTemplate: '{value}',
+    scannerPbEnabled: true,
+    scannerPbCollection: 'nats_users',
+    scannerPbFilter: 'public_key = "{value}"',
+    scannerPbFields: '',
+    scannerPublishEnabled: false,
+    scannerPublishSubject: 'scans.badge',
 
     // KV Table Defaults
     kvTableBucket: '',

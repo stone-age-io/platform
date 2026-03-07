@@ -85,6 +85,7 @@ const PublisherWidget = defineAsyncComponent(() => import('@/components/widgets/
 const MarkdownWidget = defineAsyncComponent(() => import('@/components/widgets/MarkdownWidget.vue'))
 const PocketBaseWidget = defineAsyncComponent(() => import('@/components/widgets/PocketBaseWidget.vue'))
 const KvTableWidget = defineAsyncComponent(() => import('@/components/widgets/KvTableWidget.vue'))
+const ScannerWidget = defineAsyncComponent(() => import('@/components/widgets/ScannerWidget.vue'))
 
 const props = defineProps<{
   config?: WidgetConfig
@@ -122,6 +123,7 @@ const widgetComponent = computed(() => {
     case 'markdown': return MarkdownWidget
     case 'pocketbase': return PocketBaseWidget
     case 'kvtable': return KvTableWidget
+    case 'scanner': return ScannerWidget
     default: return null
   }
 })
