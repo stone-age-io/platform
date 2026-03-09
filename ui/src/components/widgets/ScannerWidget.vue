@@ -67,8 +67,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onUnmounted } from 'vue'
-import { Html5Qrcode } from 'html5-qrcode'
+import { ref, computed, onUnmounted, nextTick } from 'vue'
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
 import { Kvm } from '@nats-io/kv'
 import { useNatsStore } from '@/stores/nats'
 import { pb } from '@/utils/pb'
@@ -118,16 +118,28 @@ async function startScan() {
   scannedValue.value = ''
   errorMessage.value = ''
 
-  // Wait for DOM to render the viewfinder element
-  await new Promise(r => setTimeout(r, 50))
+  // Wait for DOM to render the viewfinder element with proper dimensions
+  await nextTick()
+  await new Promise(r => setTimeout(r, 100))
 
   try {
-    html5Qrcode = new Html5Qrcode(readerId)
+    html5Qrcode = new Html5Qrcode(readerId, {
+      formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+      verbose: false,
+    })
     await html5Qrcode.start(
       { facingMode: 'environment' },
-      { fps: 10, qrbox: { width: 250, height: 250 } },
+      {
+        fps: 10,
+        // Use a function so qrbox adapts to actual rendered video size
+        qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+          const minDim = Math.min(viewfinderWidth, viewfinderHeight)
+          const size = Math.floor(minDim * 0.7) // 70% of smaller dimension
+          return { width: size, height: size }
+        },
+      },
       handleScanResult,
-      () => {} // ignore scan failures (no QR in frame)
+      () => {} // ignore per-frame scan misses
     )
   } catch (err: any) {
     errorMessage.value = err.message || 'Camera access denied'
@@ -326,18 +338,22 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   position: relative;
-  min-height: 0;
+  min-height: 200px;
 }
 
 .scanner-viewfinder {
   flex: 1;
-  min-height: 0;
+  min-height: 200px;
+  width: 100%;
   border-radius: 4px;
   overflow: hidden;
+  position: relative;
 }
 
-/* html5-qrcode injects video + canvas inside the viewfinder div */
+/* html5-qrcode injects a video element + shaded region canvas */
 .scanner-viewfinder :deep(video) {
+  width: 100% !important;
+  height: 100% !important;
   object-fit: cover;
   border-radius: 4px;
 }
