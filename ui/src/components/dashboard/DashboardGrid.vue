@@ -138,7 +138,7 @@ const sortedWidgets = computed(() => {
 })
 
 function isIntrinsicallyFullWidth(widget: WidgetConfig): boolean {
-  if (['map', 'chart', 'console', 'publisher', 'markdown', 'kvtable'].includes(widget.type)) return true
+  if (['map', 'chart', 'console', 'publisher', 'markdown', 'kvtable', 'scanner'].includes(widget.type)) return true
   if (widget.type === 'kv' && (widget.w > 2 || widget.h > 2)) return true
   if (['slider', 'gauge', 'stat'].includes(widget.type)) return true
   return false
@@ -152,7 +152,7 @@ function isTallWidget(widget: WidgetConfig): boolean {
 }
 
 function isDataTallWidget(widget: WidgetConfig): boolean {
-  return ['kvtable', 'pocketbase', 'map'].includes(widget.type)
+  return ['kvtable', 'pocketbase', 'map', 'scanner'].includes(widget.type)
 }
 
 const mobileWidgetLayout = computed(() => {

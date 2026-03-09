@@ -129,9 +129,9 @@ const widgetComponent = computed(() => {
 })
 
 const MOBILE_TITLED_TYPES = new Set([
-  'kvtable', 'pocketbase', 'gauge', 'markdown', 'stat', 'chart', 'map'
+  'kvtable', 'pocketbase', 'gauge', 'markdown', 'stat', 'chart', 'map', 'scanner'
 ])
-const MOBILE_EXPANDABLE_TYPES = new Set(['kvtable', 'map', 'markdown'])
+const MOBILE_EXPANDABLE_TYPES = new Set(['kvtable', 'map', 'markdown', 'scanner'])
 
 const shouldShowHeader = computed(() => {
   if (!dashboardStore.isLocked) return true
