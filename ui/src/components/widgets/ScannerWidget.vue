@@ -40,6 +40,12 @@
           <div v-else class="result-raw font-mono">{{ kvResult }}</div>
         </div>
 
+        <!-- KV Error (when PB succeeded but KV failed) -->
+        <div v-else-if="kvError" class="result-section result-section-error">
+          <div class="result-section-label">KV</div>
+          <div class="text-xs text-error">{{ kvError }}</div>
+        </div>
+
         <!-- PB Result -->
         <div v-if="pbResult !== null" class="result-section">
           <div class="result-section-label">PocketBase</div>
@@ -50,6 +56,17 @@
             </div>
           </div>
           <div v-if="pbItems.length === 0" class="text-xs opacity-50 italic">No records</div>
+        </div>
+
+        <!-- PB Error (when KV succeeded but PB failed) -->
+        <div v-else-if="pbError" class="result-section result-section-error">
+          <div class="result-section-label">PocketBase</div>
+          <div class="text-xs text-error">{{ pbError }}</div>
+        </div>
+
+        <!-- Publish Status -->
+        <div v-if="publishStatus" class="publish-status">
+          {{ publishStatus }}
         </div>
       </div>
 
@@ -72,6 +89,7 @@ import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
 import { Kvm } from '@nats-io/kv'
 import { useNatsStore } from '@/stores/nats'
 import { pb } from '@/utils/pb'
+import { encodeString, decodeBytes } from '@/utils/encoding'
 import type { WidgetConfig } from '@/types/dashboard'
 
 const props = withDefaults(defineProps<{
@@ -89,11 +107,13 @@ const state = ref<ScanState>('idle')
 const scannedValue = ref('')
 const errorMessage = ref('')
 const kvResult = ref<any>(null)
+const kvError = ref<string | null>(null)
 const pbResult = ref<any>(null)
+const pbError = ref<string | null>(null)
+const publishStatus = ref<string | null>(null)
 
 let html5Qrcode: Html5Qrcode | null = null
 const readerId = `scanner-${props.config.id}`
-const decoder = new TextDecoder()
 
 const cfg = computed(() => props.config.scannerConfig || {})
 
@@ -114,7 +134,10 @@ const pbItems = computed(() => {
 async function startScan() {
   state.value = 'scanning'
   kvResult.value = null
+  kvError.value = null
   pbResult.value = null
+  pbError.value = null
+  publishStatus.value = null
   scannedValue.value = ''
   errorMessage.value = ''
 
@@ -177,7 +200,10 @@ function reset() {
   state.value = 'idle'
   scannedValue.value = ''
   kvResult.value = null
+  kvError.value = null
   pbResult.value = null
+  pbError.value = null
+  publishStatus.value = null
   errorMessage.value = ''
 }
 
@@ -189,7 +215,6 @@ function replacePlaceholder(template: string, value: string): string {
 
 async function performLookup(value: string) {
   let hasResult = false
-  const errors: string[] = []
 
   // KV Lookup
   if (cfg.value.kvEnabled && cfg.value.kvBucket) {
@@ -199,9 +224,11 @@ async function performLookup(value: string) {
       if (result !== null) {
         kvResult.value = result
         hasResult = true
+      } else {
+        kvError.value = `Key not found: ${resolvedKey}`
       }
     } catch (err: any) {
-      errors.push(`KV: ${err.message}`)
+      kvError.value = err.message || 'KV lookup failed'
     }
   }
 
@@ -226,33 +253,37 @@ async function performLookup(value: string) {
           return clean
         })
         hasResult = true
+      } else {
+        pbError.value = 'No matching records'
       }
     } catch (err: any) {
-      errors.push(`PB: ${err.message}`)
+      pbError.value = err.message || 'PB lookup failed'
     }
   }
 
   // Publish audit event
   if (cfg.value.publishEnabled && cfg.value.publishSubject && natsStore.nc) {
     try {
-      const encoder = new TextEncoder()
       const payload = JSON.stringify({
         value,
         found: hasResult,
         timestamp: new Date().toISOString(),
       })
-      natsStore.nc.publish(cfg.value.publishSubject, encoder.encode(payload))
-    } catch {
-      // Non-critical, ignore
+      natsStore.nc.publish(cfg.value.publishSubject, encodeString(payload))
+      publishStatus.value = `Published to ${cfg.value.publishSubject}`
+    } catch (err: any) {
+      publishStatus.value = `Publish failed: ${err.message}`
     }
   }
 
   if (hasResult) {
     state.value = 'result'
   } else {
-    errorMessage.value = errors.length > 0
-      ? errors.join('; ')
-      : 'Not found'
+    // Build error message from per-source errors
+    const parts: string[] = []
+    if (kvError.value) parts.push(`KV: ${kvError.value}`)
+    if (pbError.value) parts.push(`PB: ${pbError.value}`)
+    errorMessage.value = parts.length > 0 ? parts.join('; ') : 'Not found'
     state.value = 'error'
   }
 }
@@ -266,7 +297,7 @@ async function kvGet(bucket: string, key: string): Promise<any> {
   if (!entry || !entry.value) return null
 
   try {
-    const str = decoder.decode(entry.value)
+    const str = decodeBytes(entry.value)
     try { return JSON.parse(str) } catch { return str }
   } catch {
     return '[Binary]'
@@ -300,6 +331,10 @@ onUnmounted(() => {
 
 .font-mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.text-error {
+  color: oklch(var(--er));
 }
 
 /* --- Idle --- */
@@ -441,6 +476,11 @@ onUnmounted(() => {
   padding: 8px;
 }
 
+.result-section-error {
+  border-color: oklch(var(--er) / 0.3);
+  background: oklch(var(--er) / 0.05);
+}
+
 .result-section-label {
   font-size: 10px;
   font-weight: 700;
@@ -489,6 +529,14 @@ onUnmounted(() => {
   font-size: 11px;
   color: oklch(var(--bc));
   word-break: break-all;
+}
+
+.publish-status {
+  font-size: 10px;
+  color: oklch(var(--bc) / 0.5);
+  text-align: center;
+  padding: 4px;
+  border-top: 1px dashed oklch(var(--b3));
 }
 
 .scanner-again {

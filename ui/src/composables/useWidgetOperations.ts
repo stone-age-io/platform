@@ -145,7 +145,7 @@ export function useWidgetOperations() {
 
   function needsSubscription(widgetType: WidgetType, config?: WidgetConfig): boolean {
     if (widgetType === 'map') return true
-    const selfManagedTypes: WidgetType[] = ['button', 'kv', 'kvtable', 'switch', 'slider', 'publisher', 'pocketbase']
+    const selfManagedTypes: WidgetType[] = ['button', 'kv', 'kvtable', 'switch', 'slider', 'publisher', 'pocketbase', 'scanner']
     if (selfManagedTypes.includes(widgetType)) return false
     if (widgetType === 'status') return config?.dataSource?.type !== 'kv'
     if (widgetType === 'markdown') return !!(config?.dataSource?.subject)
