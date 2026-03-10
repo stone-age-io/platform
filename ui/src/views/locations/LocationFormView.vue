@@ -163,7 +163,7 @@ async function loadLocation() {
     
     // Store current floorplan
     if (location.floorplan) {
-      currentFloorplan.value = pb.files.getUrl(location, location.floorplan)
+      currentFloorplan.value = pb.files.getURL(location, location.floorplan)
     }
   } catch (err: any) {
     toast.error('Failed to load location')

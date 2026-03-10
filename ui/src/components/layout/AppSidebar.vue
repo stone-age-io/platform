@@ -177,7 +177,7 @@ onUnmounted(() => {
 
 function getAvatarUrl() {
   if (!authStore.user?.avatar) return null
-  return pb.files.getUrl(authStore.user, (authStore.user as any).avatar, { 
+  return pb.files.getURL(authStore.user, (authStore.user as any).avatar, { 
     thumb: '100x100',
     token: pb.authStore.token 
   })

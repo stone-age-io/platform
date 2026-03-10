@@ -43,7 +43,7 @@ function initProfile() {
   if (authStore.user) {
     profileForm.value.name = authStore.user.name || ''
     if (authStore.user.avatar) {
-      avatarPreview.value = pb.files.getUrl(authStore.user, authStore.user.avatar, { token: pb.authStore.token })
+      avatarPreview.value = pb.files.getURL(authStore.user, authStore.user.avatar, { token: pb.authStore.token })
     }
   }
 }
@@ -72,7 +72,7 @@ async function updateProfile() {
     
     authStore.user = updatedUser as unknown as User
     if (updatedUser.avatar) {
-      avatarPreview.value = pb.files.getUrl(updatedUser, updatedUser.avatar, { token: pb.authStore.token })
+      avatarPreview.value = pb.files.getURL(updatedUser, updatedUser.avatar, { token: pb.authStore.token })
     }
     toast.success('Profile updated')
     avatarFile.value = null

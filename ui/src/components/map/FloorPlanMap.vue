@@ -17,7 +17,7 @@ const loadMap = () => {
   if (!props.location.floorplan) return
   loading.value = true
   
-  const imageUrl = pb.files.getUrl(props.location, props.location.floorplan)
+  const imageUrl = pb.files.getURL(props.location, props.location.floorplan)
   const img = new Image()
   img.onload = () => {
     initFloorPlan('floorplan-container', imageUrl, img.width, img.height)
