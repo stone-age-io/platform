@@ -85,7 +85,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function loadAuthMethods() {
     try {
       const result = await pb.collection('users').listAuthMethods()
-      authProviders.value = result.authProviders
+      authProviders.value = result.oauth2?.providers || []
     } catch (e) {
       console.warn('Failed to load auth methods', e)
     }
