@@ -208,14 +208,15 @@ export const useAuthStore = defineStore('auth', () => {
     if (pb.authStore.isValid && pb.authStore.model) {
       user.value = pb.authStore.model as unknown as User
       isSuperAdmin.value = pb.authStore.model.collectionName === '_superusers'
-      await loadContext()
       try {
+        // Refresh token first to verify it's still valid server-side
         const collection = isSuperAdmin.value ? '_superusers' : 'users'
         const authData = await pb.collection(collection).authRefresh()
         user.value = authData.record as unknown as User
+        await loadContext()
       } catch (error) {
         console.warn('Session invalid, logging out...')
-        await logout() 
+        await logout()
       }
     }
   }

@@ -24,9 +24,13 @@ onMounted(() => {
 
 // 1. Handle Logout
 // We watch isAuthenticated specifically to catch the logout event immediately
-watch(() => authStore.isAuthenticated, (isAuth) => {
+watch(() => authStore.isAuthenticated, async (isAuth) => {
   if (!isAuth) {
-    natsStore.disconnect()
+    try {
+      await natsStore.disconnect()
+    } catch (err) {
+      console.error('Failed to disconnect NATS on logout:', err)
+    }
   }
 })
 

@@ -68,8 +68,8 @@ export const useNatsStore = defineStore('nats', () => {
     if (nc.value) await disconnect()
 
     // 1. Validations
-    const url = specificUrl || serverUrls.value[0]
-    if (!url) {
+    const servers = specificUrl ? [specificUrl] : serverUrls.value
+    if (!servers.length) {
       toast.error('No NATS URL configured')
       return
     }
@@ -81,7 +81,7 @@ export const useNatsStore = defineStore('nats', () => {
 
     // CHANGED: Get identity from the current organization membership
     const natsUserId = authStore.currentMembership?.nats_user
-    
+
     if (!natsUserId) {
       toast.error('No NATS Identity linked to this organization context')
       return
@@ -93,20 +93,25 @@ export const useNatsStore = defineStore('nats', () => {
 
     try {
       const natsUserRecord = await pb.collection('nats_users').getOne<NatsUser>(natsUserId)
-      
+
       if (!natsUserRecord.creds_file) {
         throw new Error('Linked NATS identity has no credentials file')
       }
 
       const encoder = new TextEncoder()
       const credsBytes = encoder.encode(natsUserRecord.creds_file)
-      
-      console.log(`Connecting to NATS at ${url} as ${natsUserRecord.nats_username}...`)
-      
-      nc.value = await wsconnect({ 
-        servers: [url],
+
+      console.log(`Connecting to NATS at ${servers.join(', ')} as ${natsUserRecord.nats_username}...`)
+
+      nc.value = await wsconnect({
+        servers,
         authenticator: credsAuthenticator(credsBytes),
         name: `stone-age-ui-${authStore.user?.id}`,
+        maxReconnectAttempts: -1,
+        reconnectTimeWait: 2_000,
+        reconnectJitter: 1_000,
+        pingInterval: 30_000,
+        maxPingOut: 3,
       })
 
       status.value = 'connected'
@@ -134,11 +139,17 @@ export const useNatsStore = defineStore('nats', () => {
     }
 
     if (nc.value) {
-      await nc.value.close()
+      try {
+        await nc.value.drain()
+      } catch {
+        // drain can fail if already closed — force close as fallback
+        try { await nc.value.close() } catch { /* ignore */ }
+      }
       nc.value = null
     }
     status.value = 'disconnected'
     rtt.value = null
+    window.dispatchEvent(new Event('nats:closed'))
   }
 
   async function monitorConnection() {
@@ -147,13 +158,16 @@ export const useNatsStore = defineStore('nats', () => {
       switch (s.type) {
         case 'disconnect':
           status.value = 'reconnecting'
+          window.dispatchEvent(new Event('nats:disconnected'))
           break
         case 'reconnect':
           status.value = 'connected'
           reconnectCount.value++
           toast.success('Reconnected to NATS')
+          window.dispatchEvent(new Event('nats:reconnected'))
           break
         case 'error':
+          lastError.value = String(s.data)
           console.error('NATS Error:', s)
           break
       }
@@ -161,13 +175,13 @@ export const useNatsStore = defineStore('nats', () => {
   }
 
   function startStatsLoop() {
-    statsInterval = setInterval(async () => {
+    statsInterval = window.setInterval(async () => {
       if (nc.value && !nc.value.isClosed()) {
         try {
           rtt.value = await nc.value.rtt()
         } catch { /* ignore */ }
       }
-    }, 10000) as unknown as number
+    }, 10_000)
   }
 
   function tryAutoConnect() {

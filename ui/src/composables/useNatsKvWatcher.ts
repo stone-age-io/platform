@@ -36,6 +36,7 @@ export function useNatsKvWatcher(
   let kvWatcher: any = null
   let initialLoad = false
   let loadingTimeout: ReturnType<typeof setTimeout> | null = null
+  let startGeneration = 0
 
   function getBucket(): string {
     const raw = typeof bucketName === 'function' ? bucketName() : bucketName.value
@@ -77,6 +78,10 @@ export function useNatsKvWatcher(
     const pattern = getPattern()
     if (!bucket || !pattern || !natsStore.isConnected || !natsStore.nc) return
 
+    // Guard against concurrent starts: if stopWatching() is called while we're
+    // awaiting below, this generation becomes stale and we bail out.
+    const thisGeneration = ++startGeneration
+
     loading.value = true
     initialLoad = true
     error.value = null
@@ -101,7 +106,17 @@ export function useNatsKvWatcher(
         return
       }
 
+      // Stale check: another start/stop happened while we were awaiting open()
+      if (thisGeneration !== startGeneration) return
+
       const iter = await kv.watch({ key: pattern })
+
+      // Stale check: another start/stop happened while we were awaiting watch()
+      if (thisGeneration !== startGeneration) {
+        try { iter.stop() } catch {}
+        return
+      }
+
       kvWatcher = iter
 
       // Fallback: if no keys match, the iterator blocks forever
@@ -114,6 +129,9 @@ export function useNatsKvWatcher(
 
       ;(async () => {
         for await (const e of iter) {
+          // Bail if this watcher was superseded
+          if (thisGeneration !== startGeneration) break
+
           // Clear loading after initial values are delivered
           if (initialLoad && e.delta === 0) {
             initialLoad = false
@@ -169,6 +187,7 @@ export function useNatsKvWatcher(
   }
 
   function stopWatching() {
+    startGeneration++ // Invalidate any in-flight startWatching call
     if (kvWatcher) {
       try { kvWatcher.stop() } catch {}
       kvWatcher = null

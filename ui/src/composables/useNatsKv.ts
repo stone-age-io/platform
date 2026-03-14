@@ -47,23 +47,18 @@ export function useNatsKv(bucketName: string = 'twin', baseKey?: string) {
 
     try {
       const kvm = new Kvm(natsStore.nc)
-      
-      // Check if bucket exists
-      let found = false
-      for await (const b of await kvm.list()) { 
-        if (b.bucket === bucketName) {
-          found = true
-          break
+
+      try {
+        kv.value = await kvm.open(bucketName)
+      } catch (e: any) {
+        if (e.message?.includes('stream not found')) {
+          exists.value = false
+          loading.value = false
+          return
         }
-      }
-      
-      if (!found) {
-        exists.value = false
-        loading.value = false
-        return
+        throw e
       }
 
-      kv.value = await kvm.open(bucketName)
       exists.value = true
       await startWatch()
     } catch (e: any) {
