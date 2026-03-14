@@ -65,6 +65,10 @@ const menuItems = computed(() => {
         { label: 'Account', path: '/nats/account' },
         { label: 'Users', path: '/nats/users' },
         { label: 'Roles', path: '/nats/roles' },
+        ...(natsStore.isConnected && authStore.canManageUsers ? [
+          { label: 'Streams', path: '/nats/streams' },
+          { label: 'KV Buckets', path: '/nats/kv' },
+        ] : []),
       ]
     },
     { 

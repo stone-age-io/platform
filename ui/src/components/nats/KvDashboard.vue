@@ -11,10 +11,12 @@ interface KvEntryWithId extends KvEntry {
   id: string
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   bucket?: string
-  baseKey: string 
-}>()
+  baseKey?: string
+}>(), {
+  baseKey: ''
+})
 
 const { entries, loading, exists, error, init, createBucket, put, del, getHistory } = useNatsKv(props.bucket || 'twin', props.baseKey)
 const toast = useToast()

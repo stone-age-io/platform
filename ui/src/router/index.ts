@@ -81,7 +81,18 @@ const routes: RouteRecordRaw[] = [
       { path: 'nats/roles/new', name: 'NatsRoleNew', component: () => import('@/views/nats/NatsRoleFormView.vue') },
       { path: 'nats/roles/:id', name: 'NatsRoleDetail', component: () => import('@/views/nats/NatsRoleDetailView.vue') },
       { path: 'nats/roles/:id/edit', name: 'NatsRoleEdit', component: () => import('@/views/nats/NatsRoleFormView.vue') },
-      
+
+      // JetStream Streams
+      { path: 'nats/streams', name: 'JetStreamStreams', component: () => import('@/views/nats/StreamListView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
+      { path: 'nats/streams/new', name: 'JetStreamStreamNew', component: () => import('@/views/nats/StreamFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
+      { path: 'nats/streams/:name', name: 'JetStreamStreamDetail', component: () => import('@/views/nats/StreamDetailView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
+      { path: 'nats/streams/:name/edit', name: 'JetStreamStreamEdit', component: () => import('@/views/nats/StreamFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
+
+      // KV Buckets
+      { path: 'nats/kv', name: 'KvBuckets', component: () => import('@/views/nats/KvBucketListView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
+      { path: 'nats/kv/new', name: 'KvBucketNew', component: () => import('@/views/nats/KvBucketFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
+      { path: 'nats/kv/:name', name: 'KvBucketDetail', component: () => import('@/views/nats/KvBucketDetailView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
+
       // Nebula
       { path: 'nebula', redirect: '/nebula/ca' },
       { path: 'nebula/ca', name: 'NebulaCADetail', component: () => import('@/views/nebula/NebulaCADetailView.vue') },
