@@ -14,8 +14,10 @@ interface KvEntryWithId extends KvEntry {
 const props = withDefaults(defineProps<{
   bucket?: string
   baseKey?: string
+  title?: string
 }>(), {
-  baseKey: ''
+  baseKey: '',
+  title: '',
 })
 
 const { entries, loading, exists, error, init, createBucket, put, del, getHistory } = useNatsKv(props.bucket || 'twin', props.baseKey)
@@ -170,7 +172,7 @@ function isObject(val: any) {
 </script>
 
 <template>
-  <BaseCard :title="`Digital Twin: ${baseKey}`" :no-padding="true" class="w-full overflow-hidden">
+  <BaseCard :title="title || (baseKey ? `Digital Twin: ${baseKey}` : 'Key Browser')" :no-padding="true" class="w-full overflow-hidden">
     <div v-if="loading" class="flex justify-center p-12">
       <span class="loading loading-spinner text-primary"></span>
     </div>
