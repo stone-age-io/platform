@@ -118,7 +118,7 @@ const routes: RouteRecordRaw[] = [
 
       // Badge routes (badge-role users, served via MainLayout with stripped sidebar)
       { path: 'badge', name: 'Badge', component: () => import('@/views/badge/BadgeView.vue') },
-      { path: 'badge/dashboard', name: 'BadgeDashboard', component: () => import('@/views/badge/BadgeDashboardView.vue') },
+      { path: 'badge/dashboard', name: 'BadgeDashboard', component: () => import('@/views/dashboard/VisualizerView.vue') },
       { path: 'badge/settings', name: 'BadgeSettings', component: () => import('@/views/settings/UserSettingsView.vue') },
     ],
   },

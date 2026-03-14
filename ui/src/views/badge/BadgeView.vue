@@ -37,13 +37,13 @@ const truncatedNKey = computed(() => {
 // Whether the user has a NATS identity
 const hasNatsIdentity = computed(() => !!authStore.currentNatsUser)
 
-function getAvatarUrl() {
+const avatarUrl = computed(() => {
   if (!authStore.user?.avatar) return null
   return pb.files.getURL(authStore.user, (authStore.user as any).avatar, {
     thumb: '200x200',
     token: pb.authStore.token
   })
-}
+})
 
 // NATS status indicator
 const natsStatusDotClass = computed(() => {
@@ -121,8 +121,8 @@ onUnmounted(() => {
       <!-- Avatar with gradient ring -->
       <div class="badge-avatar">
         <div class="avatar-ring">
-          <div v-if="getAvatarUrl()" class="avatar-img">
-            <img :src="getAvatarUrl()!" alt="avatar" />
+          <div v-if="avatarUrl" class="avatar-img">
+            <img :src="avatarUrl" alt="avatar" />
           </div>
           <div v-else class="avatar-placeholder">
             <span>{{ userName[0]?.toUpperCase() }}</span>

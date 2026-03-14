@@ -1,6 +1,7 @@
 <!-- ui/src/views/dashboard/VisualizerView.vue -->
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, computed, nextTick, provide } from 'vue'
+import { useRoute } from 'vue-router'
 import { useNatsStore } from '@/stores/nats'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useUIStore } from '@/stores/ui'
@@ -21,10 +22,18 @@ import VariableBar from '@/components/dashboard/VariableBar.vue'
 import VariableEditorModal from '@/components/dashboard/VariableEditorModal.vue'
 import type { WidgetType } from '@/types/dashboard'
 
+const BADGE_WIDGET_TYPES: WidgetType[] = [
+  'button', 'switch', 'slider', 'publisher', 'kv', 'kvtable', 'text', 'status', 'stat', 'scanner'
+]
+
+const route = useRoute()
 const natsStore = useNatsStore()
 const dashboardStore = useDashboardStore()
 const uiStore = useUIStore()
 const toast = useToast()
+
+// Badge mode: restricted widget types, no kiosk/debug/shortcuts/grid selector
+const isBadgeMode = computed(() => route.path.startsWith('/badge'))
 
 const {
   subscribeAllWidgets,
@@ -47,8 +56,8 @@ const fullScreenWidgetId = ref<string | null>(null)
 
 const hasVariables = computed(() => (dashboardStore.activeDashboard?.variables?.length || 0) > 0)
 
-// --- Kiosk Mode ---
-const isKioskMode = computed(() => uiStore.kioskMode)
+// --- Kiosk Mode (disabled in badge mode) ---
+const isKioskMode = computed(() => !isBadgeMode.value && uiStore.kioskMode)
 const showKioskHint = ref(false)
 let kioskHintTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -290,7 +299,7 @@ watch(() => dashboardStore.currentVariableValues, () => {
             🔄
           </button>
 
-          <div v-if="!dashboardStore.isLocked" class="hidden md:block">
+          <div v-if="!isBadgeMode && !dashboardStore.isLocked" class="hidden md:block">
             <select :value="dashboardStore.activeDashboard?.columnCount ?? 12" @change="handleGridChange" class="select select-sm select-bordered font-mono">
               <option :value="0">Auto</option>
               <option :value="4">4 Cols</option>
@@ -305,7 +314,7 @@ watch(() => dashboardStore.currentVariableValues, () => {
           <button v-if="hasVariables || !dashboardStore.isLocked" class="btn btn-sm btn-square" :class="showVariableBar ? 'btn-active' : 'btn-ghost'" @click="showVariableBar = !showVariableBar"><span class="font-mono font-bold">{ }</span></button>
           <button class="btn btn-sm btn-square btn-ghost" @click="dashboardStore.toggleLock(); toast.info(dashboardStore.isLocked ? 'Dashboard locked' : 'Dashboard unlocked')">{{ dashboardStore.isLocked ? '🔒' : '🔓' }}</button>
           <button v-if="!dashboardStore.isLocked" class="btn btn-sm btn-primary" @click="showAddWidget = true">+ <span class="hidden sm:inline ml-1">Widget</span></button>
-          <button class="btn btn-sm btn-square btn-ghost hidden sm:flex" @click="showDebugPanel = true">🐞</button>
+          <button v-if="!isBadgeMode" class="btn btn-sm btn-square btn-ghost hidden sm:flex" @click="showDebugPanel = true">🐞</button>
         </div>
       </div>
       
@@ -327,7 +336,7 @@ watch(() => dashboardStore.currentVariableValues, () => {
     </div>
     
     <!-- Modals ... (Unchanged) -->
-    <AddWidgetModal v-model="showAddWidget" @select="handleCreateWidget" />
+    <AddWidgetModal v-model="showAddWidget" :allowed-types="isBadgeMode ? BADGE_WIDGET_TYPES : undefined" @select="handleCreateWidget" />
     <ConfigureWidgetModal v-model="showConfigWidget" :widget-id="configWidgetId" @saved="handleWidgetConfigSaved" />
     <KeyboardShortcutsModal v-model="showShortcutsModal" :shortcuts="shortcuts" />
     <VariableEditorModal v-model="showVariableModal" />
