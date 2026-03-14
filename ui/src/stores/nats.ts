@@ -167,7 +167,7 @@ export const useNatsStore = defineStore('nats', () => {
           window.dispatchEvent(new Event('nats:reconnected'))
           break
         case 'error':
-          lastError.value = String(s.data)
+          lastError.value = String((s as any).data ?? s.type)
           console.error('NATS Error:', s)
           break
       }
