@@ -206,7 +206,7 @@ onMounted(() => {
                 <div>
                   <dt class="text-sm font-medium text-base-content/70">Code</dt>
                   <dd class="mt-1">
-                    <code v-if="thing.code" class="text-sm bg-base-200 px-1 py-0.5 rounded font-mono">{{ thing.code }}</code>
+                    <code v-if="thing.code" class="text-sm bg-base-200 px-2 py-0.5 rounded font-mono">{{ thing.code }}</code>
                     <span v-else class="text-sm">-</span>
                   </dd>
                 </div>
@@ -246,17 +246,24 @@ onMounted(() => {
           <BaseCard>
             <template #header>
               <div class="flex justify-between items-center mb-2">
-                <h3 class="card-title text-base">NATS Connectivity</h3>
-                <div class="flex gap-2" v-if="thing.expand?.nats_user">
-                  <button @click="downloadNatsCreds" class="btn btn-sm btn-outline h-8 min-h-0" title="Download .creds file">
-                    <span class="text-lg">📥</span>
-                    <span class="hidden sm:inline">.creds</span>
-                  </button>
-                  <button @click="showRegenerateModal = true" class="btn btn-sm btn-outline btn-error h-8 min-h-0" title="Regenerate credentials">🔄</button>
+                <h3 class="card-title text-base">Connectivity</h3>
+                <div class="flex gap-2">
+                  <template v-if="thing.expand?.nats_user">
+                    <button @click="downloadNatsCreds" class="btn btn-sm btn-outline h-8 min-h-0" title="Download .creds file">
+                      <span class="text-lg">📥</span>
+                      <span class="hidden sm:inline">.creds</span>
+                    </button>
+                    <button @click="showRegenerateModal = true" class="btn btn-sm btn-outline btn-error h-8 min-h-0" title="Regenerate credentials">🔄</button>
+                  </template>
+                  <button v-if="thing.expand?.nebula_host" @click="downloadNebulaConfig" class="btn btn-sm btn-outline h-8 min-h-0" title="Download Nebula config">📥 Config</button>
                 </div>
               </div>
             </template>
 
+            <!-- NATS Section -->
+            <div class="mb-1">
+              <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider">NATS</span>
+            </div>
             <div v-if="thing.expand?.nats_user" class="flex flex-col gap-4">
               <div class="bg-base-200 rounded-lg p-3 border border-base-300">
                 <div class="flex justify-between items-start mb-1">
@@ -273,22 +280,18 @@ onMounted(() => {
                 <div class="font-mono text-base break-all select-all">{{ thing.expand.nats_user.nats_username }}</div>
               </div>
             </div>
-            <div v-else class="text-center py-8 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">
+            <div v-else class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">
               <span class="text-2xl block mb-2">📡</span>
               <p class="text-sm">No NATS user linked</p>
             </div>
-          </BaseCard>
-          
-          <BaseCard>
-            <template #header>
-              <div class="flex justify-between items-center mb-2">
-                <h3 class="card-title text-base">Nebula Connectivity</h3>
-                <div v-if="thing.expand?.nebula_host">
-                  <button @click="downloadNebulaConfig" class="btn btn-sm btn-outline h-8 min-h-0">📥 Config</button>
-                </div>
-              </div>
-            </template>
 
+            <!-- Divider -->
+            <div class="border-t border-base-300 my-4"></div>
+
+            <!-- Nebula Section -->
+            <div class="mb-1">
+              <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Nebula</span>
+            </div>
             <div v-if="thing.expand?.nebula_host" class="flex flex-col gap-4">
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div class="bg-base-200 rounded-lg p-3 border border-base-300">
@@ -301,7 +304,7 @@ onMounted(() => {
                 </div>
               </div>
             </div>
-            <div v-else class="text-center py-8 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">
+            <div v-else class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">
               <span class="text-2xl block mb-2">🌐</span>
               <p class="text-sm">No Nebula host linked</p>
             </div>

@@ -280,30 +280,34 @@ onUnmounted(() => cleanupMap())
         <!-- Left Column (Metadata & Geo Map) -->
         <div class="lg:col-span-5 flex flex-col gap-6">
           <BaseCard title="Basic Information">
-            <div class="grid grid-cols-2 gap-y-4 text-sm">
-              <div class="col-span-2">
-                <p class="opacity-50 uppercase text-xs font-bold mb-1">Description</p>
-                <p class="text-base">{{ location.description || 'No description provided' }}</p>
+            <dl class="space-y-4">
+              <div>
+                <dt class="text-sm font-medium text-base-content/70">Description</dt>
+                <dd class="mt-1 text-sm">{{ location.description || '-' }}</dd>
+              </div>
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <dt class="text-sm font-medium text-base-content/70">Code</dt>
+                  <dd class="mt-1">
+                    <code v-if="location.code" class="text-sm bg-base-200 px-2 py-0.5 rounded font-mono">{{ location.code }}</code>
+                    <span v-else class="text-sm text-base-content/40">-</span>
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-sm font-medium text-base-content/70">Parent</dt>
+                  <dd class="mt-1">
+                    <router-link v-if="location.expand?.parent" :to="`/locations/${location.parent}`" class="link link-primary hover:no-underline flex items-center gap-1">
+                      📍 {{ location.expand.parent.name }}
+                    </router-link>
+                    <span v-else class="text-sm text-base-content/40">Root location</span>
+                  </dd>
+                </div>
               </div>
               <div>
-                <p class="opacity-50 uppercase text-xs font-bold mb-1">Code</p>
-                <code class="bg-base-300 px-2 py-1 rounded font-mono text-xs">{{ location.code || 'N/A' }}</code>
+                <dt class="text-sm font-medium text-base-content/70">Created</dt>
+                <dd class="mt-1 text-sm">{{ formatDate(location.created) }}</dd>
               </div>
-              <div>
-                <p class="opacity-50 uppercase text-xs font-bold mb-1">Parent</p>
-                <p v-if="location.expand?.parent" class="flex items-center gap-1">
-                   <span class="text-primary text-xs">📍</span>
-                   <router-link :to="`/locations/${location.parent}`" class="link link-primary font-medium hover:no-underline">
-                     {{ location.expand.parent.name }}
-                   </router-link>
-                </p>
-                <p v-else class="opacity-40 italic">Root Location</p>
-              </div>
-              <div class="col-span-2">
-                <p class="opacity-50 uppercase text-xs font-bold mb-1">Created</p>
-                <p>{{ formatDate(location.created) }}</p>
-              </div>
-            </div>
+            </dl>
           </BaseCard>
 
           <BaseCard :no-padding="true" class="overflow-hidden">

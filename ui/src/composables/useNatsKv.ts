@@ -32,15 +32,14 @@ export function useNatsKv(bucketName: string = 'twin', baseKey?: string) {
   const error = ref<string | null>(null)
   
   let watcher: any = null
+  let initGeneration = 0
 
   async function init() {
     if (!natsStore.nc) return
-    
-    if (watcher) {
-      try { watcher.stop() } catch (e) { console.error('Watcher stop error:', e) }
-      watcher = null
-    }
-    
+
+    stopWatcher()
+    const thisGeneration = ++initGeneration
+
     loading.value = true
     entries.value.clear()
     error.value = null
@@ -59,8 +58,11 @@ export function useNatsKv(bucketName: string = 'twin', baseKey?: string) {
         throw e
       }
 
+      // Stale check: another init() was called while we awaited open()
+      if (thisGeneration !== initGeneration) return
+
       exists.value = true
-      await startWatch()
+      await startWatch(thisGeneration)
     } catch (e: any) {
       console.error('KV Init Error:', e)
       error.value = e.message
@@ -69,28 +71,46 @@ export function useNatsKv(bucketName: string = 'twin', baseKey?: string) {
     }
   }
 
-  async function startWatch() {
+  function stopWatcher() {
+    initGeneration++
+    if (watcher) {
+      try { watcher.stop() } catch {}
+      watcher = null
+    }
+  }
+
+  async function startWatch(generation: number) {
     if (!kv.value) return
-    
+
     try {
-      // If baseKey is provided, watch "baseKey.>"
-      // Otherwise watch the whole bucket ">"
       const filter = baseKey ? `${baseKey}.>` : '>'
       const iter = await kv.value.watch({ key: filter })
+
+      // Stale check: another init/stop happened while we awaited watch()
+      if (generation !== initGeneration) {
+        try { iter.stop() } catch {}
+        return
+      }
+
       watcher = iter
-      
+
       ;(async () => {
         for await (const e of iter) {
-          if (e.operation === 'DEL' || e.operation === 'PURGE') {
-            entries.value.delete(e.key)
-          } else {
-            entries.value.set(e.key, {
-              key: e.key,
-              value: decodeValue(e.value),
-              revision: e.revision,
-              created: e.created,
-              operation: e.operation
-            })
+          if (generation !== initGeneration) break
+          try {
+            if (e.operation === 'DEL' || e.operation === 'PURGE') {
+              entries.value.delete(e.key)
+            } else {
+              entries.value.set(e.key, {
+                key: e.key,
+                value: decodeValue(e.value),
+                revision: e.revision,
+                created: e.created,
+                operation: e.operation
+              })
+            }
+          } catch (err) {
+            console.error('KV entry processing error:', err)
           }
         }
       })()
@@ -176,7 +196,7 @@ export function useNatsKv(bucketName: string = 'twin', baseKey?: string) {
   }
 
   onUnmounted(() => {
-    if (watcher) watcher.stop()
+    stopWatcher()
   })
 
   return { entries, loading, exists, error, init, createBucket, put, del, getHistory }

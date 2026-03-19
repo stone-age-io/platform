@@ -286,35 +286,12 @@ export function useJetStreamManager() {
 
   async function listKvBuckets(): Promise<KvBucketSummary[]> {
     try {
-      const jsm = await getJsm()
       const kvm = getKvm()
-      const lister = jsm.streams.list()
+      const lister = kvm.list()
       const buckets: KvBucketSummary[] = []
 
-      for await (const si of lister) {
-        // KV buckets are stored as streams with "KV_" prefix
-        if (!si.config.name.startsWith('KV_')) continue
-        const bucketName = si.config.name.substring(3) // remove "KV_"
-        try {
-          const kv = await kvm.open(bucketName)
-          const status = await kv.status()
-          buckets.push(mapKvStatus(status))
-        } catch {
-          // If we can't open the bucket, build summary from stream info
-          buckets.push({
-            id: bucketName,
-            name: bucketName,
-            description: si.config.description || '',
-            storage: si.config.storage,
-            history: si.config.max_msgs_per_subject,
-            maxBytes: si.config.max_bytes,
-            ttl: si.config.max_age,
-            replicas: si.config.num_replicas,
-            values: si.state.messages,
-            bytes: si.state.bytes,
-            created: si.created,
-          })
-        }
+      for await (const status of lister) {
+        buckets.push(mapKvStatus(status))
       }
       return buckets
     } catch (e: any) {
