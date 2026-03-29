@@ -14,6 +14,10 @@ const account = ref<NatsAccount | null>(null)
 const loading = ref(true)
 const rotating = ref(false)
 const showRotateModal = ref(false)
+const addingKey = ref(false)
+const removingKey = ref('')
+const showRemoveKeyModal = ref(false)
+const keyToRemove = ref('')
 
 /**
  * Load account by Organization ID (Singleton)
@@ -94,6 +98,52 @@ async function confirmRotateKeys() {
   } finally {
     rotating.value = false
   }
+}
+
+async function addSigningKey() {
+  if (!account.value) return
+
+  addingKey.value = true
+  try {
+    await pb.collection('nats_accounts').update(account.value.id, {
+      add_signing_key: true
+    })
+    toast.success('Signing key added')
+    await loadAccount()
+  } catch (err: any) {
+    toast.error(err.message || 'Failed to add signing key')
+  } finally {
+    addingKey.value = false
+  }
+}
+
+function promptRemoveKey(publicKey: string) {
+  keyToRemove.value = publicKey
+  showRemoveKeyModal.value = true
+}
+
+async function confirmRemoveKey() {
+  if (!account.value || !keyToRemove.value) return
+
+  removingKey.value = keyToRemove.value
+  try {
+    await pb.collection('nats_accounts').update(account.value.id, {
+      remove_signing_key: keyToRemove.value
+    })
+    toast.success('Signing key removed')
+    showRemoveKeyModal.value = false
+    keyToRemove.value = ''
+    await loadAccount()
+  } catch (err: any) {
+    toast.error(err.message || 'Failed to remove signing key')
+  } finally {
+    removingKey.value = ''
+  }
+}
+
+function getSigningKeyPublicKey(key: any): string {
+  if (typeof key === 'string') return key
+  return key?.public_key || key?.publicKey || JSON.stringify(key)
 }
 
 // Watch for org changes
@@ -222,14 +272,26 @@ onUnmounted(() => {
             <template #header>
               <div class="flex justify-between items-center mb-4">
                 <h3 class="card-title text-base">Security & Keys</h3>
-                <button 
-                  @click="showRotateModal = true" 
-                  class="btn btn-sm btn-outline btn-warning"
-                  title="Rotate Account Keys"
-                >
-                  <span class="text-lg">🔄</span>
-                  Rotate Keys
-                </button>
+                <div class="flex gap-2">
+                  <button
+                    @click="addSigningKey"
+                    class="btn btn-sm btn-outline btn-success"
+                    :disabled="addingKey"
+                    title="Add Signing Key"
+                  >
+                    <span v-if="addingKey" class="loading loading-spinner loading-xs"></span>
+                    <span v-else class="text-lg">+</span>
+                    Add Key
+                  </button>
+                  <button
+                    @click="showRotateModal = true"
+                    class="btn btn-sm btn-outline btn-warning"
+                    title="Emergency Key Rotation"
+                  >
+                    <span class="text-lg">🔄</span>
+                    Rotate All
+                  </button>
+                </div>
               </div>
             </template>
 
@@ -244,14 +306,36 @@ onUnmounted(() => {
                 </div>
               </div>
 
+              <!-- Signing Keys List -->
               <div>
-                <div class="flex justify-between items-center mb-1">
-                  <div class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Signing Public Key</div>
-                  <button @click="copyToClipboard(account.signing_public_key!, 'Signing Key')" class="btn btn-ghost btn-xs">Copy</button>
+                <div class="text-xs font-bold text-base-content/50 uppercase tracking-wider mb-2">Signing Keys</div>
+                <div v-if="account.signing_keys && account.signing_keys.length" class="space-y-2">
+                  <div
+                    v-for="(key, index) in account.signing_keys"
+                    :key="index"
+                    class="bg-base-200 p-3 rounded-lg border border-base-300 flex items-start justify-between gap-2"
+                  >
+                    <div class="font-mono text-xs break-all flex-1 pt-0.5">
+                      {{ getSigningKeyPublicKey(key) }}
+                    </div>
+                    <div class="flex gap-1 shrink-0">
+                      <button
+                        @click="copyToClipboard(getSigningKeyPublicKey(key), 'Signing Key')"
+                        class="btn btn-ghost btn-xs"
+                      >Copy</button>
+                      <button
+                        @click="promptRemoveKey(getSigningKeyPublicKey(key))"
+                        class="btn btn-ghost btn-xs text-error"
+                        :disabled="removingKey === getSigningKeyPublicKey(key) || account.signing_keys!.length <= 1"
+                        :title="account.signing_keys!.length <= 1 ? 'Cannot remove the only signing key' : 'Remove this signing key'"
+                      >
+                        <span v-if="removingKey === getSigningKeyPublicKey(key)" class="loading loading-spinner loading-xs"></span>
+                        <span v-else>Remove</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <div class="bg-base-200 p-3 rounded-lg font-mono text-xs break-all border border-base-300">
-                  {{ account.signing_public_key || 'Not Generated' }}
-                </div>
+                <div v-else class="text-xs text-base-content/40 italic">No signing keys</div>
               </div>
 
               <div>
@@ -269,23 +353,43 @@ onUnmounted(() => {
       </div>
     </template>
 
-    <!-- Rotate Modal -->
+    <!-- Rotate All Keys Modal -->
     <dialog class="modal" :class="{ 'modal-open': showRotateModal }">
       <div class="modal-box">
-        <h3 class="font-bold text-lg text-warning">Rotate Account Keys?</h3>
+        <h3 class="font-bold text-lg text-warning">Emergency Key Rotation?</h3>
         <p class="py-4">
-          This will generate new signing keys and update the Account JWT. 
+          This will <strong>purge ALL existing signing keys</strong> and generate a single new one.
           <br><br>
-          <strong>Warning:</strong> Existing users may need to have their credentials updated if they rely on the old signing key chain.
+          <strong>Warning:</strong> All user JWTs in this account will be immediately invalidated.
+          Users will need their credentials regenerated individually.
         </p>
         <div class="modal-action">
           <button class="btn" @click="showRotateModal = false" :disabled="rotating">Cancel</button>
           <button class="btn btn-warning" @click="confirmRotateKeys" :disabled="rotating">
-            <span v-if="rotating" class="loading loading-spinner"></span> Rotate Keys
+            <span v-if="rotating" class="loading loading-spinner"></span> Rotate All Keys
           </button>
         </div>
       </div>
       <form method="dialog" class="modal-backdrop" @click="showRotateModal = false"><button>close</button></form>
+    </dialog>
+
+    <!-- Remove Signing Key Modal -->
+    <dialog class="modal" :class="{ 'modal-open': showRemoveKeyModal }">
+      <div class="modal-box">
+        <h3 class="font-bold text-lg text-error">Remove Signing Key?</h3>
+        <p class="py-4">
+          User JWTs signed by this key will become invalid.
+          <br><br>
+          <code class="text-xs break-all">{{ keyToRemove }}</code>
+        </p>
+        <div class="modal-action">
+          <button class="btn" @click="showRemoveKeyModal = false" :disabled="!!removingKey">Cancel</button>
+          <button class="btn btn-error" @click="confirmRemoveKey" :disabled="!!removingKey">
+            <span v-if="removingKey" class="loading loading-spinner"></span> Remove Key
+          </button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop" @click="showRemoveKeyModal = false"><button>close</button></form>
     </dialog>
   </div>
 </template>

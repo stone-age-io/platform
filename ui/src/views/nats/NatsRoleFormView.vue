@@ -24,6 +24,9 @@ const formData = ref({
   publish_deny_permissions: '',
   subscribe_permissions: '',
   subscribe_deny_permissions: '',
+  allow_response: false,
+  allow_response_max: '',
+  allow_response_ttl: '',
   max_subscriptions: '-1',
   max_data: '-1',
   max_payload: '-1',
@@ -64,6 +67,9 @@ async function loadRole() {
       publish_deny_permissions: formatForInput(role.publish_deny_permissions),
       subscribe_permissions: formatForInput(role.subscribe_permissions),
       subscribe_deny_permissions: formatForInput(role.subscribe_deny_permissions),
+      allow_response: role.allow_response || false,
+      allow_response_max: role.allow_response_max?.toString() || '',
+      allow_response_ttl: role.allow_response_ttl?.toString() || '',
       max_subscriptions: role.max_subscriptions?.toString() || '-1',
       max_data: role.max_data?.toString() || '-1',
       max_payload: role.max_payload?.toString() || '-1',
@@ -88,6 +94,9 @@ async function handleSubmit() {
       publish_deny_permissions: formatForApi(formData.value.publish_deny_permissions),
       subscribe_permissions: formatForApi(formData.value.subscribe_permissions),
       subscribe_deny_permissions: formatForApi(formData.value.subscribe_deny_permissions),
+      allow_response: formData.value.allow_response,
+      allow_response_max: formData.value.allow_response_max ? parseInt(formData.value.allow_response_max) : null,
+      allow_response_ttl: formData.value.allow_response_ttl ? parseInt(formData.value.allow_response_ttl) : null,
       max_subscriptions: parseInt(formData.value.max_subscriptions),
       max_data: parseInt(formData.value.max_data),
       max_payload: parseInt(formData.value.max_payload),
@@ -204,6 +213,31 @@ onMounted(() => { if (isEdit.value) loadRole() })
                   <textarea v-model="formData.subscribe_deny_permissions" class="textarea textarea-bordered font-mono text-xs border-error/30 focus:border-error" rows="3" placeholder="secrets.>"></textarea>
                 </div>
               </div>
+            </div>
+          </BaseCard>
+
+          <BaseCard title="Response Permissions">
+            <div class="space-y-4">
+              <div class="form-control">
+                <label class="label cursor-pointer justify-start gap-4">
+                  <input v-model="formData.allow_response" type="checkbox" class="toggle toggle-primary" />
+                  <span class="label-text">
+                    <span class="font-medium">Enable Response Permissions</span>
+                    <span class="block text-xs text-base-content/60 mt-1">Allow users with this role to reply in request-reply patterns.</span>
+                  </span>
+                </label>
+              </div>
+
+              <template v-if="formData.allow_response">
+                <div class="form-control">
+                  <label class="label"><span class="label-text text-xs">Max Responses per Request</span></label>
+                  <input v-model="formData.allow_response_max" type="number" class="input input-bordered font-mono" placeholder="-1 = unlimited, 0 = default (1)" />
+                </div>
+                <div class="form-control">
+                  <label class="label"><span class="label-text text-xs">Response TTL (seconds)</span></label>
+                  <input v-model="formData.allow_response_ttl" type="number" class="input input-bordered font-mono" placeholder="0 = no expiration" />
+                </div>
+              </template>
             </div>
           </BaseCard>
         </div>

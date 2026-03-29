@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
@@ -17,6 +17,32 @@ const user = ref<NatsUser | null>(null)
 const loading = ref(true)
 const regenerating = ref(false)
 const showRegenerateModal = ref(false)
+
+function getSubjectArray(val: any): string[] {
+  if (!val) return []
+  if (Array.isArray(val)) return val
+
+  if (typeof val === 'string') {
+    const trimmed = val.trim()
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        return JSON.parse(trimmed)
+      } catch (e) {
+        return []
+      }
+    }
+    return trimmed.split(',').map(s => s.trim()).filter(s => s !== '')
+  }
+  return []
+}
+
+const hasPermissionOverrides = computed(() => {
+  if (!user.value) return false
+  return getSubjectArray(user.value.publish_permissions).length > 0
+    || getSubjectArray(user.value.subscribe_permissions).length > 0
+    || getSubjectArray(user.value.publish_deny_permissions).length > 0
+    || getSubjectArray(user.value.subscribe_deny_permissions).length > 0
+})
 
 const userId = route.params.id as string
 
@@ -194,8 +220,55 @@ onMounted(() => {
               </div>
             </dl>
           </BaseCard>
+
+          <!-- Permission Overrides -->
+          <BaseCard v-if="hasPermissionOverrides" title="Permission Overrides">
+            <p class="text-xs text-base-content/60 mb-4">User-level overrides merged with role permissions.</p>
+
+            <!-- Publishing -->
+            <div v-if="getSubjectArray(user.publish_permissions).length || getSubjectArray(user.publish_deny_permissions).length" class="mb-4">
+              <h4 class="text-xs font-black uppercase opacity-50 tracking-widest mb-2 flex items-center gap-2">
+                <span>📤</span> Publishing
+              </h4>
+              <div class="space-y-2">
+                <div v-if="getSubjectArray(user.publish_permissions).length">
+                  <span class="text-xs text-base-content/50">Allow:</span>
+                  <div class="flex flex-wrap gap-1 mt-1">
+                    <code v-for="s in getSubjectArray(user.publish_permissions)" :key="s" class="badge badge-outline font-mono text-xs h-auto py-1 px-2">{{ s }}</code>
+                  </div>
+                </div>
+                <div v-if="getSubjectArray(user.publish_deny_permissions).length">
+                  <span class="text-xs text-base-content/50">Deny:</span>
+                  <div class="flex flex-wrap gap-1 mt-1">
+                    <code v-for="s in getSubjectArray(user.publish_deny_permissions)" :key="s" class="badge badge-error badge-outline font-mono text-xs h-auto py-1 px-2">{{ s }}</code>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Subscribing -->
+            <div v-if="getSubjectArray(user.subscribe_permissions).length || getSubjectArray(user.subscribe_deny_permissions).length">
+              <h4 class="text-xs font-black uppercase opacity-50 tracking-widest mb-2 flex items-center gap-2">
+                <span>📥</span> Subscribing
+              </h4>
+              <div class="space-y-2">
+                <div v-if="getSubjectArray(user.subscribe_permissions).length">
+                  <span class="text-xs text-base-content/50">Allow:</span>
+                  <div class="flex flex-wrap gap-1 mt-1">
+                    <code v-for="s in getSubjectArray(user.subscribe_permissions)" :key="s" class="badge badge-outline font-mono text-xs h-auto py-1 px-2">{{ s }}</code>
+                  </div>
+                </div>
+                <div v-if="getSubjectArray(user.subscribe_deny_permissions).length">
+                  <span class="text-xs text-base-content/50">Deny:</span>
+                  <div class="flex flex-wrap gap-1 mt-1">
+                    <code v-for="s in getSubjectArray(user.subscribe_deny_permissions)" :key="s" class="badge badge-error badge-outline font-mono text-xs h-auto py-1 px-2">{{ s }}</code>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </BaseCard>
         </div>
-        
+
         <!-- Right Column: Security -->
         <div class="space-y-6">
           <BaseCard>

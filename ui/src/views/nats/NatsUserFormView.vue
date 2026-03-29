@@ -29,20 +29,45 @@ const formData = ref({
   // Identity
   nats_username: '',
   description: '',
-  
+
   // Auth
   email: '',
   password: '',
   passwordConfirm: '',
-  
+
   // Permissions
   account_id: '',
   role_id: '',
-  
+
+  // Per-user permission overrides
+  publish_permissions: '',
+  subscribe_permissions: '',
+  publish_deny_permissions: '',
+  subscribe_deny_permissions: '',
+
   // Options
   bearer_token: false,
   active: true,
 })
+
+/**
+ * Grug helper: UI needs string for textarea, API wants Array.
+ */
+function formatForInput(val: any): string {
+  if (!val) return ''
+  if (Array.isArray(val)) return val.join(', ')
+  return String(val)
+}
+
+/**
+ * Grug helper: API wants Array, UI gives string.
+ */
+function formatForApi(val: string): string[] {
+  if (!val) return []
+  return val.split(',')
+    .map(s => s.trim())
+    .filter(s => s !== '')
+}
 
 // Relation options
 const accounts = ref<NatsAccount[]>([])
@@ -104,6 +129,10 @@ async function loadUser() {
       passwordConfirm: '',
       account_id: user.account_id,
       role_id: user.role_id,
+      publish_permissions: formatForInput(user.publish_permissions),
+      subscribe_permissions: formatForInput(user.subscribe_permissions),
+      publish_deny_permissions: formatForInput(user.publish_deny_permissions),
+      subscribe_deny_permissions: formatForInput(user.subscribe_deny_permissions),
       bearer_token: user.bearer_token || false,
       active: user.active || true,
     }
@@ -140,6 +169,10 @@ async function handleSubmit() {
       emailVisibility: true,
       account_id: formData.value.account_id,
       role_id: formData.value.role_id,
+      publish_permissions: formatForApi(formData.value.publish_permissions),
+      subscribe_permissions: formatForApi(formData.value.subscribe_permissions),
+      publish_deny_permissions: formatForApi(formData.value.publish_deny_permissions),
+      subscribe_deny_permissions: formatForApi(formData.value.subscribe_deny_permissions),
       bearer_token: formData.value.bearer_token,
       active: formData.value.active,
     }
@@ -334,9 +367,9 @@ onMounted(() => {
             <div class="space-y-4">
               <div class="form-control">
                 <label class="label cursor-pointer justify-start gap-4">
-                  <input 
+                  <input
                     v-model="formData.active"
-                    type="checkbox" 
+                    type="checkbox"
                     class="toggle toggle-success"
                   />
                   <span class="label-text">
@@ -350,9 +383,9 @@ onMounted(() => {
 
               <div class="form-control">
                 <label class="label cursor-pointer justify-start gap-4">
-                  <input 
+                  <input
                     v-model="formData.bearer_token"
-                    type="checkbox" 
+                    type="checkbox"
                     class="checkbox"
                   />
                   <span class="label-text">
@@ -362,6 +395,45 @@ onMounted(() => {
                     </span>
                   </span>
                 </label>
+              </div>
+            </div>
+          </BaseCard>
+
+          <BaseCard title="Permission Overrides">
+            <p class="text-xs text-base-content/60 mb-4">
+              Optional. These merge with role permissions (union). Leave empty to inherit role only.
+            </p>
+            <div class="space-y-6">
+              <div class="space-y-3">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm">📤</span>
+                  <h4 class="text-xs font-black uppercase opacity-50 tracking-widest">Publishing</h4>
+                </div>
+                <div class="form-control">
+                  <label class="label py-1"><span class="label-text text-xs">Allow Subjects</span></label>
+                  <textarea v-model="formData.publish_permissions" class="textarea textarea-bordered font-mono text-xs" rows="2" placeholder="admin.reports.>"></textarea>
+                </div>
+                <div class="form-control">
+                  <label class="label py-1"><span class="label-text text-xs text-error font-bold">Deny Subjects</span></label>
+                  <textarea v-model="formData.publish_deny_permissions" class="textarea textarea-bordered font-mono text-xs border-error/30 focus:border-error" rows="2" placeholder="events.internal.>"></textarea>
+                </div>
+              </div>
+
+              <div class="divider my-0 opacity-30"></div>
+
+              <div class="space-y-3">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm">📥</span>
+                  <h4 class="text-xs font-black uppercase opacity-50 tracking-widest">Subscribing</h4>
+                </div>
+                <div class="form-control">
+                  <label class="label py-1"><span class="label-text text-xs">Allow Subjects</span></label>
+                  <textarea v-model="formData.subscribe_permissions" class="textarea textarea-bordered font-mono text-xs" rows="2" placeholder="admin.reports.>"></textarea>
+                </div>
+                <div class="form-control">
+                  <label class="label py-1"><span class="label-text text-xs text-error font-bold">Deny Subjects</span></label>
+                  <textarea v-model="formData.subscribe_deny_permissions" class="textarea textarea-bordered font-mono text-xs border-error/30 focus:border-error" rows="2" placeholder="events.internal.>"></textarea>
+                </div>
               </div>
             </div>
           </BaseCard>

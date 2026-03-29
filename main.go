@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
@@ -97,6 +98,9 @@ func setDefaults() {
 
 	// Audit
 	viper.SetDefault("audit.collection_name", "audit_logs")
+	viper.SetDefault("audit.retention.max_age", "")
+	viper.SetDefault("audit.retention.max_records", 0)
+	viper.SetDefault("audit.retention.interval", "0 2 * * *")
 }
 
 func main() {
@@ -148,6 +152,24 @@ func main() {
 	auditOptions := pbaudit.DefaultOptions()
 	auditOptions.CollectionName = viper.GetString("audit.collection_name")
 	auditOptions.LogToConsole = viper.GetBool("audit.log_console")
+
+	// Retention policy (optional)
+	maxAgeStr := viper.GetString("audit.retention.max_age")
+	maxRecords := viper.GetInt("audit.retention.max_records")
+	if maxAgeStr != "" || maxRecords > 0 {
+		retention := &pbaudit.RetentionPolicy{
+			Interval: viper.GetString("audit.retention.interval"),
+		}
+		if maxAgeStr != "" {
+			if d, err := time.ParseDuration(maxAgeStr); err == nil {
+				retention.MaxAge = d
+			}
+		}
+		if maxRecords > 0 {
+			retention.MaxRecords = maxRecords
+		}
+		auditOptions.Retention = retention
+	}
 
 	// Setup Libraries (Hooks & APIs)
 	if err := pbaudit.Setup(app, auditOptions); err != nil {

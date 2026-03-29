@@ -181,6 +181,34 @@ onMounted(loadRole)
           </div>
         </div>
         
+        <!-- RESPONSE PERMISSIONS -->
+        <div class="lg:col-span-2 space-y-4">
+          <h3 class="text-lg font-bold flex items-center gap-2">
+            <span>🔁</span> Response Permissions
+          </h3>
+          <BaseCard>
+            <div class="flex items-center gap-4">
+              <div>
+                <span class="text-xs font-bold text-base-content/50 uppercase">Status</span>
+                <div class="mt-1">
+                  <span v-if="role.allow_response" class="badge badge-success">Enabled</span>
+                  <span v-else class="badge badge-ghost">Disabled</span>
+                </div>
+              </div>
+              <template v-if="role.allow_response">
+                <div>
+                  <span class="text-xs font-bold text-base-content/50 uppercase">Max Responses</span>
+                  <div class="mt-1 font-mono text-sm">{{ role.allow_response_max === -1 ? 'Unlimited' : (role.allow_response_max || 'Default (1)') }}</div>
+                </div>
+                <div>
+                  <span class="text-xs font-bold text-base-content/50 uppercase">TTL</span>
+                  <div class="mt-1 font-mono text-sm">{{ role.allow_response_ttl ? role.allow_response_ttl + 's' : 'No limit' }}</div>
+                </div>
+              </template>
+            </div>
+          </BaseCard>
+        </div>
+
         <BaseCard title="System Information" class="lg:col-span-2">
           <dl class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
             <div>

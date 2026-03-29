@@ -112,9 +112,9 @@ export interface NatsAccount extends BaseRecord {
   public_key?: string
   private_key?: string
   seed?: string
-  signing_public_key?: string
-  signing_private_key?: string
-  signing_seed?: string
+  signing_keys?: any[]
+  add_signing_key?: boolean
+  remove_signing_key?: string
   jwt?: string
   active?: boolean
   rotate_keys?: boolean
@@ -142,6 +142,10 @@ export interface NatsUser extends AuthRecord {
   jwt_expires_at?: string
   regenerate?: boolean
   active?: boolean
+  publish_permissions?: string
+  subscribe_permissions?: string
+  publish_deny_permissions?: string
+  subscribe_deny_permissions?: string
   organization?: string
 }
 
@@ -154,6 +158,9 @@ export interface NatsRole extends BaseRecord {
   subscribe_permissions?: string
   publish_deny_permissions?: string
   subscribe_deny_permissions?: string
+  allow_response?: boolean
+  allow_response_max?: number
+  allow_response_ttl?: number
   max_subscriptions?: number
   max_data?: number
   max_payload?: number
