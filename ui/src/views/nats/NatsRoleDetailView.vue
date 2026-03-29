@@ -4,7 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
-import { formatDate } from '@/utils/format'
+import { formatDate, formatBytes } from '@/utils/format'
 import type { NatsRole } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 
@@ -73,9 +73,10 @@ async function handleDelete() {
   }
 }
 
-function formatLimit(value?: number) {
+function formatLimit(value?: number, isBytes = false) {
   if (value === undefined || value === null) return 'Not set'
-  return value === -1 ? 'Unlimited' : value.toString()
+  if (value === -1) return 'Unlimited'
+  return isBytes ? formatBytes(value) : value.toLocaleString()
 }
 
 onMounted(loadRole)
@@ -107,124 +108,130 @@ onMounted(loadRole)
         </div>
       </div>
       
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <BaseCard title="Basic Information">
-          <dl class="space-y-4">
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">Description</dt>
-              <dd class="mt-1 text-sm">{{ role.description || '-' }}</dd>
-            </div>
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">Default Role</dt>
-              <dd class="mt-1">
-                <span class="badge" :class="role.is_default ? 'badge-primary' : 'badge-ghost'">{{ role.is_default ? 'Yes' : 'No' }}</span>
-              </dd>
-            </div>
-          </dl>
-        </BaseCard>
-        
-        <BaseCard title="Limits">
-          <dl class="grid grid-cols-2 gap-4">
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">Max Subscriptions</dt>
-              <dd class="mt-1 font-mono text-sm">{{ formatLimit(role.max_subscriptions) }}</dd>
-            </div>
-            <div>
-              <dt class="text-sm font-medium text-base-content/70">Max Payload</dt>
-              <dd class="mt-1 font-mono text-sm">{{ formatLimit(role.max_payload) }}</dd>
-            </div>
-          </dl>
-        </BaseCard>
-        
-        <!-- PUBLISHING -->
-        <div class="lg:col-span-2 space-y-4">
-          <h3 class="text-lg font-bold flex items-center gap-2">
-            <span>📤</span> Publishing Permissions
-          </h3>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <BaseCard title="Allow" class="border-t-4 border-t-success">
-              <div v-if="getSubjectArray(role.publish_permissions).length" class="flex flex-wrap gap-2">
-                <!-- Use s directly, avoid quotes -->
-                <code v-for="s in getSubjectArray(role.publish_permissions)" :key="s" class="badge badge-outline font-mono text-xs h-auto py-1.5 px-2">{{ s }}</code>
-              </div>
-              <div v-else class="text-xs opacity-40 italic">No allow rules</div>
-            </BaseCard>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
 
-            <BaseCard title="Deny" class="border-t-4 border-t-error">
-              <div v-if="getSubjectArray(role.publish_deny_permissions).length" class="flex flex-wrap gap-2">
-                <code v-for="s in getSubjectArray(role.publish_deny_permissions)" :key="s" class="badge badge-error badge-outline font-mono text-xs h-auto py-1.5 px-2">{{ s }}</code>
-              </div>
-              <div v-else class="text-xs opacity-40 italic">No deny rules</div>
-            </BaseCard>
-          </div>
-        </div>
-
-        <!-- SUBSCRIBING -->
-        <div class="lg:col-span-2 space-y-4">
-          <h3 class="text-lg font-bold flex items-center gap-2">
-            <span>📥</span> Subscribing Permissions
-          </h3>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <BaseCard title="Allow" class="border-t-4 border-t-success">
-              <div v-if="getSubjectArray(role.subscribe_permissions).length" class="flex flex-wrap gap-2">
-                <code v-for="s in getSubjectArray(role.subscribe_permissions)" :key="s" class="badge badge-outline font-mono text-xs h-auto py-1.5 px-2">{{ s }}</code>
-              </div>
-              <div v-else class="text-xs opacity-40 italic">No allow rules</div>
-            </BaseCard>
-
-            <BaseCard title="Deny" class="border-t-4 border-t-error">
-              <div v-if="getSubjectArray(role.subscribe_deny_permissions).length" class="flex flex-wrap gap-2">
-                <code v-for="s in getSubjectArray(role.subscribe_deny_permissions)" :key="s" class="badge badge-error badge-outline font-mono text-xs h-auto py-1.5 px-2">{{ s }}</code>
-              </div>
-              <div v-else class="text-xs opacity-40 italic">No deny rules</div>
-            </BaseCard>
-          </div>
-        </div>
-        
-        <!-- RESPONSE PERMISSIONS -->
-        <div class="lg:col-span-2 space-y-4">
-          <h3 class="text-lg font-bold flex items-center gap-2">
-            <span>🔁</span> Response Permissions
-          </h3>
-          <BaseCard>
-            <div class="flex items-center gap-4">
+        <!-- Left Column -->
+        <div class="space-y-6">
+          <BaseCard title="Basic Information">
+            <dl class="space-y-4">
               <div>
-                <span class="text-xs font-bold text-base-content/50 uppercase">Status</span>
-                <div class="mt-1">
-                  <span v-if="role.allow_response" class="badge badge-success">Enabled</span>
-                  <span v-else class="badge badge-ghost">Disabled</span>
-                </div>
+                <dt class="text-sm font-medium text-base-content/70">Description</dt>
+                <dd class="mt-1 text-sm">{{ role.description || '-' }}</dd>
               </div>
-              <template v-if="role.allow_response">
-                <div>
-                  <span class="text-xs font-bold text-base-content/50 uppercase">Max Responses</span>
-                  <div class="mt-1 font-mono text-sm">{{ role.allow_response_max === -1 ? 'Unlimited' : (role.allow_response_max || 'Default (1)') }}</div>
-                </div>
-                <div>
-                  <span class="text-xs font-bold text-base-content/50 uppercase">TTL</span>
-                  <div class="mt-1 font-mono text-sm">{{ role.allow_response_ttl ? role.allow_response_ttl + 's' : 'No limit' }}</div>
-                </div>
-              </template>
-            </div>
+              <div>
+                <dt class="text-sm font-medium text-base-content/70">Default Role</dt>
+                <dd class="mt-1">
+                  <span class="badge" :class="role.is_default ? 'badge-primary' : 'badge-ghost'">{{ role.is_default ? 'Yes' : 'No' }}</span>
+                </dd>
+              </div>
+              <div>
+                <dt class="text-sm font-medium text-base-content/70">Created</dt>
+                <dd class="mt-1 text-sm">{{ formatDate(role.created) }}</dd>
+              </div>
+              <div>
+                <dt class="text-sm font-medium text-base-content/70">Last Updated</dt>
+                <dd class="mt-1 text-sm">{{ formatDate(role.updated) }}</dd>
+              </div>
+            </dl>
+          </BaseCard>
+
+          <BaseCard title="Resource Limits">
+            <dl class="space-y-3">
+              <div>
+                <dt class="text-xs text-base-content/70">Max Subscriptions</dt>
+                <dd class="font-mono text-sm font-medium">{{ formatLimit(role.max_subscriptions) }}</dd>
+              </div>
+              <div>
+                <dt class="text-xs text-base-content/70">Max Data</dt>
+                <dd class="font-mono text-sm font-medium">{{ formatLimit(role.max_data, true) }}</dd>
+              </div>
+              <div>
+                <dt class="text-xs text-base-content/70">Max Payload</dt>
+                <dd class="font-mono text-sm font-medium">{{ formatLimit(role.max_payload, true) }}</dd>
+              </div>
+              <p class="text-[10px] text-base-content/40 italic">Per-user limits (applied to each user with this role)</p>
+            </dl>
           </BaseCard>
         </div>
 
-        <BaseCard title="System Information" class="lg:col-span-2">
-          <dl class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-            <div>
-              <dt class="font-bold opacity-50 uppercase">ID</dt>
-              <dd class="mt-1 font-mono">{{ role.id }}</dd>
+        <!-- Right Column -->
+        <div class="space-y-6">
+          <BaseCard title="Permissions">
+            <div class="space-y-6">
+              <!-- Publishing -->
+              <div class="space-y-3">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm">📤</span>
+                  <h4 class="text-xs font-black uppercase text-base-content/50 tracking-widest">Publishing</h4>
+                </div>
+                <div>
+                  <span class="text-xs text-base-content/50">Allow</span>
+                  <div v-if="getSubjectArray(role.publish_permissions).length" class="flex flex-wrap gap-1.5 mt-1">
+                    <code v-for="s in getSubjectArray(role.publish_permissions)" :key="s" class="badge badge-outline font-mono text-xs h-auto py-1.5 px-2">{{ s }}</code>
+                  </div>
+                  <div v-else class="text-xs text-base-content/40 italic mt-1">None</div>
+                </div>
+                <div>
+                  <span class="text-xs text-base-content/50">Deny</span>
+                  <div v-if="getSubjectArray(role.publish_deny_permissions).length" class="flex flex-wrap gap-1.5 mt-1">
+                    <code v-for="s in getSubjectArray(role.publish_deny_permissions)" :key="s" class="badge badge-error badge-outline font-mono text-xs h-auto py-1.5 px-2">{{ s }}</code>
+                  </div>
+                  <div v-else class="text-xs text-base-content/40 italic mt-1">None</div>
+                </div>
+              </div>
+
+              <div class="divider my-0 opacity-30"></div>
+
+              <!-- Subscribing -->
+              <div class="space-y-3">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm">📥</span>
+                  <h4 class="text-xs font-black uppercase text-base-content/50 tracking-widest">Subscribing</h4>
+                </div>
+                <div>
+                  <span class="text-xs text-base-content/50">Allow</span>
+                  <div v-if="getSubjectArray(role.subscribe_permissions).length" class="flex flex-wrap gap-1.5 mt-1">
+                    <code v-for="s in getSubjectArray(role.subscribe_permissions)" :key="s" class="badge badge-outline font-mono text-xs h-auto py-1.5 px-2">{{ s }}</code>
+                  </div>
+                  <div v-else class="text-xs text-base-content/40 italic mt-1">None</div>
+                </div>
+                <div>
+                  <span class="text-xs text-base-content/50">Deny</span>
+                  <div v-if="getSubjectArray(role.subscribe_deny_permissions).length" class="flex flex-wrap gap-1.5 mt-1">
+                    <code v-for="s in getSubjectArray(role.subscribe_deny_permissions)" :key="s" class="badge badge-error badge-outline font-mono text-xs h-auto py-1.5 px-2">{{ s }}</code>
+                  </div>
+                  <div v-else class="text-xs text-base-content/40 italic mt-1">None</div>
+                </div>
+              </div>
+
+              <div class="divider my-0 opacity-30"></div>
+
+              <!-- Response Permissions -->
+              <div class="space-y-3">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm">🔁</span>
+                  <h4 class="text-xs font-black uppercase text-base-content/50 tracking-widest">Response</h4>
+                </div>
+                <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
+                  <div>
+                    <span v-if="role.allow_response" class="badge badge-success badge-sm">Enabled</span>
+                    <span v-else class="badge badge-ghost badge-sm">Disabled</span>
+                  </div>
+                  <template v-if="role.allow_response">
+                    <div>
+                      <span class="text-xs text-base-content/50">Max Responses</span>
+                      <div class="font-mono text-sm">{{ role.allow_response_max === -1 ? 'Unlimited' : (role.allow_response_max || 'Default (1)') }}</div>
+                    </div>
+                    <div>
+                      <span class="text-xs text-base-content/50">TTL</span>
+                      <div class="font-mono text-sm">{{ role.allow_response_ttl ? role.allow_response_ttl + 's' : 'No limit' }}</div>
+                    </div>
+                  </template>
+                </div>
+              </div>
             </div>
-            <div>
-              <dt class="font-bold opacity-50 uppercase">Created</dt>
-              <dd class="mt-1">{{ formatDate(role.created) }}</dd>
-            </div>
-            <div>
-              <dt class="font-bold opacity-50 uppercase">Updated</dt>
-              <dd class="mt-1">{{ formatDate(role.updated) }}</dd>
-            </div>
-          </dl>
-        </BaseCard>
+          </BaseCard>
+        </div>
       </div>
     </template>
   </div>
