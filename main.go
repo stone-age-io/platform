@@ -89,6 +89,8 @@ func setDefaults() {
 	viper.SetDefault("nats.server_url", "nats://localhost:4222")
 	viper.SetDefault("nats.default_limits.max_connections", 10)
 	viper.SetDefault("nats.default_limits.max_subscriptions", 50)
+	viper.SetDefault("nats.export_collection_name", "nats_account_exports")
+	viper.SetDefault("nats.import_collection_name", "nats_account_imports")
 
 	// Nebula
 	viper.SetDefault("nebula.ca_collection_name", "nebula_ca")
@@ -137,6 +139,8 @@ func main() {
 	natsOptions.OperatorName = viper.GetString("nats.operator_name")
 	natsOptions.NATSServerURL = viper.GetString("nats.server_url")
 	natsOptions.LogToConsole = viper.GetBool("nats.log_to_console")
+	natsOptions.ExportCollectionName = viper.GetString("nats.export_collection_name")
+	natsOptions.ImportCollectionName = viper.GetString("nats.import_collection_name")
 
 	// --- Nebula ---
 	nebulaOptions := pbnebula.DefaultOptions()

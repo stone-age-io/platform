@@ -82,6 +82,18 @@ const routes: RouteRecordRaw[] = [
       { path: 'nats/roles/:id', name: 'NatsRoleDetail', component: () => import('@/views/nats/NatsRoleDetailView.vue') },
       { path: 'nats/roles/:id/edit', name: 'NatsRoleEdit', component: () => import('@/views/nats/NatsRoleFormView.vue') },
 
+      // NATS Account Exports
+      { path: 'nats/exports', name: 'NatsExports', component: () => import('@/views/nats/NatsExportListView.vue') },
+      { path: 'nats/exports/new', name: 'NatsExportNew', component: () => import('@/views/nats/NatsExportFormView.vue') },
+      { path: 'nats/exports/:id', name: 'NatsExportDetail', component: () => import('@/views/nats/NatsExportDetailView.vue') },
+      { path: 'nats/exports/:id/edit', name: 'NatsExportEdit', component: () => import('@/views/nats/NatsExportFormView.vue') },
+
+      // NATS Account Imports
+      { path: 'nats/imports', name: 'NatsImports', component: () => import('@/views/nats/NatsImportListView.vue') },
+      { path: 'nats/imports/new', name: 'NatsImportNew', component: () => import('@/views/nats/NatsImportFormView.vue') },
+      { path: 'nats/imports/:id', name: 'NatsImportDetail', component: () => import('@/views/nats/NatsImportDetailView.vue') },
+      { path: 'nats/imports/:id/edit', name: 'NatsImportEdit', component: () => import('@/views/nats/NatsImportFormView.vue') },
+
       // JetStream Streams
       { path: 'nats/streams', name: 'JetStreamStreams', component: () => import('@/views/nats/StreamListView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
       { path: 'nats/streams/new', name: 'JetStreamStreamNew', component: () => import('@/views/nats/StreamFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },

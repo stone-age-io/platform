@@ -167,6 +167,37 @@ export interface NatsRole extends BaseRecord {
   organization?: string
 }
 
+// NATS Account Export
+export interface NatsAccountExport extends BaseRecord {
+  account_id: string
+  name: string
+  subject: string
+  type: 'stream' | 'service'
+  token_req?: boolean
+  response_type?: 'Singleton' | 'Stream' | 'Chunked'
+  response_threshold?: number
+  account_token_position?: number
+  advertise?: boolean
+  allow_trace?: boolean
+  description?: string
+  organization?: string
+}
+
+// NATS Account Import
+export interface NatsAccountImport extends BaseRecord {
+  account_id: string
+  name: string
+  subject: string
+  account: string
+  token?: string
+  local_subject?: string
+  type: 'stream' | 'service'
+  share?: boolean
+  allow_trace?: boolean
+  description?: string
+  organization?: string
+}
+
 // Nebula CA
 export interface NebulaCA extends BaseRecord {
   name: string

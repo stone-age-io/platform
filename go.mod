@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	github.com/pocketbase/pocketbase v0.36.6
 	github.com/skeeeon/pb-audit v0.0.0-20260328214505-793cfec8ee9e
-	github.com/skeeeon/pb-nats v0.0.0-20260328202757-dea1fb887dc1
+	github.com/skeeeon/pb-nats v0.0.0-20260404202425-9e559a815ab6
 	github.com/skeeeon/pb-nebula v0.0.0-20251225022029-8676cb81a299
 	github.com/skeeeon/pb-tenancy v0.0.0-20251126004748-da57c8293c1f
 	github.com/spf13/cobra v1.10.2
