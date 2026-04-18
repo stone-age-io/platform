@@ -6,7 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import { DEFAULT_PREFIX } from '@/utils/subjectResolver'
-import type { ThingTypeCapability } from '@/types/pocketbase'
+import type { ThingTypeCapability, ThingTypeOperation, NatsRole } from '@/types/pocketbase'
 
 const router = useRouter()
 const route = useRoute()
@@ -23,11 +23,37 @@ const form = ref({
   code: '',
   capabilities: [] as ThingTypeCapability[],
   subject_prefix: '',
+  operations: [] as string[],
+  nats_role: '',
 })
 
 const availableCapabilities: ThingTypeCapability[] = ['publish', 'subscribe', 'request', 'reply']
 
+const availableOperations = ref<ThingTypeOperation[]>([])
+const availableRoles = ref<NatsRole[]>([])
+
 const effectivePrefix = computed(() => form.value.subject_prefix?.trim() || DEFAULT_PREFIX)
+
+async function loadOptions() {
+  const orgId = authStore.currentOrgId
+  // Operations: current org OR platform-shipped (organization = "")
+  const opsFilter = orgId
+    ? `organization = "${orgId}" || organization = ""`
+    : 'organization = ""'
+  const ops = await pb.collection('thing_type_operations').getFullList<ThingTypeOperation>({
+    filter: opsFilter,
+    sort: 'name',
+  })
+  availableOperations.value = ops
+
+  if (orgId) {
+    const roles = await pb.collection('nats_roles').getFullList<NatsRole>({
+      filter: `organization = "${orgId}"`,
+      sort: 'name',
+    })
+    availableRoles.value = roles
+  }
+}
 
 async function loadData() {
   if (!id) return
@@ -40,6 +66,8 @@ async function loadData() {
       code: record.code,
       capabilities: record.capabilities || [],
       subject_prefix: record.subject_prefix || '',
+      operations: record.operations || [],
+      nats_role: record.nats_role || '',
     }
   } catch (err: any) {
     toast.error('Failed to load type')
@@ -52,11 +80,12 @@ async function loadData() {
 async function submit() {
   loading.value = true
   try {
-    const data = {
+    const data: any = {
       ...form.value,
-      organization: isEdit.value ? undefined : authStore.currentOrgId
+      nats_role: form.value.nats_role || null,
+      organization: isEdit.value ? undefined : authStore.currentOrgId,
     }
-    
+
     if (isEdit.value) {
       await pb.collection('thing_types').update(id!, data)
       toast.success('Updated')
@@ -72,8 +101,9 @@ async function submit() {
   }
 }
 
-onMounted(() => {
-  if (isEdit.value) loadData()
+onMounted(async () => {
+  await loadOptions()
+  if (isEdit.value) await loadData()
 })
 </script>
 
@@ -92,7 +122,7 @@ onMounted(() => {
 
     <!-- Form -->
     <form @submit.prevent="submit" class="space-y-6">
-      
+
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
         <!-- Left Column: Identity -->
         <BaseCard title="Identity">
@@ -101,22 +131,22 @@ onMounted(() => {
               <label class="label">Name *</label>
               <input v-model="form.name" type="text" class="input input-bordered" required />
             </div>
-            
+
             <div class="form-control">
               <label class="label">Code</label>
               <input v-model="form.code" type="text" class="input input-bordered font-mono" placeholder="Optional identifier" />
             </div>
-          </div>
-        </BaseCard>
 
-        <!-- Right Column: Details -->
-        <BaseCard title="Configuration">
-          <div class="space-y-4">
             <div class="form-control">
               <label class="label">Description</label>
               <textarea v-model="form.description" class="textarea textarea-bordered" rows="2"></textarea>
             </div>
+          </div>
+        </BaseCard>
 
+        <!-- Right Column: Subject + Capabilities -->
+        <BaseCard title="Subject & Capabilities">
+          <div class="space-y-4">
             <div class="form-control">
               <label class="label">Subject Prefix</label>
               <input
@@ -146,13 +176,48 @@ onMounted(() => {
                 </option>
               </select>
               <label class="label">
-                <span class="label-text-alt">Hold Ctrl/Cmd to select multiple</span>
+                <span class="label-text-alt">Coarse-grained summary filter. Hold Ctrl/Cmd to select multiple.</span>
               </label>
             </div>
           </div>
         </BaseCard>
       </div>
-      
+
+      <!-- Operations + Role Integration -->
+      <BaseCard title="Operations & NATS Role">
+        <div class="space-y-4">
+          <div class="form-control">
+            <label class="label">Operations</label>
+            <select v-model="form.operations" multiple class="select select-bordered h-40">
+              <option v-for="op in availableOperations" :key="op.id" :value="op.id">
+                {{ op.name }} ({{ op.capability }}) &middot; {{ op.subject_suffix }}{{ op.organization ? '' : ' · platform' }}
+              </option>
+            </select>
+            <label class="label">
+              <span class="label-text-alt">
+                Operations this Thing Type declares. Platform-shipped operations are shared across organizations.
+              </span>
+            </label>
+          </div>
+
+          <div class="form-control">
+            <label class="label">Linked NATS Role</label>
+            <select v-model="form.nats_role" class="select select-bordered">
+              <option value="">— None —</option>
+              <option v-for="role in availableRoles" :key="role.id" :value="role.id">
+                {{ role.name }}
+              </option>
+            </select>
+            <label class="label">
+              <span class="label-text-alt">
+                When linked, the role's publish/subscribe permissions are derived from this Thing Type's operations
+                ({'{thing}'} and unset {'{location}'} become NATS wildcards).
+              </span>
+            </label>
+          </div>
+        </div>
+      </BaseCard>
+
       <!-- Actions (Outside Card) -->
       <div class="flex justify-end gap-2">
         <button type="button" class="btn btn-ghost" @click="router.back()">Cancel</button>

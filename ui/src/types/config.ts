@@ -82,6 +82,8 @@ export interface WidgetFormState {
   publisherDefaultSubject: string
   publisherDefaultPayload: string
   publisherTimeout: number
+  publisherThingId: string
+  publisherThingTypeOperationId: string
   
   // Status Widget
   statusMappings: StatusMapping[]
@@ -186,6 +188,8 @@ export function createEmptyFormState(): WidgetFormState {
     publisherDefaultSubject: '',
     publisherDefaultPayload: '',
     publisherTimeout: 2000,
+    publisherThingId: '',
+    publisherThingTypeOperationId: '',
     statusMappings: [],
     statusDefaultColor: 'var(--color-info)',
     statusDefaultLabel: 'Unknown',

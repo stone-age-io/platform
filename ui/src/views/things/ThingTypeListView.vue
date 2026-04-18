@@ -43,6 +43,8 @@ const columns: Column<ThingType>[] = [
   { key: 'name', label: 'Name', mobileLabel: 'Name' },
   { key: 'code', label: 'Code', mobileLabel: 'Code' },
   { key: 'capabilities', label: 'Capabilities', mobileLabel: 'Caps' },
+  { key: 'operations', label: 'Operations', mobileLabel: 'Ops' },
+  { key: 'nats_role', label: 'Role', mobileLabel: 'Role' },
   { key: 'created', label: 'Created', mobileLabel: 'Created', format: (val) => formatDate(val, 'PP') },
 ]
 
@@ -161,6 +163,18 @@ onUnmounted(() => {
             </span>
             <span v-if="!item.capabilities?.length" class="text-base-content/40 text-xs">-</span>
           </div>
+        </template>
+
+        <template #cell-operations="{ item }">
+          <span v-if="item.operations?.length" class="badge badge-sm">
+            {{ item.operations.length }}
+          </span>
+          <span v-else class="text-base-content/40 text-xs">-</span>
+        </template>
+
+        <template #cell-nats_role="{ item }">
+          <span v-if="item.nats_role" class="badge badge-sm badge-primary badge-outline">linked</span>
+          <span v-else class="text-base-content/40 text-xs">-</span>
         </template>
 
         <template #actions="{ item }">

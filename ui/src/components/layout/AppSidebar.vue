@@ -89,9 +89,11 @@ const menuItems = computed(() => {
     items.push({
       label: 'Types',
       icon: '🏷️',
-      path: '/types', 
+      path: '/types',
       children: [
         { label: 'Thing Types', path: '/things/types' },
+        { label: 'Thing Operations', path: '/things/operations' },
+        { label: 'Message Schemas', path: '/things/schemas' },
         { label: 'Location Types', path: '/locations/types' },
       ]
     })

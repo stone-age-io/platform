@@ -69,6 +69,31 @@ export interface ThingType extends BaseRecord {
   code?: string
   capabilities?: ThingTypeCapability[]
   subject_prefix?: string
+  operations?: string[] // Thing Type Operation IDs
+  nats_role?: string    // NATS Role ID — role whose content is derived from this Thing Type
+}
+
+// Thing Type Operation (shareable across Thing Types)
+export interface ThingTypeOperation extends BaseRecord {
+  organization?: string // Empty for platform-shipped
+  name: string
+  capability: ThingTypeCapability
+  subject_suffix: string
+  description?: string
+  schema?: string // Message Schema ID
+}
+
+// Message Schema
+export type MessageSchemaFormat = 'json_schema'
+
+export interface MessageSchema extends BaseRecord {
+  organization?: string // Empty for platform-shipped
+  namespace: string
+  name: string
+  version: string
+  format: MessageSchemaFormat
+  schema: Record<string, any> | string // JSON Schema document
+  description?: string
 }
 
 // Thing

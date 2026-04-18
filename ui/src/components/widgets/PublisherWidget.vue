@@ -3,14 +3,16 @@
     <!-- Top Bar: Subject & History -->
     <div class="pub-header">
       <div class="input-group">
-        <input 
-          v-model="subject" 
-          type="text" 
-          class="subject-input" 
-          placeholder="Subject..."
+        <input
+          v-model="subject"
+          type="text"
+          class="subject-input"
+          :class="{ 'is-bound': boundMode }"
+          :placeholder="boundMode ? 'Resolved from Thing + Operation' : 'Subject...'"
+          :readonly="boundMode"
           @keyup.enter="focusPayload"
         />
-        
+
         <!-- History Dropdown -->
         <div class="history-dropdown" v-if="history.length > 0">
           <button class="history-btn" @click="showHistory = !showHistory" title="Recent Messages">
@@ -18,9 +20,9 @@
           </button>
           <div v-if="showHistory" class="history-menu">
             <div class="history-title">Recent Messages</div>
-            <div 
-              v-for="(item, idx) in history" 
-              :key="idx" 
+            <div
+              v-for="(item, idx) in history"
+              :key="idx"
               class="history-item"
               @click="loadHistory(item)"
             >
@@ -33,14 +35,25 @@
           </div>
         </div>
       </div>
+      <div v-if="boundMode" class="binding-hint">
+        {{ boundOperation?.name }} · {{ boundOperation?.capability }}
+        <span v-if="boundSchema"> · schema {{ boundSchema.namespace }}/{{ boundSchema.name }}@{{ boundSchema.version }}</span>
+      </div>
     </div>
 
     <!-- Middle: Payload Editor -->
     <div class="pub-body">
-      <textarea 
+      <JsonSchemaForm
+        v-if="boundSchemaDoc"
+        :schema="boundSchemaDoc"
+        :model-value="formModel"
+        @update:model-value="formModel = $event"
+      />
+      <textarea
+        v-else
         ref="payloadInput"
-        v-model="payload" 
-        class="payload-input" 
+        v-model="payload"
+        class="payload-input"
         placeholder="Message payload (JSON or text)..."
         spellcheck="false"
       ></textarea>
@@ -91,9 +104,14 @@ import { useNatsStore } from '@/stores/nats'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useWidgetOperations } from '@/composables/useWidgetOperations'
 import ResponseModal from '@/components/common/ResponseModal.vue'
+import JsonSchemaForm from '@/components/common/JsonSchemaForm.vue'
 import type { WidgetConfig, PublisherHistoryItem } from '@/types/dashboard'
+import type { Thing, ThingType, ThingTypeOperation, MessageSchema, Location } from '@/types/pocketbase'
 import { encodeString, decodeBytes } from '@/utils/encoding'
 import { resolveTemplate } from '@/utils/variables'
+import { join as joinSubject, resolveThing } from '@/utils/subjectResolver'
+import { pb } from '@/utils/pb'
+import { useAuthStore } from '@/stores/auth'
 
 const props = withDefaults(defineProps<{
   config: WidgetConfig
@@ -104,6 +122,7 @@ const props = withDefaults(defineProps<{
 
 const natsStore = useNatsStore()
 const dashboardStore = useDashboardStore()
+const authStore = useAuthStore()
 const { updateWidgetConfiguration } = useWidgetOperations()
 
 // State
@@ -125,6 +144,66 @@ const responseLatency = ref(0)
 // Config Access
 const cfg = computed(() => props.config.publisherConfig || {})
 const history = computed(() => cfg.value.history || [])
+
+// Thing Type Spec binding — when thingId + thingTypeOperationId are set,
+// the subject auto-resolves from Thing context and the payload renders as
+// a schema-driven form (if the operation has a linked message_schema).
+const boundOperation = ref<ThingTypeOperation | null>(null)
+const boundSchema = ref<MessageSchema | null>(null)
+const formModel = ref<Record<string, any>>({})
+
+const boundMode = computed(() => !!cfg.value.thingId && !!cfg.value.thingTypeOperationId)
+const boundSchemaDoc = computed(() => {
+  if (!boundMode.value || !boundSchema.value) return null
+  const raw = boundSchema.value.schema
+  return typeof raw === 'string' ? safeParseJson(raw) : raw
+})
+
+function safeParseJson(s: string): any {
+  try { return JSON.parse(s) } catch { return null }
+}
+
+async function loadBinding() {
+  boundOperation.value = null
+  boundSchema.value = null
+  if (!boundMode.value) return
+  try {
+    const [thing, op] = await Promise.all([
+      pb.collection('things').getOne<Thing>(cfg.value.thingId!),
+      pb.collection('thing_type_operations').getOne<ThingTypeOperation>(cfg.value.thingTypeOperationId!),
+    ])
+    boundOperation.value = op
+
+    const tt = thing.type
+      ? await pb.collection('thing_types').getOne<ThingType>(thing.type)
+      : null
+
+    let locationCode = ''
+    if (thing.location) {
+      try {
+        const loc = await pb.collection('locations').getOne<Location>(thing.location)
+        locationCode = loc.code || ''
+      } catch { /* ignore */ }
+    }
+
+    subject.value = resolveThing(
+      joinSubject(tt?.subject_prefix || '', op.subject_suffix),
+      {
+        org: authStore.currentOrg?.name || '',
+        location: locationCode,
+        thing: thing.code || thing.id,
+        thingTypeCode: tt?.code || '',
+      }
+    )
+
+    if (op.schema) {
+      boundSchema.value = await pb.collection('message_schemas').getOne<MessageSchema>(op.schema)
+    }
+    formModel.value = {}
+  } catch (err) {
+    console.warn('Publisher binding load failed', err)
+  }
+}
 
 // Actions
 function focusPayload() {
@@ -181,11 +260,14 @@ async function handleSend(mode: 'publish' | 'request') {
 
   // Resolve variables
   const finalSubject = resolveTemplate(subject.value, dashboardStore.currentVariableValues)
-  const finalPayloadStr = resolveTemplate(payload.value, dashboardStore.currentVariableValues)
+  const rawPayload = boundSchemaDoc.value
+    ? JSON.stringify(formModel.value)
+    : payload.value
+  const finalPayloadStr = resolveTemplate(rawPayload, dashboardStore.currentVariableValues)
   const data = encodeString(finalPayloadStr)
 
   // Add to history (save the raw input, not resolved, so variables are preserved)
-  addToHistory(subject.value, payload.value)
+  addToHistory(subject.value, rawPayload)
 
   try {
     if (mode === 'publish') {
@@ -225,18 +307,30 @@ function setStatus(msg: string, type: 'info' | 'success' | 'error') {
 }
 
 // Initialize
-onMounted(() => {
-  subject.value = cfg.value.defaultSubject || ''
-  payload.value = cfg.value.defaultPayload || ''
+onMounted(async () => {
+  if (boundMode.value) {
+    await loadBinding()
+  } else {
+    subject.value = cfg.value.defaultSubject || ''
+    payload.value = cfg.value.defaultPayload || ''
+  }
 })
 
-// Watch for external config changes (e.g. undo/redo or remote update)
-watch(() => props.config.publisherConfig, (newCfg) => {
-  if (newCfg && !isSending.value) {
-    // Only update if we aren't typing/sending to avoid overwriting user input
-    // This is a bit loose, but prevents jarring resets
-  }
-}, { deep: true })
+// Watch binding changes (e.g. user edits widget config)
+watch(
+  () => [cfg.value.thingId, cfg.value.thingTypeOperationId] as const,
+  async () => {
+    if (boundMode.value) {
+      await loadBinding()
+    } else {
+      boundOperation.value = null
+      boundSchema.value = null
+      formModel.value = {}
+      subject.value = cfg.value.defaultSubject || ''
+      payload.value = cfg.value.defaultPayload || ''
+    }
+  },
+)
 </script>
 
 <style scoped>
@@ -274,6 +368,19 @@ watch(() => props.config.publisherConfig, (newCfg) => {
 .subject-input:focus {
   outline: none;
   border-color: var(--color-accent);
+}
+
+.subject-input.is-bound {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
+  cursor: default;
+}
+
+.binding-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--mono);
 }
 
 .history-btn {

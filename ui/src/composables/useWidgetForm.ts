@@ -461,6 +461,8 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
       state.publisherDefaultSubject = widget.publisherConfig?.defaultSubject || ''
       state.publisherDefaultPayload = widget.publisherConfig?.defaultPayload || ''
       state.publisherTimeout = widget.publisherConfig?.timeout || 2000
+      state.publisherThingId = widget.publisherConfig?.thingId || ''
+      state.publisherThingTypeOperationId = widget.publisherConfig?.thingTypeOperationId || ''
     },
     buildUpdates(form, widget) {
       const currentHistory = widget.publisherConfig?.history || []
@@ -470,6 +472,8 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
           defaultPayload: form.publisherDefaultPayload,
           history: currentHistory,
           timeout: form.publisherTimeout,
+          thingId: form.publisherThingId || undefined,
+          thingTypeOperationId: form.publisherThingTypeOperationId || undefined,
         },
       }
     },

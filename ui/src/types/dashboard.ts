@@ -166,6 +166,11 @@ export interface PublisherWidgetConfig {
   defaultPayload?: string
   history?: PublisherHistoryItem[]
   timeout?: number
+  // Thing Type Spec binding — when both are set, the widget resolves the
+  // subject from the Thing's context and renders a form driven by the
+  // operation's linked message_schema instead of free-text JSON.
+  thingId?: string
+  thingTypeOperationId?: string
 }
 
 export interface StatusMapping {

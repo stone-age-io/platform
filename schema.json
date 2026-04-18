@@ -3412,6 +3412,32 @@
         "type": "text"
       },
       {
+        "cascadeDelete": false,
+        "collectionId": "pbc_thing_type_ops",
+        "hidden": false,
+        "id": "relation_tt_operations",
+        "maxSelect": 999,
+        "minSelect": 0,
+        "name": "operations",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "relation"
+      },
+      {
+        "cascadeDelete": false,
+        "collectionId": "pbc_3780300774",
+        "hidden": false,
+        "id": "relation_tt_nats_role",
+        "maxSelect": 1,
+        "minSelect": 0,
+        "name": "nats_role",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "relation"
+      },
+      {
         "hidden": false,
         "id": "autodate2990389176",
         "name": "created",
@@ -3819,6 +3845,282 @@
       }
     ],
     "indexes": [],
+    "system": false
+  },
+  {
+    "id": "pbc_thing_type_ops",
+    "listRule": "@request.auth.collectionName = \"users\" && \n(organization = @request.auth.current_organization || organization = \"\")",
+    "viewRule": "@request.auth.collectionName = \"users\" && \n(organization = @request.auth.current_organization || organization = \"\")",
+    "createRule": "@request.auth.collectionName = \"users\" && \n@request.body.organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n @request.auth.memberships_via_user.role ?!= \"member\")",
+    "updateRule": "organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n @request.auth.memberships_via_user.role ?!= \"member\") && \n@request.body.organization:changed = false",
+    "deleteRule": "organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n @request.auth.memberships_via_user.role ?!= \"member\")",
+    "name": "thing_type_operations",
+    "type": "base",
+    "fields": [
+      {
+        "autogeneratePattern": "[a-z0-9]{15}",
+        "hidden": false,
+        "id": "text3208210256",
+        "max": 15,
+        "min": 15,
+        "name": "id",
+        "pattern": "^[a-z0-9]+$",
+        "presentable": false,
+        "primaryKey": true,
+        "required": true,
+        "system": true,
+        "type": "text"
+      },
+      {
+        "cascadeDelete": false,
+        "collectionId": "pbc_2873630990",
+        "hidden": false,
+        "id": "relation_tto_org",
+        "maxSelect": 1,
+        "minSelect": 0,
+        "name": "organization",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "relation"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text_tto_name",
+        "max": 64,
+        "min": 1,
+        "name": "name",
+        "pattern": "^[a-z0-9_]+$",
+        "presentable": true,
+        "primaryKey": false,
+        "required": true,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "hidden": false,
+        "id": "select_tto_capability",
+        "maxSelect": 1,
+        "name": "capability",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "select",
+        "values": [
+          "publish",
+          "subscribe",
+          "request",
+          "reply"
+        ]
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text_tto_subject_suffix",
+        "max": 0,
+        "min": 1,
+        "name": "subject_suffix",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": true,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text_tto_description",
+        "max": 0,
+        "min": 0,
+        "name": "description",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "cascadeDelete": false,
+        "collectionId": "pbc_message_schemas",
+        "hidden": false,
+        "id": "relation_tto_schema",
+        "maxSelect": 1,
+        "minSelect": 0,
+        "name": "schema",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "relation"
+      },
+      {
+        "hidden": false,
+        "id": "autodate_tto_created",
+        "name": "created",
+        "onCreate": true,
+        "onUpdate": false,
+        "presentable": false,
+        "system": false,
+        "type": "autodate"
+      },
+      {
+        "hidden": false,
+        "id": "autodate_tto_updated",
+        "name": "updated",
+        "onCreate": true,
+        "onUpdate": true,
+        "presentable": false,
+        "system": false,
+        "type": "autodate"
+      }
+    ],
+    "indexes": [
+      "CREATE UNIQUE INDEX idx_tto_org_name_cap ON thing_type_operations (organization, name, capability)"
+    ],
+    "system": false
+  },
+  {
+    "id": "pbc_message_schemas",
+    "listRule": "@request.auth.collectionName = \"users\" && \n(organization = @request.auth.current_organization || organization = \"\")",
+    "viewRule": "@request.auth.collectionName = \"users\" && \n(organization = @request.auth.current_organization || organization = \"\")",
+    "createRule": "@request.auth.collectionName = \"users\" && \n@request.body.organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n @request.auth.memberships_via_user.role ?!= \"member\")",
+    "updateRule": "organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n @request.auth.memberships_via_user.role ?!= \"member\") && \n@request.body.organization:changed = false",
+    "deleteRule": "organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n @request.auth.memberships_via_user.role ?!= \"member\")",
+    "name": "message_schemas",
+    "type": "base",
+    "fields": [
+      {
+        "autogeneratePattern": "[a-z0-9]{15}",
+        "hidden": false,
+        "id": "text3208210256",
+        "max": 15,
+        "min": 15,
+        "name": "id",
+        "pattern": "^[a-z0-9]+$",
+        "presentable": false,
+        "primaryKey": true,
+        "required": true,
+        "system": true,
+        "type": "text"
+      },
+      {
+        "cascadeDelete": false,
+        "collectionId": "pbc_2873630990",
+        "hidden": false,
+        "id": "relation_ms_org",
+        "maxSelect": 1,
+        "minSelect": 0,
+        "name": "organization",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "relation"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text_ms_namespace",
+        "max": 64,
+        "min": 1,
+        "name": "namespace",
+        "pattern": "^[a-z0-9_]+$",
+        "presentable": false,
+        "primaryKey": false,
+        "required": true,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text_ms_name",
+        "max": 64,
+        "min": 1,
+        "name": "name",
+        "pattern": "^[a-z0-9_]+$",
+        "presentable": true,
+        "primaryKey": false,
+        "required": true,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text_ms_version",
+        "max": 32,
+        "min": 1,
+        "name": "version",
+        "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+        "presentable": false,
+        "primaryKey": false,
+        "required": true,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "hidden": false,
+        "id": "select_ms_format",
+        "maxSelect": 1,
+        "name": "format",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "select",
+        "values": [
+          "json_schema"
+        ]
+      },
+      {
+        "hidden": false,
+        "id": "json_ms_schema",
+        "maxSize": 0,
+        "name": "schema",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "json"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text_ms_description",
+        "max": 0,
+        "min": 0,
+        "name": "description",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "hidden": false,
+        "id": "autodate_ms_created",
+        "name": "created",
+        "onCreate": true,
+        "onUpdate": false,
+        "presentable": false,
+        "system": false,
+        "type": "autodate"
+      },
+      {
+        "hidden": false,
+        "id": "autodate_ms_updated",
+        "name": "updated",
+        "onCreate": true,
+        "onUpdate": true,
+        "presentable": false,
+        "system": false,
+        "type": "autodate"
+      }
+    ],
+    "indexes": [
+      "CREATE UNIQUE INDEX idx_ms_identity ON message_schemas (organization, namespace, name, version)"
+    ],
     "system": false
   }
 ]
