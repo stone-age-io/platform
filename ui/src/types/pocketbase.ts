@@ -60,12 +60,15 @@ export interface User extends AuthRecord {
 }
 
 // Thing Type
+export type ThingTypeCapability = 'publish' | 'subscribe' | 'request' | 'reply'
+
 export interface ThingType extends BaseRecord {
   organization?: string
   name?: string
   description?: string
   code?: string
-  capabilities?: string[]
+  capabilities?: ThingTypeCapability[]
+  subject_prefix?: string
 }
 
 // Thing

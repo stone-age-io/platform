@@ -5,6 +5,8 @@ import { pb } from '@/utils/pb'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import { DEFAULT_PREFIX } from '@/utils/subjectResolver'
+import type { ThingTypeCapability } from '@/types/pocketbase'
 
 const router = useRouter()
 const route = useRoute()
@@ -19,10 +21,13 @@ const form = ref({
   name: '',
   description: '',
   code: '',
-  capabilities: [] as string[],
+  capabilities: [] as ThingTypeCapability[],
+  subject_prefix: '',
 })
 
-const availableCapabilities = ['pub', 'sub', 'req-reply']
+const availableCapabilities: ThingTypeCapability[] = ['publish', 'subscribe', 'request', 'reply']
+
+const effectivePrefix = computed(() => form.value.subject_prefix?.trim() || DEFAULT_PREFIX)
 
 async function loadData() {
   if (!id) return
@@ -34,6 +39,7 @@ async function loadData() {
       description: record.description,
       code: record.code,
       capabilities: record.capabilities || [],
+      subject_prefix: record.subject_prefix || '',
     }
   } catch (err: any) {
     toast.error('Failed to load type')
@@ -112,10 +118,31 @@ onMounted(() => {
             </div>
 
             <div class="form-control">
+              <label class="label">Subject Prefix</label>
+              <input
+                v-model="form.subject_prefix"
+                type="text"
+                class="input input-bordered font-mono"
+                :placeholder="DEFAULT_PREFIX"
+              />
+              <label class="label">
+                <span class="label-text-alt">
+                  Template for NATS subjects. Reserved:
+                  <code>{'{org}'}</code>, <code>{'{location}'}</code>,
+                  <code>{'{thing}'}</code>, <code>{'{thing_type_code}'}</code>.
+                  Defaults to <code>{{ DEFAULT_PREFIX }}</code> when empty.
+                </span>
+              </label>
+              <p class="text-xs text-base-content/70 mt-1">
+                Resolves to: <code class="font-mono">{{ effectivePrefix }}</code>
+              </p>
+            </div>
+
+            <div class="form-control">
               <label class="label">Capabilities</label>
               <select v-model="form.capabilities" multiple class="select select-bordered h-32">
                 <option v-for="cap in availableCapabilities" :key="cap" :value="cap">
-                  {{ cap.toUpperCase() }}
+                  {{ cap }}
                 </option>
               </select>
               <label class="label">

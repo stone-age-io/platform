@@ -3384,17 +3384,32 @@
       {
         "hidden": false,
         "id": "select490417661",
-        "maxSelect": 3,
+        "maxSelect": 4,
         "name": "capabilities",
         "presentable": false,
         "required": false,
         "system": false,
         "type": "select",
         "values": [
-          "pub",
-          "sub",
-          "req-reply"
+          "publish",
+          "subscribe",
+          "request",
+          "reply"
         ]
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text_subject_prefix",
+        "max": 0,
+        "min": 0,
+        "name": "subject_prefix",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
       },
       {
         "hidden": false,
