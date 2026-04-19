@@ -246,7 +246,7 @@ onMounted(async () => {
             </div>
             <label class="label">
               <span class="label-text-alt">
-                Linking a role derives its publish/subscribe permissions from the operations above.
+                Groups Things of this type under a shared role. Set the role's publish/subscribe permissions directly on the role.
               </span>
             </label>
           </div>

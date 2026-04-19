@@ -84,7 +84,7 @@ We manage the connectivity layer as first-class entities:
 ### 3. Thing Modeling
 Things aren't just inventory records — they declare a messaging contract via three related collections managed under `views/things/`:
 
-*   **Thing Types** (`ThingTypeFormView` / `ThingTypeListView`) own a subject prefix template (supporting `{org}`, `{location}`, `{thing}`, `{thing_type_code}` tokens), a list of Operations, and an optional linked NATS Role whose permissions are derived from the operations.
+*   **Thing Types** (`ThingTypeFormView` / `ThingTypeListView`) own a subject prefix template (supporting `{org}`, `{location}`, `{thing}`, `{thing_type_code}` tokens), a list of Operations, and an optional linked NATS Role used to group Things of this type under a shared role (permissions are set directly on the role).
 *   **Operations** (`ThingTypeOperationFormView` / `ThingTypeOperationListView`) declare a capability (`publish` / `subscribe` / `request` / `reply`), a subject suffix appended to the Thing Type's prefix, and an optional Message Schema describing the payload.
 *   **Message Schemas** (`MessageSchemaFormView` / `MessageSchemaListView`) are versioned JSON Schema documents identified by `namespace`, `name`, and semver `version` — each version is a separate record. The form offers a **SchemaBuilder** visual editor, a raw JSON view, and an **Infer from sample** action that generates a starting schema from a pasted example message.
 *   **Quick-add flow:** All related-record selects on these forms (Operations and NATS Role on a Thing Type; Message Schema on an Operation) expose a `+` button that opens the target form in an embedded modal, so you can author the full graph without leaving the page.
