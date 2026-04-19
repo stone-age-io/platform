@@ -15,8 +15,12 @@ The platform is designed as a **Single Deployment Unit**:
 2.  **Infrastructure Provisioning**:
     *   **NATS**: Automatically provisions Accounts, Users, and Roles when Organizations are created.
     *   **Nebula**: Automatically creates Certificate Authorities (CAs) and manages Host certificates/keys.
-3.  **Audit Logging**: comprehensive tracking of all create/update/delete/auth events.
-4.  **Embedded UI**: The frontend is compiled and embedded directly into the Go binary using `embed.FS`, served via a custom SPA fallback handler.
+3.  **Thing Modeling**: Declarative device contracts composed of three collections:
+    *   **Thing Types** (`thing_types`) define a subject prefix, a set of Operations, and an optional linked NATS Role.
+    *   **Operations** (`thing_type_operations`) declare a capability (`publish` / `subscribe` / `request` / `reply`), a subject suffix, and an optional Message Schema.
+    *   **Message Schemas** (`message_schemas`) are versioned JSON Schema documents (namespace / name / semver) that describe operation payloads. The console includes a visual schema builder and an "infer from sample" tool.
+4.  **Audit Logging**: comprehensive tracking of all create/update/delete/auth events.
+5.  **Embedded UI**: The frontend is compiled and embedded directly into the Go binary using `embed.FS`, served via a custom SPA fallback handler.
 
 ---
 

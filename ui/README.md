@@ -29,6 +29,7 @@ src/
 │   ├── locations/     # LocationMapViz, LocationMapDrawer
 │   ├── map/           # FloorPlanMap (image-overlay indoor positioning)
 │   ├── nats/          # KvDashboard, LiveMessageStream
+│   ├── things/        # SchemaBuilder (visual JSON Schema editor used by MessageSchemaFormView)
 │   ├── ui/            # Generic UI (BaseCard, ResponsiveList)
 │   └── widgets/       # Visualizer widget implementations
 │       └── map/       # Marker editors & detail panels for the MapWidget
@@ -58,7 +59,7 @@ src/
     ├── nebula/        # CA, Networks, Hosts
     ├── organization/  # Members, Invitations, Member detail
     ├── settings/      # User profile & NATS connection config
-    └── things/        # Things + ThingTypes
+    └── things/        # Things, Thing Types, Operations, Message Schemas
 ```
 
 ---
@@ -80,7 +81,15 @@ We manage the connectivity layer as first-class entities:
 *   **Nebula:** Manage Certificate Authorities, Networks, and Hosts.
 *   **Provisioning:** The UI facilitates the creation of cryptographic identities (NKeys, Certificates) via backend hooks and allows downloading `.creds` and `config.yaml` files directly.
 
-### 3. Digital Twin (Real-Time State)
+### 3. Thing Modeling
+Things aren't just inventory records — they declare a messaging contract via three related collections managed under `views/things/`:
+
+*   **Thing Types** (`ThingTypeFormView` / `ThingTypeListView`) own a subject prefix template (supporting `{org}`, `{location}`, `{thing}`, `{thing_type_code}` tokens), a list of Operations, and an optional linked NATS Role whose permissions are derived from the operations.
+*   **Operations** (`ThingTypeOperationFormView` / `ThingTypeOperationListView`) declare a capability (`publish` / `subscribe` / `request` / `reply`), a subject suffix appended to the Thing Type's prefix, and an optional Message Schema describing the payload.
+*   **Message Schemas** (`MessageSchemaFormView` / `MessageSchemaListView`) are versioned JSON Schema documents identified by `namespace`, `name`, and semver `version` — each version is a separate record. The form offers a **SchemaBuilder** visual editor, a raw JSON view, and an **Infer from sample** action that generates a starting schema from a pasted example message.
+*   **Quick-add flow:** All related-record selects on these forms (Operations and NATS Role on a Thing Type; Message Schema on an Operation) expose a `+` button that opens the target form in an embedded modal, so you can author the full graph without leaving the page.
+
+### 4. Digital Twin (Real-Time State)
 We bridge the gap between **SQL Metadata** (PocketBase) and **Live State** (NATS JetStream).
 *   **Direct Connectivity:** The browser connects directly to the NATS cluster via WebSocket (`wss://`).
 *   **Hybrid Auth:** Connection URLs are stored in local storage; Credentials (`.creds`) are fetched securely from the PocketBase user record.
@@ -90,7 +99,7 @@ We bridge the gap between **SQL Metadata** (PocketBase) and **Live State** (NATS
     *   **Visualization:** The `KvDashboard` component provides real-time CRUD, Watch, and Revision History for these keys.
 *   **Live Message Stream:** The `LiveMessageStream` component tails core NATS subjects for debugging wire traffic.
 
-### 4. Visualizer (Dashboard)
+### 5. Visualizer (Dashboard)
 The Visualizer is the home view and is also embedded as the Badge dashboard. It is a per-user, per-org widget canvas backed by `stores/dashboard.ts`.
 
 *   **Grid Layout:** Draggable/resizable grid with a sidebar tree of saved dashboards (`DashboardSidebar`, `DashboardTree`, `DashboardGrid`).
@@ -100,14 +109,14 @@ The Visualizer is the home view and is also embedded as the Badge dashboard. It 
 *   **Kiosk & Shortcuts:** Full-screen kiosk mode, keyboard shortcuts (`useKeyboardShortcuts`), and a debug panel for inspecting NATS traffic and widget state.
 *   **Badge Mode:** When rendered at `/badge/dashboard`, the Visualizer strips chrome (no kiosk/debug/grid selector) and restricts the widget palette to a badge-safe set (`button`, `switch`, `slider`, `publisher`, `kv`, `kvtable`, `text`, `status`, `stat`, `scanner`).
 
-### 5. Operator Badge
+### 6. Operator Badge
 The `/badge` experience turns a browser into a wearable-style operator identity card.
 
 *   **Identity Card (`BadgeView`):** Shows the user's name, email, organization, role, member-since date, NATS connection status, and a QR code encoding the user's NATS NKey public key for fast pairing/scanning.
 *   **Badge Dashboard:** The Visualizer rendered in badge mode provides a touch-friendly control surface for floor operators.
 *   **Access Model:** Users with the `badge` membership role are automatically routed into `/badge` and restricted to `/badge/*` and `/settings`. Non-badge users can still preview their own card at `/my-badge`.
 
-### 6. Responsive Design
+### 7. Responsive Design
 We prioritize simplicity and maintainability:
 *   **ResponsiveList:** A core component that renders as a high-density Table on desktop and a Card Grid on mobile.
 *   **Theming:** Dark/Light mode support (including map tiles and design tokens exposed via `useDesignTokens`).
