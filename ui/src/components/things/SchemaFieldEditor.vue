@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { Field, FieldType } from './schemaFields'
 import { TYPES, ITEM_TYPES, STRING_FORMATS, emptyField } from './schemaFields'
 
@@ -17,6 +17,20 @@ const emit = defineEmits<{
 }>()
 
 const canNest = computed(() => props.depth < props.maxDepth)
+const collapsed = ref(false)
+
+const summary = computed(() => {
+  const f = props.modelValue
+  if (f.type === 'object') return `{ ${f.children.length} prop${f.children.length === 1 ? '' : 's'} }`
+  if (f.type === 'array') {
+    const inner = f.itemType === 'object'
+      ? `{${f.itemChildren.length}}`
+      : f.itemType
+    return `[ ${inner} ]`
+  }
+  if (f.format) return `${f.type} · ${f.format}`
+  return f.type
+})
 
 function patch(p: Partial<Field>) {
   emit('update:modelValue', { ...props.modelValue, ...p })
@@ -54,6 +68,25 @@ function removeItemChild(i: number) {
 <template>
   <div class="border border-base-300 rounded-lg p-3 space-y-3 bg-base-100">
     <div class="flex flex-wrap items-end gap-2">
+      <button
+        type="button"
+        class="btn btn-ghost btn-xs btn-square self-end mb-1"
+        :title="collapsed ? 'Expand' : 'Collapse'"
+        @click="collapsed = !collapsed"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="w-3 h-3 transition-transform"
+          :class="{ 'rotate-90': !collapsed }"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          stroke-width="2.5"
+        >
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+
       <div class="form-control flex-1 min-w-[10rem]">
         <label class="label py-1"><span class="label-text text-xs">Name *</span></label>
         <input
@@ -92,6 +125,11 @@ function removeItemChild(i: number) {
       </button>
     </div>
 
+    <div v-if="collapsed" class="text-xs text-base-content/60 font-mono pl-8">
+      {{ summary }}
+    </div>
+
+    <template v-if="!collapsed">
     <div class="form-control">
       <input
         :value="modelValue.description"
@@ -230,5 +268,6 @@ function removeItemChild(i: number) {
         </div>
       </template>
     </div>
+    </template>
   </div>
 </template>
