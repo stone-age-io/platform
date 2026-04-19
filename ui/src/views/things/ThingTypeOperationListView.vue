@@ -43,7 +43,6 @@ const columns: Column<ThingTypeOperation>[] = [
   { key: 'name', label: 'Name', mobileLabel: 'Name' },
   { key: 'capability', label: 'Capability', mobileLabel: 'Capability' },
   { key: 'subject_suffix', label: 'Subject Suffix', mobileLabel: 'Suffix' },
-  { key: 'organization', label: 'Scope', mobileLabel: 'Scope' },
   { key: 'created', label: 'Created', mobileLabel: 'Created', format: (val) => formatDate(val, 'PP') },
 ]
 
@@ -56,10 +55,6 @@ function handleRowClick(item: ThingTypeOperation) {
 }
 
 async function handleDelete(item: ThingTypeOperation) {
-  if (!item.organization) {
-    toast.error('Platform-shipped operations cannot be deleted')
-    return
-  }
   const confirmed = await confirm({
     title: 'Delete Operation',
     message: `Are you sure you want to delete "${item.name}"?`,
@@ -156,20 +151,9 @@ onUnmounted(() => {
           <code class="bg-base-200 px-1 rounded text-xs">{{ item.subject_suffix }}</code>
         </template>
 
-        <template #cell-organization="{ item }">
-          <span v-if="item.organization" class="badge badge-sm">org</span>
-          <span v-else class="badge badge-sm badge-ghost">platform</span>
-        </template>
-
         <template #actions="{ item }">
           <router-link :to="`/things/operations/${item.id}/edit`" class="btn btn-xs flex-1 sm:flex-initial">Edit</router-link>
-          <button
-            @click.stop="handleDelete(item)"
-            :disabled="!item.organization"
-            class="btn btn-xs text-error flex-1 sm:flex-initial"
-          >
-            Delete
-          </button>
+          <button @click.stop="handleDelete(item)" class="btn btn-xs text-error flex-1 sm:flex-initial">Delete</button>
         </template>
       </ResponsiveList>
 

@@ -36,23 +36,21 @@ const effectivePrefix = computed(() => form.value.subject_prefix?.trim() || DEFA
 
 async function loadOptions() {
   const orgId = authStore.currentOrgId
-  // Operations: current org OR platform-shipped (organization = "")
-  const opsFilter = orgId
-    ? `organization = "${orgId}" || organization = ""`
-    : 'organization = ""'
-  const ops = await pb.collection('thing_type_operations').getFullList<ThingTypeOperation>({
-    filter: opsFilter,
+  if (!orgId) {
+    availableOperations.value = []
+    availableRoles.value = []
+    return
+  }
+  const orgFilter = `organization = "${orgId}"`
+
+  availableOperations.value = await pb.collection('thing_type_operations').getFullList<ThingTypeOperation>({
+    filter: orgFilter,
     sort: 'name',
   })
-  availableOperations.value = ops
-
-  if (orgId) {
-    const roles = await pb.collection('nats_roles').getFullList<NatsRole>({
-      filter: `organization = "${orgId}"`,
-      sort: 'name',
-    })
-    availableRoles.value = roles
-  }
+  availableRoles.value = await pb.collection('nats_roles').getFullList<NatsRole>({
+    filter: orgFilter,
+    sort: 'name',
+  })
 }
 
 async function loadData() {
@@ -190,13 +188,11 @@ onMounted(async () => {
             <label class="label">Operations</label>
             <select v-model="form.operations" multiple class="select select-bordered h-40">
               <option v-for="op in availableOperations" :key="op.id" :value="op.id">
-                {{ op.name }} ({{ op.capability }}) &middot; {{ op.subject_suffix }}{{ op.organization ? '' : ' · platform' }}
+                {{ op.name }} ({{ op.capability }}) &middot; {{ op.subject_suffix }}
               </option>
             </select>
             <label class="label">
-              <span class="label-text-alt">
-                Operations this Thing Type declares. Platform-shipped operations are shared across organizations.
-              </span>
+              <span class="label-text-alt">Operations this Thing Type declares.</span>
             </label>
           </div>
 

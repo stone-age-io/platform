@@ -3849,8 +3849,8 @@
   },
   {
     "id": "pbc_1722283898",
-    "listRule": "@request.auth.collectionName = \"users\" && \n(organization = @request.auth.current_organization || organization = \"\")",
-    "viewRule": "@request.auth.collectionName = \"users\" && \n(organization = @request.auth.current_organization || organization = \"\")",
+    "listRule": "@request.auth.collectionName = \"users\" && \norganization = @request.auth.current_organization",
+    "viewRule": "@request.auth.collectionName = \"users\" && \norganization = @request.auth.current_organization",
     "createRule": "@request.auth.collectionName = \"users\" && \n@request.body.organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n @request.auth.memberships_via_user.role ?!= \"member\")",
     "updateRule": "organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n @request.auth.memberships_via_user.role ?!= \"member\") && \n@request.body.organization:changed = false",
     "deleteRule": "organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n @request.auth.memberships_via_user.role ?!= \"member\")",
@@ -3983,8 +3983,8 @@
   },
   {
     "id": "pbc_1612162572",
-    "listRule": "@request.auth.collectionName = \"users\" && \n(organization = @request.auth.current_organization || organization = \"\")",
-    "viewRule": "@request.auth.collectionName = \"users\" && \n(organization = @request.auth.current_organization || organization = \"\")",
+    "listRule": "@request.auth.collectionName = \"users\" && \norganization = @request.auth.current_organization",
+    "viewRule": "@request.auth.collectionName = \"users\" && \norganization = @request.auth.current_organization",
     "createRule": "@request.auth.collectionName = \"users\" && \n@request.body.organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n @request.auth.memberships_via_user.role ?!= \"member\")",
     "updateRule": "organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n @request.auth.memberships_via_user.role ?!= \"member\") && \n@request.body.organization:changed = false",
     "deleteRule": "organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n @request.auth.memberships_via_user.role ?!= \"member\")",

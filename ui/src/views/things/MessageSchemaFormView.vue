@@ -5,7 +5,7 @@ import { pb } from '@/utils/pb'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import BaseCard from '@/components/ui/BaseCard.vue'
-import type { MessageSchema, MessageSchemaFormat } from '@/types/pocketbase'
+import type { MessageSchema } from '@/types/pocketbase'
 
 const router = useRouter()
 const route = useRoute()
@@ -15,13 +15,11 @@ const toast = useToast()
 const id = route.params.id as string | undefined
 const isEdit = computed(() => !!id)
 const loading = ref(false)
-const isPlatform = ref(false)
 
 const form = ref({
   namespace: '',
   name: '',
   version: '1.0.0',
-  format: 'json_schema' as MessageSchemaFormat,
   description: '',
   schemaText: '{\n  "type": "object",\n  "properties": {}\n}',
 })
@@ -44,12 +42,10 @@ async function loadData() {
   loading.value = true
   try {
     const rec = await pb.collection('message_schemas').getOne<MessageSchema>(id)
-    isPlatform.value = !rec.organization
     form.value = {
       namespace: rec.namespace,
       name: rec.name,
       version: rec.version,
-      format: rec.format,
       description: rec.description || '',
       schemaText: typeof rec.schema === 'string'
         ? rec.schema
@@ -74,7 +70,7 @@ async function submit() {
       namespace: form.value.namespace,
       name: form.value.name,
       version: form.value.version,
-      format: form.value.format,
+      format: 'json_schema',
       description: form.value.description,
       schema: JSON.parse(form.value.schemaText),
     }
@@ -107,10 +103,6 @@ onMounted(() => { if (isEdit.value) loadData() })
         </ul>
       </div>
       <h1 class="text-3xl font-bold">{{ isEdit ? 'Edit' : 'Create' }} Message Schema</h1>
-    </div>
-
-    <div v-if="isPlatform" class="alert alert-warning">
-      <span>This is a platform-shipped schema. Edits may not be permitted by API rules.</span>
     </div>
 
     <form @submit.prevent="submit" class="space-y-6">
@@ -152,13 +144,6 @@ onMounted(() => { if (isEdit.value) loadData() })
                 placeholder="1.0.0"
               />
               <label class="label"><span class="label-text-alt">Semver. New versions = new records.</span></label>
-            </div>
-
-            <div class="form-control">
-              <label class="label">Format *</label>
-              <select v-model="form.format" class="select select-bordered" required>
-                <option value="json_schema">json_schema</option>
-              </select>
             </div>
 
             <div class="form-control">

@@ -43,8 +43,6 @@ const filteredItems = computed(() => {
 const columns: Column<MessageSchema>[] = [
   { key: 'identity', label: 'Schema', mobileLabel: 'Schema' },
   { key: 'version', label: 'Version', mobileLabel: 'Version' },
-  { key: 'format', label: 'Format', mobileLabel: 'Format' },
-  { key: 'organization', label: 'Scope', mobileLabel: 'Scope' },
   { key: 'created', label: 'Created', mobileLabel: 'Created', format: (val) => formatDate(val, 'PP') },
 ]
 
@@ -57,10 +55,6 @@ function handleRowClick(item: MessageSchema) {
 }
 
 async function handleDelete(item: MessageSchema) {
-  if (!item.organization) {
-    toast.error('Platform-shipped schemas cannot be deleted')
-    return
-  }
   const confirmed = await confirm({
     title: 'Delete Message Schema',
     message: `Are you sure you want to delete "${item.namespace}/${item.name}@${item.version}"?`,
@@ -153,24 +147,9 @@ onUnmounted(() => {
           <span class="badge badge-sm badge-outline">{{ item.version }}</span>
         </template>
 
-        <template #cell-format="{ item }">
-          <span class="text-xs text-base-content/70">{{ item.format }}</span>
-        </template>
-
-        <template #cell-organization="{ item }">
-          <span v-if="item.organization" class="badge badge-sm">org</span>
-          <span v-else class="badge badge-sm badge-ghost">platform</span>
-        </template>
-
         <template #actions="{ item }">
           <router-link :to="`/things/schemas/${item.id}/edit`" class="btn btn-xs flex-1 sm:flex-initial">Edit</router-link>
-          <button
-            @click.stop="handleDelete(item)"
-            :disabled="!item.organization"
-            class="btn btn-xs text-error flex-1 sm:flex-initial"
-          >
-            Delete
-          </button>
+          <button @click.stop="handleDelete(item)" class="btn btn-xs text-error flex-1 sm:flex-initial">Delete</button>
         </template>
       </ResponsiveList>
 

@@ -75,7 +75,7 @@ export interface ThingType extends BaseRecord {
 
 // Thing Type Operation (shareable across Thing Types)
 export interface ThingTypeOperation extends BaseRecord {
-  organization?: string // Empty for platform-shipped
+  organization?: string
   name: string
   capability: ThingTypeCapability
   subject_suffix: string
@@ -87,7 +87,7 @@ export interface ThingTypeOperation extends BaseRecord {
 export type MessageSchemaFormat = 'json_schema'
 
 export interface MessageSchema extends BaseRecord {
-  organization?: string // Empty for platform-shipped
+  organization?: string
   namespace: string
   name: string
   version: string

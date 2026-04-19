@@ -128,14 +128,21 @@ const menuItems = computed(() => {
   return items
 })
 
+// Paths that belong to the "Types" parent menu but don't literally contain "/types".
+const TYPES_CHILD_PATHS = ['/things/operations', '/things/schemas']
+
+const isUnderTypes = (p: string) =>
+  p.includes('/types') || TYPES_CHILD_PATHS.some(cp => p.startsWith(cp))
+
 const isActive = (path: string) => {
   if (path === '/badge' && route.path === '/badge') return true
-  if (path === '/types') return route.path.includes('/types')
+  if (path === '/types') return isUnderTypes(route.path)
   if (path === '/' && route.path === '/') return true
   if (path === '/overview' && route.path === '/overview') return true
-  
+
   if (path !== '/' && route.path.startsWith(path)) {
-    if (route.path.includes('/types') && !path.includes('/types')) return false
+    // Don't light up a non-Types parent when the active route actually belongs to Types.
+    if (isUnderTypes(route.path) && !isUnderTypes(path)) return false
     return true
   }
   return false

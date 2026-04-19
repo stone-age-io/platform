@@ -15,7 +15,6 @@ const toast = useToast()
 const id = route.params.id as string | undefined
 const isEdit = computed(() => !!id)
 const loading = ref(false)
-const isPlatform = ref(false)
 
 const form = ref({
   name: '',
@@ -29,16 +28,14 @@ const availableCapabilities: ThingTypeCapability[] = ['publish', 'subscribe', 'r
 const availableSchemas = ref<MessageSchema[]>([])
 
 function schemaLabel(s: MessageSchema) {
-  return `${s.namespace}/${s.name}@${s.version}${s.organization ? '' : ' · platform'}`
+  return `${s.namespace}/${s.name}@${s.version}`
 }
 
 async function loadOptions() {
   const orgId = authStore.currentOrgId
-  const filter = orgId
-    ? `organization = "${orgId}" || organization = ""`
-    : 'organization = ""'
+  if (!orgId) { availableSchemas.value = []; return }
   availableSchemas.value = await pb.collection('message_schemas').getFullList<MessageSchema>({
-    filter,
+    filter: `organization = "${orgId}"`,
     sort: 'namespace,name,-version',
   })
 }
@@ -48,7 +45,6 @@ async function loadData() {
   loading.value = true
   try {
     const rec = await pb.collection('thing_type_operations').getOne<ThingTypeOperation>(id)
-    isPlatform.value = !rec.organization
     form.value = {
       name: rec.name,
       capability: rec.capability,
@@ -102,10 +98,6 @@ onMounted(async () => {
         </ul>
       </div>
       <h1 class="text-3xl font-bold">{{ isEdit ? 'Edit' : 'Create' }} Operation</h1>
-    </div>
-
-    <div v-if="isPlatform" class="alert alert-warning">
-      <span>This is a platform-shipped operation. Edits may not be permitted by API rules.</span>
     </div>
 
     <form @submit.prevent="submit" class="space-y-6">
