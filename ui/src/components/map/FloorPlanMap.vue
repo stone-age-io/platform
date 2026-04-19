@@ -45,6 +45,6 @@ watch(() => props.location?.floorplan, loadMap)
       <span class="loading loading-spinner loading-lg"></span>
     </div>
 
-    <div id="floorplan-container" class="w-full h-full z-10"></div>
+    <div id="floorplan-container" class="absolute inset-0 z-10"></div>
   </div>
 </template>

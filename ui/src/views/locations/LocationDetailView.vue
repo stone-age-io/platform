@@ -25,13 +25,15 @@ const toast = useToast()
 const { confirm } = useConfirm()
 const uiStore = useUIStore()
 const natsStore = useNatsStore()
-const { initMap, renderMarkers, updateTheme, cleanup: cleanupMap } = useMap()
+const { initMap, renderMarkers, updateTheme, invalidateSize, cleanup: cleanupMap } = useMap()
 
 // --- State ---
 const location = ref<Location | null>(null)
 const loading = ref(true)
 const isPositioningMode = ref(false)
 const mapContainerId = 'mini-map-container'
+const activeTab = ref<'floorplan' | 'coordinates'>('floorplan')
+const miniMapInitialized = ref(false)
 
 // --- Pagination & Search: Sub-Locations ---
 const subLocSearch = ref('')
@@ -118,13 +120,18 @@ const allThingsForMap = ref<Thing[]>([])
  */
 async function loadData(id: string) {
   cleanupMap()
+  miniMapInitialized.value = false
   loading.value = true
-  
+
   try {
     // 1. Load Location Details
     location.value = await pb.collection('locations').getOne<Location>(id, {
       expand: 'type,parent.parent.parent.parent',
     })
+
+    // Pick the default tab based on what data exists. Floorplan wins when both are set.
+    if (location.value?.floorplan) activeTab.value = 'floorplan'
+    else if (location.value?.coordinates) activeTab.value = 'coordinates'
 
     // 2. Load Lists (Paginated)
     await Promise.all([
@@ -146,14 +153,21 @@ async function loadData(id: string) {
     loading.value = false
   }
 
-  // Only init the mini-map when we're actually rendering it (coords set AND no floorplan).
-  // When a floorplan exists, the combined card shows the floorplan as primary and lat/lon as text only.
-  if (location.value?.coordinates?.lat && !location.value?.floorplan) {
-    await nextTick()
-    initMap(mapContainerId, uiStore.theme === 'dark')
-    renderMarkers([location.value])
-  }
 }
+
+// Lazily init the mini-map the first time the coordinates tab is shown. Leaflet needs
+// a visible, sized container — initializing while v-show hides the panel breaks layout.
+watch([() => location.value, activeTab], async ([loc, tab]) => {
+  if (!loc?.coordinates?.lat || tab !== 'coordinates') return
+  await nextTick()
+  if (!miniMapInitialized.value) {
+    initMap(mapContainerId, uiStore.theme === 'dark')
+    renderMarkers([loc])
+    miniMapInitialized.value = true
+  } else {
+    invalidateSize()
+  }
+}, { immediate: true })
 
 // Helpers to refresh lists with current filters
 async function refreshSubLocs() {
@@ -312,62 +326,75 @@ onUnmounted(() => cleanupMap())
         <!-- Right Column: Combined Location Map card (floorplan and/or coordinates) -->
         <div class="lg:col-span-7 flex flex-col gap-6">
           <BaseCard class="flex flex-col h-full min-h-[550px]" :no-padding="true">
-            <div class="p-4 border-b border-base-300 flex justify-between items-center bg-base-200/30">
-              <h2 class="font-bold uppercase text-[10px] tracking-widest opacity-60 flex items-center gap-2">
-                {{ location.floorplan ? '🖼️ Floor Plan' : '📍 Geo Location' }}
+            <div class="p-4 border-b border-base-300 flex justify-between items-center bg-base-200/30 gap-3">
+              <!-- Tabs when both exist; static label otherwise -->
+              <div v-if="location.floorplan && location.coordinates" role="tablist" class="tabs tabs-bordered -mb-[17px]">
+                <a
+                  role="tab"
+                  class="tab text-xs sm:text-sm"
+                  :class="{ 'tab-active font-bold': activeTab === 'floorplan' }"
+                  @click="activeTab = 'floorplan'"
+                >🖼️ Floor Plan</a>
+                <a
+                  role="tab"
+                  class="tab text-xs sm:text-sm"
+                  :class="{ 'tab-active font-bold': activeTab === 'coordinates' }"
+                  @click="activeTab = 'coordinates'"
+                >📍 Geo Map</a>
+              </div>
+              <h2 v-else class="font-bold uppercase text-[10px] tracking-widest opacity-60 flex items-center gap-2">
+                {{ location.floorplan ? '🖼️ Floor Plan' : location.coordinates ? '📍 Geo Location' : '🗺️ Location' }}
               </h2>
-              <div class="flex gap-2">
-                <button v-if="location.coordinates" @click="openNavigation" class="btn btn-xs btn-primary btn-outline">
-                  Navigate
+
+              <div class="flex gap-2 shrink-0">
+                <button
+                  v-if="location.coordinates && activeTab === 'coordinates'"
+                  @click="openNavigation"
+                  class="btn btn-xs sm:btn-sm btn-primary btn-outline"
+                >
+                  🧭 Navigate
                 </button>
                 <button
-                  v-if="location.floorplan"
+                  v-if="location.floorplan && activeTab === 'floorplan'"
                   @click="isPositioningMode = !isPositioningMode"
                   class="btn btn-xs sm:btn-sm"
-                  :class="isPositioningMode ? 'btn-success' : 'btn-ghost bg-base-300'"
+                  :class="isPositioningMode ? 'btn-success' : 'btn-primary btn-outline'"
                 >
                   {{ isPositioningMode ? '💾 Save Positions' : '🛠️ Position Things' }}
                 </button>
               </div>
             </div>
 
-            <!-- Floorplan (primary when present) -->
-            <template v-if="location.floorplan">
-              <div class="flex-grow">
-                <FloorPlanMap
-                  :location="location"
-                  :things="allThingsForMap"
-                  :editable="isPositioningMode"
-                  @thing-moved="handleThingMoved"
-                />
-              </div>
-              <div v-if="location.coordinates" class="p-3 border-t border-base-300 bg-base-200/30 flex flex-wrap gap-x-6 gap-y-1 items-center justify-center text-xs">
-                <span class="flex items-center gap-2"><span class="opacity-50 uppercase tracking-widest text-[10px] font-bold">Lat</span><span class="font-mono">{{ location.coordinates.lat }}</span></span>
-                <span class="flex items-center gap-2"><span class="opacity-50 uppercase tracking-widest text-[10px] font-bold">Lon</span><span class="font-mono">{{ location.coordinates.lon }}</span></span>
-              </div>
-            </template>
+            <!-- Floorplan panel -->
+            <div v-show="location.floorplan && activeTab === 'floorplan'" class="flex-grow flex flex-col">
+              <FloorPlanMap
+                v-if="location.floorplan"
+                :location="location"
+                :things="allThingsForMap"
+                :editable="isPositioningMode"
+                @thing-moved="handleThingMoved"
+              />
+            </div>
 
-            <!-- Coordinates only (no floorplan) -->
-            <template v-else-if="location.coordinates">
-              <div class="p-4 flex-grow flex flex-col gap-4">
-                <div class="grid grid-cols-2 gap-2 text-center">
-                  <div class="bg-base-200 rounded p-2">
-                    <span class="block text-[10px] uppercase opacity-50 font-bold">Latitude</span>
-                    <span class="font-mono text-xs">{{ location.coordinates.lat }}</span>
-                  </div>
-                  <div class="bg-base-200 rounded p-2">
-                    <span class="block text-[10px] uppercase opacity-50 font-bold">Longitude</span>
-                    <span class="font-mono text-xs">{{ location.coordinates.lon }}</span>
-                  </div>
+            <!-- Coordinates panel -->
+            <div v-show="location.coordinates && activeTab === 'coordinates'" class="p-4 flex-grow flex flex-col gap-4">
+              <div v-if="location.coordinates" class="grid grid-cols-2 gap-2 text-center">
+                <div class="bg-base-200 rounded p-2">
+                  <span class="block text-[10px] uppercase opacity-50 font-bold">Latitude</span>
+                  <span class="font-mono text-xs">{{ location.coordinates.lat }}</span>
                 </div>
-                <div class="flex-grow min-h-[300px] w-full rounded-lg relative z-0 border border-base-300">
-                  <div :id="mapContainerId" class="absolute inset-0 rounded-lg"></div>
+                <div class="bg-base-200 rounded p-2">
+                  <span class="block text-[10px] uppercase opacity-50 font-bold">Longitude</span>
+                  <span class="font-mono text-xs">{{ location.coordinates.lon }}</span>
                 </div>
               </div>
-            </template>
+              <div class="flex-grow min-h-[300px] w-full rounded-lg relative z-0 border border-base-300">
+                <div :id="mapContainerId" class="absolute inset-0 rounded-lg"></div>
+              </div>
+            </div>
 
             <!-- Empty state: neither floorplan nor coordinates -->
-            <div v-else class="flex-grow flex flex-col items-center justify-center p-8 text-center">
+            <div v-if="!location.floorplan && !location.coordinates" class="flex-grow flex flex-col items-center justify-center p-8 text-center">
               <span class="text-6xl mb-4 opacity-30">🗺️</span>
               <h3 class="font-bold opacity-60">No Map or Floor Plan</h3>
               <p class="text-sm opacity-50 mb-4 max-w-sm">Add geographic coordinates or upload a floor plan image to visualize this location.</p>
