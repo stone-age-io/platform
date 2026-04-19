@@ -40,6 +40,66 @@ const schemaText = ref('')
 const jsonError = ref('')
 const activeTab = ref<'form' | 'json'>('form')
 
+// Infer-from-sample modal state
+const showInferModal = ref(false)
+const sampleText = ref('')
+const sampleError = ref('')
+
+function inferSchema(value: any): Record<string, any> {
+  if (value === null) return { type: 'null' }
+  if (Array.isArray(value)) {
+    if (value.length === 0) return { type: 'array', items: {} }
+    const itemSchemas = value.map(inferSchema)
+    const firstKey = JSON.stringify(itemSchemas[0])
+    const allSame = itemSchemas.every(s => JSON.stringify(s) === firstKey)
+    return { type: 'array', items: allSame ? itemSchemas[0] : { anyOf: itemSchemas } }
+  }
+  if (typeof value === 'object') {
+    const properties: Record<string, any> = {}
+    const required: string[] = []
+    for (const [k, v] of Object.entries(value)) {
+      properties[k] = inferSchema(v)
+      required.push(k)
+    }
+    return required.length
+      ? { type: 'object', properties, required }
+      : { type: 'object', properties }
+  }
+  if (typeof value === 'string') {
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value)) return { type: 'string', format: 'date-time' }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return { type: 'string', format: 'date' }
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return { type: 'string', format: 'email' }
+    if (/^https?:\/\//.test(value)) return { type: 'string', format: 'uri' }
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) return { type: 'string', format: 'uuid' }
+    return { type: 'string' }
+  }
+  if (typeof value === 'number') {
+    return Number.isInteger(value) ? { type: 'integer' } : { type: 'number' }
+  }
+  if (typeof value === 'boolean') return { type: 'boolean' }
+  return {}
+}
+
+function openInferModal() {
+  sampleText.value = ''
+  sampleError.value = ''
+  showInferModal.value = true
+}
+
+function applyInferred() {
+  let parsed: any
+  try {
+    parsed = JSON.parse(sampleText.value)
+  } catch (err: any) {
+    sampleError.value = err.message
+    return
+  }
+  schemaDoc.value = inferSchema(parsed)
+  refreshJsonFromDoc()
+  showInferModal.value = false
+  toast.success('Schema inferred from sample — review before saving')
+}
+
 function refreshJsonFromDoc() {
   schemaText.value = JSON.stringify(schemaDoc.value, null, 2)
 }
@@ -223,19 +283,28 @@ onMounted(async () => {
         </BaseCard>
 
         <BaseCard title="Schema Document">
-          <div role="tablist" class="tabs tabs-bordered mb-4">
-            <a
-              role="tab"
-              class="tab"
-              :class="{ 'tab-active': activeTab === 'form' }"
-              @click="switchTab('form')"
-            >Form</a>
-            <a
-              role="tab"
-              class="tab"
-              :class="{ 'tab-active': activeTab === 'json' }"
-              @click="switchTab('json')"
-            >JSON</a>
+          <div class="flex items-center justify-between mb-4">
+            <div role="tablist" class="tabs tabs-bordered">
+              <a
+                role="tab"
+                class="tab"
+                :class="{ 'tab-active': activeTab === 'form' }"
+                @click="switchTab('form')"
+              >Form</a>
+              <a
+                role="tab"
+                class="tab"
+                :class="{ 'tab-active': activeTab === 'json' }"
+                @click="switchTab('json')"
+              >JSON</a>
+            </div>
+            <button
+              type="button"
+              class="btn btn-sm btn-outline"
+              @click="openInferModal"
+            >
+              Infer from sample
+            </button>
           </div>
 
           <SchemaBuilder v-if="activeTab === 'form'" v-model="schemaDoc" />
@@ -265,5 +334,37 @@ onMounted(async () => {
         </button>
       </div>
     </form>
+
+    <dialog class="modal" :class="{ 'modal-open': showInferModal }">
+      <div class="modal-box w-11/12 max-w-2xl">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="font-bold text-lg">Infer Schema from Sample</h3>
+          <button class="btn btn-sm btn-circle btn-ghost" @click="showInferModal = false">&#x2715;</button>
+        </div>
+        <p class="text-sm text-base-content/70 mb-3">
+          Paste an example JSON message. The inferred schema is a starting point —
+          fields are marked required and no constraints (enums, min/max, patterns) are guessed.
+          Review and refine in the Form or JSON view before saving.
+        </p>
+        <div class="form-control">
+          <textarea
+            v-model="sampleText"
+            class="textarea textarea-bordered font-mono text-xs"
+            rows="14"
+            placeholder='{"example": "paste your JSON message here"}'
+          ></textarea>
+          <label v-if="sampleError" class="label">
+            <span class="label-text-alt text-error">{{ sampleError }}</span>
+          </label>
+        </div>
+        <div class="modal-action">
+          <button type="button" class="btn btn-ghost" @click="showInferModal = false">Cancel</button>
+          <button type="button" class="btn btn-primary" :disabled="!sampleText.trim()" @click="applyInferred">
+            Infer Schema
+          </button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop" @click="showInferModal = false"><button>close</button></form>
+    </dialog>
   </div>
 </template>
