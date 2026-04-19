@@ -8,13 +8,22 @@ import BaseCard from '@/components/ui/BaseCard.vue'
 import SchemaBuilder from '@/components/things/SchemaBuilder.vue'
 import type { MessageSchema } from '@/types/pocketbase'
 
+const props = defineProps<{
+  embedded?: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'success', record: MessageSchema): void
+  (e: 'cancel'): void
+}>()
+
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const toast = useToast()
 
 const id = route.params.id as string | undefined
-const isEdit = computed(() => !!id)
+const isEdit = computed(() => !!id && !props.embedded)
 const loading = ref(false)
 
 const form = ref({
@@ -70,7 +79,7 @@ function switchTab(tab: 'form' | 'json') {
 }
 
 async function loadData() {
-  if (!id) return
+  if (!id || props.embedded) return
   loading.value = true
   try {
     const rec = await pb.collection('message_schemas').getOne<MessageSchema>(id)
@@ -114,19 +123,33 @@ async function submit() {
       description: form.value.description,
       schema: schemaDoc.value,
     }
+    let record: MessageSchema
     if (isEdit.value) {
-      await pb.collection('message_schemas').update(id!, payload)
+      record = await pb.collection('message_schemas').update<MessageSchema>(id!, payload)
       toast.success('Updated')
     } else {
       payload.organization = authStore.currentOrgId
-      await pb.collection('message_schemas').create(payload)
+      record = await pb.collection('message_schemas').create<MessageSchema>(payload)
       toast.success('Created')
     }
-    router.push('/things/schemas')
+
+    if (props.embedded) {
+      emit('success', record)
+    } else {
+      router.push('/things/schemas')
+    }
   } catch (err: any) {
     toast.error(err.message)
   } finally {
     loading.value = false
+  }
+}
+
+function handleCancel() {
+  if (props.embedded) {
+    emit('cancel')
+  } else {
+    router.back()
   }
 }
 
@@ -141,7 +164,7 @@ onMounted(async () => {
 
 <template>
   <div class="space-y-6">
-    <div>
+    <div v-if="!embedded">
       <div class="breadcrumbs text-sm">
         <ul>
           <li><router-link to="/things/schemas">Message Schemas</router-link></li>
@@ -189,7 +212,7 @@ onMounted(async () => {
                 pattern="[0-9]+\.[0-9]+\.[0-9]+"
                 placeholder="1.0.0"
               />
-              <label class="label"><span class="label-text-alt">Semver. New versions = new records.</span></label>
+              <label class="label"><span class="label-text-alt">Semantic version (e.g. 1.0.0). Each version is a separate record.</span></label>
             </div>
 
             <div class="form-control">
@@ -235,7 +258,7 @@ onMounted(async () => {
       </div>
 
       <div class="flex justify-end gap-2">
-        <button type="button" class="btn btn-ghost" @click="router.back()">Cancel</button>
+        <button type="button" class="btn btn-ghost" @click="handleCancel">Cancel</button>
         <button type="submit" class="btn btn-primary" :disabled="loading">
           <span v-if="loading" class="loading loading-spinner"></span>
           Save

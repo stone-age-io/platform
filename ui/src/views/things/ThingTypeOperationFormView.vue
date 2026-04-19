@@ -5,7 +5,17 @@ import { pb } from '@/utils/pb'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import MessageSchemaFormView from '@/views/things/MessageSchemaFormView.vue'
 import type { ThingTypeCapability, ThingTypeOperation, MessageSchema } from '@/types/pocketbase'
+
+const props = defineProps<{
+  embedded?: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'success', record: ThingTypeOperation): void
+  (e: 'cancel'): void
+}>()
 
 const router = useRouter()
 const route = useRoute()
@@ -13,8 +23,9 @@ const authStore = useAuthStore()
 const toast = useToast()
 
 const id = route.params.id as string | undefined
-const isEdit = computed(() => !!id)
+const isEdit = computed(() => !!id && !props.embedded)
 const loading = ref(false)
+const showSchemaModal = ref(false)
 
 const form = ref({
   name: '',
@@ -41,7 +52,7 @@ async function loadOptions() {
 }
 
 async function loadData() {
-  if (!id) return
+  if (!id || props.embedded) return
   loading.value = true
   try {
     const rec = await pb.collection('thing_type_operations').getOne<ThingTypeOperation>(id)
@@ -64,22 +75,48 @@ async function submit() {
   loading.value = true
   try {
     const payload = { ...form.value, schema: form.value.schema || null }
+    let record: ThingTypeOperation
     if (isEdit.value) {
-      await pb.collection('thing_type_operations').update(id!, payload)
+      record = await pb.collection('thing_type_operations').update<ThingTypeOperation>(id!, payload)
       toast.success('Updated')
     } else {
-      await pb.collection('thing_type_operations').create({
+      record = await pb.collection('thing_type_operations').create<ThingTypeOperation>({
         ...payload,
         organization: authStore.currentOrgId,
       })
       toast.success('Created')
     }
-    router.push('/things/operations')
+
+    if (props.embedded) {
+      emit('success', record)
+    } else {
+      router.push('/things/operations')
+    }
   } catch (err: any) {
     toast.error(err.message)
   } finally {
     loading.value = false
   }
+}
+
+function handleCancel() {
+  if (props.embedded) {
+    emit('cancel')
+  } else {
+    router.back()
+  }
+}
+
+function onSchemaCreated(record: MessageSchema) {
+  availableSchemas.value.push(record)
+  availableSchemas.value.sort((a, b) => {
+    const aKey = `${a.namespace}/${a.name}`
+    const bKey = `${b.namespace}/${b.name}`
+    if (aKey !== bKey) return aKey.localeCompare(bKey)
+    return b.version.localeCompare(a.version)
+  })
+  form.value.schema = record.id
+  showSchemaModal.value = false
 }
 
 onMounted(async () => {
@@ -90,7 +127,7 @@ onMounted(async () => {
 
 <template>
   <div class="space-y-6">
-    <div>
+    <div v-if="!embedded">
       <div class="breadcrumbs text-sm">
         <ul>
           <li><router-link to="/things/operations">Operations</router-link></li>
@@ -143,25 +180,30 @@ onMounted(async () => {
                 placeholder="e.g. motion or cmd.ptz"
               />
               <label class="label">
-                <span class="label-text-alt">
-                  Appended to the Thing Type's subject prefix with a dot separator.
-                  Stored literally — the platform does not resolve templates.
-                </span>
+                <span class="label-text-alt">Appended to the Thing Type's subject prefix, separated by a dot.</span>
               </label>
             </div>
 
             <div class="form-control">
               <label class="label">Message Schema</label>
-              <select v-model="form.schema" class="select select-bordered">
-                <option value="">— None —</option>
-                <option v-for="s in availableSchemas" :key="s.id" :value="s.id">
-                  {{ schemaLabel(s) }}
-                </option>
-              </select>
+              <div class="flex gap-2">
+                <select v-model="form.schema" class="select select-bordered flex-1 min-w-0">
+                  <option value="">— None —</option>
+                  <option v-for="s in availableSchemas" :key="s.id" :value="s.id">
+                    {{ schemaLabel(s) }}
+                  </option>
+                </select>
+                <button
+                  type="button"
+                  class="btn btn-square btn-outline"
+                  @click="showSchemaModal = true"
+                  title="Quick Add Message Schema"
+                >
+                  +
+                </button>
+              </div>
               <label class="label">
-                <span class="label-text-alt">
-                  JSON Schema describing this operation's payload. Optional — consumers fall back to raw JSON when unset.
-                </span>
+                <span class="label-text-alt">JSON Schema describing this operation's payload.</span>
               </label>
             </div>
           </div>
@@ -169,12 +211,25 @@ onMounted(async () => {
       </div>
 
       <div class="flex justify-end gap-2">
-        <button type="button" class="btn btn-ghost" @click="router.back()">Cancel</button>
+        <button type="button" class="btn btn-ghost" @click="handleCancel">Cancel</button>
         <button type="submit" class="btn btn-primary" :disabled="loading">
           <span v-if="loading" class="loading loading-spinner"></span>
           Save
         </button>
       </div>
     </form>
+
+    <dialog class="modal" :class="{ 'modal-open': showSchemaModal }">
+      <div class="modal-box w-11/12 max-w-3xl">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="font-bold text-lg">Quick Add Message Schema</h3>
+          <button class="btn btn-sm btn-circle btn-ghost" @click="showSchemaModal = false">&#x2715;</button>
+        </div>
+        <div v-if="showSchemaModal">
+          <MessageSchemaFormView :embedded="true" @success="onSchemaCreated" @cancel="showSchemaModal = false" />
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop" @click="showSchemaModal = false"><button>close</button></form>
+    </dialog>
   </div>
 </template>

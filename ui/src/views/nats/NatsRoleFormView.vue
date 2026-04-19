@@ -7,13 +7,22 @@ import { useToast } from '@/composables/useToast'
 import type { NatsRole } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 
+const props = defineProps<{
+  embedded?: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'success', record: NatsRole): void
+  (e: 'cancel'): void
+}>()
+
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const toast = useToast()
 
 const roleId = route.params.id as string | undefined
-const isEdit = computed(() => !!roleId)
+const isEdit = computed(() => !!roleId && !props.embedded)
 const loading = ref(false)
 
 const formData = ref({
@@ -102,19 +111,33 @@ async function handleSubmit() {
       max_payload: parseInt(formData.value.max_payload),
     }
     
+    let record: NatsRole
     if (isEdit.value) {
-      await pb.collection('nats_roles').update(roleId!, data)
+      record = await pb.collection('nats_roles').update<NatsRole>(roleId!, data)
       toast.success('Role updated')
     } else {
       data.organization = authStore.currentOrgId
-      await pb.collection('nats_roles').create(data)
+      record = await pb.collection('nats_roles').create<NatsRole>(data)
       toast.success('Role created')
     }
-    router.push('/nats/roles')
+
+    if (props.embedded) {
+      emit('success', record)
+    } else {
+      router.push('/nats/roles')
+    }
   } catch (err: any) {
     toast.error(err.message || 'Failed to save role')
   } finally {
     loading.value = false
+  }
+}
+
+function handleCancel() {
+  if (props.embedded) {
+    emit('cancel')
+  } else {
+    router.back()
   }
 }
 
@@ -124,7 +147,7 @@ onMounted(() => { if (isEdit.value) loadRole() })
 <template>
   <!-- Template remains the same as previous version -->
   <div class="space-y-6">
-    <div>
+    <div v-if="!embedded">
       <div class="breadcrumbs text-sm">
         <ul>
           <li><router-link to="/nats/roles">NATS Roles</router-link></li>
@@ -133,7 +156,7 @@ onMounted(() => { if (isEdit.value) loadRole() })
       </div>
       <h1 class="text-3xl font-bold">{{ isEdit ? 'Edit NATS Role' : 'Create NATS Role' }}</h1>
     </div>
-    
+
     <form @submit.prevent="handleSubmit" class="space-y-6">
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         
@@ -244,7 +267,7 @@ onMounted(() => { if (isEdit.value) loadRole() })
       </div>
       
       <div class="flex flex-col sm:flex-row justify-end gap-2 sm:gap-4">
-        <button type="button" @click="router.back()" class="btn btn-ghost order-2 sm:order-1" :disabled="loading">Cancel</button>
+        <button type="button" @click="handleCancel" class="btn btn-ghost order-2 sm:order-1" :disabled="loading">Cancel</button>
         <button type="submit" class="btn btn-primary order-1 sm:order-2" :disabled="loading">
           <span v-if="loading" class="loading loading-spinner"></span>
           <span v-else>{{ isEdit ? 'Update' : 'Create' }} Role</span>
