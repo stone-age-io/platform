@@ -674,10 +674,12 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
         if (!payload) {
           errors.scannerPublishPayloadTemplate = 'Payload template is required when publish is enabled'
         } else {
-          // Validate payload template is valid JSON once tokens are replaced with sentinels
+          // Validate payload template is valid JSON once tokens are replaced with sentinels.
+          // String tokens inject raw (unquoted) at runtime — operator wraps them in quotes
+          // in the template — so use a bare identifier sentinel that lands inside "...".
           const sentinelized = payload.replace(
             /\{(value|scanner|scanner_kind|device_label|purpose|location|reason|ts|metadata|found)\}/g,
-            (_m, tok) => (tok === 'found' ? 'false' : tok === 'metadata' ? '{}' : '"_"')
+            (_m, tok) => (tok === 'found' ? 'false' : tok === 'metadata' ? '{}' : '_')
           )
           try {
             JSON.parse(sentinelized)
