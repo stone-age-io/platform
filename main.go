@@ -189,9 +189,6 @@ func main() {
 	// Register CLI Commands (for generating configs, keys, etc.)
 	pbnats.RegisterCommands(app)
 
-	// Platform-owned hooks: derive nats_role content from Thing Type contracts.
-	hooks.RegisterThingTypeRoleSync(app)
-
 	// Platform-owned hooks: auto-provision NATS account + Nebula CA per new org.
 	hooks.RegisterOrgProvisioning(app, hooks.OrgProvisioningOptions{
 		OrgCollection:                tenancyOptions.OrganizationsCollection,
