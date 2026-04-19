@@ -155,10 +155,11 @@ async function loadData(id: string) {
 
 }
 
-// Lazily init the mini-map the first time the coordinates tab is shown. Leaflet needs
-// a visible, sized container — initializing while v-show hides the panel breaks layout.
-watch([() => location.value, activeTab], async ([loc, tab]) => {
-  if (!loc?.coordinates?.lat || tab !== 'coordinates') return
+// Lazily init the mini-map once the coordinates tab is actually in the DOM.
+// The outer detail region is gated by v-else-if="location" (unmounts while `loading`),
+// and Leaflet needs both a mounted container AND a non-hidden panel to render.
+watch([() => location.value, activeTab, loading], async ([loc, tab, isLoading]) => {
+  if (isLoading || !loc?.coordinates?.lat || tab !== 'coordinates') return
   await nextTick()
   if (!miniMapInitialized.value) {
     initMap(mapContainerId, uiStore.theme === 'dark')
