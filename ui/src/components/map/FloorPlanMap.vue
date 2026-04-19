@@ -9,14 +9,14 @@ const props = defineProps<{
   editable: boolean
 }>()
 
-const emit = defineEmits(['thing-moved', 'uploaded'])
+const emit = defineEmits(['thing-moved'])
 const { initFloorPlan, renderMarkers } = useFloorPlan()
 const loading = ref(false)
 
 const loadMap = () => {
-  if (!props.location.floorplan) return
+  if (!props.location?.floorplan) return
   loading.value = true
-  
+
   const imageUrl = pb.files.getURL(props.location, props.location.floorplan)
   const img = new Image()
   img.onload = () => {
@@ -33,37 +33,14 @@ const updateMarkers = () => {
   })
 }
 
-const handleUpload = async (e: Event) => {
-  const file = (e.target as HTMLInputElement).files?.[0]
-  if (!file) return
-  loading.value = true
-  const fd = new FormData()
-  fd.append('floorplan', file)
-  try {
-    const updated = await pb.collection('locations').update(props.location.id, fd)
-    emit('uploaded', updated)
-    loadMap()
-  } catch (err) {
-    console.error(err)
-  } finally {
-    loading.value = false
-  }
-}
-
 onMounted(loadMap)
 watch(() => props.things, updateMarkers, { deep: true })
 watch(() => props.editable, updateMarkers)
+watch(() => props.location?.floorplan, loadMap)
 </script>
 
 <template>
-  <div class="relative w-full h-[500px] bg-base-300 rounded-xl overflow-hidden border border-base-300 shadow-inner">
-    <div v-if="!location.floorplan" class="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
-      <span class="text-6xl mb-4">🖼️</span>
-      <h3 class="font-bold">No Floor Plan Available</h3>
-      <p class="text-sm opacity-60 mb-4">Upload an image to start mapping devices.</p>
-      <input type="file" class="file-input file-input-bordered file-input-sm w-full max-w-xs" @change="handleUpload" />
-    </div>
-
+  <div class="relative w-full h-full min-h-[500px] bg-base-300 rounded-xl overflow-hidden border border-base-300 shadow-inner">
     <div v-if="loading" class="absolute inset-0 z-20 bg-base-300/50 backdrop-blur-sm flex items-center justify-center">
       <span class="loading loading-spinner loading-lg"></span>
     </div>

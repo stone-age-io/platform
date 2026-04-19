@@ -146,7 +146,9 @@ async function loadData(id: string) {
     loading.value = false
   }
 
-  if (location.value?.coordinates?.lat) {
+  // Only init the mini-map when we're actually rendering it (coords set AND no floorplan).
+  // When a floorplan exists, the combined card shows the floorplan as primary and lat/lon as text only.
+  if (location.value?.coordinates?.lat && !location.value?.floorplan) {
     await nextTick()
     initMap(mapContainerId, uiStore.theme === 'dark')
     renderMarkers([location.value])
@@ -179,11 +181,6 @@ async function handleThingMoved({ id, x, y }: { id: string, x: number, y: number
   } catch (err: any) {
     toast.error('Failed to save position')
   }
-}
-
-function handleFloorplanUploaded(updatedLoc: Location) {
-  location.value = updatedLoc
-  toast.success('Floor plan uploaded')
 }
 
 function openNavigation() {
@@ -310,60 +307,73 @@ onUnmounted(() => cleanupMap())
             </dl>
           </BaseCard>
 
-          <BaseCard :no-padding="true" class="overflow-hidden">
-            <div class="p-4 border-b border-base-300 flex justify-between items-center bg-base-200/30">
-              <h2 class="font-bold uppercase text-[10px] tracking-widest opacity-60">Geo Location</h2>
-              <button v-if="location.coordinates" @click="openNavigation" class="btn btn-xs btn-primary btn-outline">
-                Navigate
-              </button>
-            </div>
-
-            <div v-if="location.coordinates" class="p-4 space-y-4">
-              <div class="grid grid-cols-2 gap-2 text-center">
-                <div class="bg-base-200 rounded p-2">
-                  <span class="block text-[10px] uppercase opacity-50 font-bold">Latitude</span>
-                  <span class="font-mono text-xs">{{ location.coordinates.lat }}</span>
-                </div>
-                <div class="bg-base-200 rounded p-2">
-                  <span class="block text-[10px] uppercase opacity-50 font-bold">Longitude</span>
-                  <span class="font-mono text-xs">{{ location.coordinates.lon }}</span>
-                </div>
-              </div>
-              <div class="h-44 w-full rounded-lg relative z-0 border border-base-300">
-                <div :id="mapContainerId" class="absolute inset-0 rounded-lg"></div>
-              </div>
-            </div>
-            <div v-else class="p-8 text-center opacity-40 italic text-sm">
-              No geographic coordinates set.
-            </div>
-          </BaseCard>
         </div>
 
-        <!-- Right Column (Floor Plan Visualizer) -->
+        <!-- Right Column: Combined Location Map card (floorplan and/or coordinates) -->
         <div class="lg:col-span-7 flex flex-col gap-6">
           <BaseCard class="flex flex-col h-full min-h-[550px]" :no-padding="true">
             <div class="p-4 border-b border-base-300 flex justify-between items-center bg-base-200/30">
               <h2 class="font-bold uppercase text-[10px] tracking-widest opacity-60 flex items-center gap-2">
-                 🖼️ Floor Plan Map
+                {{ location.floorplan ? '🖼️ Floor Plan' : '📍 Geo Location' }}
               </h2>
-              <button 
-                v-if="location.floorplan"
-                @click="isPositioningMode = !isPositioningMode" 
-                class="btn btn-xs sm:btn-sm"
-                :class="isPositioningMode ? 'btn-success' : 'btn-ghost bg-base-300'"
-              >
-                {{ isPositioningMode ? '💾 Save Positions' : '🛠️ Position Things' }}
-              </button>
+              <div class="flex gap-2">
+                <button v-if="location.coordinates" @click="openNavigation" class="btn btn-xs btn-primary btn-outline">
+                  Navigate
+                </button>
+                <button
+                  v-if="location.floorplan"
+                  @click="isPositioningMode = !isPositioningMode"
+                  class="btn btn-xs sm:btn-sm"
+                  :class="isPositioningMode ? 'btn-success' : 'btn-ghost bg-base-300'"
+                >
+                  {{ isPositioningMode ? '💾 Save Positions' : '🛠️ Position Things' }}
+                </button>
+              </div>
             </div>
-            
-            <div class="flex-grow">
-              <FloorPlanMap 
-                :location="location"
-                :things="allThingsForMap" 
-                :editable="isPositioningMode"
-                @thing-moved="handleThingMoved"
-                @uploaded="handleFloorplanUploaded"
-              />
+
+            <!-- Floorplan (primary when present) -->
+            <template v-if="location.floorplan">
+              <div class="flex-grow">
+                <FloorPlanMap
+                  :location="location"
+                  :things="allThingsForMap"
+                  :editable="isPositioningMode"
+                  @thing-moved="handleThingMoved"
+                />
+              </div>
+              <div v-if="location.coordinates" class="p-3 border-t border-base-300 bg-base-200/30 flex flex-wrap gap-x-6 gap-y-1 items-center justify-center text-xs">
+                <span class="flex items-center gap-2"><span class="opacity-50 uppercase tracking-widest text-[10px] font-bold">Lat</span><span class="font-mono">{{ location.coordinates.lat }}</span></span>
+                <span class="flex items-center gap-2"><span class="opacity-50 uppercase tracking-widest text-[10px] font-bold">Lon</span><span class="font-mono">{{ location.coordinates.lon }}</span></span>
+              </div>
+            </template>
+
+            <!-- Coordinates only (no floorplan) -->
+            <template v-else-if="location.coordinates">
+              <div class="p-4 flex-grow flex flex-col gap-4">
+                <div class="grid grid-cols-2 gap-2 text-center">
+                  <div class="bg-base-200 rounded p-2">
+                    <span class="block text-[10px] uppercase opacity-50 font-bold">Latitude</span>
+                    <span class="font-mono text-xs">{{ location.coordinates.lat }}</span>
+                  </div>
+                  <div class="bg-base-200 rounded p-2">
+                    <span class="block text-[10px] uppercase opacity-50 font-bold">Longitude</span>
+                    <span class="font-mono text-xs">{{ location.coordinates.lon }}</span>
+                  </div>
+                </div>
+                <div class="flex-grow min-h-[300px] w-full rounded-lg relative z-0 border border-base-300">
+                  <div :id="mapContainerId" class="absolute inset-0 rounded-lg"></div>
+                </div>
+              </div>
+            </template>
+
+            <!-- Empty state: neither floorplan nor coordinates -->
+            <div v-else class="flex-grow flex flex-col items-center justify-center p-8 text-center">
+              <span class="text-6xl mb-4 opacity-30">🗺️</span>
+              <h3 class="font-bold opacity-60">No Map or Floor Plan</h3>
+              <p class="text-sm opacity-50 mb-4 max-w-sm">Add geographic coordinates or upload a floor plan image to visualize this location.</p>
+              <router-link :to="`/locations/${location.id}/edit`" class="btn btn-sm btn-primary">
+                Edit Location
+              </router-link>
             </div>
           </BaseCard>
         </div>
