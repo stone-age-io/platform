@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import SchemaBuilder from '@/components/things/SchemaBuilder.vue'
 import type { MessageSchema } from '@/types/pocketbase'
 
 const router = useRouter()
@@ -21,20 +22,51 @@ const form = ref({
   name: '',
   version: '1.0.0',
   description: '',
-  schemaText: '{\n  "type": "object",\n  "properties": {}\n}',
 })
 
+// Source of truth for the schema document itself. Both the builder and JSON
+// textarea stay in sync with it.
+const schemaDoc = ref<Record<string, any>>({ type: 'object', properties: {} })
+const schemaText = ref('')
 const jsonError = ref('')
+const activeTab = ref<'form' | 'json'>('form')
 
-function validateJson() {
+function refreshJsonFromDoc() {
+  schemaText.value = JSON.stringify(schemaDoc.value, null, 2)
+}
+
+// Whenever the builder (via schemaDoc) changes, keep the JSON textarea fresh —
+// but only when the user isn't actively editing it.
+watch(schemaDoc, () => {
+  if (activeTab.value !== 'json') refreshJsonFromDoc()
+}, { deep: true })
+
+function onJsonBlur() {
   try {
-    JSON.parse(form.value.schemaText)
+    const parsed = JSON.parse(schemaText.value)
     jsonError.value = ''
-    return true
+    schemaDoc.value = parsed
   } catch (err: any) {
     jsonError.value = err.message
-    return false
   }
+}
+
+function switchTab(tab: 'form' | 'json') {
+  if (tab === activeTab.value) return
+  if (activeTab.value === 'json') {
+    // Leaving JSON — try to parse so the form sees the latest.
+    try {
+      schemaDoc.value = JSON.parse(schemaText.value)
+      jsonError.value = ''
+    } catch (err: any) {
+      jsonError.value = err.message
+      toast.error('JSON has errors — fix them before switching views')
+      return
+    }
+  } else {
+    refreshJsonFromDoc()
+  }
+  activeTab.value = tab
 }
 
 async function loadData() {
@@ -47,10 +79,10 @@ async function loadData() {
       name: rec.name,
       version: rec.version,
       description: rec.description || '',
-      schemaText: typeof rec.schema === 'string'
-        ? rec.schema
-        : JSON.stringify(rec.schema, null, 2),
     }
+    const raw = rec.schema
+    schemaDoc.value = typeof raw === 'string' ? JSON.parse(raw) : raw
+    refreshJsonFromDoc()
   } catch (err: any) {
     toast.error('Failed to load schema')
     router.push('/things/schemas')
@@ -60,10 +92,18 @@ async function loadData() {
 }
 
 async function submit() {
-  if (!validateJson()) {
-    toast.error('Schema is not valid JSON')
-    return
+  // If the user is on the JSON tab, use that as the source of truth.
+  if (activeTab.value === 'json') {
+    try {
+      schemaDoc.value = JSON.parse(schemaText.value)
+      jsonError.value = ''
+    } catch (err: any) {
+      jsonError.value = err.message
+      toast.error('Schema is not valid JSON')
+      return
+    }
   }
+
   loading.value = true
   try {
     const payload: any = {
@@ -72,7 +112,7 @@ async function submit() {
       version: form.value.version,
       format: 'json_schema',
       description: form.value.description,
-      schema: JSON.parse(form.value.schemaText),
+      schema: schemaDoc.value,
     }
     if (isEdit.value) {
       await pb.collection('message_schemas').update(id!, payload)
@@ -90,7 +130,13 @@ async function submit() {
   }
 }
 
-onMounted(() => { if (isEdit.value) loadData() })
+onMounted(async () => {
+  if (isEdit.value) {
+    await loadData()
+  } else {
+    refreshJsonFromDoc()
+  }
+})
 </script>
 
 <template>
@@ -154,14 +200,30 @@ onMounted(() => { if (isEdit.value) loadData() })
         </BaseCard>
 
         <BaseCard title="Schema Document">
-          <div class="form-control">
-            <label class="label">JSON Schema *</label>
+          <div role="tablist" class="tabs tabs-bordered mb-4">
+            <a
+              role="tab"
+              class="tab"
+              :class="{ 'tab-active': activeTab === 'form' }"
+              @click="switchTab('form')"
+            >Form</a>
+            <a
+              role="tab"
+              class="tab"
+              :class="{ 'tab-active': activeTab === 'json' }"
+              @click="switchTab('json')"
+            >JSON</a>
+          </div>
+
+          <SchemaBuilder v-if="activeTab === 'form'" v-model="schemaDoc" />
+
+          <div v-else class="form-control">
             <textarea
-              v-model="form.schemaText"
+              v-model="schemaText"
               class="textarea textarea-bordered font-mono text-xs"
               rows="18"
               required
-              @blur="validateJson"
+              @blur="onJsonBlur"
             ></textarea>
             <label class="label">
               <span class="label-text-alt" :class="{ 'text-error': jsonError }">
