@@ -2,9 +2,25 @@
 <template>
   <div class="scanner-widget" :class="{ 'card-layout': layoutMode === 'card' }">
     <!-- Idle State -->
-    <div v-if="state === 'idle'" class="scanner-idle" @click="startScan">
-      <div class="idle-icon">📷</div>
-      <div class="idle-label">Tap to Scan</div>
+    <div v-if="state === 'idle'" class="scanner-idle">
+      <div class="idle-scan" @click="startScan">
+        <div class="idle-icon">📷</div>
+        <div class="idle-label">Tap to Scan</div>
+      </div>
+      <div v-if="cfg.allowManualEntry ?? true" class="manual-entry">
+        <input
+          v-model="manualInput"
+          type="text"
+          class="manual-input font-mono"
+          placeholder="Or type a value..."
+          @keydown.enter="submitManual"
+        />
+        <button
+          class="btn btn-xs btn-ghost"
+          :disabled="!manualInput.trim()"
+          @click="submitManual"
+        >Go</button>
+      </div>
     </div>
 
     <!-- Scanning State -->
@@ -23,30 +39,42 @@
     <!-- Result State -->
     <div v-else-if="state === 'result'" class="scanner-result">
       <div class="result-header">
-        <span class="result-badge result-success">Found</span>
+        <span
+          class="result-badge"
+          :class="found ? 'result-go' : 'result-nogo'"
+        >{{ found ? 'GO' : 'NO-GO' }}</span>
         <span class="result-scanned font-mono">{{ truncatedValue }}</span>
       </div>
 
+      <div v-if="!found" class="result-reason">
+        {{ reasonLabel }}
+      </div>
+
       <div class="result-data">
-        <!-- KV Result -->
-        <div v-if="kvResult !== null" class="result-section">
-          <div class="result-section-label">KV</div>
-          <div v-if="typeof kvResult === 'object'" class="result-entries">
-            <div v-for="(val, key) in kvResult" :key="String(key)" class="result-entry">
+        <!-- Badge KV record -->
+        <div v-if="badgeRecord" class="result-section">
+          <div class="result-section-label">Badge</div>
+          <div class="result-entries">
+            <div v-if="badgeRecord.expires_at" class="result-entry">
+              <span class="entry-key">expires_at</span>
+              <span class="entry-value font-mono">{{ badgeRecord.expires_at }}</span>
+            </div>
+            <div v-if="badgeRecord.revoked" class="result-entry">
+              <span class="entry-key">revoked</span>
+              <span class="entry-value font-mono">true</span>
+            </div>
+            <div
+              v-for="(val, key) in badgeRecord.metadata || {}"
+              :key="String(key)"
+              class="result-entry"
+            >
               <span class="entry-key">{{ key }}</span>
               <span class="entry-value font-mono">{{ formatValue(val) }}</span>
             </div>
           </div>
-          <div v-else class="result-raw font-mono">{{ kvResult }}</div>
         </div>
 
-        <!-- KV Error (when PB succeeded but KV failed) -->
-        <div v-else-if="kvError" class="result-section result-section-error">
-          <div class="result-section-label">KV</div>
-          <div class="text-xs text-error">{{ kvError }}</div>
-        </div>
-
-        <!-- PB Result -->
+        <!-- PB Result (non-badge fallback) -->
         <div v-if="pbResult !== null" class="result-section">
           <div class="result-section-label">PocketBase</div>
           <div v-for="(item, idx) in pbItems" :key="idx" class="result-entries">
@@ -56,12 +84,6 @@
             </div>
           </div>
           <div v-if="pbItems.length === 0" class="text-xs opacity-50 italic">No records</div>
-        </div>
-
-        <!-- PB Error (when KV succeeded but PB failed) -->
-        <div v-else-if="pbError" class="result-section result-section-error">
-          <div class="result-section-label">PocketBase</div>
-          <div class="text-xs text-error">{{ pbError }}</div>
         </div>
 
         <!-- Publish Status -->
@@ -78,6 +100,20 @@
       <div class="error-icon">!</div>
       <div class="error-message">{{ errorMessage }}</div>
       <div v-if="scannedValue" class="error-scanned font-mono">{{ truncatedValue }}</div>
+      <div v-if="cfg.allowManualEntry ?? true" class="manual-entry">
+        <input
+          v-model="manualInput"
+          type="text"
+          class="manual-input font-mono"
+          placeholder="Type a value..."
+          @keydown.enter="submitManual"
+        />
+        <button
+          class="btn btn-xs btn-ghost"
+          :disabled="!manualInput.trim()"
+          @click="submitManual"
+        >Go</button>
+      </div>
       <button class="btn btn-sm btn-primary scanner-again" @click="reset">Try Again</button>
     </div>
   </div>
@@ -88,9 +124,10 @@ import { ref, computed, onUnmounted, nextTick } from 'vue'
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
 import { Kvm } from '@nats-io/kv'
 import { useNatsStore } from '@/stores/nats'
+import { useAuthStore } from '@/stores/auth'
 import { pb } from '@/utils/pb'
 import { encodeString, decodeBytes } from '@/utils/encoding'
-import type { WidgetConfig } from '@/types/dashboard'
+import type { WidgetConfig, BadgeRecord, BadgeReason } from '@/types/dashboard'
 
 const props = withDefaults(defineProps<{
   config: WidgetConfig
@@ -100,20 +137,25 @@ const props = withDefaults(defineProps<{
 })
 
 const natsStore = useNatsStore()
+const authStore = useAuthStore()
 
 // --- State Machine ---
 type ScanState = 'idle' | 'scanning' | 'loading' | 'result' | 'error'
 const state = ref<ScanState>('idle')
 const scannedValue = ref('')
 const errorMessage = ref('')
-const kvResult = ref<any>(null)
-const kvError = ref<string | null>(null)
+const badgeRecord = ref<BadgeRecord | null>(null)
 const pbResult = ref<any>(null)
-const pbError = ref<string | null>(null)
 const publishStatus = ref<string | null>(null)
+const manualInput = ref('')
+const found = ref(false)
+const reason = ref<BadgeReason>('unknown')
 
 let html5Qrcode: Html5Qrcode | null = null
 const readerId = `scanner-${props.config.id}`
+
+// Dedup tracking: value -> last-seen ms
+const recentScans = new Map<string, number>()
 
 const cfg = computed(() => props.config.scannerConfig || {})
 
@@ -129,17 +171,21 @@ const pbItems = computed(() => {
   return [pbResult.value]
 })
 
+const reasonLabel = computed(() => {
+  switch (reason.value) {
+    case 'ok': return 'OK'
+    case 'unknown': return 'Unknown — no record found'
+    case 'revoked': return 'Revoked'
+    case 'expired': return 'Expired'
+    default: return String(reason.value)
+  }
+})
+
 // --- Scanner ---
 
 async function startScan() {
   state.value = 'scanning'
-  kvResult.value = null
-  kvError.value = null
-  pbResult.value = null
-  pbError.value = null
-  publishStatus.value = null
-  scannedValue.value = ''
-  errorMessage.value = ''
+  resetResults()
 
   // Wait for DOM to render the viewfinder element with proper dimensions
   await nextTick()
@@ -154,10 +200,9 @@ async function startScan() {
       { facingMode: 'environment' },
       {
         fps: 10,
-        // Use a function so qrbox adapts to actual rendered video size
         qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
           const minDim = Math.min(viewfinderWidth, viewfinderHeight)
-          const size = Math.floor(minDim * 0.7) // 70% of smaller dimension
+          const size = Math.floor(minDim * 0.7)
           return { width: size, height: size }
         },
       },
@@ -190,21 +235,56 @@ async function stopScan() {
 }
 
 async function handleScanResult(decodedText: string) {
-  scannedValue.value = decodedText
   await stopScan()
+  await processValue(decodedText)
+}
+
+async function submitManual() {
+  const v = manualInput.value.trim()
+  if (!v) return
+  manualInput.value = ''
+  await processValue(v)
+}
+
+async function processValue(value: string) {
+  // Dedup check
+  const window = cfg.value.dedupWindowMs ?? 3000
+  if (window > 0) {
+    const now = Date.now()
+    const last = recentScans.get(value)
+    if (last !== undefined && now - last < window) {
+      // Suppress — show briefly as the current result without re-publishing
+      scannedValue.value = value
+      errorMessage.value = 'Duplicate scan suppressed'
+      state.value = 'error'
+      return
+    }
+    recentScans.set(value, now)
+    // Keep map bounded
+    if (recentScans.size > 200) {
+      const oldest = [...recentScans.entries()].sort((a, b) => a[1] - b[1])[0]
+      if (oldest) recentScans.delete(oldest[0])
+    }
+  }
+
+  scannedValue.value = value
   state.value = 'loading'
-  await performLookup(decodedText)
+  await performLookup(value)
+}
+
+function resetResults() {
+  badgeRecord.value = null
+  pbResult.value = null
+  publishStatus.value = null
+  scannedValue.value = ''
+  errorMessage.value = ''
+  found.value = false
+  reason.value = 'unknown'
 }
 
 function reset() {
   state.value = 'idle'
-  scannedValue.value = ''
-  kvResult.value = null
-  kvError.value = null
-  pbResult.value = null
-  pbError.value = null
-  publishStatus.value = null
-  errorMessage.value = ''
+  resetResults()
 }
 
 // --- Lookup ---
@@ -213,26 +293,42 @@ function replacePlaceholder(template: string, value: string): string {
   return template.replace(/\{value\}/g, value)
 }
 
-async function performLookup(value: string) {
-  let hasResult = false
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+    p.then(v => { clearTimeout(t); resolve(v) }, e => { clearTimeout(t); reject(e) })
+  })
+}
 
-  // KV Lookup
+async function performLookup(value: string) {
+  const timeoutMs = cfg.value.lookupTimeoutMs ?? 5000
+  let kvHadHit = false
+  let pbHadHit = false
+  let kvErr: string | null = null
+  let pbErr: string | null = null
+
+  // KV badge lookup
   if (cfg.value.kvEnabled && cfg.value.kvBucket) {
     try {
       const resolvedKey = replacePlaceholder(cfg.value.kvKeyTemplate || '{value}', value)
-      const result = await kvGet(cfg.value.kvBucket, resolvedKey)
+      const result = await withTimeout(kvGet(cfg.value.kvBucket, resolvedKey), timeoutMs, 'KV lookup')
       if (result !== null) {
-        kvResult.value = result
-        hasResult = true
+        // If the value isn't an object, treat as unknown record shape
+        if (typeof result === 'object' && !Array.isArray(result)) {
+          badgeRecord.value = result as BadgeRecord
+        } else {
+          badgeRecord.value = { metadata: { value: result } }
+        }
+        kvHadHit = true
       } else {
-        kvError.value = `Key not found: ${resolvedKey}`
+        kvErr = 'Not found'
       }
     } catch (err: any) {
-      kvError.value = err.message || 'KV lookup failed'
+      kvErr = err.message || 'KV lookup failed'
     }
   }
 
-  // PocketBase Lookup
+  // PB lookup — optional, for non-badge asset/thing scans
   if (cfg.value.pbEnabled && cfg.value.pbCollection) {
     try {
       const filter = replacePlaceholder(cfg.value.pbFilter || '', value)
@@ -240,9 +336,12 @@ async function performLookup(value: string) {
       if (filter) options.filter = filter
       if (cfg.value.pbFields) options.fields = cfg.value.pbFields
 
-      const result = await pb.collection(cfg.value.pbCollection).getList(1, 10, options)
+      const result = await withTimeout(
+        pb.collection(cfg.value.pbCollection).getList(1, 10, options),
+        timeoutMs,
+        'PB lookup'
+      )
       if (result.items.length > 0) {
-        // Filter out PB system fields for cleaner display
         pbResult.value = result.items.map((item: any) => {
           const clean: Record<string, any> = {}
           for (const [k, v] of Object.entries(item)) {
@@ -252,40 +351,126 @@ async function performLookup(value: string) {
           }
           return clean
         })
-        hasResult = true
+        pbHadHit = true
       } else {
-        pbError.value = 'No matching records'
+        pbErr = 'No matching records'
       }
     } catch (err: any) {
-      pbError.value = err.message || 'PB lookup failed'
+      pbErr = err.message || 'PB lookup failed'
     }
   }
 
-  // Publish audit event
-  if (cfg.value.publishEnabled && cfg.value.publishSubject && natsStore.nc) {
+  // Decide GO/NO-GO + reason
+  if (cfg.value.kvEnabled) {
+    if (!kvHadHit) {
+      found.value = false
+      reason.value = 'unknown'
+    } else {
+      const v = validateBadge(badgeRecord.value)
+      found.value = v.ok
+      reason.value = v.reason
+    }
+  } else if (cfg.value.pbEnabled) {
+    found.value = pbHadHit
+    reason.value = pbHadHit ? 'ok' : 'unknown'
+  } else {
+    found.value = false
+    reason.value = 'unknown'
+  }
+
+  // Publish (templatable)
+  if (cfg.value.publishEnabled && natsStore.nc) {
     try {
-      const payload = JSON.stringify({
-        value,
-        found: hasResult,
-        timestamp: new Date().toISOString(),
-      })
-      natsStore.nc.publish(cfg.value.publishSubject, encodeString(payload))
-      publishStatus.value = `Published to ${cfg.value.publishSubject}`
+      const subject = renderSubject(
+        cfg.value.publishSubjectTemplate || cfg.value.publishSubject || '',
+        buildSubjectTokens(value)
+      )
+      const payloadTemplate = cfg.value.publishPayloadTemplate ||
+        '{ "value": "{value}", "found": {found}, "ts": "{ts}" }'
+      const payloadJson = renderPayload(payloadTemplate, buildPayloadTokens(value))
+      if (!subject) throw new Error('Subject template resolved to empty')
+      natsStore.nc.publish(subject, encodeString(payloadJson))
+      publishStatus.value = `Published to ${subject}`
     } catch (err: any) {
       publishStatus.value = `Publish failed: ${err.message}`
     }
   }
 
-  if (hasResult) {
+  // Decide final UI state — always show result so operator sees GO/NO-GO + reason
+  if (kvHadHit || pbHadHit || cfg.value.kvEnabled) {
     state.value = 'result'
   } else {
-    // Build error message from per-source errors
+    // No enabled source produced anything
     const parts: string[] = []
-    if (kvError.value) parts.push(`KV: ${kvError.value}`)
-    if (pbError.value) parts.push(`PB: ${pbError.value}`)
+    if (kvErr) parts.push(`KV: ${kvErr}`)
+    if (pbErr) parts.push(`PB: ${pbErr}`)
     errorMessage.value = parts.length > 0 ? parts.join('; ') : 'Not found'
     state.value = 'error'
   }
+}
+
+function validateBadge(rec: BadgeRecord | null): { ok: boolean; reason: BadgeReason } {
+  if (!rec) return { ok: false, reason: 'unknown' }
+  if (rec.revoked === true) return { ok: false, reason: 'revoked' }
+  if (rec.expires_at) {
+    const exp = Date.parse(rec.expires_at)
+    if (!Number.isNaN(exp) && exp <= Date.now()) return { ok: false, reason: 'expired' }
+  }
+  return { ok: true, reason: 'ok' }
+}
+
+// String tokens get JSON-escaped (without surrounding quotes) for safe injection
+// inside "…" in the payload template. Raw tokens inject as-is (bool/JSON literal).
+function escapeInsideQuotes(s: string): string {
+  const j = JSON.stringify(s)
+  return j.slice(1, j.length - 1)
+}
+
+function buildSubjectTokens(value: string): Record<string, string> {
+  const scannerNkey = authStore.currentNatsUser?.public_key || ''
+  const scannerKind = (pb.authStore.record as any)?.collectionName === 'things' ? 'thing' : 'user'
+  return {
+    value,
+    scanner: scannerNkey,
+    scanner_kind: scannerKind,
+    device_label: cfg.value.deviceLabel || '',
+    purpose: cfg.value.scanPurpose || 'other',
+    location: cfg.value.location || '',
+    found: found.value ? 'true' : 'false',
+    reason: reason.value,
+    ts: new Date().toISOString(),
+  }
+}
+
+function buildPayloadTokens(value: string): Record<string, string> {
+  const scannerNkey = authStore.currentNatsUser?.public_key || ''
+  const scannerKind = (pb.authStore.record as any)?.collectionName === 'things' ? 'thing' : 'user'
+  return {
+    // String tokens — escaped for injection inside "..."
+    value: escapeInsideQuotes(value),
+    scanner: escapeInsideQuotes(scannerNkey),
+    scanner_kind: escapeInsideQuotes(scannerKind),
+    device_label: escapeInsideQuotes(cfg.value.deviceLabel || ''),
+    purpose: escapeInsideQuotes(cfg.value.scanPurpose || 'other'),
+    location: escapeInsideQuotes(cfg.value.location || ''),
+    reason: escapeInsideQuotes(reason.value),
+    ts: escapeInsideQuotes(new Date().toISOString()),
+    // Raw-value tokens
+    found: found.value ? 'true' : 'false',
+    metadata: JSON.stringify(badgeRecord.value?.metadata || {}),
+  }
+}
+
+function renderSubject(template: string, tokens: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (_m, tok) => tokens[tok] ?? '')
+}
+
+function renderPayload(template: string, tokens: Record<string, string>): string {
+  // Operator controls types by quoting: "{ts}" → string, bare {found}/{metadata} → literal.
+  const rendered = template.replace(/\{(\w+)\}/g, (_m, tok) => tokens[tok] ?? '')
+  // Validate it parses to JSON; throws → caught by caller.
+  JSON.parse(rendered)
+  return rendered
 }
 
 async function kvGet(bucket: string, key: string): Promise<any> {
@@ -342,6 +527,14 @@ onUnmounted(() => {
   flex: 1;
   display: flex;
   flex-direction: column;
+  gap: 8px;
+  border-radius: 4px;
+}
+
+.idle-scan {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 8px;
@@ -350,7 +543,7 @@ onUnmounted(() => {
   border-radius: 4px;
 }
 
-.scanner-idle:hover {
+.idle-scan:hover {
   background: oklch(var(--b2) / 0.5);
 }
 
@@ -365,6 +558,30 @@ onUnmounted(() => {
   color: oklch(var(--bc) / 0.6);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.manual-entry {
+  display: flex;
+  gap: 4px;
+  padding: 4px 8px 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.manual-input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  font-size: 11px;
+  border: 1px solid oklch(var(--b3));
+  border-radius: 4px;
+  background: oklch(var(--b1));
+  color: oklch(var(--bc));
+}
+
+.manual-input:focus {
+  outline: 2px solid oklch(var(--p) / 0.3);
+  outline-offset: -2px;
 }
 
 /* --- Scanning --- */
@@ -385,7 +602,6 @@ onUnmounted(() => {
   position: relative;
 }
 
-/* html5-qrcode injects a video element + shaded region canvas */
 .scanner-viewfinder :deep(video) {
   width: 100% !important;
   height: 100% !important;
@@ -441,17 +657,22 @@ onUnmounted(() => {
 }
 
 .result-badge {
-  font-size: 10px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  padding: 2px 8px;
+  padding: 3px 10px;
   border-radius: 100px;
 }
 
-.result-success {
+.result-go {
   background: oklch(var(--su) / 0.15);
   color: oklch(var(--su));
+}
+
+.result-nogo {
+  background: oklch(var(--er) / 0.15);
+  color: oklch(var(--er));
 }
 
 .result-scanned {
@@ -460,6 +681,12 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.result-reason {
+  font-size: 12px;
+  color: oklch(var(--er));
+  flex-shrink: 0;
 }
 
 .result-data {
@@ -474,11 +701,6 @@ onUnmounted(() => {
   border: 1px solid oklch(var(--b3));
   border-radius: 6px;
   padding: 8px;
-}
-
-.result-section-error {
-  border-color: oklch(var(--er) / 0.3);
-  background: oklch(var(--er) / 0.05);
 }
 
 .result-section-label {
@@ -523,12 +745,6 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 200px;
-}
-
-.result-raw {
-  font-size: 11px;
-  color: oklch(var(--bc));
-  word-break: break-all;
 }
 
 .publish-status {

@@ -121,7 +121,14 @@ export interface WidgetFormState {
   scannerPbFilter: string
   scannerPbFields: string
   scannerPublishEnabled: boolean
-  scannerPublishSubject: string
+  scannerPublishSubjectTemplate: string
+  scannerPublishPayloadTemplate: string
+  scannerDeviceLabel: string
+  scannerPurpose: 'muster' | 'verify' | 'other'
+  scannerLocation: string
+  scannerDedupWindowMs: number
+  scannerLookupTimeoutMs: number
+  scannerAllowManualEntry: boolean
 
   // JetStream
   useJetStream: boolean
@@ -208,15 +215,22 @@ export function createEmptyFormState(): WidgetFormState {
     pbRefreshInterval: 0,
 
     // Scanner Defaults
-    scannerKvEnabled: false,
-    scannerKvBucket: '',
+    scannerKvEnabled: true,
+    scannerKvBucket: 'badges',
     scannerKvKeyTemplate: '{value}',
-    scannerPbEnabled: true,
-    scannerPbCollection: 'nats_users',
-    scannerPbFilter: 'public_key = "{value}"',
+    scannerPbEnabled: false,
+    scannerPbCollection: '',
+    scannerPbFilter: '',
     scannerPbFields: '',
     scannerPublishEnabled: false,
-    scannerPublishSubject: 'scans.badge',
+    scannerPublishSubjectTemplate: 'scans.{purpose}.{scanner}',
+    scannerPublishPayloadTemplate: '{ "value": "{value}", "found": {found}, "ts": "{ts}" }',
+    scannerDeviceLabel: '',
+    scannerPurpose: 'verify',
+    scannerLocation: '',
+    scannerDedupWindowMs: 3000,
+    scannerLookupTimeoutMs: 5000,
+    scannerAllowManualEntry: true,
 
     // KV Table Defaults
     kvTableBucket: '',

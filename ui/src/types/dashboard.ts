@@ -206,22 +206,48 @@ export interface PocketBaseWidgetConfig {
 }
 
 // --- Scanner Widget Config ---
-export interface ScannerWidgetConfig {
-  // KV lookup (optional)
-  kvEnabled?: boolean
-  kvBucket?: string
-  kvKeyTemplate?: string    // e.g. "badges.{value}" — {value} replaced with scanned content
+export type ScanPurpose = 'muster' | 'verify' | 'other'
 
-  // PocketBase lookup (optional)
+export interface ScannerWidgetConfig {
+  // KV lookup — primary badge path (value of key is a badge record, see below)
+  kvEnabled?: boolean
+  kvBucket?: string          // e.g. "badges"
+  kvKeyTemplate?: string     // e.g. "{value}" — {value} replaced with scanned content
+
+  // PocketBase lookup — optional, for non-badge (asset/thing) scan scenarios
   pbEnabled?: boolean
   pbCollection?: string
   pbFilter?: string          // e.g. 'public_key = "{value}"'
   pbFields?: string
 
-  // Optional: publish scan event to NATS subject for audit trail
+  // Publish scan event (templatable — operator chooses subject + payload shape)
   publishEnabled?: boolean
-  publishSubject?: string    // e.g. "scans.badge"
+  publishSubjectTemplate?: string   // tokens: {value} {scanner} {scanner_kind} {device_label} {purpose} {location} {found} {reason} {ts}
+  publishPayloadTemplate?: string   // JSON template; same tokens. Widget does string substitution then JSON.parse.
+
+  // Legacy (pre-template) — read as fallback if publishSubjectTemplate is absent
+  publishSubject?: string
+
+  // Scan context — populates tokens in subject/payload templates
+  deviceLabel?: string
+  scanPurpose?: ScanPurpose
+  location?: string          // free-form id or label
+
+  // Behavior
+  dedupWindowMs?: number     // suppress repeat scans of same value within window
+  lookupTimeoutMs?: number   // abort KV lookup after this
+  allowManualEntry?: boolean // show a text input fallback
 }
+
+// --- Badge KV record (value stored in the `badges` bucket) ---
+// Interpreted by the scanner widget for GO/NO-GO decisions.
+export interface BadgeRecord {
+  expires_at?: string | null   // ISO timestamp; null/absent = no expiry
+  revoked?: boolean            // default false
+  metadata?: Record<string, any>
+}
+
+export type BadgeReason = 'ok' | 'unknown' | 'revoked' | 'expired'
 
 // --- KV Table Widget Types ---
 export type KvTableColumnFormat = 'text' | 'number' | 'relative-time' | 'datetime'
@@ -565,15 +591,22 @@ export function createDefaultWidget(type: WidgetType, position: { x: number; y: 
     case 'scanner':
       base.title = 'Scanner'
       base.scannerConfig = {
-        kvEnabled: false,
-        kvBucket: '',
+        kvEnabled: true,
+        kvBucket: 'badges',
         kvKeyTemplate: '{value}',
-        pbEnabled: true,
-        pbCollection: 'nats_users',
-        pbFilter: 'public_key = "{value}"',
+        pbEnabled: false,
+        pbCollection: '',
+        pbFilter: '',
         pbFields: '',
         publishEnabled: false,
-        publishSubject: 'scans.badge',
+        publishSubjectTemplate: 'scans.{purpose}.{scanner}',
+        publishPayloadTemplate: '{ "value": "{value}", "found": {found}, "ts": "{ts}" }',
+        deviceLabel: '',
+        scanPurpose: 'verify',
+        location: '',
+        dedupWindowMs: 3000,
+        lookupTimeoutMs: 5000,
+        allowManualEntry: true,
       }
       break
   }

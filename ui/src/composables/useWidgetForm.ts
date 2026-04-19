@@ -635,15 +635,25 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
   scanner: {
     hydrate(widget, state) {
       if (widget.scannerConfig) {
-        state.scannerKvEnabled = widget.scannerConfig.kvEnabled ?? false
-        state.scannerKvBucket = widget.scannerConfig.kvBucket || ''
-        state.scannerKvKeyTemplate = widget.scannerConfig.kvKeyTemplate || '{value}'
-        state.scannerPbEnabled = widget.scannerConfig.pbEnabled ?? true
-        state.scannerPbCollection = widget.scannerConfig.pbCollection || ''
-        state.scannerPbFilter = widget.scannerConfig.pbFilter || ''
-        state.scannerPbFields = widget.scannerConfig.pbFields || ''
-        state.scannerPublishEnabled = widget.scannerConfig.publishEnabled ?? false
-        state.scannerPublishSubject = widget.scannerConfig.publishSubject || ''
+        const c = widget.scannerConfig
+        state.scannerKvEnabled = c.kvEnabled ?? true
+        state.scannerKvBucket = c.kvBucket || 'badges'
+        state.scannerKvKeyTemplate = c.kvKeyTemplate || '{value}'
+        state.scannerPbEnabled = c.pbEnabled ?? false
+        state.scannerPbCollection = c.pbCollection || ''
+        state.scannerPbFilter = c.pbFilter || ''
+        state.scannerPbFields = c.pbFields || ''
+        state.scannerPublishEnabled = c.publishEnabled ?? false
+        state.scannerPublishSubjectTemplate =
+          c.publishSubjectTemplate || c.publishSubject || 'scans.{purpose}.{scanner}'
+        state.scannerPublishPayloadTemplate =
+          c.publishPayloadTemplate || '{ "value": "{value}", "found": {found}, "ts": "{ts}" }'
+        state.scannerDeviceLabel = c.deviceLabel || ''
+        state.scannerPurpose = c.scanPurpose || 'verify'
+        state.scannerLocation = c.location || ''
+        state.scannerDedupWindowMs = c.dedupWindowMs ?? 3000
+        state.scannerLookupTimeoutMs = c.lookupTimeoutMs ?? 5000
+        state.scannerAllowManualEntry = c.allowManualEntry ?? true
       }
     },
     validate(form, errors) {
@@ -653,11 +663,34 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
       if (form.scannerPbEnabled && !form.scannerPbCollection.trim()) {
         errors.scannerPbCollection = 'Collection is required when enabled'
       }
-      if (form.scannerPublishEnabled && !form.scannerPublishSubject.trim()) {
-        errors.scannerPublishSubject = 'Subject is required when enabled'
-      }
       if (!form.scannerKvEnabled && !form.scannerPbEnabled) {
         errors.scannerKvBucket = 'At least one lookup source must be enabled'
+      }
+      if (form.scannerPublishEnabled) {
+        if (!form.scannerPublishSubjectTemplate.trim()) {
+          errors.scannerPublishSubjectTemplate = 'Subject template is required when publish is enabled'
+        }
+        const payload = form.scannerPublishPayloadTemplate.trim()
+        if (!payload) {
+          errors.scannerPublishPayloadTemplate = 'Payload template is required when publish is enabled'
+        } else {
+          // Validate payload template is valid JSON once tokens are replaced with sentinels
+          const sentinelized = payload.replace(
+            /\{(value|scanner|scanner_kind|device_label|purpose|location|reason|ts|metadata|found)\}/g,
+            (_m, tok) => (tok === 'found' ? 'false' : tok === 'metadata' ? '{}' : '"_"')
+          )
+          try {
+            JSON.parse(sentinelized)
+          } catch {
+            errors.scannerPublishPayloadTemplate = 'Payload template must be valid JSON after token substitution'
+          }
+        }
+      }
+      if (form.scannerDedupWindowMs < 0) {
+        errors.scannerDedupWindowMs = 'Dedup window must be 0 or greater'
+      }
+      if (form.scannerLookupTimeoutMs <= 0) {
+        errors.scannerLookupTimeoutMs = 'Lookup timeout must be greater than 0'
       }
     },
     buildUpdates(form) {
@@ -671,7 +704,14 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
           pbFilter: form.scannerPbFilter.trim(),
           pbFields: form.scannerPbFields.trim(),
           publishEnabled: form.scannerPublishEnabled,
-          publishSubject: form.scannerPublishSubject.trim(),
+          publishSubjectTemplate: form.scannerPublishSubjectTemplate.trim(),
+          publishPayloadTemplate: form.scannerPublishPayloadTemplate.trim(),
+          deviceLabel: form.scannerDeviceLabel.trim(),
+          scanPurpose: form.scannerPurpose,
+          location: form.scannerLocation.trim(),
+          dedupWindowMs: form.scannerDedupWindowMs,
+          lookupTimeoutMs: form.scannerLookupTimeoutMs,
+          allowManualEntry: form.scannerAllowManualEntry,
         },
       }
     },

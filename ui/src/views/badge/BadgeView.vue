@@ -6,6 +6,9 @@ import { useNatsStore } from '@/stores/nats'
 import { pb } from '@/utils/pb'
 import { format } from 'date-fns'
 import QRCode from 'qrcode'
+import { Kvm } from '@nats-io/kv'
+import { decodeBytes } from '@/utils/encoding'
+import type { BadgeRecord } from '@/types/dashboard'
 
 const route = useRoute()
 const authStore = useAuthStore()
@@ -95,6 +98,63 @@ let clockInterval: ReturnType<typeof setInterval> | null = null
 const clockTime = computed(() => format(now.value, 'h:mm:ss a'))
 const clockDate = computed(() => format(now.value, 'EEE, MMM d'))
 
+// Badge KV record (lifecycle + arbitrary metadata)
+const badgeRecord = ref<BadgeRecord | null>(null)
+
+const expiresLabel = computed(() => {
+  const exp = badgeRecord.value?.expires_at
+  if (!exp) return null
+  const d = new Date(exp)
+  if (Number.isNaN(d.getTime())) return null
+  return format(d, 'MMM d, yyyy')
+})
+
+const badgeIsRevoked = computed(() => badgeRecord.value?.revoked === true)
+
+const metadataEntries = computed(() => {
+  const meta = badgeRecord.value?.metadata || {}
+  return Object.entries(meta).map(([key, value]) => ({ key, value: formatMetaValue(value) }))
+})
+
+function formatMetaValue(v: any): string {
+  if (v === null || v === undefined) return '-'
+  if (typeof v === 'object') return JSON.stringify(v)
+  return String(v)
+}
+
+async function loadBadgeRecord() {
+  const pk = authStore.currentNatsUser?.public_key
+  if (!pk || !natsStore.nc) {
+    badgeRecord.value = null
+    return
+  }
+  try {
+    const kvm = new Kvm(natsStore.nc)
+    const kv = await kvm.open('badges')
+    const entry = await kv.get(pk)
+    if (!entry || !entry.value) {
+      badgeRecord.value = null
+      return
+    }
+    const str = decodeBytes(entry.value)
+    try {
+      badgeRecord.value = JSON.parse(str) as BadgeRecord
+    } catch {
+      badgeRecord.value = null
+    }
+  } catch {
+    // Bucket missing or other error — render badge without lifecycle chip
+    badgeRecord.value = null
+  }
+}
+
+// Reload when connection status / nats_user changes
+watch(
+  () => [authStore.currentNatsUser?.public_key, natsStore.status],
+  () => { loadBadgeRecord() },
+  { immediate: true }
+)
+
 onMounted(() => {
   clockInterval = setInterval(() => { now.value = new Date() }, 1000)
 })
@@ -169,6 +229,24 @@ onUnmounted(() => {
               Since {{ memberSince }}
             </div>
           </div>
+        </div>
+
+        <!-- Lifecycle + metadata chips from `badges` KV, if present -->
+        <div v-if="badgeRecord" class="badge-lifecycle">
+          <span v-if="badgeIsRevoked" class="lifecycle-chip lifecycle-chip--revoked">
+            Revoked
+          </span>
+          <span v-else-if="expiresLabel" class="lifecycle-chip">
+            Expires {{ expiresLabel }}
+          </span>
+          <span
+            v-for="entry in metadataEntries"
+            :key="entry.key"
+            class="lifecycle-chip lifecycle-chip--meta"
+          >
+            <span class="chip-key">{{ entry.key }}</span>
+            <span class="chip-value">{{ entry.value }}</span>
+          </span>
         </div>
 
         <!-- No NATS identity fallback -->
@@ -517,6 +595,50 @@ onUnmounted(() => {
   font-size: 0.75rem;
   color: oklch(var(--bc) / 0.4);
   font-weight: 500;
+}
+
+/* ========================================
+   Lifecycle Chips (from KV `badges`)
+   ======================================== */
+.badge-lifecycle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.75rem;
+  justify-content: center;
+}
+
+.lifecycle-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.2rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  background: oklch(var(--b2));
+  color: oklch(var(--bc) / 0.7);
+  border: 1px solid oklch(var(--b3));
+}
+
+.lifecycle-chip--revoked {
+  background: oklch(var(--er) / 0.1);
+  color: oklch(var(--er));
+  border-color: oklch(var(--er) / 0.25);
+}
+
+.lifecycle-chip--meta .chip-key {
+  color: oklch(var(--bc) / 0.5);
+  font-weight: 500;
+  text-transform: lowercase;
+}
+
+.lifecycle-chip--meta .chip-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ========================================
