@@ -70,7 +70,6 @@ export interface ThingType extends BaseRecord {
   capabilities?: ThingTypeCapability[]
   subject_prefix?: string
   operations?: string[] // Thing Type Operation IDs
-  nats_role?: string    // NATS Role ID — role whose content is derived from this Thing Type
 }
 
 // Thing Type Operation (shareable across Thing Types)
