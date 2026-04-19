@@ -3413,7 +3413,7 @@
       },
       {
         "cascadeDelete": false,
-        "collectionId": "pbc_thing_type_ops",
+        "collectionId": "pbc_1722283898",
         "hidden": false,
         "id": "relation_tt_operations",
         "maxSelect": 999,
@@ -3462,7 +3462,7 @@
     "system": false
   },
   {
-    "id": "pbc_exports_001",
+    "id": "pbc_3387006851",
     "listRule": "@request.auth.collectionName = \"users\" && \norganization = @request.auth.current_organization && \n@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n(@request.auth.memberships_via_user.role ?= \"owner\" || @request.auth.memberships_via_user.role ?= \"admin\")",
     "viewRule": "@request.auth.collectionName = \"users\" && \norganization = @request.auth.current_organization && \n@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n(@request.auth.memberships_via_user.role ?= \"owner\" || @request.auth.memberships_via_user.role ?= \"admin\")",
     "createRule": "@request.auth.collectionName = \"users\" && \n@request.body.organization = @request.auth.current_organization && \n@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n(@request.auth.memberships_via_user.role ?= \"owner\" || @request.auth.memberships_via_user.role ?= \"admin\")",
@@ -3658,7 +3658,7 @@
     "system": false
   },
   {
-    "id": "pbc_imports_001",
+    "id": "pbc_1566205663",
     "listRule": "@request.auth.collectionName = \"users\" && \norganization = @request.auth.current_organization && \n@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n(@request.auth.memberships_via_user.role ?= \"owner\" || @request.auth.memberships_via_user.role ?= \"admin\")",
     "viewRule": "@request.auth.collectionName = \"users\" && \norganization = @request.auth.current_organization && \n@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n(@request.auth.memberships_via_user.role ?= \"owner\" || @request.auth.memberships_via_user.role ?= \"admin\")",
     "createRule": "@request.auth.collectionName = \"users\" && \n@request.body.organization = @request.auth.current_organization && \n@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n(@request.auth.memberships_via_user.role ?= \"owner\" || @request.auth.memberships_via_user.role ?= \"admin\")",
@@ -3848,7 +3848,7 @@
     "system": false
   },
   {
-    "id": "pbc_thing_type_ops",
+    "id": "pbc_1722283898",
     "listRule": "@request.auth.collectionName = \"users\" && \n(organization = @request.auth.current_organization || organization = \"\")",
     "viewRule": "@request.auth.collectionName = \"users\" && \n(organization = @request.auth.current_organization || organization = \"\")",
     "createRule": "@request.auth.collectionName = \"users\" && \n@request.body.organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n @request.auth.memberships_via_user.role ?!= \"member\")",
@@ -3944,7 +3944,7 @@
       },
       {
         "cascadeDelete": false,
-        "collectionId": "pbc_message_schemas",
+        "collectionId": "pbc_1612162572",
         "hidden": false,
         "id": "relation_tto_schema",
         "maxSelect": 1,
@@ -3982,7 +3982,7 @@
     "system": false
   },
   {
-    "id": "pbc_message_schemas",
+    "id": "pbc_1612162572",
     "listRule": "@request.auth.collectionName = \"users\" && \n(organization = @request.auth.current_organization || organization = \"\")",
     "viewRule": "@request.auth.collectionName = \"users\" && \n(organization = @request.auth.current_organization || organization = \"\")",
     "createRule": "@request.auth.collectionName = \"users\" && \n@request.body.organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n @request.auth.memberships_via_user.role ?!= \"member\")",
