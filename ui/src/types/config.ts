@@ -1,5 +1,5 @@
 // ui/src/types/config.ts
-import type { ThresholdRule, MapMarker, StatusMapping, KvTableColumn, DynamicMarkerPopupField } from './dashboard'
+import type { ThresholdRule, MapMarker, StatusMapping, KvTableColumn, DynamicMarkerPopupField, ScannerRule } from './dashboard'
 
 export interface WidgetFormState {
   // Common
@@ -116,6 +116,7 @@ export interface WidgetFormState {
   scannerKvEnabled: boolean
   scannerKvBucket: string
   scannerKvKeyTemplate: string
+  scannerRules: ScannerRule[]
   scannerPbEnabled: boolean
   scannerPbCollection: string
   scannerPbFilter: string
@@ -218,6 +219,10 @@ export function createEmptyFormState(): WidgetFormState {
     scannerKvEnabled: true,
     scannerKvBucket: 'badges',
     scannerKvKeyTemplate: '{value}',
+    scannerRules: [
+      { field: 'revoked', op: 'falsy', reason: 'Revoked' },
+      { field: 'expires_at', op: 'future', reason: 'Expired' },
+    ],
     scannerPbEnabled: false,
     scannerPbCollection: '',
     scannerPbFilter: '',

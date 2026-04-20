@@ -214,6 +214,10 @@ export interface ScannerWidgetConfig {
   kvBucket?: string          // e.g. "badges"
   kvKeyTemplate?: string     // e.g. "{value}" — {value} replaced with scanned content
 
+  // Validation rules applied to the KV record to decide GO/NO-GO.
+  // Empty/undefined → any found record is GO.
+  rules?: ScannerRule[]
+
   // PocketBase lookup — optional, for non-badge (asset/thing) scan scenarios
   pbEnabled?: boolean
   pbCollection?: string
@@ -237,6 +241,21 @@ export interface ScannerWidgetConfig {
   dedupWindowMs?: number     // suppress repeat scans of same value within window
   lookupTimeoutMs?: number   // abort KV lookup after this
   allowManualEntry?: boolean // show a text input fallback
+}
+
+// --- Scanner validation rules ---
+export type ScannerRuleOp =
+  | 'truthy' | 'falsy'
+  | 'equals' | 'not_equals'
+  | 'in' | 'not_in'
+  | 'future' | 'past'
+  | 'exists' | 'missing'
+
+export interface ScannerRule {
+  field: string           // dot-path into the record, e.g. "revoked" or "metadata.level"
+  op: ScannerRuleOp
+  value?: any             // used by equals/not_equals/in/not_in
+  reason?: string         // shown as NO-GO label; falls back to `${field} ${op}`
 }
 
 // --- Badge KV record (value stored in the `badges` bucket) ---

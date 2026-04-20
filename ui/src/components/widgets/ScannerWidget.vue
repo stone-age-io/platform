@@ -51,20 +51,12 @@
       </div>
 
       <div class="result-data">
-        <!-- Badge KV record -->
-        <div v-if="badgeRecord" class="result-section">
-          <div class="result-section-label">Badge</div>
+        <!-- KV Record (generic — any shape) -->
+        <div v-if="kvRecord" class="result-section">
+          <div class="result-section-label">Record</div>
           <div class="result-entries">
-            <div v-if="badgeRecord.expires_at" class="result-entry">
-              <span class="entry-key">expires_at</span>
-              <span class="entry-value font-mono">{{ badgeRecord.expires_at }}</span>
-            </div>
-            <div v-if="badgeRecord.revoked" class="result-entry">
-              <span class="entry-key">revoked</span>
-              <span class="entry-value font-mono">true</span>
-            </div>
             <div
-              v-for="(val, key) in badgeRecord.metadata || {}"
+              v-for="(val, key) in kvRecord"
               :key="String(key)"
               class="result-entry"
             >
@@ -127,7 +119,7 @@ import { useNatsStore } from '@/stores/nats'
 import { useAuthStore } from '@/stores/auth'
 import { pb } from '@/utils/pb'
 import { encodeString, decodeBytes } from '@/utils/encoding'
-import type { WidgetConfig, BadgeRecord, BadgeReason } from '@/types/dashboard'
+import type { WidgetConfig, ScannerRule } from '@/types/dashboard'
 
 const props = withDefaults(defineProps<{
   config: WidgetConfig
@@ -144,12 +136,12 @@ type ScanState = 'idle' | 'scanning' | 'loading' | 'result' | 'error'
 const state = ref<ScanState>('idle')
 const scannedValue = ref('')
 const errorMessage = ref('')
-const badgeRecord = ref<BadgeRecord | null>(null)
+const kvRecord = ref<Record<string, any> | null>(null)
 const pbResult = ref<any>(null)
 const publishStatus = ref<string | null>(null)
 const manualInput = ref('')
 const found = ref(false)
-const reason = ref<BadgeReason>('unknown')
+const reason = ref<string>('unknown')
 
 let html5Qrcode: Html5Qrcode | null = null
 const readerId = `scanner-${props.config.id}`
@@ -172,13 +164,10 @@ const pbItems = computed(() => {
 })
 
 const reasonLabel = computed(() => {
-  switch (reason.value) {
-    case 'ok': return 'OK'
-    case 'unknown': return 'Unknown — no record found'
-    case 'revoked': return 'Revoked'
-    case 'expired': return 'Expired'
-    default: return String(reason.value)
-  }
+  const r = reason.value
+  if (r === 'ok') return 'OK'
+  if (r === 'unknown') return 'Unknown — no record found'
+  return r
 })
 
 // --- Scanner ---
@@ -273,7 +262,7 @@ async function processValue(value: string) {
 }
 
 function resetResults() {
-  badgeRecord.value = null
+  kvRecord.value = null
   pbResult.value = null
   publishStatus.value = null
   scannedValue.value = ''
@@ -313,11 +302,12 @@ async function performLookup(value: string) {
       const resolvedKey = replacePlaceholder(cfg.value.kvKeyTemplate || '{value}', value)
       const result = await withTimeout(kvGet(cfg.value.kvBucket, resolvedKey), timeoutMs, 'KV lookup')
       if (result !== null) {
-        // If the value isn't an object, treat as unknown record shape
+        // Normalize non-object values into a single-field record so generic
+        // rendering and rule evaluation still work.
         if (typeof result === 'object' && !Array.isArray(result)) {
-          badgeRecord.value = result as BadgeRecord
+          kvRecord.value = result as Record<string, any>
         } else {
-          badgeRecord.value = { metadata: { value: result } }
+          kvRecord.value = { value: result }
         }
         kvHadHit = true
       } else {
@@ -366,7 +356,7 @@ async function performLookup(value: string) {
       found.value = false
       reason.value = 'unknown'
     } else {
-      const v = validateBadge(badgeRecord.value)
+      const v = evaluateRules(kvRecord.value, cfg.value.rules)
       found.value = v.ok
       reason.value = v.reason
     }
@@ -409,12 +399,41 @@ async function performLookup(value: string) {
   }
 }
 
-function validateBadge(rec: BadgeRecord | null): { ok: boolean; reason: BadgeReason } {
+function getByPath(obj: any, path: string): any {
+  if (!obj || !path) return undefined
+  return path.split('.').reduce((acc, k) => (acc == null ? acc : acc[k]), obj)
+}
+
+function evalRule(rec: any, r: ScannerRule): boolean {
+  const v = getByPath(rec, r.field)
+  switch (r.op) {
+    case 'truthy':     return !!v
+    case 'falsy':      return !v
+    case 'equals':     return v === r.value
+    case 'not_equals': return v !== r.value
+    case 'in':         return Array.isArray(r.value) && r.value.includes(v)
+    case 'not_in':     return Array.isArray(r.value) && !r.value.includes(v)
+    case 'exists':     return v !== undefined && v !== null
+    case 'missing':    return v === undefined || v === null
+    case 'future': {
+      // Absent value ≡ no expiry → pass. Mirrors legacy behavior for expires_at.
+      if (v == null) return true
+      const t = Date.parse(String(v))
+      return !Number.isNaN(t) && t > Date.now()
+    }
+    case 'past': {
+      if (v == null) return false
+      const t = Date.parse(String(v))
+      return !Number.isNaN(t) && t < Date.now()
+    }
+  }
+}
+
+function evaluateRules(rec: any, rules: ScannerRule[] | undefined): { ok: boolean; reason: string } {
   if (!rec) return { ok: false, reason: 'unknown' }
-  if (rec.revoked === true) return { ok: false, reason: 'revoked' }
-  if (rec.expires_at) {
-    const exp = Date.parse(rec.expires_at)
-    if (!Number.isNaN(exp) && exp <= Date.now()) return { ok: false, reason: 'expired' }
+  if (!rules || rules.length === 0) return { ok: true, reason: 'ok' }
+  for (const r of rules) {
+    if (!evalRule(rec, r)) return { ok: false, reason: r.reason || `${r.field} ${r.op}` }
   }
   return { ok: true, reason: 'ok' }
 }
@@ -457,7 +476,7 @@ function buildPayloadTokens(value: string): Record<string, string> {
     ts: escapeInsideQuotes(new Date().toISOString()),
     // Raw-value tokens
     found: found.value ? 'true' : 'false',
-    metadata: JSON.stringify(badgeRecord.value?.metadata || {}),
+    metadata: JSON.stringify(kvRecord.value?.metadata ?? kvRecord.value ?? {}),
   }
 }
 

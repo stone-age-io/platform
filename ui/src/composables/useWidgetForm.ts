@@ -639,6 +639,14 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
         state.scannerKvEnabled = c.kvEnabled ?? true
         state.scannerKvBucket = c.kvBucket || 'badges'
         state.scannerKvKeyTemplate = c.kvKeyTemplate || '{value}'
+        // Legacy widgets predate `rules`; seed the two rules that mirror the
+        // old hardcoded revoked/expires_at check so behavior is preserved.
+        state.scannerRules = c.rules !== undefined
+          ? JSON.parse(JSON.stringify(c.rules))
+          : [
+              { field: 'revoked', op: 'falsy', reason: 'Revoked' },
+              { field: 'expires_at', op: 'future', reason: 'Expired' },
+            ]
         state.scannerPbEnabled = c.pbEnabled ?? false
         state.scannerPbCollection = c.pbCollection || ''
         state.scannerPbFilter = c.pbFilter || ''
@@ -665,6 +673,22 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
       }
       if (!form.scannerKvEnabled && !form.scannerPbEnabled) {
         errors.scannerKvBucket = 'At least one lookup source must be enabled'
+      }
+      if (form.scannerKvEnabled) {
+        const valueOps = new Set(['equals', 'not_equals', 'in', 'not_in'])
+        for (let i = 0; i < form.scannerRules.length; i++) {
+          const r = form.scannerRules[i]
+          if (!r.field || !r.field.trim()) {
+            errors[`scannerRules.${i}.field`] = 'Field is required'
+          }
+          if (valueOps.has(r.op)) {
+            const v = r.value
+            const empty = v === undefined || v === null || (typeof v === 'string' && v.trim() === '')
+            if (empty) {
+              errors[`scannerRules.${i}.value`] = 'Value is required for this operator'
+            }
+          }
+        }
       }
       if (form.scannerPublishEnabled) {
         if (!form.scannerPublishSubjectTemplate.trim()) {
@@ -701,6 +725,7 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
           kvEnabled: form.scannerKvEnabled,
           kvBucket: form.scannerKvBucket.trim(),
           kvKeyTemplate: form.scannerKvKeyTemplate.trim() || '{value}',
+          rules: JSON.parse(JSON.stringify(form.scannerRules)),
           pbEnabled: form.scannerPbEnabled,
           pbCollection: form.scannerPbCollection.trim(),
           pbFilter: form.scannerPbFilter.trim(),

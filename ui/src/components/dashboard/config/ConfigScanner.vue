@@ -71,6 +71,66 @@
             <code>{value}</code> is the scanned string (nkey for badges).
           </div>
         </div>
+
+        <div class="form-group">
+          <label>Validation Rules</label>
+          <div class="help-text rules-help">
+            All rules must pass for GO. Empty list → any found record is GO.
+            Use dot-paths for nested fields (e.g. <code>metadata.level</code>).
+          </div>
+
+          <div v-if="form.scannerRules.length > 0" class="rules-list">
+            <div
+              v-for="(rule, idx) in form.scannerRules"
+              :key="idx"
+              class="rule-row"
+            >
+              <div class="rule-row-main">
+                <input
+                  v-model="rule.field"
+                  type="text"
+                  class="form-input font-mono rule-field"
+                  placeholder="field.path"
+                />
+                <select v-model="rule.op" class="form-input rule-op">
+                  <option v-for="op in RULE_OPS" :key="op.value" :value="op.value">
+                    {{ op.label }}
+                  </option>
+                </select>
+                <input
+                  v-if="opUsesValue(rule.op)"
+                  :value="valueToInput(rule)"
+                  type="text"
+                  class="form-input font-mono rule-value"
+                  :placeholder="rule.op === 'in' || rule.op === 'not_in' ? 'a, b, c' : 'value'"
+                  @input="onValueInput(rule, ($event.target as HTMLInputElement).value)"
+                />
+                <button
+                  type="button"
+                  class="btn btn-xs btn-ghost rule-remove"
+                  @click="removeRule(idx)"
+                  aria-label="Remove rule"
+                >×</button>
+              </div>
+              <input
+                v-model="rule.reason"
+                type="text"
+                class="form-input rule-reason"
+                placeholder="NO-GO label (optional)"
+              />
+              <span v-if="errors[`scannerRules.${idx}.field`]" class="error-text">
+                {{ errors[`scannerRules.${idx}.field`] }}
+              </span>
+              <span v-if="errors[`scannerRules.${idx}.value`]" class="error-text">
+                {{ errors[`scannerRules.${idx}.value`] }}
+              </span>
+            </div>
+          </div>
+
+          <button type="button" class="btn btn-xs btn-ghost rule-add" @click="addRule">
+            + Add Rule
+          </button>
+        </div>
       </template>
     </div>
 
@@ -206,11 +266,52 @@
 
 <script setup lang="ts">
 import type { WidgetFormState } from '@/types/config'
+import type { ScannerRule, ScannerRuleOp } from '@/types/dashboard'
 
-defineProps<{
+const props = defineProps<{
   form: WidgetFormState
   errors: Record<string, string>
 }>()
+
+const RULE_OPS: { value: ScannerRuleOp; label: string }[] = [
+  { value: 'truthy',     label: 'is truthy' },
+  { value: 'falsy',      label: 'is falsy' },
+  { value: 'equals',     label: 'equals' },
+  { value: 'not_equals', label: 'does not equal' },
+  { value: 'in',         label: 'is one of' },
+  { value: 'not_in',     label: 'is not one of' },
+  { value: 'future',     label: 'is in the future' },
+  { value: 'past',       label: 'is in the past' },
+  { value: 'exists',     label: 'exists' },
+  { value: 'missing',    label: 'is missing' },
+]
+
+function opUsesValue(op: ScannerRuleOp): boolean {
+  return op === 'equals' || op === 'not_equals' || op === 'in' || op === 'not_in'
+}
+
+function valueToInput(rule: ScannerRule): string {
+  const v = rule.value
+  if (v === undefined || v === null) return ''
+  if (Array.isArray(v)) return v.join(', ')
+  return String(v)
+}
+
+function onValueInput(rule: ScannerRule, raw: string) {
+  if (rule.op === 'in' || rule.op === 'not_in') {
+    rule.value = raw.split(',').map(s => s.trim()).filter(s => s.length > 0)
+  } else {
+    rule.value = raw
+  }
+}
+
+function addRule() {
+  props.form.scannerRules.push({ field: '', op: 'falsy', reason: '' })
+}
+
+function removeRule(idx: number) {
+  props.form.scannerRules.splice(idx, 1)
+}
 </script>
 
 <style scoped>
@@ -248,5 +349,58 @@ defineProps<{
   color: oklch(var(--er));
   font-size: 12px;
   margin-top: 2px;
+}
+
+.rules-help {
+  margin-bottom: 6px;
+}
+
+.rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.rule-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid oklch(var(--b3));
+  border-radius: 6px;
+  background: oklch(var(--b2) / 0.3);
+}
+
+.rule-row-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1.2fr) auto;
+  gap: 4px;
+  align-items: center;
+}
+
+.rule-row-main:has(.rule-value:not([hidden])) {
+  /* three inputs + remove button */
+}
+
+.rule-row-main:not(:has(.rule-value)) {
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto;
+}
+
+.rule-field,
+.rule-op,
+.rule-value,
+.rule-reason {
+  min-width: 0;
+}
+
+.rule-remove {
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 6px;
+}
+
+.rule-add {
+  align-self: flex-start;
 }
 </style>
