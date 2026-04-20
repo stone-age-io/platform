@@ -212,14 +212,20 @@
             v-model="form.scannerPublishPayloadTemplate"
             rows="5"
             class="form-input font-mono"
-            placeholder='{ "value": "{value}", "found": {found}, "ts": "{ts}" }'
+            placeholder='{ "value": "{value}", "passed": {passed}, "reason": "{reason}", "ts": "{ts}" }'
           ></textarea>
           <span v-if="errors.scannerPublishPayloadTemplate" class="error-text">{{ errors.scannerPublishPayloadTemplate }}</span>
           <div class="help-text">
-            JSON template. Tokens: <code>{value}</code> <code>{scanner}</code> <code>{scanner_kind}</code>
-            <code>{device_label}</code> <code>{purpose}</code> <code>{location}</code>
-            <code>{found}</code> <code>{reason}</code> <code>{ts}</code> <code>{metadata}</code>.
-            Quote tokens for strings (<code>"{ts}"</code>); leave bare for typed values (<code>{found}</code>, <code>{metadata}</code>).
+            JSON template. <strong>Strings</strong> (wrap in quotes):
+            <code>"{value}"</code> <code>"{scanner}"</code> <code>"{scanner_kind}"</code>
+            <code>"{device_label}"</code> <code>"{purpose}"</code> <code>"{location}"</code>
+            <code>"{reason}"</code> <code>"{ts}"</code>.
+            <br />
+            <strong>Booleans</strong> (use bare): <code>{found}</code> (record located in lookup),
+            <code>{passed}</code> (GO/NO-GO — found and all rules passed).
+            <br />
+            <strong>Objects</strong> (use bare): <code>{record}</code> (full matched record),
+            <code>{metadata}</code> (just <code>record.metadata</code>).
           </div>
         </div>
       </template>

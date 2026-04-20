@@ -655,7 +655,7 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
         state.scannerPublishSubjectTemplate =
           c.publishSubjectTemplate || c.publishSubject || 'scans.{purpose}.{scanner}'
         state.scannerPublishPayloadTemplate =
-          c.publishPayloadTemplate || '{ "value": "{value}", "found": {found}, "ts": "{ts}" }'
+          c.publishPayloadTemplate || '{ "value": "{value}", "passed": {passed}, "reason": "{reason}", "ts": "{ts}" }'
         state.scannerDeviceLabel = c.deviceLabel || ''
         state.scannerPurpose = c.scanPurpose || 'verify'
         state.scannerLocation = c.location || ''
@@ -702,8 +702,12 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
           // String tokens inject raw (unquoted) at runtime — operator wraps them in quotes
           // in the template — so use a bare identifier sentinel that lands inside "...".
           const sentinelized = payload.replace(
-            /\{(value|scanner|scanner_kind|device_label|purpose|location|reason|ts|metadata|found)\}/g,
-            (_m, tok) => (tok === 'found' ? 'false' : tok === 'metadata' ? '{}' : '_')
+            /\{(value|scanner|scanner_kind|device_label|purpose|location|reason|ts|metadata|record|found|passed)\}/g,
+            (_m, tok) => {
+              if (tok === 'found' || tok === 'passed') return 'false'
+              if (tok === 'metadata' || tok === 'record') return '{}'
+              return '_'
+            }
           )
           try {
             JSON.parse(sentinelized)

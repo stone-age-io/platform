@@ -40,12 +40,12 @@
     <div v-else-if="state === 'result'" class="scanner-result">
       <div
         class="result-banner"
-        :class="found ? 'result-banner--go' : 'result-banner--nogo'"
+        :class="passed ? 'result-banner--go' : 'result-banner--nogo'"
       >
-        <div class="banner-icon">{{ found ? '✓' : '✕' }}</div>
+        <div class="banner-icon">{{ passed ? '✓' : '✕' }}</div>
         <div class="banner-main">
-          <div class="banner-status">{{ found ? 'GO' : 'NO-GO' }}</div>
-          <div v-if="!found" class="banner-reason">{{ reasonLabel }}</div>
+          <div class="banner-status">{{ passed ? 'GO' : 'NO-GO' }}</div>
+          <div v-if="!passed" class="banner-reason">{{ reasonLabel }}</div>
         </div>
       </div>
 
@@ -167,7 +167,8 @@ const publishedPayload = ref<string | null>(null)
 const publishError = ref<string | null>(null)
 const showPayload = ref(false)
 const manualInput = ref('')
-const found = ref(false)
+const recordFound = ref(false)    // lookup hit (KV or PB)
+const passed = ref(false)         // GO/NO-GO — recordFound && rules pass
 const reason = ref<string>('unknown')
 
 let html5Qrcode: Html5Qrcode | null = null
@@ -333,7 +334,8 @@ function resetResults() {
   showPayload.value = false
   scannedValue.value = ''
   errorMessage.value = ''
-  found.value = false
+  recordFound.value = false
+  passed.value = false
   reason.value = 'unknown'
 }
 
@@ -416,21 +418,23 @@ async function performLookup(value: string) {
     }
   }
 
+  recordFound.value = kvHadHit || pbHadHit
+
   // Decide GO/NO-GO + reason
   if (cfg.value.kvEnabled) {
     if (!kvHadHit) {
-      found.value = false
+      passed.value = false
       reason.value = 'unknown'
     } else {
       const v = evaluateRules(kvRecord.value, cfg.value.rules)
-      found.value = v.ok
+      passed.value = v.ok
       reason.value = v.reason
     }
   } else if (cfg.value.pbEnabled) {
-    found.value = pbHadHit
+    passed.value = pbHadHit
     reason.value = pbHadHit ? 'ok' : 'unknown'
   } else {
-    found.value = false
+    passed.value = false
     reason.value = 'unknown'
   }
 
@@ -442,7 +446,7 @@ async function performLookup(value: string) {
         buildSubjectTokens(value)
       )
       const payloadTemplate = cfg.value.publishPayloadTemplate ||
-        '{ "value": "{value}", "found": {found}, "ts": "{ts}" }'
+        '{ "value": "{value}", "passed": {passed}, "reason": "{reason}", "ts": "{ts}" }'
       const payloadJson = renderPayload(payloadTemplate, buildPayloadTokens(value))
       if (!subject) throw new Error('Subject template resolved to empty')
       natsStore.nc.publish(subject, encodeString(payloadJson))
@@ -457,7 +461,7 @@ async function performLookup(value: string) {
   if (kvHadHit || pbHadHit || cfg.value.kvEnabled) {
     // Haptic cue — no-op on browsers/devices without Vibration API (e.g. iOS Safari)
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-      navigator.vibrate(found.value ? 80 : [60, 60, 60, 60, 60])
+      navigator.vibrate(passed.value ? 80 : [60, 60, 60, 60, 60])
     }
     state.value = 'result'
   } else {
@@ -526,7 +530,8 @@ function buildSubjectTokens(value: string): Record<string, string> {
     device_label: cfg.value.deviceLabel || '',
     purpose: cfg.value.scanPurpose || 'other',
     location: cfg.value.location || '',
-    found: found.value ? 'true' : 'false',
+    found: recordFound.value ? 'true' : 'false',
+    passed: passed.value ? 'true' : 'false',
     reason: reason.value,
     ts: new Date().toISOString(),
   }
@@ -535,6 +540,10 @@ function buildSubjectTokens(value: string): Record<string, string> {
 function buildPayloadTokens(value: string): Record<string, string> {
   const scannerNkey = authStore.currentNatsUser?.public_key || ''
   const scannerKind = (pb.authStore.record as any)?.collectionName === 'things' ? 'thing' : 'user'
+  // Prefer KV for {record}; fall back to the first PB item.
+  const recordObj = kvRecord.value
+    ?? (Array.isArray(pbResult.value) ? pbResult.value[0] : pbResult.value)
+    ?? null
   return {
     // String tokens — escaped for injection inside "..."
     value: escapeInsideQuotes(value),
@@ -545,9 +554,11 @@ function buildPayloadTokens(value: string): Record<string, string> {
     location: escapeInsideQuotes(cfg.value.location || ''),
     reason: escapeInsideQuotes(reason.value),
     ts: escapeInsideQuotes(new Date().toISOString()),
-    // Raw-value tokens
-    found: found.value ? 'true' : 'false',
-    metadata: JSON.stringify(kvRecord.value?.metadata ?? kvRecord.value ?? {}),
+    // Raw-value tokens (must be used bare in the template — not inside quotes)
+    found: recordFound.value ? 'true' : 'false',
+    passed: passed.value ? 'true' : 'false',
+    record: JSON.stringify(recordObj ?? {}),
+    metadata: JSON.stringify(kvRecord.value?.metadata ?? {}),
   }
 }
 
@@ -556,7 +567,8 @@ function renderSubject(template: string, tokens: Record<string, string>): string
 }
 
 function renderPayload(template: string, tokens: Record<string, string>): string {
-  // Operator controls types by quoting: "{ts}" → string, bare {found}/{metadata} → literal.
+  // Operator controls types by quoting: "{ts}" → string,
+  // bare {found}/{passed} → boolean literal, bare {record}/{metadata} → JSON object literal.
   const rendered = template.replace(/\{(\w+)\}/g, (_m, tok) => tokens[tok] ?? '')
   // Validate it parses to JSON; throws → caught by caller.
   JSON.parse(rendered)
