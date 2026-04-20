@@ -38,16 +38,19 @@
 
     <!-- Result State -->
     <div v-else-if="state === 'result'" class="scanner-result">
-      <div class="result-header">
-        <span
-          class="result-badge"
-          :class="found ? 'result-go' : 'result-nogo'"
-        >{{ found ? 'GO' : 'NO-GO' }}</span>
-        <span class="result-scanned font-mono">{{ truncatedValue }}</span>
+      <div
+        class="result-banner"
+        :class="found ? 'result-banner--go' : 'result-banner--nogo'"
+      >
+        <div class="banner-icon">{{ found ? '✓' : '✕' }}</div>
+        <div class="banner-main">
+          <div class="banner-status">{{ found ? 'GO' : 'NO-GO' }}</div>
+          <div v-if="!found" class="banner-reason">{{ reasonLabel }}</div>
+        </div>
       </div>
 
-      <div v-if="!found" class="result-reason">
-        {{ reasonLabel }}
+      <div class="result-scanned-row font-mono" :title="scannedValue">
+        {{ scannedValue }}
       </div>
 
       <div class="result-data">
@@ -419,6 +422,10 @@ async function performLookup(value: string) {
 
   // Decide final UI state — always show result so operator sees GO/NO-GO + reason
   if (kvHadHit || pbHadHit || cfg.value.kvEnabled) {
+    // Haptic cue — no-op on browsers/devices without Vibration API (e.g. iOS Safari)
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      navigator.vibrate(found.value ? 80 : [60, 60, 60, 60, 60])
+    }
     state.value = 'result'
   } else {
     // No enabled source produced anything
@@ -699,44 +706,64 @@ onUnmounted(() => {
   min-height: 0;
 }
 
-.result-header {
+.result-banner {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 8px;
   flex-shrink: 0;
+  border-left: 4px solid transparent;
 }
 
-.result-badge {
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 3px 10px;
-  border-radius: 100px;
-}
-
-.result-go {
-  background: oklch(var(--su) / 0.15);
+.result-banner--go {
+  background: oklch(var(--su) / 0.18);
+  border-left-color: oklch(var(--su));
   color: oklch(var(--su));
 }
 
-.result-nogo {
-  background: oklch(var(--er) / 0.15);
+.result-banner--nogo {
+  background: oklch(var(--er) / 0.18);
+  border-left-color: oklch(var(--er));
   color: oklch(var(--er));
 }
 
-.result-scanned {
-  font-size: 11px;
-  color: oklch(var(--bc) / 0.4);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.result-reason {
-  font-size: 12px;
-  color: oklch(var(--er));
+.banner-icon {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
   flex-shrink: 0;
+}
+
+.banner-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.banner-status {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  line-height: 1;
+}
+
+.banner-reason {
+  font-size: 12px;
+  opacity: 0.85;
+  font-weight: 500;
+}
+
+.result-scanned-row {
+  font-size: 12px;
+  color: oklch(var(--bc) / 0.5);
+  padding: 4px 2px;
+  border-bottom: 1px dashed oklch(var(--b3));
+  flex-shrink: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .result-data {
@@ -754,7 +781,7 @@ onUnmounted(() => {
 }
 
 .result-section-label {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -782,19 +809,19 @@ onUnmounted(() => {
 }
 
 .entry-key {
-  font-size: 11px;
-  color: oklch(var(--bc) / 0.5);
+  font-size: 13px;
+  color: oklch(var(--bc) / 0.6);
   flex-shrink: 0;
 }
 
 .entry-value {
-  font-size: 11px;
+  font-size: 13px;
   color: oklch(var(--bc));
   text-align: right;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 200px;
+  max-width: 240px;
 }
 
 .publish-status {
@@ -803,6 +830,7 @@ onUnmounted(() => {
   text-align: center;
   padding: 4px;
   border-top: 1px dashed oklch(var(--b3));
+  overflow-wrap: anywhere;
 }
 
 .scanner-again {
