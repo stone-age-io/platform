@@ -86,8 +86,25 @@
         </div>
 
         <!-- Publish Status -->
-        <div v-if="publishStatus" class="publish-status">
-          {{ publishStatus }}
+        <div v-if="publishedSubject || publishError" class="publish-block">
+          <div v-if="publishedSubject" class="publish-success">
+            <div class="publish-line">
+              <span class="publish-label">Published →</span>
+              <span class="publish-subject font-mono">{{ publishedSubject }}</span>
+            </div>
+            <button
+              v-if="publishedPayload"
+              type="button"
+              class="btn btn-xs btn-ghost publish-toggle"
+              @click="showPayload = !showPayload"
+            >
+              {{ showPayload ? 'Hide message' : 'View message' }}
+            </button>
+            <pre v-if="showPayload && publishedPayload" class="publish-payload">{{ prettyPayload }}</pre>
+          </div>
+          <div v-else class="publish-error">
+            Publish failed: {{ publishError }}
+          </div>
         </div>
       </div>
 
@@ -145,7 +162,10 @@ const scannedValue = ref('')
 const errorMessage = ref('')
 const kvRecord = ref<Record<string, any> | null>(null)
 const pbResult = ref<any>(null)
-const publishStatus = ref<string | null>(null)
+const publishedSubject = ref<string | null>(null)
+const publishedPayload = ref<string | null>(null)
+const publishError = ref<string | null>(null)
+const showPayload = ref(false)
 const manualInput = ref('')
 const found = ref(false)
 const reason = ref<string>('unknown')
@@ -196,6 +216,15 @@ const flattenedKvRecord = computed(() =>
 const flattenedPbItems = computed(() =>
   pbItems.value.map(item => flattenRecord(item))
 )
+
+const prettyPayload = computed(() => {
+  if (!publishedPayload.value) return ''
+  try {
+    return JSON.stringify(JSON.parse(publishedPayload.value), null, 2)
+  } catch {
+    return publishedPayload.value
+  }
+})
 
 const reasonLabel = computed(() => {
   const r = reason.value
@@ -298,7 +327,10 @@ async function processValue(value: string) {
 function resetResults() {
   kvRecord.value = null
   pbResult.value = null
-  publishStatus.value = null
+  publishedSubject.value = null
+  publishedPayload.value = null
+  publishError.value = null
+  showPayload.value = false
   scannedValue.value = ''
   errorMessage.value = ''
   found.value = false
@@ -414,9 +446,10 @@ async function performLookup(value: string) {
       const payloadJson = renderPayload(payloadTemplate, buildPayloadTokens(value))
       if (!subject) throw new Error('Subject template resolved to empty')
       natsStore.nc.publish(subject, encodeString(payloadJson))
-      publishStatus.value = `Published to ${subject}`
+      publishedSubject.value = subject
+      publishedPayload.value = payloadJson
     } catch (err: any) {
-      publishStatus.value = `Publish failed: ${err.message}`
+      publishError.value = err.message || String(err)
     }
   }
 
@@ -824,13 +857,58 @@ onUnmounted(() => {
   max-width: 240px;
 }
 
-.publish-status {
-  font-size: 10px;
-  color: oklch(var(--bc) / 0.5);
-  text-align: center;
-  padding: 4px;
+.publish-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 4px 4px;
   border-top: 1px dashed oklch(var(--b3));
+  flex-shrink: 0;
   overflow-wrap: anywhere;
+}
+
+.publish-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 13px;
+}
+
+.publish-label {
+  color: oklch(var(--bc) / 0.5);
+  font-weight: 600;
+}
+
+.publish-subject {
+  color: oklch(var(--bc));
+  font-weight: 500;
+  word-break: break-all;
+}
+
+.publish-toggle {
+  align-self: flex-start;
+}
+
+.publish-payload {
+  margin: 0;
+  padding: 8px;
+  background: oklch(var(--b2));
+  border: 1px solid oklch(var(--b3));
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  color: oklch(var(--bc));
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-x: auto;
+  max-height: 200px;
+}
+
+.publish-error {
+  color: oklch(var(--er));
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .scanner-again {
