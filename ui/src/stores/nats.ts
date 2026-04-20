@@ -115,7 +115,6 @@ export const useNatsStore = defineStore('nats', () => {
       })
 
       status.value = 'connected'
-      toast.success(`Connected to NATS`)
 
       monitorConnection()
       startStatsLoop()
@@ -163,7 +162,6 @@ export const useNatsStore = defineStore('nats', () => {
         case 'reconnect':
           status.value = 'connected'
           reconnectCount.value++
-          toast.success('Reconnected to NATS')
           window.dispatchEvent(new Event('nats:reconnected'))
           break
         case 'error':

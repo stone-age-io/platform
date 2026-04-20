@@ -187,8 +187,8 @@ const { shortcuts } = useKeyboardShortcuts([
   { key: 'b', description: 'Toggle Dashboard Sidebar', handler: toggleSidebar },
   { key: 'a', description: 'Toggle App Sidebar', handler: () => uiStore.toggleCompact() },
   { key: 'v', description: 'Toggle Variables', handler: () => { if (hasVariables.value || !dashboardStore.isLocked) showVariableBar.value = !showVariableBar.value } },
-  { key: 'l', description: 'Lock Dashboard', handler: () => { if (!dashboardStore.isLocked) { dashboardStore.toggleLock(); toast.info('Dashboard locked') } } },
-  { key: 'u', description: 'Unlock Dashboard', handler: () => { if (dashboardStore.isLocked) { dashboardStore.toggleLock(); toast.info('Dashboard unlocked') } } },
+  { key: 'l', description: 'Lock Dashboard', handler: () => { if (!dashboardStore.isLocked) dashboardStore.toggleLock() } },
+  { key: 'u', description: 'Unlock Dashboard', handler: () => { if (dashboardStore.isLocked) dashboardStore.toggleLock() } },
   { key: 'k', description: 'Toggle Kiosk Mode', handler: () => uiStore.toggleKiosk() },
   { key: 'Escape', description: 'Close Modals / Exit Full Screen / Exit Kiosk', handler: () => {
       if (uiStore.kioskMode) { uiStore.kioskMode = false }
@@ -312,7 +312,7 @@ watch(() => dashboardStore.currentVariableValues, () => {
             </select>
           </div>
           <button v-if="hasVariables || !dashboardStore.isLocked" class="btn btn-sm btn-square" :class="showVariableBar ? 'btn-active' : 'btn-ghost'" @click="showVariableBar = !showVariableBar"><span class="font-mono font-bold">{ }</span></button>
-          <button class="btn btn-sm btn-square btn-ghost" @click="dashboardStore.toggleLock(); toast.info(dashboardStore.isLocked ? 'Dashboard locked' : 'Dashboard unlocked')">{{ dashboardStore.isLocked ? '🔒' : '🔓' }}</button>
+          <button class="btn btn-sm btn-square btn-ghost" @click="dashboardStore.toggleLock()">{{ dashboardStore.isLocked ? '🔒' : '🔓' }}</button>
           <button v-if="!dashboardStore.isLocked" class="btn btn-sm btn-primary" @click="showAddWidget = true">+ <span class="hidden sm:inline ml-1">Widget</span></button>
           <button v-if="!isBadgeMode" class="btn btn-sm btn-square btn-ghost hidden sm:flex" @click="showDebugPanel = true">🐞</button>
         </div>
