@@ -51,17 +51,19 @@
       </div>
 
       <div class="result-data">
-        <!-- KV Record (generic — any shape) -->
+        <!-- KV Record (generic — any shape, nested objects flattened to dot-paths) -->
         <div v-if="kvRecord" class="result-section">
           <div class="result-section-label">Record</div>
           <div class="result-entries">
             <div
-              v-for="(val, key) in kvRecord"
-              :key="String(key)"
+              v-for="row in flattenedKvRecord"
+              :key="row.key"
               class="result-entry"
             >
-              <span class="entry-key">{{ key }}</span>
-              <span class="entry-value font-mono">{{ formatValue(val) }}</span>
+              <span class="entry-key">{{ row.key }}</span>
+              <span class="entry-value font-mono" :title="formatValue(row.value)">
+                {{ formatValue(row.value) }}
+              </span>
             </div>
           </div>
         </div>
@@ -69,13 +71,15 @@
         <!-- PB Result (non-badge fallback) -->
         <div v-if="pbResult !== null" class="result-section">
           <div class="result-section-label">PocketBase</div>
-          <div v-for="(item, idx) in pbItems" :key="idx" class="result-entries">
-            <div v-for="(val, key) in item" :key="String(key)" class="result-entry">
-              <span class="entry-key">{{ key }}</span>
-              <span class="entry-value font-mono">{{ formatValue(val) }}</span>
+          <div v-for="(rows, idx) in flattenedPbItems" :key="idx" class="result-entries">
+            <div v-for="row in rows" :key="row.key" class="result-entry">
+              <span class="entry-key">{{ row.key }}</span>
+              <span class="entry-value font-mono" :title="formatValue(row.value)">
+                {{ formatValue(row.value) }}
+              </span>
             </div>
           </div>
-          <div v-if="pbItems.length === 0" class="text-xs opacity-50 italic">No records</div>
+          <div v-if="flattenedPbItems.length === 0" class="text-xs opacity-50 italic">No records</div>
         </div>
 
         <!-- Publish Status -->
@@ -162,6 +166,33 @@ const pbItems = computed(() => {
   if (Array.isArray(pbResult.value)) return pbResult.value
   return [pbResult.value]
 })
+
+// Flatten nested objects to dot-path rows so each leaf renders on its own line
+// instead of being stringified and truncated. Arrays are kept as a single row
+// (rendered via JSON.stringify by formatValue).
+function flattenRecord(obj: any, prefix = ''): { key: string; value: any }[] {
+  if (obj == null || typeof obj !== 'object' || Array.isArray(obj)) {
+    return [{ key: prefix || 'value', value: obj }]
+  }
+  const out: { key: string; value: any }[] = []
+  for (const [k, v] of Object.entries(obj)) {
+    const nextKey = prefix ? `${prefix}.${k}` : k
+    if (v != null && typeof v === 'object' && !Array.isArray(v)) {
+      out.push(...flattenRecord(v, nextKey))
+    } else {
+      out.push({ key: nextKey, value: v })
+    }
+  }
+  return out
+}
+
+const flattenedKvRecord = computed(() =>
+  kvRecord.value ? flattenRecord(kvRecord.value) : []
+)
+
+const flattenedPbItems = computed(() =>
+  pbItems.value.map(item => flattenRecord(item))
+)
 
 const reasonLabel = computed(() => {
   const r = reason.value
