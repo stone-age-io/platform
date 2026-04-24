@@ -45,7 +45,7 @@
         <div class="banner-icon">{{ passed ? '✓' : '✕' }}</div>
         <div class="banner-main">
           <div class="banner-status">{{ passed ? 'GO' : 'NO-GO' }}</div>
-          <div v-if="!passed" class="banner-reason">{{ reasonLabel }}</div>
+          <div v-if="!passed" class="banner-reason">{{ outcome }}</div>
         </div>
       </div>
 
@@ -143,7 +143,9 @@ import { useNatsStore } from '@/stores/nats'
 import { useAuthStore } from '@/stores/auth'
 import { pb } from '@/utils/pb'
 import { encodeString, decodeBytes } from '@/utils/encoding'
-import type { WidgetConfig, ScannerRule } from '@/types/dashboard'
+import type { WidgetConfig } from '@/types/dashboard'
+import { evaluateRules } from './scannerRules'
+import { buildScanPublish } from './scannerPublish'
 
 const props = withDefaults(defineProps<{
   config: WidgetConfig
@@ -167,15 +169,24 @@ const publishedPayload = ref<string | null>(null)
 const publishError = ref<string | null>(null)
 const showPayload = ref(false)
 const manualInput = ref('')
-const recordFound = ref(false)    // lookup hit (KV or PB)
-const passed = ref(false)         // GO/NO-GO — recordFound && rules pass
-const reason = ref<string>('unknown')
+
+// outcome === 'ok' → GO; any other non-empty string → NO-GO label; '' → pending.
+const outcome = ref<string>('')
+const passed = computed(() => outcome.value === 'ok')
 
 let html5Qrcode: Html5Qrcode | null = null
 const readerId = `scanner-${props.config.id}`
 
-// Dedup tracking: value -> last-seen ms
-const recentScans = new Map<string, number>()
+// Dedup — each entry auto-expires via its own timer, no LRU bookkeeping needed.
+const recentScans = new Map<string, ReturnType<typeof setTimeout>>()
+
+function isDuplicate(value: string, windowMs: number): boolean {
+  if (windowMs <= 0) return false
+  if (recentScans.has(value)) return true
+  const t = setTimeout(() => recentScans.delete(value), windowMs)
+  recentScans.set(value, t)
+  return false
+}
 
 const cfg = computed(() => props.config.scannerConfig || {})
 
@@ -225,13 +236,6 @@ const prettyPayload = computed(() => {
   } catch {
     return publishedPayload.value
   }
-})
-
-const reasonLabel = computed(() => {
-  const r = reason.value
-  if (r === 'ok') return 'OK'
-  if (r === 'unknown') return 'Unknown — no record found'
-  return r
 })
 
 // --- Scanner ---
@@ -300,24 +304,11 @@ async function submitManual() {
 }
 
 async function processValue(value: string) {
-  // Dedup check
-  const window = cfg.value.dedupWindowMs ?? 3000
-  if (window > 0) {
-    const now = Date.now()
-    const last = recentScans.get(value)
-    if (last !== undefined && now - last < window) {
-      // Suppress — show briefly as the current result without re-publishing
-      scannedValue.value = value
-      errorMessage.value = 'Duplicate scan suppressed'
-      state.value = 'error'
-      return
-    }
-    recentScans.set(value, now)
-    // Keep map bounded
-    if (recentScans.size > 200) {
-      const oldest = [...recentScans.entries()].sort((a, b) => a[1] - b[1])[0]
-      if (oldest) recentScans.delete(oldest[0])
-    }
+  if (isDuplicate(value, cfg.value.dedupWindowMs ?? 3000)) {
+    scannedValue.value = value
+    errorMessage.value = 'Duplicate scan suppressed'
+    state.value = 'error'
+    return
   }
 
   scannedValue.value = value
@@ -334,9 +325,7 @@ function resetResults() {
   showPayload.value = false
   scannedValue.value = ''
   errorMessage.value = ''
-  recordFound.value = false
-  passed.value = false
-  reason.value = 'unknown'
+  outcome.value = ''
 }
 
 function reset() {
@@ -418,37 +407,36 @@ async function performLookup(value: string) {
     }
   }
 
-  recordFound.value = kvHadHit || pbHadHit
-
   // Decide GO/NO-GO + reason
   if (cfg.value.kvEnabled) {
     if (!kvHadHit) {
-      passed.value = false
-      reason.value = 'unknown'
+      outcome.value = 'No record found'
     } else {
       const v = evaluateRules(kvRecord.value, cfg.value.rules)
-      passed.value = v.ok
-      reason.value = v.reason
+      outcome.value = v.ok ? 'ok' : v.reason
     }
   } else if (cfg.value.pbEnabled) {
-    passed.value = pbHadHit
-    reason.value = pbHadHit ? 'ok' : 'unknown'
+    outcome.value = pbHadHit ? 'ok' : 'No record found'
   } else {
-    passed.value = false
-    reason.value = 'unknown'
+    outcome.value = 'No lookup source enabled'
   }
 
-  // Publish (templatable)
+  // Publish — fixed payload shape; operator controls only the subject template.
   if (cfg.value.publishEnabled && natsStore.nc) {
     try {
-      const subject = renderSubject(
-        cfg.value.publishSubjectTemplate || cfg.value.publishSubject || '',
-        buildSubjectTokens(value)
-      )
-      const payloadTemplate = cfg.value.publishPayloadTemplate ||
-        '{ "value": "{value}", "passed": {passed}, "reason": "{reason}", "ts": "{ts}" }'
-      const payloadJson = renderPayload(payloadTemplate, buildPayloadTokens(value))
+      const record = kvRecord.value
+        ?? (Array.isArray(pbResult.value) ? pbResult.value[0] : pbResult.value)
+        ?? null
+      const { subject, payload } = buildScanPublish(cfg.value, {
+        value,
+        passed: passed.value,
+        reason: outcome.value,
+        scanner: authStore.currentNatsUser?.public_key || '',
+        scannerKind: (pb.authStore.record as any)?.collectionName === 'things' ? 'thing' : 'user',
+        record,
+      })
       if (!subject) throw new Error('Subject template resolved to empty')
+      const payloadJson = JSON.stringify(payload)
       natsStore.nc.publish(subject, encodeString(payloadJson))
       publishedSubject.value = subject
       publishedPayload.value = payloadJson
@@ -472,107 +460,6 @@ async function performLookup(value: string) {
     errorMessage.value = parts.length > 0 ? parts.join('; ') : 'Not found'
     state.value = 'error'
   }
-}
-
-function getByPath(obj: any, path: string): any {
-  if (!obj || !path) return undefined
-  return path.split('.').reduce((acc, k) => (acc == null ? acc : acc[k]), obj)
-}
-
-function evalRule(rec: any, r: ScannerRule): boolean {
-  const v = getByPath(rec, r.field)
-  switch (r.op) {
-    case 'truthy':     return !!v
-    case 'falsy':      return !v
-    case 'equals':     return v === r.value
-    case 'not_equals': return v !== r.value
-    case 'in':         return Array.isArray(r.value) && r.value.includes(v)
-    case 'not_in':     return Array.isArray(r.value) && !r.value.includes(v)
-    case 'exists':     return v !== undefined && v !== null
-    case 'missing':    return v === undefined || v === null
-    case 'future': {
-      // Absent value ≡ no expiry → pass. Mirrors legacy behavior for expires_at.
-      if (v == null) return true
-      const t = Date.parse(String(v))
-      return !Number.isNaN(t) && t > Date.now()
-    }
-    case 'past': {
-      if (v == null) return false
-      const t = Date.parse(String(v))
-      return !Number.isNaN(t) && t < Date.now()
-    }
-  }
-}
-
-function evaluateRules(rec: any, rules: ScannerRule[] | undefined): { ok: boolean; reason: string } {
-  if (!rec) return { ok: false, reason: 'unknown' }
-  if (!rules || rules.length === 0) return { ok: true, reason: 'ok' }
-  for (const r of rules) {
-    if (!evalRule(rec, r)) return { ok: false, reason: r.reason || `${r.field} ${r.op}` }
-  }
-  return { ok: true, reason: 'ok' }
-}
-
-// String tokens get JSON-escaped (without surrounding quotes) for safe injection
-// inside "…" in the payload template. Raw tokens inject as-is (bool/JSON literal).
-function escapeInsideQuotes(s: string): string {
-  const j = JSON.stringify(s)
-  return j.slice(1, j.length - 1)
-}
-
-function buildSubjectTokens(value: string): Record<string, string> {
-  const scannerNkey = authStore.currentNatsUser?.public_key || ''
-  const scannerKind = (pb.authStore.record as any)?.collectionName === 'things' ? 'thing' : 'user'
-  return {
-    value,
-    scanner: scannerNkey,
-    scanner_kind: scannerKind,
-    device_label: cfg.value.deviceLabel || '',
-    purpose: cfg.value.scanPurpose || 'other',
-    location: cfg.value.location || '',
-    found: recordFound.value ? 'true' : 'false',
-    passed: passed.value ? 'true' : 'false',
-    reason: reason.value,
-    ts: new Date().toISOString(),
-  }
-}
-
-function buildPayloadTokens(value: string): Record<string, string> {
-  const scannerNkey = authStore.currentNatsUser?.public_key || ''
-  const scannerKind = (pb.authStore.record as any)?.collectionName === 'things' ? 'thing' : 'user'
-  // Prefer KV for {record}; fall back to the first PB item.
-  const recordObj = kvRecord.value
-    ?? (Array.isArray(pbResult.value) ? pbResult.value[0] : pbResult.value)
-    ?? null
-  return {
-    // String tokens — escaped for injection inside "..."
-    value: escapeInsideQuotes(value),
-    scanner: escapeInsideQuotes(scannerNkey),
-    scanner_kind: escapeInsideQuotes(scannerKind),
-    device_label: escapeInsideQuotes(cfg.value.deviceLabel || ''),
-    purpose: escapeInsideQuotes(cfg.value.scanPurpose || 'other'),
-    location: escapeInsideQuotes(cfg.value.location || ''),
-    reason: escapeInsideQuotes(reason.value),
-    ts: escapeInsideQuotes(new Date().toISOString()),
-    // Raw-value tokens (must be used bare in the template — not inside quotes)
-    found: recordFound.value ? 'true' : 'false',
-    passed: passed.value ? 'true' : 'false',
-    record: JSON.stringify(recordObj ?? {}),
-    metadata: JSON.stringify(kvRecord.value?.metadata ?? {}),
-  }
-}
-
-function renderSubject(template: string, tokens: Record<string, string>): string {
-  return template.replace(/\{(\w+)\}/g, (_m, tok) => tokens[tok] ?? '')
-}
-
-function renderPayload(template: string, tokens: Record<string, string>): string {
-  // Operator controls types by quoting: "{ts}" → string,
-  // bare {found}/{passed} → boolean literal, bare {record}/{metadata} → JSON object literal.
-  const rendered = template.replace(/\{(\w+)\}/g, (_m, tok) => tokens[tok] ?? '')
-  // Validate it parses to JSON; throws → caught by caller.
-  JSON.parse(rendered)
-  return rendered
 }
 
 async function kvGet(bucket: string, key: string): Promise<any> {
@@ -600,6 +487,8 @@ function formatValue(val: any): string {
 // --- Cleanup ---
 onUnmounted(() => {
   stopScan()
+  for (const t of recentScans.values()) clearTimeout(t)
+  recentScans.clear()
 })
 </script>
 

@@ -654,8 +654,6 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
         state.scannerPublishEnabled = c.publishEnabled ?? false
         state.scannerPublishSubjectTemplate =
           c.publishSubjectTemplate || c.publishSubject || 'scans.{purpose}.{scanner}'
-        state.scannerPublishPayloadTemplate =
-          c.publishPayloadTemplate || '{ "value": "{value}", "passed": {passed}, "reason": "{reason}", "ts": "{ts}" }'
         state.scannerDeviceLabel = c.deviceLabel || ''
         state.scannerPurpose = c.scanPurpose || 'verify'
         state.scannerLocation = c.location || ''
@@ -690,31 +688,8 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
           }
         }
       }
-      if (form.scannerPublishEnabled) {
-        if (!form.scannerPublishSubjectTemplate.trim()) {
-          errors.scannerPublishSubjectTemplate = 'Subject template is required when publish is enabled'
-        }
-        const payload = form.scannerPublishPayloadTemplate.trim()
-        if (!payload) {
-          errors.scannerPublishPayloadTemplate = 'Payload template is required when publish is enabled'
-        } else {
-          // Validate payload template is valid JSON once tokens are replaced with sentinels.
-          // String tokens inject raw (unquoted) at runtime — operator wraps them in quotes
-          // in the template — so use a bare identifier sentinel that lands inside "...".
-          const sentinelized = payload.replace(
-            /\{(value|scanner|scanner_kind|device_label|purpose|location|reason|ts|metadata|record|found|passed)\}/g,
-            (_m, tok) => {
-              if (tok === 'found' || tok === 'passed') return 'false'
-              if (tok === 'metadata' || tok === 'record') return '{}'
-              return '_'
-            }
-          )
-          try {
-            JSON.parse(sentinelized)
-          } catch {
-            errors.scannerPublishPayloadTemplate = 'Payload template must be valid JSON after token substitution'
-          }
-        }
+      if (form.scannerPublishEnabled && !form.scannerPublishSubjectTemplate.trim()) {
+        errors.scannerPublishSubjectTemplate = 'Subject template is required when publish is enabled'
       }
       if (form.scannerDedupWindowMs < 0) {
         errors.scannerDedupWindowMs = 'Dedup window must be 0 or greater'
@@ -736,7 +711,6 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
           pbFields: form.scannerPbFields.trim(),
           publishEnabled: form.scannerPublishEnabled,
           publishSubjectTemplate: form.scannerPublishSubjectTemplate.trim(),
-          publishPayloadTemplate: form.scannerPublishPayloadTemplate.trim(),
           deviceLabel: form.scannerDeviceLabel.trim(),
           scanPurpose: form.scannerPurpose,
           location: form.scannerLocation.trim(),

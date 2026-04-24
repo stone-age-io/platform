@@ -224,10 +224,9 @@ export interface ScannerWidgetConfig {
   pbFilter?: string          // e.g. 'public_key = "{value}"'
   pbFields?: string
 
-  // Publish scan event (templatable — operator chooses subject + payload shape)
+  // Publish scan event. Subject is templatable; payload is a fixed JSON shape.
   publishEnabled?: boolean
-  publishSubjectTemplate?: string   // tokens: {value} {scanner} {scanner_kind} {device_label} {purpose} {location} {found} {reason} {ts}
-  publishPayloadTemplate?: string   // JSON template; same tokens. Widget does string substitution then JSON.parse.
+  publishSubjectTemplate?: string   // tokens: {value} {scanner} {scanner_kind} {device_label} {purpose} {location} {passed} {reason} {ts}
 
   // Legacy (pre-template) — read as fallback if publishSubjectTemplate is absent
   publishSubject?: string
@@ -265,8 +264,6 @@ export interface BadgeRecord {
   revoked?: boolean            // default false
   metadata?: Record<string, any>
 }
-
-export type BadgeReason = 'ok' | 'unknown' | 'revoked' | 'expired'
 
 // --- KV Table Widget Types ---
 export type KvTableColumnFormat = 'text' | 'number' | 'relative-time' | 'datetime'
@@ -619,7 +616,6 @@ export function createDefaultWidget(type: WidgetType, position: { x: number; y: 
         pbFields: '',
         publishEnabled: false,
         publishSubjectTemplate: 'scans.{purpose}.{scanner}',
-        publishPayloadTemplate: '{ "value": "{value}", "found": {found}, "ts": "{ts}" }',
         deviceLabel: '',
         scanPurpose: 'verify',
         location: '',

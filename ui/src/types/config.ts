@@ -123,7 +123,6 @@ export interface WidgetFormState {
   scannerPbFields: string
   scannerPublishEnabled: boolean
   scannerPublishSubjectTemplate: string
-  scannerPublishPayloadTemplate: string
   scannerDeviceLabel: string
   scannerPurpose: 'muster' | 'verify' | 'other'
   scannerLocation: string
@@ -229,7 +228,6 @@ export function createEmptyFormState(): WidgetFormState {
     scannerPbFields: '',
     scannerPublishEnabled: false,
     scannerPublishSubjectTemplate: 'scans.{purpose}.{scanner}',
-    scannerPublishPayloadTemplate: '{ "value": "{value}", "passed": {passed}, "reason": "{reason}", "ts": "{ts}" }',
     scannerDeviceLabel: '',
     scannerPurpose: 'verify',
     scannerLocation: '',
