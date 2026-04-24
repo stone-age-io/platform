@@ -205,10 +205,7 @@ const pbItems = computed(() => {
 // Flatten nested objects to dot-path rows so each leaf renders on its own line
 // instead of being stringified and truncated. Arrays are kept as a single row
 // (rendered via JSON.stringify by formatValue).
-function flattenRecord(obj: any, prefix = ''): { key: string; value: any }[] {
-  if (obj == null || typeof obj !== 'object' || Array.isArray(obj)) {
-    return [{ key: prefix || 'value', value: obj }]
-  }
+function flattenRecord(obj: Record<string, any>, prefix = ''): { key: string; value: any }[] {
   const out: { key: string; value: any }[] = []
   for (const [k, v] of Object.entries(obj)) {
     const nextKey = prefix ? `${prefix}.${k}` : k
@@ -241,8 +238,8 @@ const prettyPayload = computed(() => {
 // --- Scanner ---
 
 async function startScan() {
+  reset()
   state.value = 'scanning'
-  resetResults()
 
   // Wait for DOM to render the viewfinder element with proper dimensions
   await nextTick()
@@ -316,7 +313,8 @@ async function processValue(value: string) {
   await performLookup(value)
 }
 
-function resetResults() {
+function reset() {
+  state.value = 'idle'
   kvRecord.value = null
   pbResult.value = null
   publishedSubject.value = null
@@ -326,11 +324,6 @@ function resetResults() {
   scannedValue.value = ''
   errorMessage.value = ''
   outcome.value = ''
-}
-
-function reset() {
-  state.value = 'idle'
-  resetResults()
 }
 
 // --- Lookup ---
