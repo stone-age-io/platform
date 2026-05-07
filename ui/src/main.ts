@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import router from './router'
 import App from './App.vue'
+import { useBrandingStore } from './stores/branding'
 import './assets/main.css'
 import './assets/dashboard-compat.css'
 import './assets/forms.css'
@@ -18,20 +19,24 @@ app.use(createPinia())
 app.use(router)
 
 /**
- * Mount app and fade out the loading screen
+ * Load operator branding overlay (if any) before mounting so the first paint
+ * already shows the correct app name and logo. The pre-Vue loader splash is
+ * still platform-default (it's hardcoded in index.html).
  */
-app.mount('#app')
+const brandingStore = useBrandingStore()
+brandingStore.load().then(() => {
+  document.title = brandingStore.appName
+  app.mount('#app')
 
-// Smooth fade-out of the initial loader
-const appLoader = document.getElementById('app-loader')
-if (appLoader) {
-  // Small delay to ensure Vue has rendered
-  requestAnimationFrame(() => {
-    appLoader.classList.add('fade-out')
-    // Remove from DOM after transition completes
-    setTimeout(() => appLoader.remove(), 300)
-  })
-}
+  // Smooth fade-out of the initial loader
+  const appLoader = document.getElementById('app-loader')
+  if (appLoader) {
+    requestAnimationFrame(() => {
+      appLoader.classList.add('fade-out')
+      setTimeout(() => appLoader.remove(), 300)
+    })
+  }
+})
 
 /**
  * Register Service Worker for PWA "Install" support

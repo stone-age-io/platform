@@ -2,11 +2,14 @@
 import { ref, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useBrandingStore } from '@/stores/branding'
 import { useToast } from '@/composables/useToast'
+import BrandLogo from '@/components/common/BrandLogo.vue'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const brandingStore = useBrandingStore()
 const toast = useToast()
 
 // View States
@@ -113,10 +116,10 @@ function getProviderLabel(name: string) {
         
         <!-- App Logo & Title -->
         <div class="flex flex-col items-center mb-6">
-          <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 256 256" class="text-primary mb-2">
-            <path d="M128,0 C57.343,0 0,57.343 0,128 C0,198.657 57.343,256 128,256 C198.657,256 256,198.657 256,128 C256,57.343 198.657,0 128,0 z M128,28 C181.423,28 224.757,71.334 224.757,124.757 C224.757,139.486 221.04,153.32 214.356,165.42 C198.756,148.231 178.567,138.124 162.876,124.331 C155.723,124.214 128.543,124.043 113.254,124.043 C113.254,147.334 113.254,172.064 113.254,190.513 C100.456,179.347 94.543,156.243 94.543,156.243 C83.432,147.065 31.243,124.757 31.243,124.757 C31.243,71.334 74.577,28 128,28 z" fill="currentColor"/>
-          </svg>
-          <h2 class="text-2xl font-bold tracking-tight">Stone-Age.io</h2>
+          <div class="text-primary mb-2">
+            <BrandLogo :size="48" />
+          </div>
+          <h2 class="text-2xl font-bold tracking-tight">{{ brandingStore.appName }}</h2>
           <p class="text-sm opacity-60">
             {{ mode === 'login' ? 'Sign in to your account' : 'Reset your password' }}
           </p>

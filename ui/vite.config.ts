@@ -23,6 +23,11 @@ export default defineConfig({
         target: 'http://127.0.0.1:8090',
         changeOrigin: true,
       },
+      // Proxy operator branding overlay (theme.css, logo.svg, branding.json)
+      '/branding': {
+        target: 'http://127.0.0.1:8090',
+        changeOrigin: true,
+      },
     },
   },
   build: {

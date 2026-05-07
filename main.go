@@ -88,18 +88,24 @@ func setDefaults() {
 	viper.SetDefault("nats.default_limits.max_subscriptions", 50)
 	viper.SetDefault("nats.export_collection_name", "nats_account_exports")
 	viper.SetDefault("nats.import_collection_name", "nats_account_imports")
+	viper.SetDefault("nats.encryption_key", "")
 
 	// Nebula
 	viper.SetDefault("nebula.ca_collection_name", "nebula_ca")
 	viper.SetDefault("nebula.network_collection_name", "nebula_networks")
 	viper.SetDefault("nebula.host_collection_name", "nebula_hosts")
 	viper.SetDefault("nebula.log_to_console", true)
+	viper.SetDefault("nebula.encryption_key", "")
 
 	// Audit
 	viper.SetDefault("audit.collection_name", "audit_logs")
 	viper.SetDefault("audit.retention.max_age", "")
 	viper.SetDefault("audit.retention.max_records", 0)
 	viper.SetDefault("audit.retention.interval", "0 2 * * *")
+
+	// Branding (operator-level overrides for logo / theme / app name).
+	// Empty disables overrides; the embedded default branding is used.
+	viper.SetDefault("branding.dir", "")
 }
 
 func main() {
@@ -138,6 +144,7 @@ func main() {
 	natsOptions.LogToConsole = viper.GetBool("nats.log_to_console")
 	natsOptions.ExportCollectionName = viper.GetString("nats.export_collection_name")
 	natsOptions.ImportCollectionName = viper.GetString("nats.import_collection_name")
+	natsOptions.EncryptionKey = viper.GetString("nats.encryption_key")
 
 	// --- Nebula ---
 	nebulaOptions := pbnebula.DefaultOptions()
@@ -148,6 +155,7 @@ func main() {
 	if viper.IsSet("nebula.default_ca_validity_years") {
 		nebulaOptions.DefaultCAValidityYears = viper.GetInt("nebula.default_ca_validity_years")
 	}
+	nebulaOptions.EncryptionKey = viper.GetString("nebula.encryption_key")
 
 	// --- Audit ---
 	auditOptions := pbaudit.DefaultOptions()
@@ -205,6 +213,31 @@ func main() {
 		subFS, err := fs.Sub(embeddedFS, "pb_public")
 		if err != nil {
 			return err
+		}
+
+		// Optional operator branding overlay: serves files (theme.css, logo.svg,
+		// branding.json, etc.) from a host directory under /branding/*.
+		// Registered before the SPA catch-all so it takes precedence.
+		if brandingDir := viper.GetString("branding.dir"); brandingDir != "" {
+			info, statErr := os.Stat(brandingDir)
+			if statErr != nil || !info.IsDir() {
+				log.Printf("⚠️  branding.dir is set but not a usable directory: %s", brandingDir)
+			} else {
+				brandingFS := os.DirFS(brandingDir)
+				e.Router.GET("/branding/{path...}", func(e *core.RequestEvent) error {
+					path := e.Request.PathValue("path")
+					if path == "" || strings.Contains(path, "..") {
+						return e.NotFoundError("Not found", nil)
+					}
+					f, err := brandingFS.Open(path)
+					if err != nil {
+						return e.NotFoundError("Not found", nil)
+					}
+					f.Close()
+					return e.FileFS(brandingFS, path)
+				})
+				log.Printf("✅ Branding overlay serving from: %s", brandingDir)
+			}
 		}
 
 		e.Router.GET("/{path...}", func(e *core.RequestEvent) error {

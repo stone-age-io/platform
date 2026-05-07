@@ -19,6 +19,12 @@ nats:
     max_connections: 10
     max_subscriptions: 50
     max_payload: 1048576
+  # Optional AES-256-GCM at-rest encryption for operator/account/user
+  # private_key, seed, and signing_keys_private fields. Must be exactly 32
+  # characters when set; empty disables encryption. Prefer providing this via
+  # env var (STONE_AGE_NATS_ENCRYPTION_KEY) rather than committing the key.
+  # Losing the key means losing access to encrypted records.
+  encryption_key: ""
 
 nebula:
   ca_collection_name: "nebula_ca"
@@ -27,6 +33,12 @@ nebula:
   log_to_console: false
   # Default validity
   default_ca_validity_years: 10
+  # Optional AES-256-GCM at-rest encryption for the CA and host private_key
+  # columns. Must be exactly 32 characters when set; empty disables encryption.
+  # Prefer providing this via env var (STONE_AGE_NEBULA_ENCRYPTION_KEY).
+  # Note: the generated config_yaml field still embeds the host key in
+  # plaintext (Nebula PKI requires it inline).
+  encryption_key: ""
 
 audit:
   collection_name: "audit_logs"
@@ -35,3 +47,10 @@ audit:
     max_age: ""              # Go duration string, e.g. "720h" for 30 days ("" = disabled)
     max_records: 0           # Max records to keep (0 = disabled)
     interval: "0 2 * * *"   # Cron schedule for cleanup
+
+# Operator branding overlay (optional).
+# Drop logo.svg, theme.css, and/or branding.json into this directory to override
+# the embedded defaults. branding.json shape: { "appName": "...", "logo": "logo.svg" }
+# Empty / unset = use embedded defaults.
+branding:
+  dir: ""

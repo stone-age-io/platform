@@ -79,11 +79,38 @@ nebula:
 
 audit:
   log_console: false
+
+branding:
+  dir: ""   # set to a host directory to enable the operator branding overlay
 ```
 
 You can also use Environment Variables with the prefix `STONE_AGE_`:
 *   `STONE_AGE_NATS_SERVER_URL="nats://10.0.0.1:4222"`
 *   `STONE_AGE_TENANCY_LOG_TO_CONSOLE=true`
+
+### Branding Overlay (Optional)
+
+Operators can re-skin the console without rebuilding the binary. Point `branding.dir` at a directory on the host containing any of:
+
+| File              | Purpose                                                                 |
+| ----------------- | ----------------------------------------------------------------------- |
+| `branding.json`   | `{ "appName": "...", "logo": "logo.svg" }` — overrides shown in the UI |
+| `logo.svg`        | Brand mark used on login, sidebar, and mobile header                    |
+| `theme.css`       | Override DaisyUI v4 CSS custom properties for `[data-theme=light/dark]` |
+
+The platform serves the directory at `/branding/*` and the frontend picks up overrides on boot. Missing files fall back to embedded defaults.
+
+A starting template lives at [`branding.example/`](./branding.example/) — copy it somewhere on the host, edit, and point `branding.dir` at the result:
+
+```bash
+cp -r branding.example /etc/stone-age/branding
+# edit /etc/stone-age/branding/{branding.json,theme.css,logo.svg}
+# then in config.yaml:
+#   branding:
+#     dir: /etc/stone-age/branding
+```
+
+For per-theme logo art (different SVG for light vs. dark), the example `theme.css` documents a CSS-only swap pattern using the `.brand-logo-img` class hook.
 
 ---
 
