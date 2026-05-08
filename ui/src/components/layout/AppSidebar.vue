@@ -30,19 +30,29 @@ const showServerInfo = ref(false)
 // Org Search State
 const orgSearchQuery = ref('')
 
-// Dropdown State
-const isDropdownOpen = ref(false)
-const dropdownTriggerRef = ref<HTMLElement | null>(null)
-const dropdownMenuRef = ref<HTMLElement | null>(null)
+// Dropdown State (org and user are independent)
+const isOrgDropdownOpen = ref(false)
+const isUserDropdownOpen = ref(false)
+const orgTriggerRef = ref<HTMLElement | null>(null)
+const orgMenuRef = ref<HTMLElement | null>(null)
+const userTriggerRef = ref<HTMLElement | null>(null)
+const userMenuRef = ref<HTMLElement | null>(null)
+
+// Compact-mode teleported dropdown positions (computed at open time)
+const orgDropdownPos = ref<Record<string, string>>({})
+const userDropdownPos = ref<Record<string, string>>({})
 
 const filteredMemberships = computed(() => {
   const q = orgSearchQuery.value.toLowerCase().trim()
   if (!q) return authStore.memberships
-  
-  return authStore.memberships.filter(m => 
+
+  return authStore.memberships.filter(m =>
     m.expand?.organization?.name?.toLowerCase().includes(q)
   )
 })
+
+const orgInitial = computed(() => authStore.currentOrg?.name?.[0]?.toUpperCase() || '?')
+const userInitial = computed(() => authStore.user?.name?.[0]?.toUpperCase() || 'U')
 
 // Badge users: home is /badge, others: /
 const homeRoute = computed(() => authStore.isBadgeUser ? '/badge' : '/')
@@ -60,9 +70,9 @@ const menuItems = computed(() => {
     { label: 'Dashboard', icon: '📊', path: '/' },
     { label: 'Things', icon: '📦', path: '/things' },
     { label: 'Locations', icon: '📍', path: '/locations' },
-    { 
-      label: 'NATS', 
-      icon: '📡', 
+    {
+      label: 'NATS',
+      icon: '📡',
       path: '/nats',
       children: [
         { label: 'Account', path: '/nats/account' },
@@ -76,9 +86,9 @@ const menuItems = computed(() => {
         ] : []),
       ]
     },
-    { 
-      label: 'Nebula', 
-      icon: '🌐', 
+    {
+      label: 'Nebula',
+      icon: '🌐',
       path: '/nebula',
       children: [
         { label: 'Certificate Authority', path: '/nebula/ca' },
@@ -103,9 +113,9 @@ const menuItems = computed(() => {
   }
 
   if (authStore.canManageUsers) {
-    items.push({ 
-      label: 'Team', 
-      icon: '👥', 
+    items.push({
+      label: 'Team',
+      icon: '👥',
       path: '/organization',
       children: [
         { label: 'Members', path: '/organization/members' },
@@ -127,7 +137,7 @@ const menuItems = computed(() => {
     icon: '📋',
     path: '/audit'
   })
-  
+
   return items
 })
 
@@ -151,20 +161,42 @@ const isActive = (path: string) => {
   return false
 }
 
-function closeUserDropdown() {
-  isDropdownOpen.value = false
+function closeOrgDropdown() {
+  isOrgDropdownOpen.value = false
   setTimeout(() => orgSearchQuery.value = '', 200)
 }
 
-function toggleDropdown() {
-  isDropdownOpen.value = !isDropdownOpen.value
+function closeUserDropdown() {
+  isUserDropdownOpen.value = false
+}
+
+function toggleOrgDropdown() {
+  if (isUserDropdownOpen.value) closeUserDropdown()
+  if (!isOrgDropdownOpen.value && effectiveCompact.value && orgTriggerRef.value) {
+    const rect = orgTriggerRef.value.getBoundingClientRect()
+    orgDropdownPos.value = { top: `${rect.top}px`, left: `${rect.right + 8}px` }
+  }
+  isOrgDropdownOpen.value = !isOrgDropdownOpen.value
+}
+
+function toggleUserDropdown() {
+  if (isOrgDropdownOpen.value) closeOrgDropdown()
+  if (!isUserDropdownOpen.value && effectiveCompact.value && userTriggerRef.value) {
+    const rect = userTriggerRef.value.getBoundingClientRect()
+    // Bottom-align with the trigger so menu grows upward from the bottom of the sidebar
+    userDropdownPos.value = {
+      bottom: `${window.innerHeight - rect.bottom}px`,
+      left: `${rect.right + 8}px`,
+    }
+  }
+  isUserDropdownOpen.value = !isUserDropdownOpen.value
 }
 
 async function handleOrgChange(orgId: string) {
   if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
   await authStore.switchOrganization(orgId)
-  closeUserDropdown() 
-  closeDrawer() 
+  closeOrgDropdown()
+  closeDrawer()
 }
 
 async function handleLogout() {
@@ -175,14 +207,19 @@ async function handleLogout() {
 }
 
 function handleClickOutside(e: Event) {
-  if (!isDropdownOpen.value) return
   const target = e.target as Node
-  
-  // Allow clicks inside the trigger or the menu (even if teleported)
-  if (dropdownTriggerRef.value?.contains(target)) return
-  if (dropdownMenuRef.value?.contains(target)) return
-  
-  closeUserDropdown()
+
+  if (isOrgDropdownOpen.value
+      && !orgTriggerRef.value?.contains(target)
+      && !orgMenuRef.value?.contains(target)) {
+    closeOrgDropdown()
+  }
+
+  if (isUserDropdownOpen.value
+      && !userTriggerRef.value?.contains(target)
+      && !userMenuRef.value?.contains(target)) {
+    closeUserDropdown()
+  }
 }
 
 onMounted(() => {
@@ -195,9 +232,9 @@ onUnmounted(() => {
 
 function getAvatarUrl() {
   if (!authStore.user?.avatar) return null
-  return pb.files.getURL(authStore.user, (authStore.user as any).avatar, { 
+  return pb.files.getURL(authStore.user, (authStore.user as any).avatar, {
     thumb: '100x100',
-    token: pb.authStore.token 
+    token: pb.authStore.token
   })
 }
 
@@ -209,7 +246,7 @@ function closeDrawer() {
 const natsStatusColor = computed(() => {
   switch (natsStore.status) {
     case 'connected': return 'bg-success'
-    case 'connecting': 
+    case 'connecting':
     case 'reconnecting': return 'bg-warning'
     default: return 'bg-error'
   }
@@ -246,21 +283,19 @@ async function handleDisconnect() {
 </script>
 
 <template>
-  <aside 
+  <aside
     class="bg-base-100 h-screen flex flex-col border-r border-base-300 transition-all duration-300 ease-in-out z-20"
     :class="effectiveCompact ? 'w-20 min-w-[5rem]' : 'w-72 min-w-[18rem]'"
   >
-    
+
     <!-- ====================================================================== -->
-    <!-- SECTION 1: IDENTITY HEADER & TOGGLE -->
+    <!-- TOP: BRAND + ORG SELECTOR -->
     <!-- ====================================================================== -->
     <div class="flex-none p-3 pb-0 flex flex-col gap-2">
-      
-      <!-- Top Row: Brand + Toggle -->
-      <!-- Expanded: Row (Space Between), Compact: Column (Gap) -->
+
+      <!-- Brand + Toggle -->
       <div class="flex transition-all duration-300" :class="effectiveCompact ? 'flex-col items-center gap-4 py-2' : 'flex-row items-center justify-between px-2 py-2'">
-        
-        <!-- Brand Link -->
+
         <router-link :to="homeRoute" class="flex items-center gap-3 hover:opacity-80 transition-opacity overflow-hidden" @click="closeDrawer">
           <div class="w-8 h-8 flex items-center justify-center flex-shrink-0 text-primary">
             <BrandLogo :size="32" />
@@ -268,11 +303,9 @@ async function handleDisconnect() {
           <span v-show="!effectiveCompact" class="font-bold text-lg tracking-tight text-base-content whitespace-nowrap overflow-hidden">{{ brandingStore.appName }}</span>
         </router-link>
 
-        <!-- Toggle Button (Desktop Only) -->
-        <!-- In Compact mode, this sits below the logo. In Expanded, to the right. -->
-        <button 
+        <button
           v-if="isLargeScreen"
-          @click="uiStore.toggleCompact" 
+          @click="uiStore.toggleCompact"
           class="btn btn-ghost btn-sm btn-square opacity-60 hover:opacity-100 transition-opacity"
           :title="uiStore.sidebarCompact ? 'Expand Sidebar' : 'Collapse Sidebar'"
         >
@@ -282,52 +315,44 @@ async function handleDisconnect() {
 
       </div>
 
-      <!-- User & Org Card (DROPDOWN) -->
-      <div 
+      <!-- Org Selector (DROPDOWN) -->
+      <div
         class="dropdown"
         :class="effectiveCompact ? '' : 'dropdown-bottom w-full'"
       >
         <!-- Trigger -->
-        <div 
-          ref="dropdownTriggerRef"
-          @click="toggleDropdown"
+        <div
+          ref="orgTriggerRef"
+          @click="toggleOrgDropdown"
           class="flex items-center gap-3 w-full p-2 rounded-lg bg-base-200/50 hover:bg-base-200 border border-transparent hover:border-base-300 transition-all cursor-pointer select-none"
           :class="{ 'justify-center': effectiveCompact }"
           role="button"
         >
-          <!-- User Avatar -->
-          <div class="avatar placeholder">
-            <div v-if="getAvatarUrl()" class="w-8 rounded-full">
-              <img :src="getAvatarUrl()!" alt="User avatar" />
-            </div>
-            <div v-else class="bg-neutral text-neutral-content rounded-full w-8">
-              <span class="text-xs font-bold">{{ authStore.user?.name?.[0]?.toUpperCase() || 'U' }}</span>
-            </div>
+          <!-- Org Initial Square -->
+          <div class="w-8 h-8 rounded-md bg-primary/15 text-primary border border-primary/20 flex items-center justify-center flex-shrink-0">
+            <span class="text-xs font-bold">{{ orgInitial }}</span>
           </div>
-          
-          <!-- Context Info -->
+
+          <!-- Org Info -->
           <div v-show="!effectiveCompact" class="flex flex-col truncate flex-1 text-left min-w-0">
-            <span class="font-semibold text-sm truncate">{{ authStore.user?.name || 'User' }}</span>
-            <span class="text-xs text-base-content/60 truncate flex items-center gap-1">
-              <span class="w-1.5 h-1.5 rounded-full bg-base-content/40"></span>
-              {{ authStore.currentOrg?.name || 'Select Org' }}
-            </span>
+            <span class="text-[10px] uppercase tracking-wider text-base-content/50 font-semibold leading-tight">Organization</span>
+            <span class="font-semibold text-sm truncate leading-tight">{{ authStore.currentOrg?.name || 'Select Org' }}</span>
           </div>
-          
+
           <!-- Chevron -->
           <svg v-show="!effectiveCompact" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 256 256" class="opacity-50 flex-shrink-0"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" fill="currentColor"/></svg>
         </div>
-        
+
         <!-- Dropdown Menu -->
-        <!-- Use Teleport when compact to escape sidebar clipping -->
         <Teleport to="body" :disabled="!effectiveCompact">
-          <ul 
-            v-if="isDropdownOpen"
-            ref="dropdownMenuRef"
+          <ul
+            v-if="isOrgDropdownOpen"
+            ref="orgMenuRef"
             class="z-[9999] menu p-0 shadow-xl bg-base-100 rounded-box border border-base-300 gap-0 overflow-hidden"
-            :class="effectiveCompact ? 'fixed left-[5.5rem] top-[4.5rem] w-72' : 'absolute w-full mt-1 left-0'"
+            :class="effectiveCompact ? 'fixed w-72' : 'absolute w-full mt-1 left-0'"
+            :style="effectiveCompact ? orgDropdownPos : undefined"
           >
-            
+
             <!-- Header -->
             <li class="menu-title px-3 py-2 bg-base-200/30 text-xs font-bold uppercase tracking-wider border-b border-base-200">
               Switch Organization
@@ -335,10 +360,10 @@ async function handleDisconnect() {
 
             <!-- Search Input -->
             <div class="px-2 py-2 border-b border-base-200">
-              <input 
+              <input
                 v-model="orgSearchQuery"
-                type="text" 
-                placeholder="Filter organizations..." 
+                type="text"
+                placeholder="Filter organizations..."
                 class="input input-xs input-bordered w-full"
                 @click.stop
               />
@@ -347,7 +372,7 @@ async function handleDisconnect() {
             <!-- SCROLLABLE LIST -->
             <div class="max-h-64 overflow-y-auto scrollbar-thin">
               <li v-for="membership in filteredMemberships" :key="membership.id">
-                <a 
+                <a
                   @click="handleOrgChange(membership.organization)"
                   :class="{ 'active': authStore.currentOrgId === membership.organization }"
                   class="justify-between rounded-none px-4 py-2 border-b border-base-200/50"
@@ -358,47 +383,96 @@ async function handleDisconnect() {
                   </div>
                 </a>
               </li>
-              
+
               <li v-if="filteredMemberships.length === 0" class="disabled opacity-50 px-4 py-3 text-center text-xs">
                 No matching organizations
               </li>
             </div>
-            
-            <!-- Footer Actions -->
-            <div class="border-t border-base-300 bg-base-100 p-1">
-              <li v-if="authStore.canManageOrganizations">
-                <router-link to="/organizations/new" class="text-xs" @click="closeUserDropdown">
+
+            <!-- Footer Action -->
+            <div v-if="authStore.canManageOrganizations" class="border-t border-base-300 bg-base-100 p-1">
+              <li>
+                <router-link to="/organizations/new" class="text-xs" @click="closeOrgDropdown">
                   + New Organization
                 </router-link>
-              </li>
-              <li v-if="!authStore.isBadgeUser">
-                <router-link to="/my-badge" @click="closeUserDropdown(); closeDrawer()">
-                  🪪 My Badge
-                </router-link>
-              </li>
-              <li>
-                <router-link :to="authStore.isBadgeUser ? '/badge/settings' : '/settings'" @click="closeUserDropdown">
-                  ⚙️ Settings
-                </router-link>
-              </li>
-              <li>
-                <a @click="uiStore.toggleTheme">
-                  {{ uiStore.theme === 'dark' ? '☀️ Light Mode' : '🌙 Dark Mode' }}
-                </a>
-              </li>
-              <li>
-                <a @click="handleLogout" class="text-error hover:bg-error/10">
-                  🚪 Log out
-                </a>
               </li>
             </div>
           </ul>
         </Teleport>
       </div>
 
-      <!-- Connectivity Status Bar (Clickable) -->
-      <div 
-        @click="showNatsModal = true" 
+      <div class="divider my-0"></div>
+    </div>
+
+    <!-- ====================================================================== -->
+    <!-- NAVIGATION (Scrollable) -->
+    <!-- ====================================================================== -->
+    <nav class="flex-1 overflow-y-auto overflow-x-hidden px-3 pb-2">
+      <ul class="menu p-0 gap-1 w-full">
+        <li v-for="item in menuItems" :key="item.label">
+
+          <!-- Parent Item -->
+          <details v-if="item.children" :open="isActive(item.path) && !effectiveCompact">
+            <summary
+              :class="{ 'active': isActive(item.path) }"
+              class="group"
+            >
+              <!-- Tooltip for Compact Mode -->
+              <div
+                v-if="effectiveCompact"
+                class="tooltip tooltip-right absolute left-0 w-full h-full"
+                :data-tip="item.label"
+              ></div>
+
+              <span class="text-lg opacity-80 w-6 text-center">{{ item.icon }}</span>
+              <span v-show="!effectiveCompact" class="font-medium truncate">{{ item.label }}</span>
+            </summary>
+
+            <ul v-show="!effectiveCompact">
+              <li v-for="child in item.children" :key="child.path">
+                <router-link
+                  :to="child.path"
+                  :class="{ 'active': isActive(child.path) }"
+                  @click="closeDrawer"
+                  class="truncate"
+                >
+                  {{ child.label }}
+                </router-link>
+              </li>
+            </ul>
+          </details>
+
+          <!-- Single Item -->
+          <router-link
+            v-else
+            :to="item.path"
+            :class="{ 'active': isActive(item.path) }"
+            @click="closeDrawer"
+            class="group relative"
+          >
+            <!-- Tooltip for Compact Mode -->
+            <div
+              v-if="effectiveCompact"
+              class="tooltip tooltip-right absolute left-0 w-full h-full"
+              :data-tip="item.label"
+            ></div>
+
+            <span class="text-lg opacity-80 w-6 text-center">{{ item.icon }}</span>
+            <span v-show="!effectiveCompact" class="font-medium truncate">{{ item.label }}</span>
+          </router-link>
+        </li>
+      </ul>
+    </nav>
+
+    <!-- ====================================================================== -->
+    <!-- BOTTOM: NATS STATUS + USER -->
+    <!-- ====================================================================== -->
+    <div class="flex-none p-3 pt-0 flex flex-col gap-2">
+      <div class="divider my-0"></div>
+
+      <!-- NATS Status Pill -->
+      <div
+        @click="showNatsModal = true"
         class="flex items-center px-3 py-1.5 bg-base-100 border border-base-200 rounded text-xs cursor-pointer hover:border-base-300 hover:shadow-sm transition-all group select-none"
         :class="effectiveCompact ? 'justify-center' : 'justify-between'"
       >
@@ -413,71 +487,76 @@ async function handleDisconnect() {
         </span>
       </div>
 
-      <div class="divider my-0"></div>
-    </div>
-    
-    <!-- ====================================================================== -->
-    <!-- SECTION 2: NAVIGATION (Scrollable) -->
-    <!-- ====================================================================== -->
-    <nav class="flex-1 overflow-y-auto overflow-x-hidden px-3 pb-4">
-      <ul class="menu p-0 gap-1 w-full">
-        <li v-for="item in menuItems" :key="item.label">
-          
-          <!-- Parent Item -->
-          <details v-if="item.children" :open="isActive(item.path) && !effectiveCompact">
-            <summary 
-              :class="{ 'active': isActive(item.path) }"
-              class="group"
-            >
-              <!-- Tooltip for Compact Mode -->
-              <div 
-                v-if="effectiveCompact" 
-                class="tooltip tooltip-right absolute left-0 w-full h-full" 
-                :data-tip="item.label"
-              ></div>
-              
-              <span class="text-lg opacity-80 w-6 text-center">{{ item.icon }}</span>
-              <span v-show="!effectiveCompact" class="font-medium truncate">{{ item.label }}</span>
-            </summary>
-            
-            <ul v-show="!effectiveCompact">
-              <li v-for="child in item.children" :key="child.path">
-                <router-link 
-                  :to="child.path"
-                  :class="{ 'active': isActive(child.path) }"
-                  @click="closeDrawer"
-                  class="truncate"
-                >
-                  {{ child.label }}
-                </router-link>
-              </li>
-            </ul>
-          </details>
-          
-          <!-- Single Item -->
-          <router-link 
-            v-else
-            :to="item.path"
-            :class="{ 'active': isActive(item.path) }"
-            @click="closeDrawer"
-            class="group relative"
+      <!-- User Selector (DROPDOWN, opens upward) -->
+      <div
+        class="dropdown"
+        :class="effectiveCompact ? '' : 'dropdown-top w-full'"
+      >
+        <!-- Trigger -->
+        <div
+          ref="userTriggerRef"
+          @click="toggleUserDropdown"
+          class="flex items-center gap-3 w-full p-2 rounded-lg bg-base-200/50 hover:bg-base-200 border border-transparent hover:border-base-300 transition-all cursor-pointer select-none"
+          :class="{ 'justify-center': effectiveCompact }"
+          role="button"
+        >
+          <!-- User Avatar -->
+          <div class="avatar placeholder">
+            <div v-if="getAvatarUrl()" class="w-8 rounded-full">
+              <img :src="getAvatarUrl()!" alt="User avatar" />
+            </div>
+            <div v-else class="bg-neutral text-neutral-content rounded-full w-8">
+              <span class="text-xs font-bold">{{ userInitial }}</span>
+            </div>
+          </div>
+
+          <!-- User Info -->
+          <div v-show="!effectiveCompact" class="flex flex-col truncate flex-1 text-left min-w-0">
+            <span class="font-semibold text-sm truncate leading-tight">{{ authStore.user?.name || 'User' }}</span>
+            <span v-if="(authStore.user as any)?.email" class="text-xs text-base-content/60 truncate leading-tight">{{ (authStore.user as any).email }}</span>
+          </div>
+
+          <!-- Chevron (rotated since menu opens upward) -->
+          <svg v-show="!effectiveCompact" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 256 256" class="opacity-50 flex-shrink-0 rotate-180"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" fill="currentColor"/></svg>
+        </div>
+
+        <!-- Dropdown Menu -->
+        <Teleport to="body" :disabled="!effectiveCompact">
+          <ul
+            v-if="isUserDropdownOpen"
+            ref="userMenuRef"
+            class="z-[9999] menu p-1 shadow-xl bg-base-100 rounded-box border border-base-300 gap-0 overflow-hidden"
+            :class="effectiveCompact ? 'fixed w-72' : 'absolute w-full mb-1 left-0 bottom-full'"
+            :style="effectiveCompact ? userDropdownPos : undefined"
           >
-            <!-- Tooltip for Compact Mode -->
-            <div 
-              v-if="effectiveCompact" 
-              class="tooltip tooltip-right absolute left-0 w-full h-full" 
-              :data-tip="item.label"
-            ></div>
-
-            <span class="text-lg opacity-80 w-6 text-center">{{ item.icon }}</span>
-            <span v-show="!effectiveCompact" class="font-medium truncate">{{ item.label }}</span>
-          </router-link>
-        </li>
-      </ul>
-    </nav>
+            <li v-if="!authStore.isBadgeUser">
+              <router-link to="/my-badge" @click="closeUserDropdown(); closeDrawer()">
+                🪪 My Badge
+              </router-link>
+            </li>
+            <li>
+              <router-link :to="authStore.isBadgeUser ? '/badge/settings' : '/settings'" @click="closeUserDropdown">
+                ⚙️ Settings
+              </router-link>
+            </li>
+            <li>
+              <a @click="uiStore.toggleTheme">
+                {{ uiStore.theme === 'dark' ? '☀️ Light Mode' : '🌙 Dark Mode' }}
+              </a>
+            </li>
+            <div class="divider my-1"></div>
+            <li>
+              <a @click="handleLogout" class="text-error hover:bg-error/10">
+                🚪 Log out
+              </a>
+            </li>
+          </ul>
+        </Teleport>
+      </div>
+    </div>
 
     <!-- ====================================================================== -->
-    <!-- SECTION 4: MODAL (Teleported) -->
+    <!-- NATS MODAL (Teleported) -->
     <!-- ====================================================================== -->
     <Teleport to="body">
       <dialog class="modal" :class="{ 'modal-open': showNatsModal }">
@@ -596,4 +675,3 @@ details[open] > summary {
   margin-bottom: 0;
 }
 </style>
-
