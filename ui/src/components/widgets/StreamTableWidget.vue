@@ -1,26 +1,25 @@
-<!-- ui/src/components/widgets/KvTableWidget.vue -->
+<!-- ui/src/components/widgets/StreamTableWidget.vue -->
 <template>
-  <div class="kvtable-widget" :class="{ 'card-layout': layoutMode === 'card' }">
-    <!-- Loading -->
-    <div v-if="loading && tableRows.length === 0" class="loading-overlay">
-      <span class="loading loading-spinner"></span>
-    </div>
-
-    <!-- Error -->
-    <div v-else-if="error" class="error-state">
-      <span class="text-error">{{ error }}</span>
-    </div>
-
+  <div class="streamtable-widget" :class="{ 'card-layout': layoutMode === 'card' }">
     <!-- Not Configured -->
-    <div v-else-if="!cfg.kvBucket" class="empty-state">
-      <div class="empty-icon">📋</div>
-      <div v-if="layoutMode !== 'card'">Configure bucket &amp; key pattern</div>
+    <div v-if="!hasSubjects" class="empty-state">
+      <div class="empty-icon">📡</div>
+      <div v-if="layoutMode !== 'card'">Configure one or more subjects</div>
     </div>
 
     <!-- Data -->
     <template v-else>
-      <!-- Search -->
-      <div v-if="tableRows.length > 0" class="search-bar">
+      <!-- Toolbar -->
+      <div class="toolbar">
+        <button
+          class="tool-btn"
+          :class="{ 'is-paused': isPaused }"
+          :title="isPaused ? 'Resume' : 'Pause'"
+          @click="togglePause"
+        >
+          {{ isPaused ? '▶' : '⏸' }}
+        </button>
+        <button class="tool-btn" title="Clear" @click="clear">🚫</button>
         <input
           v-model="searchQuery"
           type="text"
@@ -39,7 +38,7 @@
         >
           <template v-for="col in cfg.columns || []" :key="col.id" #[`cell-${col.id}`]="{ item, value }">
             <span
-              class="text-xs truncate block max-w-[200px]"
+              class="text-xs truncate block max-w-[240px]"
               :class="cellClass(item, col)"
               :title="isEmpty(value) ? '' : String(value)"
             >
@@ -47,7 +46,6 @@
             </span>
           </template>
 
-          <!-- Mobile card: first column = bold identity header, rest = value only (ResponsiveList adds labels) -->
           <template v-for="(col, idx) in cfg.columns || []" :key="col.id" #[`card-${col.id}`]="{ item, value }">
             <span
               v-if="idx === 0"
@@ -63,7 +61,7 @@
 
           <template #empty>
             <div class="text-center py-8 opacity-50 text-xs italic">
-              {{ rows.size > 0 ? 'No matching rows' : 'No entries' }}
+              {{ buffer.length > 0 ? 'No matching rows' : 'Waiting for messages…' }}
             </div>
           </template>
         </ResponsiveList>
@@ -72,12 +70,12 @@
       <!-- Footer -->
       <div class="widget-footer">
         <span class="text-[10px] opacity-50">
-          <template v-if="isCapped">
-            showing {{ filteredRows.length }} of {{ totalRowCount.toLocaleString() }} (cap {{ maxRows }})
+          <template v-if="isPaused">
+            paused · {{ filteredRows.length }} rows
+            <span v-if="missedCount > 0" class="missed">(+{{ missedCount }} missed)</span>
           </template>
           <template v-else>
-            {{ filteredRows.length }}{{ filteredRows.length !== cappedRows.length ? `/${cappedRows.length}` : '' }}
-            row{{ filteredRows.length !== 1 ? 's' : '' }}
+            live · {{ filteredRows.length }} row{{ filteredRows.length !== 1 ? 's' : '' }}
           </template>
         </span>
         <button
@@ -96,16 +94,15 @@
       <div v-if="selectedRow" class="modal-overlay" @click.self="selectedRow = null">
         <div class="detail-modal">
           <div class="detail-header">
-            <h4>{{ selectedRow.id }}</h4>
+            <h4>{{ selectedRow.__raw__.subject || '(no subject)' }}</h4>
             <button class="close-btn" @click="selectedRow = null">✕</button>
           </div>
           <div class="detail-body">
             <div class="detail-meta">
-              <span class="meta-item">Key: <code>{{ selectedRow.__raw__.key }}</code></span>
-              <span class="meta-item">Rev: {{ selectedRow.__raw__.revision }}</span>
-              <span class="meta-item">Updated: {{ selectedRow.__raw__.timestamp?.toLocaleString() }}</span>
+              <span class="meta-item">Subject: <code>{{ selectedRow.__raw__.subject }}</code></span>
+              <span class="meta-item">Received: {{ new Date(selectedRow.__raw__.timestamp).toLocaleString() }}</span>
             </div>
-            <JsonViewer :data="selectedRow.__raw__.data" />
+            <JsonViewer :data="selectedRow.__raw__.value" />
           </div>
         </div>
       </div>
@@ -115,14 +112,13 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useDashboardStore } from '@/stores/dashboard'
-import { useNatsKvWatcher, type KvRow } from '@/composables/useNatsKvWatcher'
-import { resolveTemplate } from '@/utils/variables'
+import { useWidgetDataStore } from '@/stores/widgetData'
 import { formatColumnValue } from '@/utils/format'
 import { JSONPath } from 'jsonpath-plus'
 import ResponsiveList, { type Column } from '@/components/ui/ResponsiveList.vue'
 import JsonViewer from '@/components/common/JsonViewer.vue'
 import type { WidgetConfig, TableColumn } from '@/types/dashboard'
+import type { BufferedMessage } from '@/stores/widgetData'
 import {
   cellClass as cellClassFor,
   compareMixed,
@@ -138,108 +134,109 @@ const props = withDefaults(defineProps<{
   layoutMode: 'standard'
 })
 
-const dashboardStore = useDashboardStore()
+const dataStore = useWidgetDataStore()
+
 const searchQuery = ref('')
 const selectedRow = ref<any>(null)
+const isPaused = ref(false)
+const pausedSnapshot = ref<BufferedMessage[]>([])
 
-const cfg = computed(() => props.config.kvtableConfig || {
-  kvBucket: '',
-  keyPattern: '>',
-  columns: [],
+const cfg = computed(() => props.config.streamtableConfig || { columns: [] })
+
+const subjectsConfigured = computed(() => {
+  const ds = props.config.dataSource
+  return (ds?.subjects?.length ?? 0) > 0 || !!ds?.subject
 })
+const hasSubjects = subjectsConfigured
 
-const resolvedBucket = computed(() =>
-  resolveTemplate(cfg.value.kvBucket, dashboardStore.currentVariableValues)
-)
+const buffer = computed<BufferedMessage[]>(() => dataStore.getBuffer(props.config.id))
 
-const resolvedPattern = computed(() =>
-  resolveTemplate(cfg.value.keyPattern, dashboardStore.currentVariableValues)
-)
-
-const { rows, loading, error } = useNatsKvWatcher(
-  () => resolvedBucket.value,
-  () => resolvedPattern.value
-)
-
-// Build ResponsiveList columns from config
-const tableColumns = computed<Column<any>[]>(() => {
-  return (cfg.value.columns || []).map((col: TableColumn) => ({
+const tableColumns = computed<Column<any>[]>(() =>
+  (cfg.value.columns || []).map(col => ({
     key: col.id,
     label: col.label,
-    mobileLabel: col.label
+    mobileLabel: col.label,
   }))
-})
+)
 
-// Extract column values from each KvRow
-function extractValue(row: KvRow, col: TableColumn): any {
+const SUBJECT_TOKEN_RE = /^__subject\.(\d+)__$/
+
+function extractValue(msg: BufferedMessage, col: TableColumn): any {
   const path = col.path
-  // Meta-paths
-  if (path === '__key__') return row.key
-  if (path === '__key_suffix__') return row.keySuffix
-  if (path === '__revision__') return row.revision
-  if (path === '__timestamp__') return row.timestamp
-
-  // JSONPath extraction
+  if (path === '__subject__')   return msg.subject
+  if (path === '__timestamp__') return msg.timestamp
+  const m = SUBJECT_TOKEN_RE.exec(path)
+  if (m) return msg.subject?.split('.')[Number(m[1])]
   try {
-    return JSONPath({ path, json: row.data, wrap: false })
+    return JSONPath({ path, json: msg.value, wrap: false })
   } catch {
     return null
   }
 }
 
-// Transform KvRow Map into flat table rows
 const tableRows = computed(() => {
   const columns = cfg.value.columns || []
+  const src = isPaused.value ? pausedSnapshot.value : buffer.value
+  // Newest first — buffer pushes append, so walk in reverse.
   const result: any[] = []
-
-  for (const [key, row] of rows.value) {
-    const item: any = { id: key, __raw__: row, __values: {} as Record<string, any> }
+  for (let i = src.length - 1; i >= 0; i--) {
+    const msg = src[i]
+    const item: any = {
+      id: `${msg.timestamp}-${i}`,
+      __raw__: msg,
+      __values: {} as Record<string, any>,
+    }
     for (const col of columns) {
-      const raw = extractValue(row, col)
+      const raw = extractValue(msg, col)
       item.__values[col.id] = raw
       item[col.id] = formatColumnValue(raw, col.format, col.formatOptions)
     }
     result.push(item)
   }
 
-  // Sort
   const sortCol = cfg.value.defaultSortColumn
-  const sortDir = cfg.value.defaultSortDirection || 'desc'
   if (sortCol) {
     const colDef = columns.find(c => c.id === sortCol)
     if (colDef) {
+      const dir = cfg.value.defaultSortDirection || 'desc'
       result.sort((a, b) => {
         const cmp = compareMixed(a.__values[colDef.id], b.__values[colDef.id])
-        return sortDir === 'asc' ? cmp : -cmp
+        return dir === 'asc' ? cmp : -cmp
       })
     }
   }
-
   return result
 })
 
-const totalRowCount = computed(() => tableRows.value.length)
-const maxRows = computed(() => {
-  const m = cfg.value.maxRows
-  return m && m > 0 ? m : Infinity
-})
-const cappedRows = computed(() =>
-  totalRowCount.value > maxRows.value ? tableRows.value.slice(0, maxRows.value) : tableRows.value
-)
-const isCapped = computed(() => totalRowCount.value > maxRows.value)
-
-// Client-side search filter
 const filteredRows = computed(() => {
-  if (!searchQuery.value.trim()) return cappedRows.value
+  if (!searchQuery.value.trim()) return tableRows.value
   const q = searchQuery.value.toLowerCase()
-  return cappedRows.value.filter(row => {
-    for (const col of (cfg.value.columns || [])) {
+  return tableRows.value.filter(row => {
+    for (const col of cfg.value.columns || []) {
       const val = row[col.id]
       if (val !== null && val !== undefined && String(val).toLowerCase().includes(q)) return true
     }
     return false
   })
 })
+
+const missedCount = computed(() =>
+  isPaused.value ? Math.max(0, buffer.value.length - pausedSnapshot.value.length) : 0
+)
+
+function togglePause() {
+  isPaused.value = !isPaused.value
+  if (isPaused.value) {
+    pausedSnapshot.value = [...buffer.value]
+  } else {
+    pausedSnapshot.value = []
+  }
+}
+
+function clear() {
+  dataStore.clearBuffer(props.config.id)
+  pausedSnapshot.value = []
+}
 
 function openDetail(item: any) {
   selectedRow.value = item
@@ -253,13 +250,13 @@ function downloadCsv() {
   exportCsv({
     columns: cfg.value.columns || [],
     rows: filteredRows.value,
-    filename: props.config.title || 'kv-table',
+    filename: props.config.title || 'stream-table',
   })
 }
 </script>
 
 <style scoped>
-.kvtable-widget {
+.streamtable-widget {
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -267,11 +264,11 @@ function downloadCsv() {
   overflow: hidden;
 }
 
-.kvtable-widget.card-layout {
+.streamtable-widget.card-layout {
   padding: 8px;
 }
 
-.loading-overlay, .error-state, .empty-state {
+.empty-state {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -280,20 +277,43 @@ function downloadCsv() {
   text-align: center;
   padding: 16px;
   gap: 8px;
+  color: oklch(var(--bc) / 0.4);
 }
-
-.error-state { color: oklch(var(--er)); font-size: 13px; }
-.empty-state { color: oklch(var(--bc) / 0.4); }
 .empty-icon { font-size: 32px; }
 
-.search-bar {
+.toolbar {
   flex-shrink: 0;
+  display: flex;
+  gap: 6px;
+  align-items: center;
   padding: 6px 8px;
   border-bottom: 1px solid oklch(var(--b3));
 }
 
+.tool-btn {
+  background: oklch(var(--b1));
+  border: 1px solid oklch(var(--b3));
+  color: oklch(var(--bc) / 0.7);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 2px 8px;
+  font-size: 12px;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.tool-btn:hover {
+  border-color: oklch(var(--a));
+  color: oklch(var(--a));
+}
+
+.tool-btn.is-paused {
+  border-color: oklch(var(--wa));
+  color: oklch(var(--wa));
+}
+
 .search-input {
-  width: 100%;
+  flex: 1;
   padding: 4px 8px;
   border: 1px solid oklch(var(--b3));
   border-radius: 4px;
@@ -303,9 +323,7 @@ function downloadCsv() {
   outline: none;
 }
 
-.search-input:focus {
-  border-color: oklch(var(--a));
-}
+.search-input:focus { border-color: oklch(var(--a)); }
 
 .data-container {
   flex: 1;
@@ -322,6 +340,8 @@ function downloadCsv() {
   gap: 8px;
   background: oklch(var(--b2) / 0.5);
 }
+
+.missed { color: oklch(var(--wa)); }
 
 .csv-btn {
   font-size: 10px;
@@ -346,13 +366,10 @@ function downloadCsv() {
 .cell-style-error   { color: oklch(var(--er)); font-weight: 600; }
 .cell-style-info    { color: oklch(var(--in)); font-weight: 600; }
 
-/* Detail Modal */
+/* Detail modal */
 .modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  top: 0; left: 0; right: 0; bottom: 0;
   background: rgba(0, 0, 0, 0.7);
   display: flex;
   align-items: center;
@@ -399,9 +416,7 @@ function downloadCsv() {
   flex-shrink: 0;
 }
 
-.close-btn:hover {
-  color: oklch(var(--bc));
-}
+.close-btn:hover { color: oklch(var(--bc)); }
 
 .detail-body {
   padding: 16px;

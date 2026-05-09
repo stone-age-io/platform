@@ -252,6 +252,18 @@ export function useWidgetOperations() {
           maxRows: 500
         }
         break
+      case 'streamtable':
+        widget.title = 'Stream Table'
+        widget.dataSource = { type: 'subscription', subjects: [] }
+        widget.buffer.maxCount = 200
+        widget.streamtableConfig = {
+          columns: [
+            { id: 'col_subject',   label: 'Subject', path: '__subject__',   format: 'text' },
+            { id: 'col_timestamp', label: 'Time',    path: '__timestamp__', format: 'relative-time' },
+          ],
+          defaultSortDirection: 'desc',
+        }
+        break
     }
   }
 

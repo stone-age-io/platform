@@ -1,5 +1,5 @@
 // ui/src/types/config.ts
-import type { ThresholdRule, MapMarker, StatusMapping, KvTableColumn, DynamicMarkerPopupField, ScannerRule } from './dashboard'
+import type { ThresholdRule, MapMarker, StatusMapping, TableColumn, DynamicMarkerPopupField, ScannerRule } from './dashboard'
 
 export interface WidgetFormState {
   // Common
@@ -108,10 +108,15 @@ export interface WidgetFormState {
   // KV Table Widget
   kvTableBucket: string
   kvTableKeyPattern: string
-  kvTableColumns: KvTableColumn[]
+  kvTableColumns: TableColumn[]
   kvTableDefaultSortColumn: string
   kvTableDefaultSortDirection: 'asc' | 'desc'
   kvTableMaxRows: number
+
+  // Stream Table Widget (subjects/JetStream/bufferSize use the shared fields)
+  streamTableColumns: TableColumn[]
+  streamTableDefaultSortColumn: string
+  streamTableDefaultSortDirection: 'asc' | 'desc'
 
   // Scanner Widget
   scannerKvEnabled: boolean
@@ -243,6 +248,11 @@ export function createEmptyFormState(): WidgetFormState {
     kvTableDefaultSortColumn: '',
     kvTableDefaultSortDirection: 'desc',
     kvTableMaxRows: 500,
+
+    // Stream Table Defaults
+    streamTableColumns: [],
+    streamTableDefaultSortColumn: '',
+    streamTableDefaultSortDirection: 'desc',
 
     useJetStream: false,
     deliverPolicy: 'last',

@@ -85,6 +85,7 @@ const PublisherWidget = defineAsyncComponent(() => import('@/components/widgets/
 const MarkdownWidget = defineAsyncComponent(() => import('@/components/widgets/MarkdownWidget.vue'))
 const PocketBaseWidget = defineAsyncComponent(() => import('@/components/widgets/PocketBaseWidget.vue'))
 const KvTableWidget = defineAsyncComponent(() => import('@/components/widgets/KvTableWidget.vue'))
+const StreamTableWidget = defineAsyncComponent(() => import('@/components/widgets/StreamTableWidget.vue'))
 const ScannerWidget = defineAsyncComponent(() => import('@/components/widgets/ScannerWidget.vue'))
 
 const props = defineProps<{
@@ -123,15 +124,16 @@ const widgetComponent = computed(() => {
     case 'markdown': return MarkdownWidget
     case 'pocketbase': return PocketBaseWidget
     case 'kvtable': return KvTableWidget
+    case 'streamtable': return StreamTableWidget
     case 'scanner': return ScannerWidget
     default: return null
   }
 })
 
 const MOBILE_TITLED_TYPES = new Set([
-  'kvtable', 'pocketbase', 'gauge', 'markdown', 'stat', 'chart', 'map', 'scanner'
+  'kvtable', 'streamtable', 'pocketbase', 'gauge', 'markdown', 'stat', 'chart', 'map', 'scanner'
 ])
-const MOBILE_EXPANDABLE_TYPES = new Set(['kvtable', 'map', 'markdown', 'scanner'])
+const MOBILE_EXPANDABLE_TYPES = new Set(['kvtable', 'streamtable', 'map', 'markdown', 'scanner'])
 
 const shouldShowHeader = computed(() => {
   if (!dashboardStore.isLocked) return true

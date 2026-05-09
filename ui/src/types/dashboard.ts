@@ -9,6 +9,7 @@ export type WidgetType =
   | 'button'
   | 'kv'
   | 'kvtable'
+  | 'streamtable'
   | 'switch'
   | 'slider'
   | 'stat'
@@ -266,7 +267,7 @@ export interface BadgeRecord {
 }
 
 // --- KV Table Widget Types ---
-export type KvTableColumnFormat = 'text' | 'number' | 'relative-time' | 'datetime'
+export type TableColumnFormat = 'text' | 'number' | 'relative-time' | 'datetime'
 
 export type ConditionalRuleOp = 'eq' | 'gt' | 'lt' | 'gte' | 'lte' | 'contains'
 export type ConditionalRuleStyle = 'success' | 'warning' | 'error' | 'info'
@@ -277,11 +278,11 @@ export interface ConditionalRule {
   style: ConditionalRuleStyle
 }
 
-export interface KvTableColumn {
+export interface TableColumn {
   id: string
   label: string
   path: string         // JSONPath (e.g., "$.temperature") or meta-path ("__key_suffix__")
-  format: KvTableColumnFormat
+  format: TableColumnFormat
   formatOptions?: string  // e.g., date-fns format string for 'datetime'
   rules?: ConditionalRule[]  // first-match-wins coloring on the cell
 }
@@ -289,10 +290,19 @@ export interface KvTableColumn {
 export interface KvTableWidgetConfig {
   kvBucket: string
   keyPattern: string    // e.g., "{{location_code}}.>"
-  columns: KvTableColumn[]
+  columns: TableColumn[]
   defaultSortColumn?: string   // column id
   defaultSortDirection?: 'asc' | 'desc'
   maxRows?: number             // hard cap on rendered rows (default 500)
+}
+
+// --- Stream Table Widget ---
+// Subscription-driven sibling of KvTable: rows are messages from a NATS subject
+// ring-buffer. Subjects/JetStream/bufferSize live on widget.dataSource.
+export interface StreamTableWidgetConfig {
+  columns: TableColumn[]
+  defaultSortColumn?: string
+  defaultSortDirection?: 'asc' | 'desc'
 }
 
 // --- Map Widget Types ---
@@ -305,7 +315,7 @@ export const MAP_LIMITS = {
 export interface DynamicMarkerPopupField {
   label: string
   path: string              // JSONPath or meta-path (__key_suffix__, __revision__, __timestamp__)
-  format?: KvTableColumnFormat  // reuse: text, number, relative-time, datetime
+  format?: TableColumnFormat  // reuse: text, number, relative-time, datetime
 }
 
 export interface DynamicMarkerSource {
@@ -429,6 +439,7 @@ export interface WidgetConfig {
   markdownConfig?: MarkdownWidgetConfig
   pocketbaseConfig?: PocketBaseWidgetConfig
   kvtableConfig?: KvTableWidgetConfig
+  streamtableConfig?: StreamTableWidgetConfig
   scannerConfig?: ScannerWidgetConfig
 }
 
@@ -465,6 +476,7 @@ export const DEFAULT_WIDGET_SIZES: Record<WidgetType, { w: number; h: number }> 
   markdown: { w: 4, h: 4 },
   pocketbase: { w: 6, h: 4 },
   kvtable: { w: 6, h: 4 },
+  streamtable: { w: 6, h: 4 },
   scanner: { w: 4, h: 4 },
 }
 
@@ -614,6 +626,18 @@ export function createDefaultWidget(type: WidgetType, position: { x: number; y: 
         ],
         defaultSortDirection: 'desc',
         maxRows: 500
+      }
+      break
+    case 'streamtable':
+      base.title = 'Stream Table'
+      base.dataSource = { type: 'subscription', subjects: [] }
+      base.buffer = { maxCount: 200 }
+      base.streamtableConfig = {
+        columns: [
+          { id: 'col_subject',   label: 'Subject', path: '__subject__',   format: 'text' },
+          { id: 'col_timestamp', label: 'Time',    path: '__timestamp__', format: 'relative-time' },
+        ],
+        defaultSortDirection: 'desc',
       }
       break
     case 'scanner':

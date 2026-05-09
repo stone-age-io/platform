@@ -47,6 +47,11 @@
                 <div class="widget-type-name">KV Table</div>
                 <div class="widget-type-desc">Live KV bucket table</div>
               </button>
+              <button v-show="isAllowed('streamtable')" class="widget-type-btn" @click="selectType('streamtable')">
+                <div class="widget-type-icon">📡</div>
+                <div class="widget-type-name">Stream Table</div>
+                <div class="widget-type-desc">Live message stream as a table</div>
+              </button>
               <button v-show="isAllowed('pocketbase')" class="widget-type-btn" @click="selectType('pocketbase')">
                 <div class="widget-type-icon">🐬</div>
                 <div class="widget-type-name">PocketBase</div>

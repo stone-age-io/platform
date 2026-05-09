@@ -27,6 +27,7 @@ import ConfigStatus from '@/components/dashboard/config/ConfigStatus.vue'
 import ConfigMarkdown from '@/components/dashboard/config/ConfigMarkdown.vue'
 import ConfigPocketBase from '@/components/dashboard/config/ConfigPocketBase.vue'
 import ConfigKvTable from '@/components/dashboard/config/ConfigKvTable.vue'
+import ConfigStreamTable from '@/components/dashboard/config/ConfigStreamTable.vue'
 import ConfigScanner from '@/components/dashboard/config/ConfigScanner.vue'
 
 // ============================================================================
@@ -70,6 +71,7 @@ const configComponents: Record<string, Component> = {
   markdown: ConfigMarkdown,
   pocketbase: ConfigPocketBase,
   kvtable: ConfigKvTable,
+  streamtable: ConfigStreamTable,
   scanner: ConfigScanner,
 }
 
@@ -113,7 +115,10 @@ function hydrateKvFields(widget: WidgetConfig, state: WidgetFormState): void {
 }
 
 /** Types that use the standard shared data source config (subject + jsonPath + buffer) */
-const STANDARD_DATA_SOURCE_TYPES: WidgetType[] = ['text', 'chart', 'stat', 'gauge', 'console']
+const STANDARD_DATA_SOURCE_TYPES: WidgetType[] = ['text', 'chart', 'stat', 'gauge', 'console', 'streamtable']
+
+/** Types that allow multiple subjects via the tag-input UI */
+const MULTI_SUBJECT_TYPES: WidgetType[] = ['console', 'streamtable']
 
 /** Validate subscription-related fields shared across visualization widgets */
 function validateSubscriptionFields(
@@ -122,8 +127,8 @@ function validateSubscriptionFields(
   widgetType: WidgetType,
   v: Validator
 ): void {
-  // Console uses multi-subject
-  if (widgetType === 'console') {
+  // Multi-subject types (console, streamtable)
+  if (MULTI_SUBJECT_TYPES.includes(widgetType)) {
     if (form.subjects.length === 0) {
       errors.subjects = 'At least one subject is required'
     }
@@ -633,6 +638,39 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
     },
   },
 
+  // --- streamtable ---
+  streamtable: {
+    hydrate(widget, state) {
+      if (widget.streamtableConfig) {
+        state.streamTableColumns = JSON.parse(JSON.stringify(widget.streamtableConfig.columns || []))
+        state.streamTableDefaultSortColumn = widget.streamtableConfig.defaultSortColumn || ''
+        state.streamTableDefaultSortDirection = widget.streamtableConfig.defaultSortDirection || 'desc'
+      }
+    },
+    validate(form, errors) {
+      // Subjects are validated by the shared subscription validator (MULTI_SUBJECT_TYPES).
+      if (form.streamTableColumns.length === 0) {
+        errors.streamTableColumns = 'At least one column is required'
+      } else {
+        for (const col of form.streamTableColumns) {
+          if (!col.label.trim() || !col.path.trim()) {
+            errors.streamTableColumns = 'All columns need a label and path'
+            break
+          }
+        }
+      }
+    },
+    buildUpdates(form) {
+      return {
+        streamtableConfig: {
+          columns: JSON.parse(JSON.stringify(form.streamTableColumns)),
+          defaultSortColumn: form.streamTableDefaultSortColumn || undefined,
+          defaultSortDirection: form.streamTableDefaultSortDirection,
+        },
+      }
+    },
+  },
+
   // --- scanner ---
   scanner: {
     hydrate(widget, state) {
@@ -861,9 +899,9 @@ export function useWidgetForm(options: UseWidgetFormOptions) {
     // Standard data source update for visualization widgets
     if (STANDARD_DATA_SOURCE_TYPES.includes(widget.type)) {
       const trimmedSubject = form.value.subject.trim()
-      // Console widget manages its own subjects array (multi-subject).
+      // Multi-subject types manage their own subjects array.
       // All other widget types derive subjects from the single subject field.
-      const resolvedSubjects = widget.type === 'console'
+      const resolvedSubjects = MULTI_SUBJECT_TYPES.includes(widget.type)
         ? form.value.subjects
         : trimmedSubject ? [trimmedSubject] : []
       updates.dataSource = {
