@@ -3,6 +3,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useNatsKv, type KvEntry } from '@/composables/useNatsKv'
 import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 import { formatDate } from '@/utils/format'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import JsonViewer from '@/components/common/JsonViewer.vue'
@@ -22,6 +23,7 @@ const props = withDefaults(defineProps<{
 
 const { entries, loading, exists, error, init, createBucket, put, del, getHistory } = useNatsKv(props.bucket || 'twin', props.baseKey)
 const toast = useToast()
+const { confirm } = useConfirm()
 
 // --- UI & Pagination State ---
 const selectedEntry = ref<KvEntryWithId | null>(null)
@@ -154,6 +156,26 @@ function openAdd() {
 function closeEditor() {
   selectedEntry.value = null
   isAddingNew.value = false
+}
+
+async function handleDelete() {
+  if (!selectedEntry.value) return
+  const key = selectedEntry.value.key
+  const confirmed = await confirm({
+    title: 'Delete Property',
+    message: `Are you sure you want to delete "${displayKey(key)}"?`,
+    details: 'This will publish a delete marker to the KV bucket. Prior revisions remain in the history.',
+    confirmText: 'Delete',
+    variant: 'danger',
+  })
+  if (!confirmed) return
+  try {
+    await del(key)
+    toast.success('Property Deleted')
+    closeEditor()
+  } catch (e: any) {
+    toast.error(e?.message || 'Failed to delete property')
+  }
 }
 
 async function loadHistory(key: string) {
@@ -307,7 +329,7 @@ function isObject(val: any) {
                   </div>
 
                   <div class="flex gap-2 pt-2">
-                    <button v-if="!isAddingNew" @click="del(selectedEntry!.key); closeEditor()" class="btn btn-sm btn-error btn-outline flex-1">Delete</button>
+                    <button v-if="!isAddingNew" @click="handleDelete" class="btn btn-sm btn-error btn-outline flex-1">Delete</button>
                     <button @click="handleSave" class="btn btn-sm btn-primary flex-1">Save</button>
                   </div>
                 </div>
