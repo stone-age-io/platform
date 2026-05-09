@@ -110,7 +110,19 @@ const expiresLabel = computed(() => {
   return format(d, 'MMM d, yyyy')
 })
 
+const issuedLabel = computed(() => {
+  const iss = badgeRecord.value?.issued_at
+  if (!iss) return null
+  const d = new Date(iss)
+  if (Number.isNaN(d.getTime())) return null
+  return format(d, 'MMM d, yyyy')
+})
+
 const badgeIsRevoked = computed(() => badgeRecord.value?.revoked === true)
+
+const hasLifecycleChips = computed(() =>
+  badgeIsRevoked.value || !!expiresLabel.value || !!issuedLabel.value
+)
 
 const metadataEntries = computed(() => {
   const meta = badgeRecord.value?.metadata || {}
@@ -156,12 +168,21 @@ watch(
   { immediate: true }
 )
 
+// Attributes drawer
+const drawerOpen = ref(false)
+
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && drawerOpen.value) drawerOpen.value = false
+}
+
 onMounted(() => {
   clockInterval = setInterval(() => { now.value = new Date() }, 1000)
+  window.addEventListener('keydown', onKeydown)
 })
 
 onUnmounted(() => {
   if (clockInterval) clearInterval(clockInterval)
+  window.removeEventListener('keydown', onKeydown)
 })
 </script>
 
@@ -174,9 +195,8 @@ onUnmounted(() => {
         <span class="live-label" :class="natsStatusDotClass">{{ natsStatusLabel }}</span>
       </div>
 
-      <!-- Decorative header band -->
+      <!-- Header band -->
       <div class="badge-header">
-        <div class="badge-header-pattern"></div>
         <div class="badge-header-logo">
           <BrandLogo :size="80" />
         </div>
@@ -235,22 +255,29 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- Lifecycle + metadata chips from `badges` KV, if present -->
-        <div v-if="badgeRecord" class="badge-lifecycle">
-          <span v-if="badgeIsRevoked" class="lifecycle-chip lifecycle-chip--revoked">
-            Revoked
-          </span>
-          <span v-else-if="expiresLabel" class="lifecycle-chip">
-            Expires {{ expiresLabel }}
-          </span>
-          <span
-            v-for="entry in metadataEntries"
-            :key="entry.key"
-            class="lifecycle-chip lifecycle-chip--meta"
+        <!-- Lifecycle chips + attributes trigger from `badges` KV, if present -->
+        <div v-if="badgeRecord" class="badge-record-section">
+          <div v-if="hasLifecycleChips" class="badge-lifecycle">
+            <span v-if="badgeIsRevoked" class="lifecycle-chip lifecycle-chip--revoked">
+              Revoked
+            </span>
+            <span v-else-if="expiresLabel" class="lifecycle-chip">
+              Expires {{ expiresLabel }}
+            </span>
+            <span v-if="issuedLabel" class="lifecycle-chip">
+              Issued {{ issuedLabel }}
+            </span>
+          </div>
+
+          <button
+            v-if="metadataEntries.length > 0"
+            type="button"
+            class="badge-attrs-trigger"
+            @click="drawerOpen = true"
           >
-            <span class="chip-key">{{ entry.key }}</span>
-            <span class="chip-value">{{ entry.value }}</span>
-          </span>
+            <span>View attributes</span>
+            <span class="badge-attrs-count">{{ metadataEntries.length }}</span>
+          </button>
         </div>
 
         <!-- No NATS identity fallback -->
@@ -269,6 +296,41 @@ onUnmounted(() => {
           Open Dashboard
         </router-link>
       </div>
+
+      <!-- Attributes drawer (overlays the card) -->
+      <Transition name="drawer">
+        <div
+          v-if="drawerOpen"
+          class="badge-drawer"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="badge-drawer-title"
+        >
+          <div class="badge-drawer-header">
+            <h2 id="badge-drawer-title" class="badge-drawer-title">Attributes</h2>
+            <button
+              type="button"
+              class="badge-drawer-close"
+              aria-label="Close attributes"
+              @click="drawerOpen = false"
+            >
+              ✕
+            </button>
+          </div>
+          <div class="badge-drawer-body">
+            <dl class="attr-list">
+              <div
+                v-for="entry in metadataEntries"
+                :key="entry.key"
+                class="attr-row"
+              >
+                <dt class="attr-key">{{ entry.key }}</dt>
+                <dd class="attr-value">{{ entry.value }}</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+      </Transition>
     </div>
   </div>
 </template>
@@ -298,12 +360,9 @@ onUnmounted(() => {
   max-width: 420px;
   background: oklch(var(--b1));
   border: 1px solid oklch(var(--b3));
-  border-radius: 1.5rem;
+  border-radius: 1.25rem;
   overflow: hidden;
-  box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.04),
-    0 8px 16px rgba(0, 0, 0, 0.08),
-    0 20px 40px -8px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 24px -8px oklch(0% 0 0 / 0.15);
 }
 
 /* ========================================
@@ -314,21 +373,22 @@ onUnmounted(() => {
   top: 0.875rem;
   right: 0.875rem;
   z-index: 10;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
-  padding: 0.3rem 0.625rem 0.3rem 0.5rem;
+  gap: 0.4rem;
+  padding: 0.3rem 0.625rem 0.3rem 0.55rem;
   border-radius: 9999px;
-  background: oklch(var(--b1) / 0.6);
-  backdrop-filter: blur(6px);
+  background: oklch(var(--b1));
+  border: 1px solid oklch(var(--b3));
 }
 
 .live-dot {
   display: block;
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+  background: oklch(var(--bc) / 0.3);
 }
 
 .live-label {
@@ -337,79 +397,42 @@ onUnmounted(() => {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   line-height: 1;
+  color: oklch(var(--bc) / 0.7);
 }
 
-.live--connected .live-dot,
 .live-dot.live--connected {
   background: oklch(var(--su));
-  box-shadow: 0 0 6px 2px oklch(var(--su) / 0.5);
-  animation: beacon 1.8s ease-in-out infinite;
+  animation: pulse-dot 1.8s ease-in-out infinite;
 }
 .live-label.live--connected { color: oklch(var(--su)); }
 
-.live--warning .live-dot,
 .live-dot.live--warning {
   background: oklch(var(--wa));
-  box-shadow: 0 0 6px 2px oklch(var(--wa) / 0.4);
-  animation: beacon-warn 1s ease-in-out infinite;
+  animation: pulse-dot 1s ease-in-out infinite;
 }
 .live-label.live--warning { color: oklch(var(--wa)); }
 
-.live--error .live-dot,
-.live-dot.live--error {
-  background: oklch(var(--er));
-  box-shadow: 0 0 4px 1px oklch(var(--er) / 0.3);
-}
+.live-dot.live--error { background: oklch(var(--er)); }
 .live-label.live--error { color: oklch(var(--er)); }
 
-@keyframes beacon {
-  0%, 100% {
-    box-shadow: 0 0 4px 1px oklch(var(--su) / 0.4);
-    transform: scale(1);
-  }
-  50% {
-    box-shadow: 0 0 12px 6px oklch(var(--su) / 0.35), 0 0 24px 12px oklch(var(--su) / 0.1);
-    transform: scale(1.15);
-  }
-}
-
-@keyframes beacon-warn {
-  0%, 100% {
-    box-shadow: 0 0 4px 1px oklch(var(--wa) / 0.4);
-    transform: scale(1);
-  }
-  50% {
-    box-shadow: 0 0 10px 5px oklch(var(--wa) / 0.4), 0 0 20px 10px oklch(var(--wa) / 0.15);
-    transform: scale(1.15);
-  }
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
 /* ========================================
    Header Band
    ======================================== */
 .badge-header {
-  height: 120px;
-  background: linear-gradient(135deg, oklch(var(--p)), oklch(var(--p) / 0.7));
+  height: 110px;
+  background: oklch(var(--p));
   position: relative;
-  overflow: hidden;
-}
-
-.badge-header-pattern {
-  position: absolute;
-  inset: 0;
-  opacity: 0.08;
-  background-image:
-    radial-gradient(circle at 20% 50%, oklch(var(--pc)) 1px, transparent 1px),
-    radial-gradient(circle at 80% 30%, oklch(var(--pc)) 1px, transparent 1px),
-    radial-gradient(circle at 50% 80%, oklch(var(--pc)) 1px, transparent 1px);
-  background-size: 40px 40px, 60px 60px, 50px 50px;
 }
 
 .badge-header-logo {
   position: absolute;
   top: 1rem;
   left: 1rem;
-  z-index: 2;
   width: 80px;
   height: 80px;
   display: flex;
@@ -419,23 +442,23 @@ onUnmounted(() => {
 }
 
 /* ========================================
-   Avatar with Ring
+   Avatar
    ======================================== */
 .badge-avatar {
   display: flex;
   justify-content: center;
-  margin-top: -60px;
+  margin-top: -56px;
   position: relative;
   z-index: 5;
 }
 
 .avatar-ring {
-  width: 128px;
-  height: 128px;
+  width: 120px;
+  height: 120px;
   border-radius: 50%;
-  padding: 3px;
-  background: oklch(var(--p) / 0.3);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  padding: 4px;
+  background: oklch(var(--b1));
+  box-shadow: 0 2px 8px oklch(0% 0 0 / 0.1);
   flex-shrink: 0;
 }
 
@@ -444,7 +467,6 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  border: 3px solid oklch(var(--b1));
   overflow: hidden;
 }
 
@@ -458,8 +480,8 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: oklch(var(--n));
-  color: oklch(var(--nc));
+  background: oklch(var(--p));
+  color: oklch(var(--pc));
   font-size: 2.75rem;
   font-weight: 700;
 }
@@ -644,18 +666,147 @@ onUnmounted(() => {
   border-color: oklch(var(--er) / 0.25);
 }
 
-.lifecycle-chip--meta .chip-key {
-  color: oklch(var(--bc) / 0.5);
-  font-weight: 500;
-  text-transform: lowercase;
+/* ========================================
+   Attributes Trigger
+   ======================================== */
+.badge-attrs-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.75rem auto 0;
+  padding: 0.4rem 0.875rem;
+  border-radius: 9999px;
+  background: transparent;
+  color: oklch(var(--bc) / 0.7);
+  border: 1px solid oklch(var(--b3));
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
-.lifecycle-chip--meta .chip-value {
+.badge-attrs-trigger:hover {
+  background: oklch(var(--b2));
+  color: oklch(var(--bc));
+  border-color: oklch(var(--bc) / 0.3);
+}
+
+.badge-attrs-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.375rem;
+  border-radius: 9999px;
+  background: oklch(var(--p) / 0.15);
+  color: oklch(var(--p));
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+.badge-record-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ========================================
+   Attributes Drawer (overlays badge-card)
+   ======================================== */
+.badge-drawer {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  background: oklch(var(--b1));
+}
+
+.badge-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid oklch(var(--b3));
+  flex-shrink: 0;
+}
+
+.badge-drawer-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: oklch(var(--bc));
+}
+
+.badge-drawer-close {
+  width: 2rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: none;
+  background: oklch(var(--b2));
+  color: oklch(var(--bc) / 0.7);
+  cursor: pointer;
+  font-size: 0.875rem;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+}
+
+.badge-drawer-close:hover {
+  background: oklch(var(--b3));
+  color: oklch(var(--bc));
+}
+
+.badge-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.25rem 0;
+}
+
+.attr-list {
+  margin: 0;
+  padding: 0;
+}
+
+.attr-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid oklch(var(--b2));
+}
+
+.attr-row:last-child {
+  border-bottom: none;
+}
+
+.attr-key {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: oklch(var(--bc) / 0.5);
+}
+
+.attr-value {
+  margin: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  max-width: 140px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 0.875rem;
+  color: oklch(var(--bc));
+  word-break: break-word;
+}
+
+.drawer-enter-active,
+.drawer-leave-active {
+  transition: transform 0.25s ease;
+}
+
+.drawer-enter-from,
+.drawer-leave-to {
+  transform: translateY(100%);
 }
 
 /* ========================================
@@ -715,20 +866,20 @@ onUnmounted(() => {
   }
 
   .badge-header {
-    height: 140px;
+    height: 130px;
   }
 
   .badge-avatar {
-    margin-top: -70px;
+    margin-top: -68px;
   }
 
   .avatar-ring {
-    width: 148px;
-    height: 148px;
+    width: 140px;
+    height: 140px;
   }
 
   .avatar-placeholder {
-    font-size: 3.5rem;
+    font-size: 3.25rem;
   }
 
   .badge-name {

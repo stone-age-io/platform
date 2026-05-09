@@ -261,6 +261,7 @@ export interface ScannerRule {
 // --- Badge KV record (value stored in the `badges` bucket) ---
 // Interpreted by the scanner widget for GO/NO-GO decisions.
 export interface BadgeRecord {
+  issued_at?: string | null    // ISO timestamp; when the badge was issued
   expires_at?: string | null   // ISO timestamp; null/absent = no expiry
   revoked?: boolean            // default false
   metadata?: Record<string, any>
