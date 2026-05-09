@@ -268,12 +268,22 @@ export interface BadgeRecord {
 // --- KV Table Widget Types ---
 export type KvTableColumnFormat = 'text' | 'number' | 'relative-time' | 'datetime'
 
+export type ConditionalRuleOp = 'eq' | 'gt' | 'lt' | 'gte' | 'lte' | 'contains'
+export type ConditionalRuleStyle = 'success' | 'warning' | 'error' | 'info'
+
+export interface ConditionalRule {
+  op: ConditionalRuleOp
+  value: string         // compared as number for gt/lt/gte/lte, string for eq/contains
+  style: ConditionalRuleStyle
+}
+
 export interface KvTableColumn {
   id: string
   label: string
   path: string         // JSONPath (e.g., "$.temperature") or meta-path ("__key_suffix__")
   format: KvTableColumnFormat
   formatOptions?: string  // e.g., date-fns format string for 'datetime'
+  rules?: ConditionalRule[]  // first-match-wins coloring on the cell
 }
 
 export interface KvTableWidgetConfig {
@@ -282,6 +292,7 @@ export interface KvTableWidgetConfig {
   columns: KvTableColumn[]
   defaultSortColumn?: string   // column id
   defaultSortDirection?: 'asc' | 'desc'
+  maxRows?: number             // hard cap on rendered rows (default 500)
 }
 
 // --- Map Widget Types ---
@@ -601,7 +612,8 @@ export function createDefaultWidget(type: WidgetType, position: { x: number; y: 
         columns: [
           { id: 'col_1', label: 'Key', path: '__key_suffix__', format: 'text' }
         ],
-        defaultSortDirection: 'desc'
+        defaultSortDirection: 'desc',
+        maxRows: 500
       }
       break
     case 'scanner':

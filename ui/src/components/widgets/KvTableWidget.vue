@@ -37,16 +37,28 @@
           :clickable="true"
           @row-click="openDetail"
         >
-          <template v-for="col in tableColumns" :key="col.key" #[`cell-${col.key}`]="{ value }">
-            <span class="text-xs truncate block max-w-[200px]" :title="String(value)">
-              {{ value }}
+          <template v-for="col in cfg.columns || []" :key="col.id" #[`cell-${col.id}`]="{ item, value }">
+            <span
+              class="text-xs truncate block max-w-[200px]"
+              :class="cellClass(item, col)"
+              :title="isEmpty(value) ? '' : String(value)"
+            >
+              {{ displayValue(value) }}
             </span>
           </template>
 
           <!-- Mobile card: first column = bold identity header, rest = value only (ResponsiveList adds labels) -->
-          <template v-for="(col, idx) in tableColumns" :key="col.key" #[`card-${col.key}`]="{ value }">
-            <span v-if="idx === 0" class="text-sm font-bold text-primary truncate">{{ value || '-' }}</span>
-            <span v-else class="text-xs font-medium text-base-content/80 truncate">{{ value || '-' }}</span>
+          <template v-for="(col, idx) in cfg.columns || []" :key="col.id" #[`card-${col.id}`]="{ item, value }">
+            <span
+              v-if="idx === 0"
+              class="text-sm font-bold text-primary truncate"
+              :class="cellClass(item, col)"
+            >{{ displayValue(value) }}</span>
+            <span
+              v-else
+              class="text-xs font-medium text-base-content/80 truncate"
+              :class="cellClass(item, col)"
+            >{{ displayValue(value) }}</span>
           </template>
 
           <template #empty>
@@ -60,9 +72,22 @@
       <!-- Footer -->
       <div class="widget-footer">
         <span class="text-[10px] opacity-50">
-          {{ filteredRows.length }}{{ filteredRows.length !== tableRows.length ? `/${tableRows.length}` : '' }}
-          row{{ filteredRows.length !== 1 ? 's' : '' }}
+          <template v-if="isCapped">
+            showing {{ filteredRows.length }} of {{ totalRowCount.toLocaleString() }} (cap {{ maxRows }})
+          </template>
+          <template v-else>
+            {{ filteredRows.length }}{{ filteredRows.length !== cappedRows.length ? `/${cappedRows.length}` : '' }}
+            row{{ filteredRows.length !== 1 ? 's' : '' }}
+          </template>
         </span>
+        <button
+          v-if="filteredRows.length > 0"
+          class="csv-btn"
+          title="Export visible rows as CSV"
+          @click="exportCsv"
+        >
+          CSV
+        </button>
       </div>
     </template>
 
@@ -97,7 +122,9 @@ import { formatColumnValue } from '@/utils/format'
 import { JSONPath } from 'jsonpath-plus'
 import ResponsiveList, { type Column } from '@/components/ui/ResponsiveList.vue'
 import JsonViewer from '@/components/common/JsonViewer.vue'
-import type { WidgetConfig, KvTableColumn } from '@/types/dashboard'
+import type { WidgetConfig, KvTableColumn, ConditionalRule } from '@/types/dashboard'
+
+const NULL_DISPLAY = '—'
 
 const props = withDefaults(defineProps<{
   config: WidgetConfig
@@ -161,9 +188,10 @@ const tableRows = computed(() => {
   const result: any[] = []
 
   for (const [key, row] of rows.value) {
-    const item: any = { id: key, __raw__: row }
+    const item: any = { id: key, __raw__: row, __values: {} as Record<string, any> }
     for (const col of columns) {
       const raw = extractValue(row, col)
+      item.__values[col.id] = raw
       item[col.id] = formatColumnValue(raw, col.format, col.formatOptions)
     }
     result.push(item)
@@ -176,9 +204,7 @@ const tableRows = computed(() => {
     const colDef = columns.find(c => c.id === sortCol)
     if (colDef) {
       result.sort((a, b) => {
-        const av = extractValue(a.__raw__, colDef)
-        const bv = extractValue(b.__raw__, colDef)
-        const cmp = compareMixed(av, bv)
+        const cmp = compareMixed(a.__values[colDef.id], b.__values[colDef.id])
         return sortDir === 'asc' ? cmp : -cmp
       })
     }
@@ -187,11 +213,21 @@ const tableRows = computed(() => {
   return result
 })
 
+const totalRowCount = computed(() => tableRows.value.length)
+const maxRows = computed(() => {
+  const m = cfg.value.maxRows
+  return m && m > 0 ? m : Infinity
+})
+const cappedRows = computed(() =>
+  totalRowCount.value > maxRows.value ? tableRows.value.slice(0, maxRows.value) : tableRows.value
+)
+const isCapped = computed(() => totalRowCount.value > maxRows.value)
+
 // Client-side search filter
 const filteredRows = computed(() => {
-  if (!searchQuery.value.trim()) return tableRows.value
+  if (!searchQuery.value.trim()) return cappedRows.value
   const q = searchQuery.value.toLowerCase()
-  return tableRows.value.filter(row => {
+  return cappedRows.value.filter(row => {
     for (const col of (cfg.value.columns || [])) {
       const val = row[col.id]
       if (val !== null && val !== undefined && String(val).toLowerCase().includes(q)) return true
@@ -211,6 +247,68 @@ function compareMixed(a: any, b: any): number {
 
 function openDetail(item: any) {
   selectedRow.value = item
+}
+
+function isEmpty(v: any): boolean {
+  return v === null || v === undefined || v === ''
+}
+
+function displayValue(v: any): string {
+  return isEmpty(v) ? NULL_DISPLAY : String(v)
+}
+
+function evalRule(raw: any, rule: ConditionalRule): boolean {
+  if (raw === null || raw === undefined) return false
+  if (rule.op === 'eq') return String(raw) === String(rule.value)
+  if (rule.op === 'contains') {
+    return String(raw).toLowerCase().includes(String(rule.value).toLowerCase())
+  }
+  const a = Number(raw)
+  const b = Number(rule.value)
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return false
+  switch (rule.op) {
+    case 'gt': return a > b
+    case 'lt': return a < b
+    case 'gte': return a >= b
+    case 'lte': return a <= b
+  }
+  return false
+}
+
+function cellClass(item: any, col: KvTableColumn): string {
+  if (!col.rules || col.rules.length === 0) return ''
+  const raw = item.__values?.[col.id]
+  for (const rule of col.rules) {
+    if (evalRule(raw, rule)) return `cell-style-${rule.style}`
+  }
+  return ''
+}
+
+function csvField(v: any): string {
+  if (isEmpty(v)) return ''
+  const s = String(v)
+  if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"'
+  return s
+}
+
+function exportCsv() {
+  const cols = cfg.value.columns || []
+  if (cols.length === 0) return
+  const header = cols.map(c => csvField(c.label || c.id)).join(',')
+  const lines = filteredRows.value.map(row =>
+    cols.map(c => csvField(row[c.id])).join(',')
+  )
+  const csv = [header, ...lines].join('\r\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  const name = (props.config.title || 'kv-table').replace(/[^a-z0-9._-]+/gi, '_')
+  a.download = `${name}.csv`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }
 </script>
 
@@ -275,8 +373,32 @@ function openDetail(item: any) {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
   background: oklch(var(--b2) / 0.5);
 }
+
+.csv-btn {
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border: 1px solid oklch(var(--b3));
+  border-radius: 3px;
+  background: oklch(var(--b1));
+  color: oklch(var(--bc) / 0.7);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.csv-btn:hover {
+  border-color: oklch(var(--a));
+  color: oklch(var(--a));
+}
+
+/* Conditional formatting (applies to both desktop cells and mobile cards) */
+.cell-style-success { color: oklch(var(--su)); font-weight: 600; }
+.cell-style-warning { color: oklch(var(--wa)); font-weight: 600; }
+.cell-style-error   { color: oklch(var(--er)); font-weight: 600; }
+.cell-style-info    { color: oklch(var(--in)); font-weight: 600; }
 
 /* Detail Modal */
 .modal-overlay {

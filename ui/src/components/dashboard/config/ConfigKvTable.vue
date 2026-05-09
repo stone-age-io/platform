@@ -76,6 +76,41 @@
                 ✕
               </button>
             </div>
+
+            <!-- Conditional formatting rules -->
+            <details class="rules-details" :open="(col.rules?.length ?? 0) > 0">
+              <summary>
+                Conditional formatting
+                <span v-if="col.rules?.length" class="rule-count">{{ col.rules.length }}</span>
+              </summary>
+              <div class="rules-list">
+                <div v-for="(rule, ri) in col.rules || []" :key="ri" class="rule-row">
+                  <select v-model="rule.op" class="form-input rule-op">
+                    <option value="eq">=</option>
+                    <option value="gt">&gt;</option>
+                    <option value="gte">&gt;=</option>
+                    <option value="lt">&lt;</option>
+                    <option value="lte">&lt;=</option>
+                    <option value="contains">contains</option>
+                  </select>
+                  <input
+                    v-model="rule.value"
+                    type="text"
+                    class="form-input rule-value"
+                    placeholder="value"
+                  />
+                  <select v-model="rule.style" class="form-input rule-style" :class="`style-${rule.style}`">
+                    <option value="success">success</option>
+                    <option value="info">info</option>
+                    <option value="warning">warning</option>
+                    <option value="error">error</option>
+                  </select>
+                  <button class="btn-remove rule-remove" title="Remove rule" @click="removeRule(col, ri)">✕</button>
+                </div>
+                <button class="btn-add-rule" @click="addRule(col)">+ Add rule</button>
+                <div class="help-text">First match wins. Numeric ops parse both sides as numbers.</div>
+              </div>
+            </details>
           </div>
         </div>
       </div>
@@ -88,6 +123,21 @@
       </datalist>
 
       <button class="btn-add" @click="addColumn">+ Add Column</button>
+    </div>
+
+    <!-- Max rows -->
+    <div class="form-group">
+      <label>Max Rows</label>
+      <input
+        v-model.number="form.kvTableMaxRows"
+        type="number"
+        min="0"
+        class="form-input"
+        placeholder="500"
+      />
+      <div class="help-text">
+        Hard cap on rendered rows. Use 0 for unlimited (not recommended for large buckets).
+      </div>
     </div>
 
     <!-- Default Sort -->
@@ -111,7 +161,7 @@
 
 <script setup lang="ts">
 import type { WidgetFormState } from '@/types/config'
-import type { KvTableColumnFormat } from '@/types/dashboard'
+import type { KvTableColumn, KvTableColumnFormat, ConditionalRule } from '@/types/dashboard'
 
 const props = defineProps<{
   form: WidgetFormState
@@ -132,6 +182,15 @@ function addColumn() {
 
 function removeColumn(index: number) {
   props.form.kvTableColumns.splice(index, 1)
+}
+
+function addRule(col: KvTableColumn) {
+  if (!col.rules) col.rules = []
+  col.rules.push({ op: 'gt', value: '', style: 'warning' } as ConditionalRule)
+}
+
+function removeRule(col: KvTableColumn, index: number) {
+  col.rules?.splice(index, 1)
 }
 </script>
 
@@ -223,4 +282,84 @@ function removeColumn(index: number) {
 }
 
 .mb-2 { margin-bottom: 8px; }
+
+.rules-details {
+  margin-top: 4px;
+  border-top: 1px dashed oklch(var(--b3));
+  padding-top: 6px;
+}
+
+.rules-details summary {
+  cursor: pointer;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: oklch(var(--bc) / 0.6);
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rules-details summary:hover {
+  color: oklch(var(--bc));
+}
+
+.rule-count {
+  background: oklch(var(--p) / 0.15);
+  color: oklch(var(--p));
+  border-radius: 999px;
+  padding: 0 6px;
+  font-size: 10px;
+}
+
+.rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.rule-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.rule-op { max-width: 90px; }
+.rule-value { flex: 1; }
+.rule-style { max-width: 110px; }
+
+.rule-style.style-success { color: oklch(var(--su)); }
+.rule-style.style-info    { color: oklch(var(--in)); }
+.rule-style.style-warning { color: oklch(var(--wa)); }
+.rule-style.style-error   { color: oklch(var(--er)); }
+
+.rule-remove {
+  padding: 2px 6px;
+  font-size: 12px;
+}
+
+.btn-add-rule {
+  align-self: flex-start;
+  background: none;
+  border: 1px dashed oklch(var(--b3));
+  border-radius: 4px;
+  color: oklch(var(--bc) / 0.6);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 3px 8px;
+  margin-top: 2px;
+}
+
+.btn-add-rule:hover {
+  border-color: oklch(var(--a));
+  color: oklch(var(--a));
+}
+
+.help-text {
+  font-size: 10px;
+  color: oklch(var(--bc) / 0.5);
+  margin-top: 2px;
+}
 </style>

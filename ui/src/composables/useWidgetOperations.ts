@@ -248,7 +248,8 @@ export function useWidgetOperations() {
           columns: [
             { id: 'col_1', label: 'Key', path: '__key_suffix__', format: 'text' }
           ],
-          defaultSortDirection: 'desc'
+          defaultSortDirection: 'desc',
+          maxRows: 500
         }
         break
     }

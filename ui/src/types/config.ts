@@ -111,6 +111,7 @@ export interface WidgetFormState {
   kvTableColumns: KvTableColumn[]
   kvTableDefaultSortColumn: string
   kvTableDefaultSortDirection: 'asc' | 'desc'
+  kvTableMaxRows: number
 
   // Scanner Widget
   scannerKvEnabled: boolean
@@ -241,6 +242,7 @@ export function createEmptyFormState(): WidgetFormState {
     kvTableColumns: [],
     kvTableDefaultSortColumn: '',
     kvTableDefaultSortDirection: 'desc',
+    kvTableMaxRows: 500,
 
     useJetStream: false,
     deliverPolicy: 'last',

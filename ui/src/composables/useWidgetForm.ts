@@ -602,6 +602,7 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
         state.kvTableColumns = JSON.parse(JSON.stringify(widget.kvtableConfig.columns || []))
         state.kvTableDefaultSortColumn = widget.kvtableConfig.defaultSortColumn || ''
         state.kvTableDefaultSortDirection = widget.kvtableConfig.defaultSortDirection || 'desc'
+        state.kvTableMaxRows = widget.kvtableConfig.maxRows ?? 500
       }
     },
     validate(form, errors) {
@@ -626,6 +627,7 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
           columns: JSON.parse(JSON.stringify(form.kvTableColumns)),
           defaultSortColumn: form.kvTableDefaultSortColumn || undefined,
           defaultSortDirection: form.kvTableDefaultSortDirection,
+          maxRows: form.kvTableMaxRows > 0 ? form.kvTableMaxRows : undefined,
         },
       }
     },

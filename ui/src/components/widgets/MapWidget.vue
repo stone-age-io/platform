@@ -359,4 +359,10 @@ onUnmounted(() => {
 .map-control-btn { width: 32px; height: 32px; background: var(--panel); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2); }
 .map-control-btn:hover { background: var(--color-info-bg); border-color: var(--color-info-border); }
 .map-control-btn:active { transform: scale(0.95); }
+
+/* Cluster marker theme-aware overrides (three shades of primary) */
+.map-container :deep(.marker-cluster) { background-color: oklch(var(--p) / 0.25); }
+.map-container :deep(.marker-cluster div) { background-color: oklch(var(--p) / 0.7); color: oklch(var(--pc)); font-weight: 600; }
+.map-container :deep(.marker-cluster-medium div) { background-color: oklch(var(--p) / 0.85); }
+.map-container :deep(.marker-cluster-large div) { background-color: oklch(var(--p)); }
 </style>
