@@ -824,6 +824,10 @@ export function useWidgetForm(options: UseWidgetFormOptions) {
     return STANDARD_DATA_SOURCE_TYPES.includes(widgetType.value)
   })
 
+  const isMultiSubject = computed(() =>
+    !!widgetType.value && MULTI_SUBJECT_TYPES.includes(widgetType.value)
+  )
+
   // --- Hydration ---
 
   watch(() => options.widgetId.value, (widgetId) => {
@@ -940,6 +944,7 @@ export function useWidgetForm(options: UseWidgetFormOptions) {
     widgetType,
     activeConfigComponent,
     showDataSourceConfig,
+    isMultiSubject,
     save,
     close,
   }

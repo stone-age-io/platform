@@ -12,11 +12,11 @@
           <ConfigCommon :form="form" :errors="errors" />
           
           <!-- Data Source (Shared by visualization widgets) -->
-          <ConfigDataSource 
+          <ConfigDataSource
             v-if="showDataSourceConfig"
-            :form="form" 
-            :errors="errors" 
-            :allow-multiple="widgetType === 'console'"
+            :form="form"
+            :errors="errors"
+            :allow-multiple="isMultiSubject"
           />
 
           <!-- Widget Specific Config (Dynamic) -->
@@ -57,7 +57,7 @@ const emit = defineEmits<{
   saved: []
 }>()
 
-const { form, errors, widgetType, activeConfigComponent, showDataSourceConfig, save, close } =
+const { form, errors, widgetType, activeConfigComponent, showDataSourceConfig, isMultiSubject, save, close } =
   useWidgetForm({
     widgetId: toRef(props, 'widgetId'),
     onSaved: () => emit('saved'),

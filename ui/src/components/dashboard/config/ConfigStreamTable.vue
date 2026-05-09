@@ -1,7 +1,5 @@
 <template>
   <div class="config-streamtable">
-    <ConfigDataSource :form="form" :errors="errors" :allow-multiple="true" />
-
     <div class="form-group">
       <label>Columns</label>
       <ColumnsBuilder
@@ -10,9 +8,6 @@
         :error-text="errors.streamTableColumns"
         path-placeholder="$.field or __subject__"
       />
-      <div class="help-text">
-        Each row is a message. Leave the data-source JSONPath empty so columns extract from the full payload.
-      </div>
     </div>
 
     <div class="form-group">
@@ -35,7 +30,6 @@
 
 <script setup lang="ts">
 import type { WidgetFormState } from '@/types/config'
-import ConfigDataSource from './ConfigDataSource.vue'
 import ColumnsBuilder from './ColumnsBuilder.vue'
 
 defineProps<{
