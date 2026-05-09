@@ -297,8 +297,8 @@ async function handleDisconnect() {
       <div class="flex transition-all duration-300" :class="effectiveCompact ? 'flex-col items-center gap-4 py-2' : 'flex-row items-center justify-between px-2 py-2'">
 
         <router-link :to="homeRoute" class="flex items-center gap-3 hover:opacity-80 transition-opacity overflow-hidden" @click="closeDrawer">
-          <div class="w-8 h-8 flex items-center justify-center flex-shrink-0 text-primary">
-            <BrandLogo :size="32" />
+          <div class="w-10 h-10 flex items-center justify-center flex-shrink-0 text-primary">
+            <BrandLogo :size="40" />
           </div>
           <span v-show="!effectiveCompact" class="font-bold text-lg tracking-tight text-base-content whitespace-nowrap overflow-hidden">{{ brandingStore.appName }}</span>
         </router-link>

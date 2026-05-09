@@ -178,7 +178,7 @@ onUnmounted(() => {
       <div class="badge-header">
         <div class="badge-header-pattern"></div>
         <div class="badge-header-logo">
-          <BrandLogo :size="44" />
+          <BrandLogo :size="80" />
         </div>
       </div>
 
@@ -410,17 +410,12 @@ onUnmounted(() => {
   top: 1rem;
   left: 1rem;
   z-index: 2;
-  width: 44px;
-  height: 44px;
+  width: 80px;
+  height: 80px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: oklch(var(--pc));
-  background: oklch(var(--b1) / 0.18);
-  border: 1px solid oklch(var(--pc) / 0.25);
-  border-radius: 0.625rem;
-  padding: 4px;
-  backdrop-filter: blur(4px);
 }
 
 /* ========================================
