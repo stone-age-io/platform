@@ -198,28 +198,28 @@ onUnmounted(() => {
       </div>
     </div>
 
+    <!-- Search (always visible across both modes) -->
+    <div class="form-control">
+      <input
+        v-model="searchQuery"
+        type="text"
+        placeholder="Search by name, type, code, or parent..."
+        class="input input-bordered w-full"
+      />
+      <label v-if="!searchQuery && viewMode === 'list'" class="label">
+        <span class="label-text-alt text-base-content/60">
+          Showing top-level locations. Use search to find sub-locations.
+        </span>
+      </label>
+      <label v-else-if="searchQuery" class="label">
+        <span class="label-text-alt text-base-content/60">
+          Searching all {{ allLocations.length }} locations.
+        </span>
+      </label>
+    </div>
+
     <!-- LIST VIEW -->
     <div v-if="viewMode === 'list'" class="space-y-6 fade-in">
-      <!-- Search -->
-      <div class="form-control">
-        <input
-          v-model="searchQuery"
-          type="text"
-          placeholder="Search by name, type, code, or parent..."
-          class="input input-bordered w-full"
-        />
-        <label v-if="!searchQuery" class="label">
-          <span class="label-text-alt text-base-content/60">
-            Showing top-level locations. Use search to find sub-locations.
-          </span>
-        </label>
-        <label v-else class="label">
-          <span class="label-text-alt text-base-content/60">
-            Searching all {{ allLocations.length }} locations.
-          </span>
-        </label>
-      </div>
-
       <!-- List Card -->
       <BaseCard :no-padding="true">
         <div v-if="loading && allLocations.length === 0" class="flex justify-center p-12">
@@ -303,7 +303,7 @@ onUnmounted(() => {
 
     <!-- MAP VIEW -->
     <div v-else-if="viewMode === 'map'" class="fade-in">
-      <LocationMapViz />
+      <LocationMapViz :search-query="searchQuery" />
     </div>
 
   </div>

@@ -1,6 +1,9 @@
 import { ref, shallowRef, onUnmounted, nextTick } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import 'leaflet.markercluster'
+import 'leaflet.markercluster/dist/MarkerCluster.css'
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
 import type { Location } from '@/types/pocketbase'
 
 // Theme-aware tile providers
@@ -51,7 +54,13 @@ export function useMap() {
 
     updateTheme(isDarkMode)
 
-    const layerGroup = L.layerGroup()
+    const layerGroup = (L as any).markerClusterGroup({
+      chunkedLoading: true,
+      maxClusterRadius: 50,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+      zoomToBoundsOnClick: true,
+    })
     layerGroup.addTo(mapInstance)
     markersLayer.value = layerGroup
 

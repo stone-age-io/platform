@@ -10,10 +10,14 @@ import type { Thing } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
+import ThingMapViz from '@/components/things/ThingMapViz.vue'
 
 const router = useRouter()
 const toast = useToast()
 const { confirm } = useConfirm()
+
+// View Mode
+const viewMode = ref<'list' | 'map'>('list')
 
 // Pagination
 const {
@@ -156,18 +160,61 @@ onUnmounted(() => {
 
 <template>
   <div class="space-y-6">
-    <!-- Header -->
+    <!-- Header & Controls -->
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-      <div>
-        <h1 class="text-3xl font-bold">Things</h1>
+      <!-- Left Side: Title & Mobile Toggle -->
+      <div class="w-full sm:w-auto">
+        <div class="flex justify-between items-center">
+          <h1 class="text-3xl font-bold">Things</h1>
+
+          <!-- Mobile Toggle: Next to title -->
+          <div class="join shadow-sm border border-base-300 sm:hidden">
+            <button
+              class="join-item btn btn-sm px-3"
+              :class="{ 'btn-active': viewMode === 'list' }"
+              @click="viewMode = 'list'"
+            >
+              📋
+            </button>
+            <button
+              class="join-item btn btn-sm px-3"
+              :class="{ 'btn-active': viewMode === 'map' }"
+              @click="viewMode = 'map'"
+            >
+              🗺️
+            </button>
+          </div>
+        </div>
         <p class="text-base-content/70 mt-1">
           Manage IoT devices and sensors
         </p>
       </div>
-      <router-link to="/things/new" class="btn btn-primary w-full sm:w-auto">
-        <span class="text-lg">+</span>
-        <span>New Thing</span>
-      </router-link>
+
+      <!-- Right Side: Desktop Toggle & New Button -->
+      <div class="flex gap-3 w-full sm:w-auto">
+        <!-- Desktop Toggle: Hidden on mobile -->
+        <div class="hidden sm:inline-flex join shadow-sm border border-base-300">
+          <button
+            class="join-item btn"
+            :class="{ 'btn-active': viewMode === 'list' }"
+            @click="viewMode = 'list'"
+          >
+            📋 List
+          </button>
+          <button
+            class="join-item btn"
+            :class="{ 'btn-active': viewMode === 'map' }"
+            @click="viewMode = 'map'"
+          >
+            🗺️ Map
+          </button>
+        </div>
+
+        <router-link to="/things/new" class="btn btn-primary w-full sm:w-auto">
+          <span class="text-lg">+</span>
+          <span>New Thing</span>
+        </router-link>
+      </div>
     </div>
     
     <!-- Search -->
@@ -178,14 +225,17 @@ onUnmounted(() => {
         placeholder="Search things by name, code, type, or location..."
         class="input input-bordered w-full"
       />
-      <label v-if="searchQuery && filteredThings.length < things.length" class="label">
+      <label v-if="searchQuery && viewMode === 'list' && filteredThings.length < things.length" class="label">
         <span class="label-text-alt">
           Showing {{ filteredThings.length }} of {{ things.length }} things
           (searching current page only)
         </span>
       </label>
     </div>
-    
+
+    <!-- LIST VIEW -->
+    <template v-if="viewMode === 'list'">
+
     <!-- Loading State -->
     <div v-if="loading && things.length === 0" class="flex justify-center p-12">
       <span class="loading loading-spinner loading-lg"></span>
@@ -328,7 +378,7 @@ onUnmounted(() => {
       <!-- Search active message (when paginated) -->
       <div v-else class="p-4 border-t border-base-300 text-center">
         <p class="text-sm text-base-content/60">
-          Searching within current page. 
+          Searching within current page.
           <button @click="searchQuery = ''" class="link link-primary text-sm">
             Clear search
           </button>
@@ -336,5 +386,12 @@ onUnmounted(() => {
         </p>
       </div>
     </BaseCard>
+
+    </template>
+
+    <!-- MAP VIEW -->
+    <div v-else-if="viewMode === 'map'">
+      <ThingMapViz :search-query="searchQuery" />
+    </div>
   </div>
 </template>
