@@ -172,12 +172,20 @@ export const useAuthStore = defineStore('auth', () => {
   
   async function switchOrganization(orgId: string) {
     if (!user.value || currentOrgId.value === orgId) return
-    currentOrgId.value = orgId
-    user.value.current_organization = orgId
     const collection = isSuperAdmin.value ? '_superusers' : 'users'
+    // Persist to the backend BEFORE flipping local state. PocketBase API rules
+    // (e.g. nats_users.viewRule) check the server-side `current_organization`,
+    // so any reactive consumer that fires off a request the instant currentOrgId
+    // changes must see the backend already in the new context. Otherwise the
+    // request gets denied by the rule for the previous org.
     try {
       await pb.collection(collection).update(user.value.id, { current_organization: orgId })
-    } catch (e) { console.warn('Organization persistence failed:', e) }
+    } catch (e) {
+      console.warn('Organization persistence failed:', e)
+      return
+    }
+    currentOrgId.value = orgId
+    user.value.current_organization = orgId
     window.dispatchEvent(new CustomEvent('organization-changed', { detail: { orgId } }))
   }
 
