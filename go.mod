@@ -3,14 +3,14 @@ module platform
 go 1.25.0
 
 require (
-	github.com/pocketbase/pocketbase v0.36.6
-	github.com/skeeeon/pb-audit v0.0.0-20260328214505-793cfec8ee9e
-	github.com/skeeeon/pb-nats v0.0.0-20260427033400-2816614b9a03
-	github.com/skeeeon/pb-nebula v0.0.0-20260427033315-e17d30799e9e
-	github.com/skeeeon/pb-tenancy v0.0.0-20251126004748-da57c8293c1f
+	github.com/pocketbase/pocketbase v0.38.0
+	github.com/skeeeon/pb-audit v0.0.0-20260509164131-d384bb182a41
+	github.com/skeeeon/pb-nats v0.0.0-20260509163949-d0bcc08e578c
+	github.com/skeeeon/pb-nebula v0.0.0-20260509164003-b5fec76fda08
+	github.com/skeeeon/pb-tenancy v0.0.0-20260509164438-78df1343ea65
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
-	golang.org/x/term v0.40.0
+	golang.org/x/term v0.42.0
 )
 
 require (
@@ -19,7 +19,7 @@ require (
 	github.com/disintegration/imaging v1.6.2 // indirect
 	github.com/domodwyer/mailyak/v3 v3.6.2 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/fatih/color v1.18.0 // indirect
+	github.com/fatih/color v1.19.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
 	github.com/ganigeorgiev/fexpr v0.5.0 // indirect
@@ -30,7 +30,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/compress v1.18.4 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
-	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/nats-io/jwt/v2 v2.8.0 // indirect
 	github.com/nats-io/nats.go v1.49.0 // indirect
 	github.com/nats-io/nkeys v0.4.15 // indirect
@@ -46,18 +46,18 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/crypto v0.48.0 // indirect
-	golang.org/x/image v0.36.0 // indirect
-	golang.org/x/net v0.51.0 // indirect
+	golang.org/x/crypto v0.50.0 // indirect
+	golang.org/x/image v0.39.0 // indirect
+	golang.org/x/net v0.53.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.42.0 // indirect
-	golang.org/x/text v0.34.0 // indirect
+	golang.org/x/sys v0.43.0 // indirect
+	golang.org/x/text v0.36.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	modernc.org/libc v1.70.0 // indirect
+	modernc.org/libc v1.72.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
-	modernc.org/sqlite v1.46.1 // indirect
+	modernc.org/sqlite v1.50.0 // indirect
 )
