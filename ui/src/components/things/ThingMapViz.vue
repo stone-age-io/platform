@@ -154,7 +154,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="h-full flex flex-col relative min-h-[600px] bg-base-300 rounded-xl overflow-hidden shadow-lg border border-base-300">
+  <div class="h-full flex flex-col relative isolate min-h-[600px] bg-base-300 rounded-xl overflow-hidden shadow-lg border border-base-300">
 
     <!-- Stats Overlay (Top Left) -->
     <div class="absolute top-4 left-4 z-[400]">
