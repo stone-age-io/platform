@@ -17,7 +17,7 @@ const { initMap, renderMarkers, setSelectedMarker, updateTheme, fitToMarkers, in
 
 const loading = ref(true)
 const things = ref<Thing[]>([])
-const selectedThing = ref<Thing | null>(null)
+const selectedThings = ref<Thing[]>([])
 const isMobile = ref(false)
 const mapContainerId = 'thing-list-map-container'
 
@@ -60,27 +60,48 @@ function checkMobile() {
 }
 
 function handleMarkerClick(marker: Location) {
-  // marker.id is the Thing id we stamped in
-  if (selectedThing.value?.id === marker.id) {
+  // marker.id is the Thing id we stamped in via useMap
+  if (selectedThings.value.length === 1 && selectedThings.value[0].id === marker.id) {
     closeDrawer()
     return
   }
-  const thing = things.value.find(t => t.id === marker.id) || null
-  selectedThing.value = thing
+  const thing = things.value.find(t => t.id === marker.id)
+  if (!thing) return
+  selectedThings.value = [thing]
   setSelectedMarker(marker.id)
   if (!isMobile.value) nextTick(() => invalidateSize())
 }
 
+function handleClusterClick(ids: string[]) {
+  const matched = ids
+    .map(id => things.value.find(t => t.id === id))
+    .filter((t): t is Thing => !!t)
+  if (matched.length === 0) {
+    closeDrawer()
+    return
+  }
+  selectedThings.value = matched
+  setSelectedMarker(null)
+  if (!isMobile.value) nextTick(() => invalidateSize())
+}
+
+function handleSelectFromList(thingId: string) {
+  const thing = things.value.find(t => t.id === thingId)
+  if (!thing) return
+  selectedThings.value = [thing]
+  setSelectedMarker(thingId)
+}
+
 function handleMapClick(event: MouseEvent) {
   if (isMobile.value) return
-  if (!selectedThing.value) return
+  if (selectedThings.value.length === 0) return
   const target = event.target as HTMLElement
   if (target.closest('.leaflet-marker-icon') || target.closest('.thing-map-drawer')) return
   closeDrawer()
 }
 
 function closeDrawer() {
-  selectedThing.value = null
+  selectedThings.value = []
   setSelectedMarker(null)
   if (!isMobile.value) nextTick(() => invalidateSize())
 }
@@ -108,8 +129,13 @@ watch(() => authStore.currentOrgId, () => {
 
 watch(markersForMap, (next) => {
   renderMarkers(next, handleMarkerClick)
-  if (selectedThing.value && !next.some(m => m.id === selectedThing.value!.id)) {
+  if (selectedThings.value.length === 0) return
+  const visibleIds = new Set(next.map(m => m.id))
+  const stillVisible = selectedThings.value.filter(t => visibleIds.has(t.id))
+  if (stillVisible.length === 0) {
     closeDrawer()
+  } else if (stillVisible.length !== selectedThings.value.length) {
+    selectedThings.value = stillVisible
   }
 })
 
@@ -117,7 +143,7 @@ onMounted(async () => {
   checkMobile()
   window.addEventListener('resize', checkMobile)
   await loadData()
-  initMap(mapContainerId, uiStore.theme === 'dark')
+  initMap(mapContainerId, uiStore.theme === 'dark', handleClusterClick)
   renderMarkers(markersForMap.value, handleMarkerClick)
 })
 
@@ -181,13 +207,14 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Thing Drawer -->
+    <!-- Thing Drawer (adapts: list when many, detail when one) -->
     <ThingMapDrawer
-      v-if="selectedThing"
-      :thing="selectedThing"
+      v-if="selectedThings.length > 0"
+      :things="selectedThings"
       :is-mobile="isMobile"
       class="thing-map-drawer"
       @close="closeDrawer"
+      @select="handleSelectFromList"
     />
   </div>
 </template>

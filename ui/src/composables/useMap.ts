@@ -37,7 +37,11 @@ export function useMap() {
     })
   }
 
-  const initMap = (containerId: string, isDarkMode: boolean) => {
+  const initMap = (
+    containerId: string,
+    isDarkMode: boolean,
+    onClusterClick?: (markerIds: string[]) => void
+  ) => {
     if (map.value) return
 
     fixLeafletIcons()
@@ -54,13 +58,25 @@ export function useMap() {
 
     updateTheme(isDarkMode)
 
+    const customClusterClick = !!onClusterClick
     const layerGroup = (L as any).markerClusterGroup({
       chunkedLoading: true,
       maxClusterRadius: 50,
-      spiderfyOnMaxZoom: true,
+      // When the consumer supplies its own cluster handler, suppress the
+      // default zoom-to-bounds + spiderfy so the handler owns the interaction.
+      spiderfyOnMaxZoom: !customClusterClick,
       showCoverageOnHover: false,
-      zoomToBoundsOnClick: true,
+      zoomToBoundsOnClick: !customClusterClick,
     })
+    if (customClusterClick) {
+      layerGroup.on('clusterclick', (e: any) => {
+        const children = e.layer.getAllChildMarkers() as L.Marker[]
+        const ids = children
+          .map(m => (m as any).__rrId as string | undefined)
+          .filter((id): id is string => !!id)
+        onClusterClick(ids)
+      })
+    }
     layerGroup.addTo(mapInstance)
     markersLayer.value = layerGroup
 
@@ -103,6 +119,7 @@ export function useMap() {
       latLngs.push([lat, lon])
 
       const marker = L.marker([lat, lon], { title: loc.name })
+      ;(marker as any).__rrId = loc.id
 
       if (onMarkerClick) {
         marker.on('click', () => onMarkerClick(loc))
