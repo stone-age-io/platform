@@ -25,6 +25,17 @@ const form = ref({
   owner: '',
 })
 
+// Logo state
+// - logoFile: a newly-selected File (null if user hasn't picked anything new)
+// - logoPreviewUrl: object URL for newly-selected file, OR resolved URL for the
+//   existing record's stored logo
+// - removeExistingLogo: when true on edit, clear the stored logo on save
+const logoFile = ref<File | null>(null)
+const logoPreviewUrl = ref<string | null>(null)
+const removeExistingLogo = ref(false)
+const logoFileInputRef = ref<HTMLInputElement | null>(null)
+const existingRecord = ref<any>(null)
+
 // Owner selection state
 const ownerMode = ref<'existing' | 'new'>('existing')
 const users = ref<User[]>([])
@@ -60,11 +71,15 @@ async function loadData() {
   loading.value = true
   try {
     const record = await pb.collection('organizations').getOne(id)
+    existingRecord.value = record
     form.value = {
       name: record.name,
       description: record.description || '',
       active: record.active,
       owner: record.owner,
+    }
+    if (record.logo) {
+      logoPreviewUrl.value = pb.files.getURL(record, record.logo, { thumb: '200x200' })
     }
   } catch (err: any) {
     toast.error('Failed to load organization')
@@ -72,6 +87,31 @@ async function loadData() {
   } finally {
     loading.value = false
   }
+}
+
+function onLogoSelected(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  logoFile.value = file
+  removeExistingLogo.value = false
+  // Revoke any previous object URL we created for a prior selection
+  if (logoPreviewUrl.value && logoPreviewUrl.value.startsWith('blob:')) {
+    URL.revokeObjectURL(logoPreviewUrl.value)
+  }
+  logoPreviewUrl.value = URL.createObjectURL(file)
+}
+
+function clearLogo() {
+  if (logoPreviewUrl.value && logoPreviewUrl.value.startsWith('blob:')) {
+    URL.revokeObjectURL(logoPreviewUrl.value)
+  }
+  logoFile.value = null
+  logoPreviewUrl.value = null
+  // Only mark for removal if there was a stored logo
+  if (existingRecord.value?.logo) {
+    removeExistingLogo.value = true
+  }
+  if (logoFileInputRef.value) logoFileInputRef.value.value = ''
 }
 
 async function createNewUser(): Promise<string | null> {
@@ -132,11 +172,18 @@ async function submit() {
       return
     }
 
-    const data = {
-      name: form.value.name,
-      description: form.value.description,
-      active: form.value.active,
-      owner: ownerId,
+    // Build FormData so we can attach the logo file (or clear it on edit) in
+    // the same request as the rest of the fields.
+    const data = new FormData()
+    data.append('name', form.value.name)
+    data.append('description', form.value.description)
+    data.append('active', String(form.value.active))
+    data.append('owner', ownerId)
+    if (logoFile.value) {
+      data.append('logo', logoFile.value)
+    } else if (isEdit.value && removeExistingLogo.value) {
+      // PocketBase convention: empty value clears a single-file field.
+      data.append('logo', '')
     }
 
     if (isEdit.value) {
@@ -215,6 +262,46 @@ onMounted(() => {
                   <input v-model="form.active" type="checkbox" class="toggle toggle-success" :disabled="loading" />
                   <span class="label-text">Active</span>
                 </label>
+              </div>
+
+              <!-- Logo -->
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Logo</span>
+                </label>
+                <div class="flex items-center gap-4">
+                  <div class="w-16 h-16 rounded-lg border border-base-300 bg-base-200 flex items-center justify-center overflow-hidden flex-shrink-0">
+                    <img
+                      v-if="logoPreviewUrl"
+                      :src="logoPreviewUrl"
+                      alt="Logo preview"
+                      class="w-full h-full object-contain"
+                    />
+                    <span v-else class="text-xs text-base-content/50">No logo</span>
+                  </div>
+                  <div class="flex flex-col gap-2 flex-1">
+                    <input
+                      ref="logoFileInputRef"
+                      type="file"
+                      accept="image/png,image/jpeg,image/svg+xml,image/gif,image/webp"
+                      class="file-input file-input-bordered file-input-sm w-full"
+                      :disabled="loading"
+                      @change="onLogoSelected"
+                    />
+                    <div class="flex items-center justify-between">
+                      <span class="text-xs text-base-content/60">Square image. PNG, JPG, SVG, GIF, or WEBP.</span>
+                      <button
+                        v-if="logoPreviewUrl"
+                        type="button"
+                        class="btn btn-xs btn-ghost text-error"
+                        :disabled="loading"
+                        @click="clearLogo"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </BaseCard>

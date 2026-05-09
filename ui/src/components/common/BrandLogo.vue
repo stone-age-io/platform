@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useBrandingStore } from '@/stores/branding'
+import { useAuthStore } from '@/stores/auth'
+import { pb } from '@/utils/pb'
 
 interface Props {
   size?: number | string
@@ -11,20 +13,41 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const brandingStore = useBrandingStore()
+const authStore = useAuthStore()
 
 const sizePx = computed(() => (typeof props.size === 'number' ? `${props.size}px` : props.size))
+
+// Pick a thumb size that comfortably covers the rendered size at 2x DPR.
+const thumb = computed(() => {
+  const px = typeof props.size === 'number' ? props.size : parseInt(props.size as string, 10) || 48
+  return px <= 50 ? '100x100' : '200x200'
+})
+
+// Resolution priority: org logo > global branding override > default platform SVG.
+const orgLogoUrl = computed(() => {
+  const org = authStore.currentOrg
+  if (!org?.logo) return null
+  return pb.files.getURL(org as any, org.logo, { thumb: thumb.value })
+})
+
+const resolvedLogoUrl = computed(() => orgLogoUrl.value || brandingStore.logoUrl)
+
+const resolvedAlt = computed(() => {
+  if (orgLogoUrl.value) return authStore.currentOrg?.name || brandingStore.appName
+  return brandingStore.appName
+})
 </script>
 
 <template>
   <!--
-    Custom logo (operator branding overlay): rendered as <img> so the file's own
-    colors are preserved. The .brand-logo-img class is a hook for theme.css —
+    Custom logo (org or global branding overlay): rendered as <img> so the file's
+    own colors are preserved. The .brand-logo-img class is a hook for theme.css —
     operators can swap the source per theme via `content: url(...)`.
   -->
   <img
-    v-if="brandingStore.logoUrl"
-    :src="brandingStore.logoUrl"
-    :alt="brandingStore.appName"
+    v-if="resolvedLogoUrl"
+    :src="resolvedLogoUrl"
+    :alt="resolvedAlt"
     :style="{ width: sizePx, height: sizePx }"
     class="brand-logo-img object-contain"
   />

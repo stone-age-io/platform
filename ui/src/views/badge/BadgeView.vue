@@ -9,6 +9,7 @@ import QRCode from 'qrcode'
 import { Kvm } from '@nats-io/kv'
 import { decodeBytes } from '@/utils/encoding'
 import type { BadgeRecord } from '@/types/dashboard'
+import BrandLogo from '@/components/common/BrandLogo.vue'
 
 const route = useRoute()
 const authStore = useAuthStore()
@@ -176,6 +177,9 @@ onUnmounted(() => {
       <!-- Decorative header band -->
       <div class="badge-header">
         <div class="badge-header-pattern"></div>
+        <div class="badge-header-logo">
+          <BrandLogo :size="44" />
+        </div>
       </div>
 
       <!-- Avatar with gradient ring -->
@@ -399,6 +403,24 @@ onUnmounted(() => {
     radial-gradient(circle at 80% 30%, oklch(var(--pc)) 1px, transparent 1px),
     radial-gradient(circle at 50% 80%, oklch(var(--pc)) 1px, transparent 1px);
   background-size: 40px 40px, 60px 60px, 50px 50px;
+}
+
+.badge-header-logo {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  z-index: 2;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: oklch(var(--pc));
+  background: oklch(var(--b1) / 0.18);
+  border: 1px solid oklch(var(--pc) / 0.25);
+  border-radius: 0.625rem;
+  padding: 4px;
+  backdrop-filter: blur(4px);
 }
 
 /* ========================================

@@ -40,6 +40,11 @@ const isOperator = computed(() => authStore.isOperator)
 
 const id = route.params.id as string
 
+const logoUrl = computed(() => {
+  if (!org.value?.logo) return null
+  return pb.files.getURL(org.value as any, org.value.logo, { thumb: '200x200' })
+})
+
 async function loadData() {
   loading.value = true
   try {
@@ -145,6 +150,12 @@ onMounted(() => loadData())
             </ul>
           </div>
           <div class="flex items-center gap-3">
+            <div
+              v-if="logoUrl"
+              class="w-12 h-12 rounded-lg border border-base-300 bg-base-200 overflow-hidden flex-shrink-0"
+            >
+              <img :src="logoUrl" :alt="`${org.name} logo`" class="w-full h-full object-contain" />
+            </div>
             <h1 class="text-3xl font-bold">{{ org.name }}</h1>
             <span class="badge" :class="org.active ? 'badge-success' : 'badge-error'">
               {{ org.active ? 'Active' : 'Inactive' }}

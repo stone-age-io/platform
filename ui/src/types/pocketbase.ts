@@ -29,6 +29,7 @@ export interface Organization extends BaseRecord {
   description?: string
   active: boolean
   owner: string // User ID
+  logo?: string
 }
 
 // Membership
