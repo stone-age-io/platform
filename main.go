@@ -215,30 +215,41 @@ func main() {
 			return err
 		}
 
-		// Optional operator branding overlay: serves files (theme.css, logo.svg,
+		// Operator branding overlay: serves files (theme.css, logo.svg,
 		// branding.json, etc.) from a host directory under /branding/*.
-		// Registered before the SPA catch-all so it takes precedence.
+		// The route is always registered — index.html unconditionally <link>s
+		// theme.css and the SPA fetches branding.json — so we serve silent
+		// fallbacks for those two when no overlay directory is configured,
+		// otherwise the browser console fills with 404s on stock deployments.
+		var brandingFS fs.FS
 		if brandingDir := viper.GetString("branding.dir"); brandingDir != "" {
 			info, statErr := os.Stat(brandingDir)
 			if statErr != nil || !info.IsDir() {
 				log.Printf("⚠️  branding.dir is set but not a usable directory: %s", brandingDir)
 			} else {
-				brandingFS := os.DirFS(brandingDir)
-				e.Router.GET("/branding/{path...}", func(e *core.RequestEvent) error {
-					path := e.Request.PathValue("path")
-					if path == "" || strings.Contains(path, "..") {
-						return e.NotFoundError("Not found", nil)
-					}
-					f, err := brandingFS.Open(path)
-					if err != nil {
-						return e.NotFoundError("Not found", nil)
-					}
-					f.Close()
-					return e.FileFS(brandingFS, path)
-				})
+				brandingFS = os.DirFS(brandingDir)
 				log.Printf("✅ Branding overlay serving from: %s", brandingDir)
 			}
 		}
+		e.Router.GET("/branding/{path...}", func(e *core.RequestEvent) error {
+			path := e.Request.PathValue("path")
+			if path == "" || strings.Contains(path, "..") {
+				return e.NotFoundError("Not found", nil)
+			}
+			if brandingFS != nil {
+				if f, err := brandingFS.Open(path); err == nil {
+					f.Close()
+					return e.FileFS(brandingFS, path)
+				}
+			}
+			switch path {
+			case "theme.css":
+				return e.Blob(200, "text/css; charset=utf-8", nil)
+			case "branding.json":
+				return e.Blob(200, "application/json", []byte("{}"))
+			}
+			return e.NotFoundError("Not found", nil)
+		})
 
 		e.Router.GET("/{path...}", func(e *core.RequestEvent) error {
 			path := e.Request.PathValue("path")
