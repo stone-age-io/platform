@@ -279,7 +279,18 @@ watch(() => dashboardStore.currentVariableValues, () => {
     <div class="visualizer-main">
       <div v-show="!isKioskMode" class="visualizer-toolbar">
         <div class="toolbar-left">
-          <button class="sidebar-toggle-btn" :class="{ 'is-active': isSidebarOpen }" @click="isSidebarOpen = !isSidebarOpen" title="Switch Dashboard (B)">🗄️</button>
+          <button
+            class="sidebar-toggle-btn"
+            :class="{ 'is-active': isSidebarOpen }"
+            @click="isSidebarOpen = !isSidebarOpen"
+            title="Switch Dashboard (B)"
+            aria-label="Toggle dashboard sidebar"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <line x1="9" y1="3" x2="9" y2="21" />
+            </svg>
+          </button>
           <div class="dashboard-info">
             <h1 class="dashboard-name">{{ dashboardStore.activeDashboard?.name || 'No Dashboard Selected' }}</h1>
             <button v-if="dashboardStore.remoteChanged" class="badge badge-warning gap-1 cursor-pointer" @click="handleReloadRemote">Update ↻</button>
@@ -473,16 +484,30 @@ watch(() => dashboardStore.currentVariableValues, () => {
 }
 
 .sidebar-toggle-btn {
-  font-size: 1.25rem;
-  padding: 0.25rem;
-  border-radius: 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border-radius: 0.5rem;
   cursor: pointer;
-  transition: background 0.2s;
-  border: 1px solid transparent;
+  background: oklch(var(--b2));
+  color: oklch(var(--bc) / 0.7);
+  border: 1px solid oklch(var(--b3));
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
-.sidebar-toggle-btn:hover { background: oklch(var(--b2)); }
-.sidebar-toggle-btn.is-active { background: oklch(var(--b2)); border-color: oklch(var(--b3)); }
+.sidebar-toggle-btn:hover {
+  background: oklch(var(--b3));
+  color: oklch(var(--bc));
+}
+
+.sidebar-toggle-btn.is-active {
+  background: oklch(var(--p) / 0.12);
+  border-color: oklch(var(--p) / 0.3);
+  color: oklch(var(--p));
+}
 
 .dashboard-info {
   display: flex;
@@ -512,7 +537,6 @@ watch(() => dashboardStore.currentVariableValues, () => {
   .visualizer-toolbar { padding: 0.5rem; }
   .dashboard-name { font-size: 0.9rem; max-width: 120px; }
   .dashboard-info { gap: 0.25rem; margin-left: 0.25rem; }
-  .sidebar-toggle-btn { font-size: 1rem; }
 }
 
 /* Kiosk mode: fill entire viewport since AppHeader + toolbar are hidden.
