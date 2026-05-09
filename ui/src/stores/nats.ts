@@ -21,11 +21,17 @@ export const useNatsStore = defineStore('nats', () => {
   const lastError = ref<string | null>(null)
   const serverUrls = ref<string[]>([])
   const autoConnect = ref(false)
-  
+
   // Stats
   const rtt = ref<number | null>(null)
   const reconnectCount = ref(0)
   let statsInterval: number | null = null
+
+  // Monotonically incremented on every connect/disconnect. Async work captures
+  // the generation it started in and aborts (or throws away its result) if a
+  // newer op has superseded it. Prevents stale creds from binding when the user
+  // rapidly switches orgs or edits identity.
+  let opGen = 0
 
   const isConnected = computed(() => status.value === 'connected')
 
@@ -63,27 +69,55 @@ export const useNatsStore = defineStore('nats', () => {
     saveSettings()
   }
 
+  // Tear down any existing connection. Inline (not via disconnect()) so callers
+  // like connect() can sequence teardown→setup under a single generation.
+  async function teardownExisting() {
+    if (statsInterval) {
+      clearInterval(statsInterval)
+      statsInterval = null
+    }
+    const oldNc = nc.value
+    nc.value = null
+    rtt.value = null
+    if (oldNc) {
+      try {
+        await oldNc.drain()
+      } catch {
+        try { await oldNc.close() } catch { /* ignore */ }
+      }
+    }
+  }
+
   // --- CONNECT LOGIC ---
   async function connect(specificUrl?: string) {
-    if (nc.value) await disconnect()
+    const myGen = ++opGen
 
-    // 1. Validations
+    await teardownExisting()
+    if (myGen !== opGen) return  // superseded during teardown
+
     const servers = specificUrl ? [specificUrl] : serverUrls.value
     if (!servers.length) {
-      toast.error('No NATS URL configured')
+      if (myGen === opGen) {
+        status.value = 'disconnected'
+        toast.error('No NATS URL configured')
+      }
       return
     }
 
     if (!authStore.isAuthenticated) {
-      toast.error('You must be logged in to connect')
+      if (myGen === opGen) {
+        status.value = 'disconnected'
+        toast.error('You must be logged in to connect')
+      }
       return
     }
 
-    // CHANGED: Get identity from the current organization membership
     const natsUserId = authStore.currentMembership?.nats_user
-
     if (!natsUserId) {
-      toast.error('No NATS Identity linked to this organization context')
+      if (myGen === opGen) {
+        status.value = 'disconnected'
+        toast.error('No NATS Identity linked to this organization context')
+      }
       return
     }
 
@@ -93,6 +127,7 @@ export const useNatsStore = defineStore('nats', () => {
 
     try {
       const natsUserRecord = await pb.collection('nats_users').getOne<NatsUser>(natsUserId)
+      if (myGen !== opGen) return  // superseded while fetching creds
 
       if (!natsUserRecord.creds_file) {
         throw new Error('Linked NATS identity has no credentials file')
@@ -103,7 +138,7 @@ export const useNatsStore = defineStore('nats', () => {
 
       console.log(`Connecting to NATS at ${servers.join(', ')} as ${natsUserRecord.nats_username}...`)
 
-      nc.value = await wsconnect({
+      const newNc = await wsconnect({
         servers,
         authenticator: credsAuthenticator(credsBytes),
         name: `stone-age-ui-${authStore.user?.id}`,
@@ -114,12 +149,20 @@ export const useNatsStore = defineStore('nats', () => {
         maxPingOut: 3,
       })
 
+      if (myGen !== opGen) {
+        // Superseded while wsconnect was resolving — close this orphan.
+        try { await newNc.close() } catch { /* ignore */ }
+        return
+      }
+
+      nc.value = newNc
       status.value = 'connected'
 
-      monitorConnection()
+      monitorConnection(myGen)
       startStatsLoop()
 
     } catch (err: any) {
+      if (myGen !== opGen) return
       console.error('NATS Connection Error:', err)
       status.value = 'disconnected'
       lastError.value = err.message
@@ -132,28 +175,18 @@ export const useNatsStore = defineStore('nats', () => {
   }
 
   async function disconnect() {
-    if (statsInterval) {
-      clearInterval(statsInterval)
-      statsInterval = null
-    }
-
-    if (nc.value) {
-      try {
-        await nc.value.drain()
-      } catch {
-        // drain can fail if already closed — force close as fallback
-        try { await nc.value.close() } catch { /* ignore */ }
-      }
-      nc.value = null
-    }
+    const myGen = ++opGen
+    await teardownExisting()
+    if (myGen !== opGen) return  // superseded by a connect()
     status.value = 'disconnected'
-    rtt.value = null
     window.dispatchEvent(new Event('nats:closed'))
   }
 
-  async function monitorConnection() {
-    if (!nc.value) return
-    for await (const s of nc.value.status()) {
+  async function monitorConnection(forGen: number) {
+    const ncRef = nc.value
+    if (!ncRef) return
+    for await (const s of ncRef.status()) {
+      if (forGen !== opGen) return  // superseded; let the new monitor own status
       switch (s.type) {
         case 'disconnect':
           status.value = 'reconnecting'
@@ -182,11 +215,10 @@ export const useNatsStore = defineStore('nats', () => {
     }, 10_000)
   }
 
-  function tryAutoConnect() {
+  async function tryAutoConnect() {
     loadSettings()
-    // CHANGED: Check membership instead of user record
     if (autoConnect.value && authStore.currentMembership?.nats_user) {
-      connect()
+      await connect()
     }
   }
 

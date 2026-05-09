@@ -41,12 +41,21 @@ watch(() => authStore.isAuthenticated, async (isAuth) => {
   }
 })
 
-// 2. Handle Login & Context Switching
-// We watch currentMembership because NATS requires the membership-linked identity.
-// This fires when the page loads (after context is fetched) AND when switching Orgs.
-watch(() => authStore.currentMembership, (newMembership) => {
-  if (newMembership) {
-    natsStore.tryAutoConnect()
+// 2. Handle Login & Org Switching
+// Driven off currentOrgId (not currentMembership) so that identity edits on the
+// settings page don't trigger a reconnect through reactivity — those are handled
+// explicitly by the settings view to avoid racing two reconnect paths.
+//
+// Org change (including logout) always drops the existing connection: the
+// NATS user lives on the membership record, so the previous org's creds are
+// wrong by definition once the org changes. Reconnect only if auto-connect
+// is enabled — otherwise the user reconnects manually with the new identity.
+watch(() => authStore.currentOrgId, async (orgId) => {
+  if (natsStore.status !== 'disconnected') {
+    await natsStore.disconnect()
+  }
+  if (orgId) {
+    await natsStore.tryAutoConnect()
   }
 })
 </script>

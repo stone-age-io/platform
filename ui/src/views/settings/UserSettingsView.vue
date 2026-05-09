@@ -129,20 +129,19 @@ async function loadIdentities() {
 async function updateContextIdentity(event: Event) {
   const select = event.target as HTMLSelectElement
   const natsUserId = select.value || null
-  
+
   if (!authStore.currentMembership) return
-  
+
   try {
-    // Update the MEMBERSHIP record, not the user record
     await authStore.updateCurrentMembership({ nats_user: natsUserId || '' })
-    
-    // Force reconnection to pick up new creds
+
+    // Identity edits no longer flow through the App.vue watcher (which only
+    // tracks currentOrgId), so reconnect explicitly here. connect() handles
+    // tearing down the existing connection and is generation-guarded against
+    // overlapping calls.
     if (natsStore.isConnected) {
-      await natsStore.disconnect()
-      // Wait for Vue reactivity to update computed currentNatsUser before reconnecting?
-      // Actually updateCurrentMembership awaits the backend response, so state is fresh.
-      natsStore.tryAutoConnect() 
       toast.info('Identity updated. Reconnecting...')
+      await natsStore.connect()
     } else {
       toast.success('Identity preference saved')
     }
