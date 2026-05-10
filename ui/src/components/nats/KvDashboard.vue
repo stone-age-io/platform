@@ -427,28 +427,29 @@ function previewValue(val: any): string {
             <li
               v-for="row in flatTree"
               :key="row.node.path"
-              class="flex items-start gap-2 px-3 py-1.5 cursor-pointer hover:bg-primary/5 group"
+              class="flex items-center gap-3 pr-3 py-2.5 cursor-pointer hover:bg-primary/5 group transition-colors"
               :class="{ 'bg-primary/10': row.isLeaf && selectedEntry?.key === row.node.fullKey }"
-              :style="{ paddingLeft: `${0.75 + row.depth * 1.25}rem` }"
+              :style="{ paddingLeft: `${0.75 + row.depth * 1.5}rem` }"
               @click="row.isLeaf ? row.node.entry && openEdit(row.node.entry) : toggleNode(row.node.path)"
             >
-              <span class="mt-0.5 w-4 shrink-0 text-center text-[10px] opacity-50">
+              <span class="w-4 shrink-0 text-center text-xs opacity-50">
                 <span v-if="row.hasChildren">{{ row.expanded ? '▾' : '▸' }}</span>
                 <span v-else>·</span>
               </span>
               <span
-                class="font-mono text-xs shrink-0"
+                class="font-mono text-sm shrink-0 break-all"
                 :class="row.isLeaf ? 'font-semibold text-primary group-hover:underline' : 'font-bold opacity-70'"
               >{{ row.node.name }}</span>
               <template v-if="row.isLeaf && row.node.entry">
-                <span class="opacity-30 text-xs">=</span>
-                <span v-if="typeof row.node.entry.value === 'boolean'" class="badge badge-xs" :class="row.node.entry.value ? 'badge-success' : 'badge-ghost'">
-                  {{ row.node.entry.value ? 'true' : 'false' }}
+                <span class="opacity-30 text-xs shrink-0">=</span>
+                <span v-if="typeof row.node.entry.value === 'boolean'" class="badge badge-sm shrink-0" :class="row.node.entry.value ? 'badge-success' : 'badge-ghost'">
+                  {{ row.node.entry.value ? 'TRUE' : 'FALSE' }}
                 </span>
+                <span v-else-if="row.node.entry.value === null" class="badge badge-sm badge-ghost shrink-0">null</span>
                 <span v-else class="text-xs opacity-70 truncate min-w-0 flex-1 font-mono">{{ previewValue(row.node.entry.value) }}</span>
                 <span class="text-[10px] opacity-30 font-mono shrink-0 ml-auto">r{{ row.node.entry.revision }}</span>
               </template>
-              <span v-else class="text-[10px] opacity-30 ml-auto shrink-0">{{ row.node.children.length }}</span>
+              <span v-else class="text-[10px] opacity-40 ml-auto shrink-0 font-mono">{{ row.node.children.length }}</span>
             </li>
             <li v-if="flatTree.length === 0" class="py-20 text-center opacity-30 italic text-sm">
               {{ debouncedSearch ? 'No properties match your search' : 'No properties yet' }}
