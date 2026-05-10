@@ -408,8 +408,8 @@ onUnmounted(() => {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 1rem;
-  padding: 0.75rem;
+  gap: 0.75rem;
+  padding: 0.5rem;
   background: oklch(var(--b2) / 0.5);
   border: 1px solid oklch(var(--b3) / 0.5);
   border-radius: 0.75rem;
@@ -421,8 +421,8 @@ onUnmounted(() => {
 
 .badge-qr-img,
 .badge-qr-placeholder {
-  width: 130px;
-  height: 130px;
+  width: 148px;
+  height: 148px;
   border-radius: 0.5rem;
   display: block;
 }
@@ -456,7 +456,7 @@ onUnmounted(() => {
 }
 
 .badge-clock-time {
-  font-size: 1.125rem;
+  font-size: 1.375rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: oklch(var(--bc));
@@ -465,9 +465,10 @@ onUnmounted(() => {
 }
 
 .badge-clock-date {
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   color: oklch(var(--bc) / 0.5);
   font-weight: 500;
+  white-space: nowrap;
 }
 
 /* ========================================
@@ -760,12 +761,16 @@ onUnmounted(() => {
 
   .badge-qr-img,
   .badge-qr-placeholder {
-    width: 150px;
-    height: 150px;
+    width: 168px;
+    height: 168px;
   }
 
   .badge-clock-time {
-    font-size: 1.25rem;
+    font-size: 1.625rem;
+  }
+
+  .badge-clock-date {
+    font-size: 0.875rem;
   }
 }
 
