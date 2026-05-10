@@ -16,27 +16,12 @@ const authStore = useAuthStore()
 const natsStore = useNatsStore()
 
 const userName = computed(() => authStore.user?.name || 'User')
-const userEmail = computed(() => authStore.user?.email || '')
 const orgName = computed(() => authStore.currentOrg?.name || 'No Organization')
 const roleName = computed(() => authStore.userRole)
 
 // Badge users at /badge get badge dashboard, others at /my-badge get main dashboard
 const isBadgeRoute = computed(() => route.path.startsWith('/badge'))
 const dashboardPath = computed(() => isBadgeRoute.value ? '/badge/dashboard' : '/')
-
-// Member since date
-const memberSince = computed(() => {
-  const created = authStore.currentMembership?.created
-  if (!created) return null
-  return format(new Date(created), 'MMM yyyy')
-})
-
-// Truncated NKey public key preview
-const truncatedNKey = computed(() => {
-  const pk = authStore.currentNatsUser?.public_key
-  if (!pk || pk.length < 12) return pk || null
-  return pk.slice(0, 6) + '...' + pk.slice(-4)
-})
 
 // Whether the user has a NATS identity
 const hasNatsIdentity = computed(() => !!authStore.currentNatsUser)
@@ -47,25 +32,6 @@ const avatarUrl = computed(() => {
     thumb: '200x200',
     token: pb.authStore.token
   })
-})
-
-// NATS status indicator
-const natsStatusDotClass = computed(() => {
-  switch (natsStore.status) {
-    case 'connected': return 'live--connected'
-    case 'connecting':
-    case 'reconnecting': return 'live--warning'
-    default: return 'live--error'
-  }
-})
-
-const natsStatusLabel = computed(() => {
-  switch (natsStore.status) {
-    case 'connected': return 'LIVE'
-    case 'connecting':
-    case 'reconnecting': return 'SYNC'
-    default: return 'OFF'
-  }
 })
 
 // QR code generation — encode NKey public key only (~56 chars, clean scannable QR)
@@ -188,18 +154,13 @@ onUnmounted(() => {
 
 <template>
   <div class="badge-page">
-    <div class="badge-card">
-      <!-- Live indicator pill (top-right) -->
-      <div class="live-indicator" :title="natsStore.status">
-        <span class="live-dot" :class="natsStatusDotClass"></span>
-        <span class="live-label" :class="natsStatusDotClass">{{ natsStatusLabel }}</span>
-      </div>
-
+    <div class="badge-card" :class="{ 'is-revoked': badgeIsRevoked }">
       <!-- Header band -->
       <div class="badge-header">
         <div class="badge-header-logo">
           <BrandLogo :size="80" />
         </div>
+        <div v-if="badgeIsRevoked" class="badge-header-revoked">REVOKED</div>
       </div>
 
       <!-- Avatar with gradient ring -->
@@ -217,7 +178,6 @@ onUnmounted(() => {
       <!-- Identity info -->
       <div class="badge-body">
         <h1 class="badge-name">{{ userName }}</h1>
-        <p class="badge-email">{{ userEmail }}</p>
 
         <div class="badge-tags">
           <span class="badge-tag badge-tag--org">{{ orgName }}</span>
@@ -227,58 +187,51 @@ onUnmounted(() => {
         <!-- Divider -->
         <div class="badge-divider"></div>
 
-        <!-- Verification section: QR + clock/metadata -->
-        <div v-if="hasNatsIdentity" class="badge-verification">
-          <div class="badge-qr">
-            <img
-              v-if="qrDataUrl"
-              :src="qrDataUrl"
-              alt="Identity QR"
-              class="badge-qr-img"
-            />
-            <div v-else class="badge-qr-placeholder">
-              <span class="loading loading-spinner loading-sm"></span>
-            </div>
-          </div>
-
-          <div class="badge-meta">
+        <template v-if="hasNatsIdentity">
+          <!-- Verification: live clock above QR -->
+          <div class="badge-verification">
             <div class="badge-clock">
               <span class="badge-clock-time">{{ clockTime }}</span>
               <span class="badge-clock-date">{{ clockDate }}</span>
             </div>
-            <div v-if="truncatedNKey" class="badge-nkey">
-              {{ truncatedNKey }}
-            </div>
-            <div v-if="memberSince" class="badge-since">
-              Since {{ memberSince }}
+            <div class="badge-qr">
+              <img
+                v-if="qrDataUrl"
+                :src="qrDataUrl"
+                alt="Identity QR"
+                class="badge-qr-img"
+              />
+              <div v-else class="badge-qr-placeholder">
+                <span class="loading loading-spinner loading-sm"></span>
+              </div>
             </div>
           </div>
-        </div>
 
-        <!-- Lifecycle chips + attributes trigger from `badges` KV, if present -->
-        <div v-if="badgeRecord" class="badge-record-section">
-          <div v-if="hasLifecycleChips" class="badge-lifecycle">
-            <span v-if="badgeIsRevoked" class="lifecycle-chip lifecycle-chip--revoked">
-              Revoked
-            </span>
-            <span v-else-if="expiresLabel" class="lifecycle-chip">
-              Expires {{ expiresLabel }}
-            </span>
-            <span v-if="issuedLabel" class="lifecycle-chip">
-              Issued {{ issuedLabel }}
-            </span>
+          <!-- Lifecycle chips + attributes trigger from `badges` KV, if present -->
+          <div v-if="badgeRecord" class="badge-record-section">
+            <div v-if="hasLifecycleChips" class="badge-lifecycle">
+              <span v-if="badgeIsRevoked" class="lifecycle-chip lifecycle-chip--revoked">
+                Revoked
+              </span>
+              <span v-else-if="expiresLabel" class="lifecycle-chip">
+                Expires {{ expiresLabel }}
+              </span>
+              <span v-if="issuedLabel" class="lifecycle-chip">
+                Issued {{ issuedLabel }}
+              </span>
+            </div>
+
+            <button
+              v-if="metadataEntries.length > 0"
+              type="button"
+              class="badge-attrs-trigger"
+              @click="drawerOpen = true"
+            >
+              <span>View attributes</span>
+              <span class="badge-attrs-count">{{ metadataEntries.length }}</span>
+            </button>
           </div>
-
-          <button
-            v-if="metadataEntries.length > 0"
-            type="button"
-            class="badge-attrs-trigger"
-            @click="drawerOpen = true"
-          >
-            <span>View attributes</span>
-            <span class="badge-attrs-count">{{ metadataEntries.length }}</span>
-          </button>
-        </div>
+        </template>
 
         <!-- No NATS identity fallback -->
         <div v-else class="badge-no-identity">
@@ -366,61 +319,6 @@ onUnmounted(() => {
 }
 
 /* ========================================
-   Live Indicator Pill
-   ======================================== */
-.live-indicator {
-  position: absolute;
-  top: 0.875rem;
-  right: 0.875rem;
-  z-index: 10;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.3rem 0.625rem 0.3rem 0.55rem;
-  border-radius: 9999px;
-  background: oklch(var(--b1));
-  border: 1px solid oklch(var(--b3));
-}
-
-.live-dot {
-  display: block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  background: oklch(var(--bc) / 0.3);
-}
-
-.live-label {
-  font-size: 0.625rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  line-height: 1;
-  color: oklch(var(--bc) / 0.7);
-}
-
-.live-dot.live--connected {
-  background: oklch(var(--su));
-  animation: pulse-dot 1.8s ease-in-out infinite;
-}
-.live-label.live--connected { color: oklch(var(--su)); }
-
-.live-dot.live--warning {
-  background: oklch(var(--wa));
-  animation: pulse-dot 1s ease-in-out infinite;
-}
-.live-label.live--warning { color: oklch(var(--wa)); }
-
-.live-dot.live--error { background: oklch(var(--er)); }
-.live-label.live--error { color: oklch(var(--er)); }
-
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
-}
-
-/* ========================================
    Header Band
    ======================================== */
 .badge-header {
@@ -502,12 +400,6 @@ onUnmounted(() => {
   margin: 0.5rem 0 0.25rem;
 }
 
-.badge-email {
-  font-size: 0.875rem;
-  color: oklch(var(--bc) / 0.5);
-  margin: 0;
-}
-
 .badge-tags {
   display: flex;
   justify-content: center;
@@ -545,47 +437,37 @@ onUnmounted(() => {
 }
 
 /* ========================================
-   Verification Section (QR + Metadata)
+   Verification Section (clock + QR)
    ======================================== */
 .badge-verification {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 1rem;
+  gap: 0.75rem;
   padding: 1rem;
   background: oklch(var(--b2) / 0.5);
   border: 1px solid oklch(var(--b3) / 0.5);
   border-radius: 0.75rem;
-  text-align: left;
 }
 
 .badge-qr {
   flex-shrink: 0;
 }
 
-.badge-qr-img {
-  width: 100px;
-  height: 100px;
+.badge-qr-img,
+.badge-qr-placeholder {
+  width: 140px;
+  height: 140px;
   border-radius: 0.5rem;
   display: block;
 }
 
 .badge-qr-placeholder {
-  width: 100px;
-  height: 100px;
-  border-radius: 0.5rem;
   background: oklch(var(--b2));
   border: 1px solid oklch(var(--b3));
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.badge-meta {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  min-width: 0;
 }
 
 /* ========================================
@@ -594,11 +476,11 @@ onUnmounted(() => {
 .badge-clock {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 0.125rem;
 }
 
 .badge-clock--centered {
-  align-items: center;
   padding: 1rem;
   background: oklch(var(--b2));
   border: 1px solid oklch(var(--b3));
@@ -617,22 +499,6 @@ onUnmounted(() => {
 .badge-clock-date {
   font-size: 0.75rem;
   color: oklch(var(--bc) / 0.5);
-  font-weight: 500;
-}
-
-/* ========================================
-   NKey & Member Since
-   ======================================== */
-.badge-nkey {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.75rem;
-  color: oklch(var(--bc) / 0.5);
-  letter-spacing: 0.025em;
-}
-
-.badge-since {
-  font-size: 0.75rem;
-  color: oklch(var(--bc) / 0.4);
   font-weight: 500;
 }
 
@@ -664,6 +530,44 @@ onUnmounted(() => {
   background: oklch(var(--er) / 0.1);
   color: oklch(var(--er));
   border-color: oklch(var(--er) / 0.25);
+}
+
+/* ========================================
+   Revoked State (loud, glance-readable)
+   ======================================== */
+.badge-card.is-revoked {
+  border-color: oklch(var(--er));
+  border-width: 2px;
+}
+
+.badge-card.is-revoked .badge-header {
+  background: oklch(var(--er));
+}
+
+.badge-card.is-revoked .badge-header-logo {
+  color: oklch(var(--erc));
+}
+
+.badge-header-revoked {
+  position: absolute;
+  top: 50%;
+  right: 1.25rem;
+  transform: translateY(-50%);
+  font-size: 1.5rem;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  color: oklch(var(--erc));
+  text-shadow: 0 1px 2px oklch(0% 0 0 / 0.2);
+}
+
+.badge-card.is-revoked .avatar-img img {
+  filter: grayscale(1);
+  opacity: 0.7;
+}
+
+.badge-card.is-revoked .avatar-placeholder {
+  background: oklch(var(--n));
+  color: oklch(var(--nc));
 }
 
 /* ========================================
@@ -888,8 +792,8 @@ onUnmounted(() => {
 
   .badge-qr-img,
   .badge-qr-placeholder {
-    width: 120px;
-    height: 120px;
+    width: 160px;
+    height: 160px;
   }
 
   .badge-clock-time {
