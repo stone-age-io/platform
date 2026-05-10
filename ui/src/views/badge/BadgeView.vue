@@ -156,7 +156,7 @@ onUnmounted(() => {
       <!-- Header band -->
       <div class="badge-header">
         <div class="badge-header-logo">
-          <BrandLogo :size="80" />
+          <BrandLogo :size="64" />
         </div>
         <div v-if="badgeIsRevoked" class="badge-header-revoked">REVOKED</div>
       </div>
@@ -324,8 +324,8 @@ onUnmounted(() => {
   position: absolute;
   top: 1rem;
   left: 1rem;
-  width: 80px;
-  height: 80px;
+  width: 64px;
+  height: 64px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -728,50 +728,6 @@ onUnmounted(() => {
 
 .badge-action-btn:active {
   transform: scale(0.98);
-}
-
-/* ========================================
-   Responsive
-   ======================================== */
-@media (min-width: 640px) {
-  .badge-card {
-    max-width: 440px;
-  }
-
-  .badge-header {
-    height: 116px;
-  }
-
-  .badge-avatar {
-    margin-top: -68px;
-  }
-
-  .avatar-ring {
-    width: 140px;
-    height: 140px;
-  }
-
-  .avatar-placeholder {
-    font-size: 3.25rem;
-  }
-
-  .badge-name {
-    font-size: 1.875rem;
-  }
-
-  .badge-qr-img,
-  .badge-qr-placeholder {
-    width: 168px;
-    height: 168px;
-  }
-
-  .badge-clock-time {
-    font-size: 1.625rem;
-  }
-
-  .badge-clock-date {
-    font-size: 0.875rem;
-  }
 }
 
 /* Desktop: AppHeader hidden, sidebar separate */
