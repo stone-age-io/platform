@@ -6,6 +6,7 @@ import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { formatDate, formatRelativeTime } from '@/utils/format'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import JsonViewer from '@/components/common/JsonViewer.vue'
 
 interface KvEntryWithId extends KvEntry {
   id: string
@@ -44,6 +45,7 @@ const selectedEntry = ref<KvEntryWithId | null>(null)
 const isAddingNew = ref(false)
 const historyLoading = ref(false)
 const historyEntries = ref<KvEntryWithId[]>([])
+const expandedRevisions = ref<Set<string>>(new Set())
 
 const searchQuery = ref('')
 const debouncedSearch = ref('')
@@ -254,12 +256,23 @@ async function handleDelete() {
 
 async function loadHistory(key: string) {
   historyLoading.value = true
+  expandedRevisions.value = new Set()
   try {
     const raw = await getHistory(key)
     historyEntries.value = raw.map(h => ({ ...h, id: `${h.key}-${h.revision}` }))
   } finally {
     historyLoading.value = false
   }
+}
+
+function toggleRevision(id: string) {
+  if (expandedRevisions.value.has(id)) expandedRevisions.value.delete(id)
+  else expandedRevisions.value.add(id)
+}
+
+function copyRevisionToEditor(rev: KvEntryWithId) {
+  inputValue.value = valueToEditable(rev.value)
+  toast.info(`Loaded rev #${rev.revision} into editor (not saved)`)
 }
 
 async function restoreRevision(rev: KvEntryWithId) {
@@ -519,29 +532,50 @@ function previewValue(val: any): string {
 
                 <div v-if="historyLoading" class="flex justify-center"><span class="loading loading-dots loading-xs"></span></div>
                 <div v-else-if="historyEntries.length === 0" class="text-center text-[10px] opacity-30 italic py-4">No history</div>
-                <div v-else class="space-y-3">
+                <div v-else class="space-y-2">
                   <div
                     v-for="rev in historyEntries"
                     :key="rev.id"
                     class="relative pl-4 border-l border-base-300 group"
                   >
-                    <div class="absolute -left-[4.5px] top-1.5 w-2 h-2 rounded-full bg-base-300 group-hover:bg-primary transition-colors"></div>
-                    <div class="flex justify-between items-center text-[10px] opacity-60 mb-1">
-                      <span class="font-bold">REV #{{ rev.revision }}</span>
-                      <span class="font-mono" :title="formatDate(rev.created)">{{ formatRelativeTime(rev.created) }}</span>
+                    <div class="absolute -left-[4.5px] top-2 w-2 h-2 rounded-full bg-base-300 group-hover:bg-primary transition-colors"></div>
+
+                    <!-- Row header: clickable to expand -->
+                    <div
+                      class="flex items-center gap-2 cursor-pointer rounded hover:bg-base-200/50 px-1 py-1 -mx-1"
+                      @click="rev.operation !== 'DEL' && rev.operation !== 'PURGE' && toggleRevision(rev.id)"
+                    >
+                      <span class="text-[10px] opacity-50 w-3 shrink-0">
+                        <template v-if="rev.operation !== 'DEL' && rev.operation !== 'PURGE'">{{ expandedRevisions.has(rev.id) ? '▾' : '▸' }}</template>
+                      </span>
+                      <span class="text-[10px] font-bold opacity-70 shrink-0">REV #{{ rev.revision }}</span>
+                      <span v-if="rev.revision === selectedEntry?.revision" class="badge badge-xs badge-primary badge-outline shrink-0">current</span>
+                      <span v-if="rev.operation === 'DEL' || rev.operation === 'PURGE'" class="badge badge-xs badge-ghost shrink-0">{{ rev.operation }}</span>
+                      <span v-else class="text-[10px] font-mono opacity-60 truncate min-w-0 flex-1">{{ previewValue(rev.value) }}</span>
+                      <span class="text-[10px] font-mono opacity-50 shrink-0" :title="formatDate(rev.created)">{{ formatRelativeTime(rev.created) }}</span>
                     </div>
-                    <div class="flex items-start gap-2">
-                      <div class="text-[10px] font-mono break-all opacity-80 flex-1 min-w-0">
-                        <span v-if="rev.operation === 'DEL' || rev.operation === 'PURGE'" class="badge badge-xs badge-ghost">{{ rev.operation }}</span>
-                        <span v-else>{{ previewValue(rev.value) }}</span>
+
+                    <!-- Expanded full value -->
+                    <div
+                      v-if="expandedRevisions.has(rev.id) && rev.operation !== 'DEL' && rev.operation !== 'PURGE'"
+                      class="mt-2 ml-1 mr-1 rounded border border-base-300 bg-base-200/40 overflow-hidden"
+                    >
+                      <div class="max-h-64 overflow-auto p-2">
+                        <JsonViewer :data="rev.value" />
                       </div>
-                      <button
-                        v-if="rev.operation !== 'DEL' && rev.operation !== 'PURGE' && rev.revision !== selectedEntry?.revision"
-                        @click="restoreRevision(rev)"
-                        class="btn btn-xs btn-ghost h-6 min-h-0 shrink-0"
-                        title="Restore this revision"
-                      >Restore</button>
-                      <span v-else-if="rev.revision === selectedEntry?.revision" class="badge badge-xs badge-primary badge-outline shrink-0">current</span>
+                      <div class="flex justify-end gap-2 px-2 py-1.5 border-t border-base-300 bg-base-200/60">
+                        <button
+                          @click.stop="copyRevisionToEditor(rev)"
+                          class="btn btn-xs btn-ghost h-6 min-h-0"
+                          title="Load this value into the editor without saving"
+                        >Load into editor</button>
+                        <button
+                          v-if="rev.revision !== selectedEntry?.revision"
+                          @click.stop="restoreRevision(rev)"
+                          class="btn btn-xs btn-primary h-6 min-h-0"
+                          title="Save this value as a new revision"
+                        >Restore</button>
+                      </div>
                     </div>
                   </div>
                 </div>
