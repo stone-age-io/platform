@@ -16,8 +16,6 @@ const authStore = useAuthStore()
 const natsStore = useNatsStore()
 
 const userName = computed(() => authStore.user?.name || 'User')
-const orgName = computed(() => authStore.currentOrg?.name || 'No Organization')
-const roleName = computed(() => authStore.userRole)
 
 // Badge users at /badge get badge dashboard, others at /my-badge get main dashboard
 const isBadgeRoute = computed(() => route.path.startsWith('/badge'))
@@ -179,21 +177,12 @@ onUnmounted(() => {
       <div class="badge-body">
         <h1 class="badge-name">{{ userName }}</h1>
 
-        <div class="badge-tags">
-          <span class="badge-tag badge-tag--org">{{ orgName }}</span>
-          <span class="badge-tag badge-tag--role">{{ roleName }}</span>
-        </div>
-
         <!-- Divider -->
         <div class="badge-divider"></div>
 
         <template v-if="hasNatsIdentity">
-          <!-- Verification: live clock above QR -->
+          <!-- Verification: QR + live clock side-by-side -->
           <div class="badge-verification">
-            <div class="badge-clock">
-              <span class="badge-clock-time">{{ clockTime }}</span>
-              <span class="badge-clock-date">{{ clockDate }}</span>
-            </div>
             <div class="badge-qr">
               <img
                 v-if="qrDataUrl"
@@ -204,6 +193,10 @@ onUnmounted(() => {
               <div v-else class="badge-qr-placeholder">
                 <span class="loading loading-spinner loading-sm"></span>
               </div>
+            </div>
+            <div class="badge-clock">
+              <span class="badge-clock-time">{{ clockTime }}</span>
+              <span class="badge-clock-date">{{ clockDate }}</span>
             </div>
           </div>
 
@@ -322,7 +315,7 @@ onUnmounted(() => {
    Header Band
    ======================================== */
 .badge-header {
-  height: 110px;
+  height: 96px;
   background: oklch(var(--p));
   position: relative;
 }
@@ -400,51 +393,23 @@ onUnmounted(() => {
   margin: 0.5rem 0 0.25rem;
 }
 
-.badge-tags {
-  display: flex;
-  justify-content: center;
-  gap: 0.5rem;
-  margin-top: 1rem;
-}
-
-.badge-tag {
-  padding: 0.3rem 0.875rem;
-  border-radius: 9999px;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  letter-spacing: 0.025em;
-  text-transform: capitalize;
-}
-
-.badge-tag--org {
-  background: oklch(var(--b2));
-  color: oklch(var(--bc) / 0.7);
-  border: 1px solid oklch(var(--b3));
-}
-
-.badge-tag--role {
-  background: oklch(var(--p) / 0.1);
-  color: oklch(var(--p));
-  border: 1px solid oklch(var(--p) / 0.15);
-}
-
 /* ========================================
    Divider
    ======================================== */
 .badge-divider {
-  margin: 1.25rem 0;
+  margin: 0.75rem 0;
   border-top: 1px dashed oklch(var(--bc) / 0.12);
 }
 
 /* ========================================
-   Verification Section (clock + QR)
+   Verification Section (QR + clock, row)
    ======================================== */
 .badge-verification {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 0.75rem;
-  padding: 1rem;
+  gap: 1rem;
+  padding: 0.75rem;
   background: oklch(var(--b2) / 0.5);
   border: 1px solid oklch(var(--b3) / 0.5);
   border-radius: 0.75rem;
@@ -456,8 +421,8 @@ onUnmounted(() => {
 
 .badge-qr-img,
 .badge-qr-placeholder {
-  width: 140px;
-  height: 140px;
+  width: 130px;
+  height: 130px;
   border-radius: 0.5rem;
   display: block;
 }
@@ -474,10 +439,13 @@ onUnmounted(() => {
    Clock
    ======================================== */
 .badge-clock {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 0.125rem;
+  min-width: 0;
 }
 
 .badge-clock--centered {
@@ -734,7 +702,7 @@ onUnmounted(() => {
    Footer
    ======================================== */
 .badge-footer {
-  padding: 1.25rem 1.75rem 1.5rem;
+  padding: 1rem 1.75rem 1.25rem;
 }
 
 .badge-action-btn {
@@ -770,7 +738,7 @@ onUnmounted(() => {
   }
 
   .badge-header {
-    height: 130px;
+    height: 116px;
   }
 
   .badge-avatar {
@@ -792,8 +760,8 @@ onUnmounted(() => {
 
   .badge-qr-img,
   .badge-qr-placeholder {
-    width: 160px;
-    height: 160px;
+    width: 150px;
+    height: 150px;
   }
 
   .badge-clock-time {
