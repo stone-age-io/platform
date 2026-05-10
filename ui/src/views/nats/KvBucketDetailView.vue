@@ -6,7 +6,6 @@ import { useJetStreamManager, formatNanos } from '@/composables/useJetStreamMana
 import { useConfirm } from '@/composables/useConfirm'
 import { formatBytes, formatDate } from '@/utils/format'
 import type { KvStatus } from '@nats-io/kv'
-import BaseCard from '@/components/ui/BaseCard.vue'
 import KvDashboard from '@/components/nats/KvDashboard.vue'
 
 const router = useRouter()
@@ -79,74 +78,83 @@ watch(() => natsStore.isConnected, (connected) => {
           </ul>
         </div>
         <div class="flex flex-col sm:flex-row justify-between items-start gap-4">
-          <div>
+          <div class="min-w-0">
             <h1 class="text-3xl font-bold font-mono break-words">{{ bucketName }}</h1>
             <p v-if="status.description" class="text-base-content/70 mt-1">{{ status.description }}</p>
           </div>
-          <div class="flex gap-2 w-full sm:w-auto">
+          <div class="flex gap-2 w-full sm:w-auto shrink-0">
             <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial">Delete</button>
           </div>
         </div>
       </div>
 
-      <!-- Details Grid -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-        <!-- Left Column: Config & Status -->
-        <div class="space-y-6">
-          <BaseCard title="Configuration">
-            <dl class="space-y-4">
-              <div class="grid grid-cols-2 gap-4">
-                <div>
-                  <dt class="text-sm font-medium text-base-content/70">Storage</dt>
-                  <dd class="mt-1"><span class="badge badge-sm badge-outline">{{ status.storage }}</span></dd>
-                </div>
-                <div>
-                  <dt class="text-sm font-medium text-base-content/70">Replicas</dt>
-                  <dd class="mt-1 text-sm">{{ status.replicas }}</dd>
-                </div>
-                <div>
-                  <dt class="text-sm font-medium text-base-content/70">History</dt>
-                  <dd class="mt-1 text-sm">{{ status.history }} revisions</dd>
-                </div>
-                <div>
-                  <dt class="text-sm font-medium text-base-content/70">Max Bytes</dt>
-                  <dd class="mt-1 text-sm font-mono">{{ status.max_bytes === -1 ? 'Unlimited' : formatBytes(status.max_bytes) }}</dd>
-                </div>
-                <div>
-                  <dt class="text-sm font-medium text-base-content/70">Max Value Size</dt>
-                  <dd class="mt-1 text-sm font-mono">{{ formatLimit(status.maxValueSize) }}</dd>
-                </div>
-                <div>
-                  <dt class="text-sm font-medium text-base-content/70">TTL</dt>
-                  <dd class="mt-1 text-sm font-mono">{{ status.ttl ? formatNanos(status.ttl * 1000000) : 'None' }}</dd>
-                </div>
-              </div>
-              <div>
-                <dt class="text-sm font-medium text-base-content/70">Created</dt>
-                <dd class="mt-1 text-sm">{{ formatDate(status.streamInfo.created) }}</dd>
-              </div>
-            </dl>
-          </BaseCard>
-
-          <BaseCard title="Status">
-            <div class="grid grid-cols-2 gap-4">
-              <div class="bg-base-200 rounded-lg p-3 border border-base-300">
-                <span class="text-xs text-base-content/50 uppercase block mb-1">Keys</span>
-                <span class="font-bold text-lg">{{ status.values.toLocaleString() }}</span>
-              </div>
-              <div class="bg-base-200 rounded-lg p-3 border border-base-300">
-                <span class="text-xs text-base-content/50 uppercase block mb-1">Size</span>
-                <span class="font-bold text-lg">{{ formatBytes(status.size) }}</span>
-              </div>
-            </div>
-          </BaseCard>
+      <!-- Stat Tiles -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-px bg-base-300 rounded-lg overflow-hidden border border-base-300">
+        <div class="stat-tile">
+          <span class="stat-label">Keys</span>
+          <span class="stat-value">{{ status.values.toLocaleString() }}</span>
         </div>
-
-        <!-- Right Column: Key Browser (takes 2 cols on lg) -->
-        <div class="lg:col-span-2">
-          <KvDashboard :bucket="bucketName" />
+        <div class="stat-tile">
+          <span class="stat-label">Size</span>
+          <span class="stat-value">{{ formatBytes(status.size) }}</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-label">History</span>
+          <span class="stat-value">{{ status.history }}</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-label">Replicas</span>
+          <span class="stat-value">{{ status.replicas }}</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-label">Storage</span>
+          <span class="stat-value capitalize">{{ status.storage }}</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-label">Max Bytes</span>
+          <span class="stat-value font-mono">{{ status.max_bytes === -1 ? '∞' : formatBytes(status.max_bytes) }}</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-label">Max Value</span>
+          <span class="stat-value font-mono">{{ formatLimit(status.maxValueSize) }}</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-label">TTL</span>
+          <span class="stat-value font-mono">{{ status.ttl ? formatNanos(status.ttl * 1000000) : 'None' }}</span>
         </div>
       </div>
+
+      <p class="text-xs text-base-content/50">
+        Created {{ formatDate(status.streamInfo.created) }}
+      </p>
+
+      <!-- Full-width KV Dashboard -->
+      <KvDashboard :bucket="bucketName" />
     </template>
   </div>
 </template>
+
+<style scoped>
+.stat-tile {
+  background: oklch(var(--b1));
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+.stat-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: oklch(var(--bc) / 0.5);
+  font-weight: 600;
+}
+.stat-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+</style>
