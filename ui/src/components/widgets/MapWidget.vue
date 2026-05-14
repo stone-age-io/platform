@@ -27,14 +27,42 @@
     </div>
 
     <!-- Map Controls -->
-    <div v-if="mapReady && totalMarkerCount > 1" class="map-controls">
+    <div v-if="mapReady && totalMarkerCount > 0" class="map-controls">
+      <!-- Search: collapsible input + toggle -->
+      <div class="search-bar" :class="{ 'search-open': searchOpen }">
+        <input
+          v-if="searchOpen"
+          ref="searchInputRef"
+          v-model="searchQuery"
+          type="text"
+          placeholder="Filter markers..."
+          class="search-input"
+        />
+        <button
+          class="map-control-btn"
+          :title="searchOpen ? 'Close search' : 'Search markers'"
+          @click="toggleSearch"
+        >
+          {{ searchOpen ? '✕' : '🔍' }}
+        </button>
+      </div>
+
       <button
+        v-if="filteredTotalCount > 1"
         class="map-control-btn"
         @click="handleFitAll"
         title="Fit all markers"
       >
         ⊡
       </button>
+    </div>
+
+    <!-- Filter stats badge (only when actively filtering) -->
+    <div
+      v-if="mapReady && searchQuery && filteredTotalCount !== totalMarkerCount"
+      class="filter-stats"
+    >
+      {{ filteredTotalCount }} of {{ totalMarkerCount }}
     </div>
 
     <!-- Static Marker Detail Panel -->
@@ -68,7 +96,7 @@ import { resolveTemplate } from '@/utils/variables'
 import { JSONPath } from 'jsonpath-plus'
 import MarkerDetailPanel from './map/MarkerDetailPanel.vue'
 import DynamicMarkerPanel from './map/DynamicMarkerPanel.vue'
-import type { WidgetConfig } from '@/types/dashboard'
+import type { WidgetConfig, DynamicMarkerSource } from '@/types/dashboard'
 
 const props = withDefaults(defineProps<{
   config: WidgetConfig
@@ -151,6 +179,62 @@ const selectedDynamicLabel = computed(() => {
 
 const totalMarkerCount = computed(() => markers.value.length + dynamicRows.value.size)
 
+// --- Search / filter state ---
+const searchOpen = ref(false)
+const searchQuery = ref('')
+const searchInputRef = ref<HTMLInputElement | null>(null)
+
+function toggleSearch() {
+  searchOpen.value = !searchOpen.value
+  if (searchOpen.value) {
+    nextTick(() => searchInputRef.value?.focus())
+  } else {
+    searchQuery.value = ''
+  }
+}
+
+const filteredStaticMarkers = computed(() => {
+  const q = searchQuery.value.toLowerCase().trim()
+  if (!q) return markers.value
+  return markers.value.filter(m => m.label?.toLowerCase().includes(q))
+})
+
+const filteredDynamicRows = computed<Map<string, KvRow>>(() => {
+  const q = searchQuery.value.toLowerCase().trim()
+  if (!q || !dynamicCfg.value) return dynamicRows.value
+  const cfg = dynamicCfg.value
+  const result = new Map<string, KvRow>()
+  for (const [key, row] of dynamicRows.value) {
+    if (matchesDynamicRow(row, cfg, q)) result.set(key, row)
+  }
+  return result
+})
+
+const filteredTotalCount = computed(
+  () => filteredStaticMarkers.value.length + filteredDynamicRows.value.size
+)
+
+function matchesDynamicRow(row: KvRow, cfg: DynamicMarkerSource, q: string): boolean {
+  if (extractDynamicLabel(row, cfg.labelPath).toLowerCase().includes(q)) return true
+  for (const field of cfg.popupFields || []) {
+    const v = extractDynamicFieldValue(row, field.path)
+    if (v != null && String(v).toLowerCase().includes(q)) return true
+  }
+  return false
+}
+
+function extractDynamicFieldValue(row: KvRow, path: string): unknown {
+  if (path === '__key__') return row.key
+  if (path === '__key_suffix__') return row.keySuffix
+  if (path === '__revision__') return row.revision
+  if (path === '__timestamp__') return row.timestamp
+  try {
+    return JSONPath({ path, json: row.data, wrap: false })
+  } catch {
+    return null
+  }
+}
+
 function extractDynamicLabel(row: KvRow, labelPath: string): string {
   if (labelPath === '__key__') return row.key
   if (labelPath === '__key_suffix__') return row.keySuffix
@@ -196,7 +280,7 @@ async function initializeMap() {
     )
 
     // Render static markers
-    renderMarkers(markers.value, handleStaticMarkerClick)
+    renderMarkers(filteredStaticMarkers.value, handleStaticMarkerClick)
 
     mapReady.value = true
 
@@ -214,8 +298,8 @@ watch(mapReady, (ready) => {
   if (ready) {
     syncMarkerPositions()
     // If dynamic markers are already loaded, render them
-    if (hasDynamic.value && dynamicRows.value.size > 0 && dynamicCfg.value) {
-      updateDynamicMarkers(dynamicRows.value, dynamicCfg.value, handleDynamicMarkerClick)
+    if (hasDynamic.value && filteredDynamicRows.value.size > 0 && dynamicCfg.value) {
+      updateDynamicMarkers(filteredDynamicRows.value, dynamicCfg.value, handleDynamicMarkerClick)
     }
     // Fit bounds on load if configured
     if (fitBoundsOnLoad.value) {
@@ -234,8 +318,8 @@ watch(() => dashboardStore.currentVariableValues, () => {
   syncMarkerPositions()
 }, { deep: true })
 
-// Dynamic KV marker updates
-watch(dynamicRows, (newRows) => {
+// Dynamic KV marker updates (filtered)
+watch(filteredDynamicRows, (newRows) => {
   if (mapReady.value && dynamicCfg.value) {
     updateDynamicMarkers(newRows, dynamicCfg.value, handleDynamicMarkerClick)
   }
@@ -255,12 +339,22 @@ watch([resolvedDynBucket, resolvedDynPattern], () => {
 // Standard UI watchers
 watch(() => uiStore.theme, (newTheme) => updateTheme(newTheme === 'dark'))
 
-watch(markers, () => {
+watch(filteredStaticMarkers, () => {
   if (mapReady.value) {
-    renderMarkers(markers.value, handleStaticMarkerClick)
+    renderMarkers(filteredStaticMarkers.value, handleStaticMarkerClick)
     syncMarkerPositions()
   }
 }, { deep: true })
+
+// Close detail panel if the selected marker gets filtered out
+watch(searchQuery, () => {
+  if (!selectedMarkerId.value) return
+  const inStatic = selectedMarkerType.value === 'static' &&
+    filteredStaticMarkers.value.some(m => m.id === selectedMarkerId.value)
+  const inDynamic = selectedMarkerType.value === 'dynamic' &&
+    filteredDynamicRows.value.has(selectedMarkerId.value)
+  if (!inStatic && !inDynamic) closePanel()
+})
 
 // Reinitialize map when center/zoom/clustering changes
 watch([mapCenter, mapZoom, enableClustering], () => {
@@ -359,6 +453,14 @@ onUnmounted(() => {
 .map-control-btn { width: 32px; height: 32px; background: var(--panel); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2); }
 .map-control-btn:hover { background: var(--color-info-bg); border-color: var(--color-info-border); }
 .map-control-btn:active { transform: scale(0.95); }
+
+.search-bar { display: flex; align-items: center; gap: 4px; }
+.search-bar.search-open { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 0 0 0 6px; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2); }
+.search-bar.search-open .map-control-btn { border: none; background: transparent; box-shadow: none; }
+.search-input { width: 180px; height: 30px; background: transparent; border: none; outline: none; color: var(--text); font-size: 13px; }
+.search-input::placeholder { color: var(--muted); }
+.filter-stats { position: absolute; top: 10px; left: 10px; z-index: 5; padding: 4px 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 4px; font-size: 12px; color: var(--muted); pointer-events: none; }
+@media (max-width: 480px) { .search-input { width: 120px; } }
 
 /* Cluster marker theme-aware overrides (three shades of primary) */
 .map-container :deep(.marker-cluster) { background-color: oklch(var(--p) / 0.25); }
