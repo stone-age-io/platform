@@ -22,15 +22,16 @@ const toast = useToast()
 const { state: confirmState, handleConfirm, handleCancel } = useConfirm()
 
 onMounted(() => {
-  // Initialize theme from localStorage
+  // Initialize theme from localStorage.
+  // Auth hydration runs pre-mount in main.ts so the router guard sees a
+  // restored session on the very first navigation.
   uiStore.initializeTheme()
-  
-  // Restore session
-  authStore.initializeFromAuth()
 })
 
 // 1. Handle Logout
-// We watch isAuthenticated specifically to catch the logout event immediately
+// Intentionally NOT { immediate: true }: this watcher only reacts to the
+// authenticated -> unauthenticated transition (logout). Firing on initial
+// false would call a redundant disconnect on every logged-out tab open.
 watch(() => authStore.isAuthenticated, async (isAuth) => {
   if (!isAuth) {
     try {
@@ -50,6 +51,9 @@ watch(() => authStore.isAuthenticated, async (isAuth) => {
 // NATS user lives on the membership record, so the previous org's creds are
 // wrong by definition once the org changes. Reconnect only if auto-connect
 // is enabled — otherwise the user reconnects manually with the new identity.
+//
+// { immediate: true } so that a session restored from localStorage pre-mount
+// (new-tab scenario) still triggers tryAutoConnect on the initial orgId.
 watch(() => authStore.currentOrgId, async (orgId) => {
   if (natsStore.status !== 'disconnected') {
     await natsStore.disconnect()
@@ -57,7 +61,7 @@ watch(() => authStore.currentOrgId, async (orgId) => {
   if (orgId) {
     await natsStore.tryAutoConnect()
   }
-})
+}, { immediate: true })
 </script>
 
 <template>

@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import router from './router'
 import App from './App.vue'
 import { useBrandingStore } from './stores/branding'
+import { useAuthStore } from './stores/auth'
 import './assets/main.css'
 import './assets/dashboard-compat.css'
 import './assets/forms.css'
@@ -19,12 +20,26 @@ app.use(createPinia())
 app.use(router)
 
 /**
- * Load operator branding overlay (if any) before mounting so the first paint
- * already shows the correct app name and logo. The pre-Vue loader splash is
- * still platform-default (it's hardcoded in index.html).
+ * Hydrate auth from localStorage AND load operator branding before mounting.
+ *
+ * Auth hydration must complete pre-mount: the router's beforeEach guard reads
+ * authStore.isAuthenticated, so if we mount before initializeFromAuth runs,
+ * the first navigation evaluates against an empty Pinia store and redirects
+ * to /login — even when a valid PocketBase token is sitting in localStorage
+ * (new-tab/new-window scenario).
+ *
+ * Branding load is unrelated but already gates first paint, so we run both in
+ * parallel. Each is wrapped in a defensive catch so a single failure can't
+ * block mount; initializeFromAuth already catches its own auth errors and
+ * calls logout() on a bad token.
  */
 const brandingStore = useBrandingStore()
-brandingStore.load().then(() => {
+const authStore = useAuthStore()
+
+Promise.all([
+  brandingStore.load().catch(err => console.error('Branding load failed:', err)),
+  authStore.initializeFromAuth().catch(err => console.error('Auth init failed:', err)),
+]).finally(() => {
   document.title = brandingStore.appName
   app.mount('#app')
 
