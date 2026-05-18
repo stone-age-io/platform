@@ -271,13 +271,12 @@ async function initializeMap() {
       return
     }
 
-    initMap(
-      mapContainerId.value,
-      mapCenter.value,
-      mapZoom.value,
-      uiStore.theme === 'dark',
-      enableClustering.value
-    )
+    initMap(mapContainerId.value, {
+      center: mapCenter.value,
+      zoom: mapZoom.value,
+      isDarkMode: uiStore.theme === 'dark',
+      enableClustering: enableClustering.value,
+    })
 
     // Render static markers
     renderMarkers(filteredStaticMarkers.value, handleStaticMarkerClick)

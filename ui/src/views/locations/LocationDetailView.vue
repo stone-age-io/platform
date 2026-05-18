@@ -7,7 +7,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
-import { useMap } from '@/composables/useMap'
+import { useLeafletMap } from '@/composables/useLeafletMap'
 import { usePagination } from '@/composables/usePagination'
 import { useUIStore } from '@/stores/ui'
 import { useNatsStore } from '@/stores/nats'
@@ -25,7 +25,7 @@ const toast = useToast()
 const { confirm } = useConfirm()
 const uiStore = useUIStore()
 const natsStore = useNatsStore()
-const { initMap, renderMarkers, updateTheme, invalidateSize, cleanup: cleanupMap } = useMap()
+const { initMap, renderMarkers, updateTheme, invalidateSize, cleanup: cleanupMap } = useLeafletMap()
 
 // --- State ---
 const location = ref<Location | null>(null)
@@ -162,8 +162,27 @@ watch([() => location.value, activeTab, loading], async ([loc, tab, isLoading]) 
   if (isLoading || !loc?.coordinates?.lat || tab !== 'coordinates') return
   await nextTick()
   if (!miniMapInitialized.value) {
-    initMap(mapContainerId, uiStore.theme === 'dark')
-    renderMarkers([loc])
+    initMap(mapContainerId, {
+      isDarkMode: uiStore.theme === 'dark',
+      center: { lat: loc.coordinates.lat, lon: loc.coordinates.lon },
+      zoom: 15,
+    })
+    const typeName = (loc.expand?.type as { name?: string } | undefined)?.name || 'Unknown Type'
+    const popupHtml = `
+      <div class="p-1">
+        <h3 class="font-bold text-sm">${loc.name}</h3>
+        <div class="text-xs text-gray-500 mb-1">${typeName}</div>
+        ${loc.description ? `<p class="text-xs mb-2">${loc.description}</p>` : ''}
+        <a href="/locations/${loc.id}" class="text-xs text-primary hover:underline">View Details</a>
+      </div>
+    `
+    renderMarkers([{
+      id: loc.id,
+      lat: loc.coordinates.lat,
+      lon: loc.coordinates.lon,
+      label: loc.name,
+      popupHtml,
+    }])
     miniMapInitialized.value = true
   } else {
     invalidateSize()

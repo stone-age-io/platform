@@ -3,7 +3,7 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { pb } from '@/utils/pb'
 import { useAuthStore } from '@/stores/auth'
 import { useUIStore } from '@/stores/ui'
-import { useMap } from '@/composables/useMap'
+import { useLeafletMap, type MapMarkerInput } from '@/composables/useLeafletMap'
 import type { Thing, Location } from '@/types/pocketbase'
 import ThingMapDrawer from '@/components/things/ThingMapDrawer.vue'
 
@@ -13,7 +13,7 @@ const props = withDefaults(defineProps<{ searchQuery?: string }>(), {
 
 const authStore = useAuthStore()
 const uiStore = useUIStore()
-const { initMap, renderMarkers, setSelectedMarker, updateTheme, fitToMarkers, invalidateSize, cleanup } = useMap()
+const { initMap, renderMarkers, setSelectedMarker, updateTheme, fitAllMarkers, invalidateSize, cleanup } = useLeafletMap()
 
 const loading = ref(true)
 const things = ref<Thing[]>([])
@@ -43,32 +43,26 @@ const filteredThings = computed(() => {
   })
 })
 
-// Synthesize Location-shaped markers from things (useMap is Location-typed).
-// We always pass an onMarkerClick, so the default popup branch is unused.
-const markersForMap = computed<Location[]>(() => {
-  return filteredThings.value.map(t => ({
-    id: t.id,
-    name: t.name,
-    coordinates: (t.expand!.location as Location).coordinates,
-    created: t.created,
-    updated: t.updated,
-  } as Location))
+const markersForMap = computed<MapMarkerInput[]>(() => {
+  return filteredThings.value.map(t => {
+    const coords = (t.expand!.location as Location).coordinates!
+    return { id: t.id, lat: coords.lat, lon: coords.lon, label: t.name }
+  })
 })
 
 function checkMobile() {
   isMobile.value = window.innerWidth < 768
 }
 
-function handleMarkerClick(marker: Location) {
-  // marker.id is the Thing id we stamped in via useMap
-  if (selectedThings.value.length === 1 && selectedThings.value[0].id === marker.id) {
+function handleMarkerClick(id: string) {
+  if (selectedThings.value.length === 1 && selectedThings.value[0].id === id) {
     closeDrawer()
     return
   }
-  const thing = things.value.find(t => t.id === marker.id)
+  const thing = things.value.find(t => t.id === id)
   if (!thing) return
   selectedThings.value = [thing]
-  setSelectedMarker(marker.id)
+  setSelectedMarker(id)
   if (!isMobile.value) nextTick(() => invalidateSize())
 }
 
@@ -143,7 +137,10 @@ onMounted(async () => {
   checkMobile()
   window.addEventListener('resize', checkMobile)
   await loadData()
-  initMap(mapContainerId, uiStore.theme === 'dark', handleClusterClick)
+  initMap(mapContainerId, {
+    isDarkMode: uiStore.theme === 'dark',
+    onClusterClick: handleClusterClick,
+  })
   renderMarkers(markersForMap.value, handleMarkerClick)
 })
 
@@ -170,7 +167,7 @@ onUnmounted(() => {
     <div v-if="filteredThings.length > 0" class="absolute top-[80px] right-[10px] z-[400] flex flex-col gap-2">
       <button
         class="btn btn-sm btn-square bg-base-100 border-base-300 shadow-sm hover:bg-base-200"
-        @click="fitToMarkers"
+        @click="fitAllMarkers()"
         title="Fit all things"
       >
         <span class="text-lg leading-none pb-1">⊡</span>

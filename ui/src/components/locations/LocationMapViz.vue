@@ -3,7 +3,7 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { pb } from '@/utils/pb'
 import { useAuthStore } from '@/stores/auth'
 import { useUIStore } from '@/stores/ui'
-import { useMap } from '@/composables/useMap'
+import { useLeafletMap, type MapMarkerInput } from '@/composables/useLeafletMap'
 import type { Location } from '@/types/pocketbase'
 import LocationMapDrawer from '@/components/locations/LocationMapDrawer.vue'
 
@@ -13,7 +13,7 @@ const props = withDefaults(defineProps<{ searchQuery?: string }>(), {
 
 const authStore = useAuthStore()
 const uiStore = useUIStore()
-const { initMap, renderMarkers, setSelectedMarker, updateTheme, fitToMarkers, invalidateSize, cleanup } = useMap()
+const { initMap, renderMarkers, setSelectedMarker, updateTheme, fitAllMarkers, invalidateSize, cleanup } = useLeafletMap()
 
 const loading = ref(true)
 const locations = ref<Location[]>([])
@@ -38,14 +38,27 @@ function checkMobile() {
   isMobile.value = window.innerWidth < 768
 }
 
-function handleMarkerClick(location: Location) {
-  if (selectedLocation.value?.id === location.id) {
+function handleMarkerClick(id: string) {
+  if (selectedLocation.value?.id === id) {
     closeDrawer()
     return
   }
-  selectedLocation.value = location
-  setSelectedMarker(location.id)
+  const loc = locations.value.find(l => l.id === id)
+  if (!loc) return
+  selectedLocation.value = loc
+  setSelectedMarker(id)
   if (!isMobile.value) nextTick(() => invalidateSize())
+}
+
+function toMarkers(locs: Location[]): MapMarkerInput[] {
+  return locs
+    .filter(l => l.coordinates && (l.coordinates.lat !== 0 || l.coordinates.lon !== 0))
+    .map(l => ({
+      id: l.id,
+      lat: l.coordinates!.lat,
+      lon: l.coordinates!.lon,
+      label: l.name,
+    }))
 }
 
 function handleMapClick(event: MouseEvent) {
@@ -78,7 +91,7 @@ async function loadData() {
       return lat !== 0 || lon !== 0
     })
 
-    renderMarkers(filteredLocations.value, handleMarkerClick)
+    renderMarkers(toMarkers(filteredLocations.value), handleMarkerClick)
   } catch (err) {
     console.error('Failed to load map data:', err)
   } finally {
@@ -93,7 +106,7 @@ watch(() => authStore.currentOrgId, () => {
 })
 
 watch(filteredLocations, (next) => {
-  renderMarkers(next, handleMarkerClick)
+  renderMarkers(toMarkers(next), handleMarkerClick)
   if (selectedLocation.value && !next.some(l => l.id === selectedLocation.value!.id)) {
     closeDrawer()
   }
@@ -103,8 +116,8 @@ onMounted(async () => {
   checkMobile()
   window.addEventListener('resize', checkMobile)
   await loadData()
-  initMap(mapContainerId, uiStore.theme === 'dark')
-  renderMarkers(filteredLocations.value, handleMarkerClick)
+  initMap(mapContainerId, { isDarkMode: uiStore.theme === 'dark' })
+  renderMarkers(toMarkers(filteredLocations.value), handleMarkerClick)
 })
 
 onUnmounted(() => {
@@ -130,7 +143,7 @@ onUnmounted(() => {
     <div v-if="filteredLocations.length > 0" class="absolute top-[80px] right-[10px] z-[400] flex flex-col gap-2">
       <button
         class="btn btn-sm btn-square bg-base-100 border-base-300 shadow-sm hover:bg-base-200"
-        @click="fitToMarkers"
+        @click="fitAllMarkers()"
         title="Fit all locations"
       >
         <span class="text-lg leading-none pb-1">⊡</span>

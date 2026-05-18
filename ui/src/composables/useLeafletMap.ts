@@ -1,5 +1,5 @@
 // src/composables/useLeafletMap.ts
-import { ref, shallowRef } from 'vue'
+import { ref, shallowRef, onUnmounted } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import 'leaflet.markercluster'
@@ -13,26 +13,22 @@ import { resolveTemplate } from '@/utils/variables'
 import type { BufferedMessage } from '@/stores/widgetData'
 
 /**
- * Leaflet Map Composable
+ * Unified Leaflet map composable.
  *
- * Manages Leaflet map lifecycle:
- * - Map initialization and cleanup
- * - Theme switching (light/dark tiles)
- * - Marker rendering with selection state
- * - Dynamic marker position updates (NATS subject-based)
- * - KV-driven dynamic markers (auto-generated from KV bucket)
- * - Optional marker clustering
+ * Covers list/detail views (popup or click handler), dashboard widgets
+ * (clustered + KV-driven dynamic markers), and cluster-click drawers.
  */
 
-// Tile providers
 const TILE_URLS = {
   light: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
   dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
 }
 
-const TILE_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
+const TILE_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
 
-// Fix Leaflet default icon paths
+const DEFAULT_CENTER = { lat: 39.8283, lon: -98.5795 }
+const DEFAULT_ZOOM = 4
+
 function fixLeafletIcons() {
   // @ts-ignore
   delete L.Icon.Default.prototype._getIconUrl
@@ -43,35 +39,41 @@ function fixLeafletIcons() {
   })
 }
 
+export interface MapMarkerInput {
+  id: string
+  lat: number
+  lon: number
+  label?: string
+  popupHtml?: string
+}
+
+export interface InitMapOptions {
+  isDarkMode: boolean
+  center?: { lat: number; lon: number }
+  zoom?: number
+  enableClustering?: boolean
+  // When provided, clustering is forced on, default zoom/spiderfy is suppressed,
+  // and the handler receives the child marker ids.
+  onClusterClick?: (markerIds: string[]) => void
+}
+
+export interface FitOptions {
+  padding?: number
+  maxZoom?: number
+}
+
 export function useLeafletMap() {
   const map = shallowRef<L.Map | null>(null)
   const markersLayer = shallowRef<L.LayerGroup | null>(null)
   const tileLayer = shallowRef<L.TileLayer | null>(null)
   const initialized = ref(false)
 
-  // Track marker instances for updates (static markers)
   const markerInstances = new Map<string, L.Marker>()
-
-  // Track dynamic KV marker instances (keyed by KV key)
   const dynamicMarkerInstances = new Map<string, L.Marker>()
 
-  // Whether clustering is enabled for this map instance
-  let clusteringEnabled = false
-
-  // Track selected marker ID
   let selectedMarkerId: string | null = null
 
-  /**
-   * Initialize the Leaflet map
-   */
-  function initMap(
-    containerId: string,
-    center: { lat: number; lon: number },
-    zoom: number,
-    isDarkMode: boolean,
-    enableClustering: boolean = false
-  ) {
-    // Cleanup existing map
+  function initMap(containerId: string, opts: InitMapOptions) {
     if (map.value) {
       map.value.remove()
       map.value = null
@@ -79,52 +81,60 @@ export function useLeafletMap() {
     markerInstances.clear()
     dynamicMarkerInstances.clear()
     selectedMarkerId = null
-    clusteringEnabled = enableClustering
 
     fixLeafletIcons()
 
     const container = document.getElementById(containerId)
     if (!container) return
 
-    // Clear any stale Leaflet state
     if ((container as any)._leaflet_id) {
       (container as any)._leaflet_id = null
     }
 
+    const center = opts.center ?? DEFAULT_CENTER
+    const zoom = opts.zoom ?? DEFAULT_ZOOM
+
     const mapInstance = L.map(containerId, {
       center: [center.lat, center.lon],
-      zoom: zoom,
+      zoom,
       zoomControl: true,
       attributionControl: true,
     })
 
     map.value = mapInstance
-    updateTheme(isDarkMode)
+    updateTheme(opts.isDarkMode)
 
-    // Use MarkerClusterGroup when clustering is enabled, otherwise plain LayerGroup
-    const layerGroup = clusteringEnabled
+    const useCluster = opts.enableClustering || !!opts.onClusterClick
+    const customClusterClick = !!opts.onClusterClick
+
+    const layerGroup = useCluster
       ? (L as any).markerClusterGroup({
           chunkedLoading: true,
           maxClusterRadius: 50,
-          spiderfyOnMaxZoom: true,
+          spiderfyOnMaxZoom: !customClusterClick,
           showCoverageOnHover: false,
-          zoomToBoundsOnClick: true,
+          zoomToBoundsOnClick: !customClusterClick,
         })
       : L.layerGroup()
+
+    if (customClusterClick) {
+      layerGroup.on('clusterclick', (e: any) => {
+        const children = e.layer.getAllChildMarkers() as L.Marker[]
+        const ids = children
+          .map(m => (m as any).__rrId as string | undefined)
+          .filter((id): id is string => !!id)
+        opts.onClusterClick!(ids)
+      })
+    }
+
     layerGroup.addTo(mapInstance)
     markersLayer.value = layerGroup
 
     initialized.value = true
 
-    // Ensure proper sizing after init
-    setTimeout(() => {
-      mapInstance.invalidateSize()
-    }, 100)
+    setTimeout(() => mapInstance.invalidateSize(), 100)
   }
 
-  /**
-   * Switch between light and dark tile layers
-   */
   function updateTheme(isDarkMode: boolean) {
     if (!map.value) return
 
@@ -141,51 +151,47 @@ export function useLeafletMap() {
     tileLayer.value = newTileLayer
   }
 
-  /**
-   * Render static markers on the map
-   */
   function renderMarkers(
-    markers: MapMarker[],
-    onMarkerClick: (markerId: string) => void
+    markers: MapMarkerInput[],
+    onMarkerClick?: (id: string) => void
   ) {
     if (!map.value || !markersLayer.value) return
 
-    // Remove existing static markers from layer
     markerInstances.forEach((marker) => {
       markersLayer.value!.removeLayer(marker)
     })
     markerInstances.clear()
 
-    markers.forEach(markerConfig => {
-      const { id, lat, lon, label } = markerConfig
+    markers.forEach(({ id, lat, lon, label, popupHtml }) => {
+      const marker = L.marker([lat, lon], { title: label })
+      ;(marker as any).__rrId = id
 
-      const marker = L.marker([lat, lon], {
-        title: label
-      })
+      if (onMarkerClick) {
+        marker.on('click', () => onMarkerClick(id))
+      } else if (popupHtml) {
+        marker.bindPopup(popupHtml)
+      }
 
-      marker.on('click', () => {
-        onMarkerClick(id)
-      })
-
-      marker.bindTooltip(label, {
-        permanent: false,
-        direction: 'top',
-        offset: [-15, -15]
-      })
+      if (label) {
+        marker.bindTooltip(label, {
+          permanent: false,
+          direction: 'top',
+          offset: [-15, -15]
+        })
+      }
 
       markerInstances.set(id, marker)
       markersLayer.value!.addLayer(marker)
     })
 
-    // Re-apply selection if there was one
     if (selectedMarkerId) {
       applySelectionClass(selectedMarkerId)
     }
   }
 
   /**
-   * Update dynamic KV markers from KV watcher rows.
-   * Diffs against existing dynamic markers: adds new, removes deleted, repositions moved.
+   * Diff KV-watcher rows against existing dynamic markers:
+   * adds new, removes deleted, repositions moved.
    */
   function updateDynamicMarkers(
     rows: Map<string, KvRow>,
@@ -197,7 +203,6 @@ export function useLeafletMap() {
     const currentKeys = new Set(dynamicMarkerInstances.keys())
     let count = 0
 
-    // Add or update markers
     for (const [key, row] of rows) {
       if (count >= MAP_LIMITS.MAX_DYNAMIC_MARKERS) break
 
@@ -209,16 +214,14 @@ export function useLeafletMap() {
       const existing = dynamicMarkerInstances.get(key)
 
       if (existing) {
-        // Update position if moved
         const current = existing.getLatLng()
         if (Math.abs(current.lat - lat) > 0.000001 || Math.abs(current.lng - lon) > 0.000001) {
           existing.setLatLng([lat, lon])
         }
-        // Update tooltip if label changed
         existing.setTooltipContent(label)
       } else {
-        // Create new marker
         const marker = L.marker([lat, lon], { title: label })
+        ;(marker as any).__rrId = key
         marker.on('click', () => onMarkerClick(key))
         marker.bindTooltip(label, {
           permanent: false,
@@ -233,7 +236,6 @@ export function useLeafletMap() {
       count++
     }
 
-    // Remove markers for deleted KV keys
     for (const key of currentKeys) {
       const marker = dynamicMarkerInstances.get(key)
       if (marker) {
@@ -242,15 +244,11 @@ export function useLeafletMap() {
       }
     }
 
-    // Re-apply selection
     if (selectedMarkerId) {
       applySelectionClass(selectedMarkerId)
     }
   }
 
-  /**
-   * Clear all dynamic markers
-   */
   function clearDynamicMarkers() {
     if (!markersLayer.value) return
     dynamicMarkerInstances.forEach((marker) => {
@@ -259,9 +257,6 @@ export function useLeafletMap() {
     dynamicMarkerInstances.clear()
   }
 
-  /**
-   * Extract a label string from a KV row using the configured path
-   */
   function extractLabel(row: KvRow, labelPath: string): string {
     if (labelPath === '__key__') return row.key
     if (labelPath === '__key_suffix__') return row.keySuffix
@@ -275,42 +270,30 @@ export function useLeafletMap() {
     }
   }
 
-  /**
-   * Apply selection CSS class to a marker's icon element
-   */
   function applySelectionClass(markerId: string | null) {
-    // Remove class from all markers first
     const allMarkers = [...markerInstances.values(), ...dynamicMarkerInstances.values()]
     allMarkers.forEach((marker) => {
       const iconEl = marker.getElement()
-      if (iconEl) {
-        iconEl.classList.remove('marker-selected')
-      }
+      if (iconEl) iconEl.classList.remove('marker-selected')
     })
 
-    // Add class to selected marker (check both static and dynamic)
     if (markerId) {
       const marker = markerInstances.get(markerId) || dynamicMarkerInstances.get(markerId)
       if (marker) {
         const iconEl = marker.getElement()
-        if (iconEl) {
-          iconEl.classList.add('marker-selected')
-        }
+        if (iconEl) iconEl.classList.add('marker-selected')
       }
     }
   }
 
-  /**
-   * Update selected marker visual state
-   */
   function setSelectedMarker(markerId: string | null) {
     selectedMarkerId = markerId
     applySelectionClass(markerId)
   }
 
   /**
-   * Update marker positions from incoming messages
-   * Used for static markers with dynamic position config
+   * Update positions of static markers configured with dynamic position bindings,
+   * using the latest matching message from the widget buffer.
    */
   function updateMarkerPositions(
     markersConfig: MapMarker[],
@@ -319,19 +302,15 @@ export function useLeafletMap() {
   ) {
     if (!map.value || messages.length === 0) return
 
-    // Filter for dynamic markers
     const dynamicMarkers = markersConfig.filter(m =>
       m.positionConfig?.mode === 'dynamic' && m.positionConfig.subject
     )
-
     if (dynamicMarkers.length === 0) return
 
-    // For each dynamic marker, find the latest relevant message
     dynamicMarkers.forEach(marker => {
       const pos = marker.positionConfig!
       const resolvedSubject = resolveTemplate(pos.subject, variables)
 
-      // Find latest message matching this subject (iterate backwards)
       let match: BufferedMessage | undefined
       for (let i = messages.length - 1; i >= 0; i--) {
         if (messages[i].subject === resolvedSubject) {
@@ -339,28 +318,22 @@ export function useLeafletMap() {
           break
         }
       }
+      if (!match) return
 
-      if (match) {
-        const lat = extractNumericValue(match.value, pos.latJsonPath)
-        const lon = extractNumericValue(match.value, pos.lonJsonPath)
+      const lat = extractNumericValue(match.value, pos.latJsonPath)
+      const lon = extractNumericValue(match.value, pos.lonJsonPath)
+      if (!isValidCoord(lat) || !isValidCoord(lon)) return
 
-        if (isValidCoord(lat) && isValidCoord(lon)) {
-          const leafletMarker = markerInstances.get(marker.id)
-          if (leafletMarker) {
-            const current = leafletMarker.getLatLng()
-            // Only update if moved significantly
-            if (Math.abs(current.lat - lat) > 0.000001 || Math.abs(current.lng - lon) > 0.000001) {
-              leafletMarker.setLatLng([lat, lon])
-            }
-          }
-        }
+      const leafletMarker = markerInstances.get(marker.id)
+      if (!leafletMarker) return
+
+      const current = leafletMarker.getLatLng()
+      if (Math.abs(current.lat - lat) > 0.000001 || Math.abs(current.lng - lon) > 0.000001) {
+        leafletMarker.setLatLng([lat, lon])
       }
     })
   }
 
-  /**
-   * Extract numeric value from data using JSONPath
-   */
   function extractNumericValue(data: any, path?: string): number {
     if (!path) return NaN
     try {
@@ -368,7 +341,6 @@ export function useLeafletMap() {
       if (typeof data === 'string') {
         try { json = JSON.parse(data) } catch { return NaN }
       }
-
       const result = JSONPath({ path, json, wrap: false })
       return parseFloat(result)
     } catch {
@@ -376,68 +348,35 @@ export function useLeafletMap() {
     }
   }
 
-  /**
-   * Check if a value is a valid coordinate
-   */
   function isValidCoord(val: number): boolean {
     return typeof val === 'number' && !isNaN(val)
   }
 
   /**
-   * Pan and zoom to specific location
+   * Fit map view to all current markers (static + dynamic).
+   * Returns false if there's nothing to fit.
    */
-  function setView(lat: number, lon: number, zoom: number) {
-    if (!map.value) return
-    map.value.setView([lat, lon], zoom)
-  }
-
-  /**
-   * Fit map view to show all markers (static + dynamic)
-   * Returns false if no markers to fit
-   */
-  function fitAllMarkers(padding: number = 50): boolean {
+  function fitAllMarkers(opts: FitOptions = {}): boolean {
     if (!map.value) return false
 
     const totalMarkers = markerInstances.size + dynamicMarkerInstances.size
     if (totalMarkers === 0) return false
 
     const bounds = L.latLngBounds([])
+    markerInstances.forEach((m) => bounds.extend(m.getLatLng()))
+    dynamicMarkerInstances.forEach((m) => bounds.extend(m.getLatLng()))
+    if (!bounds.isValid()) return false
 
-    markerInstances.forEach((marker) => {
-      bounds.extend(marker.getLatLng())
-    })
-
-    dynamicMarkerInstances.forEach((marker) => {
-      bounds.extend(marker.getLatLng())
-    })
-
-    if (bounds.isValid()) {
-      map.value.fitBounds(bounds, { padding: [padding, padding] })
-      return true
-    }
-
-    return false
+    const padding = opts.padding ?? 50
+    const maxZoom = opts.maxZoom ?? 15
+    map.value.fitBounds(bounds, { padding: [padding, padding], maxZoom })
+    return true
   }
 
-  /**
-   * Force map to recalculate its size
-   * Call after container resize
-   */
   function invalidateSize() {
-    if (!map.value) return
-    map.value.invalidateSize()
+    map.value?.invalidateSize()
   }
 
-  /**
-   * Get a marker instance by ID (checks both static and dynamic)
-   */
-  function getMarker(markerId: string): L.Marker | undefined {
-    return markerInstances.get(markerId) || dynamicMarkerInstances.get(markerId)
-  }
-
-  /**
-   * Cleanup map instance
-   */
   function cleanup() {
     if (map.value) {
       map.value.remove()
@@ -448,9 +387,10 @@ export function useLeafletMap() {
     markerInstances.clear()
     dynamicMarkerInstances.clear()
     selectedMarkerId = null
-    clusteringEnabled = false
     initialized.value = false
   }
+
+  onUnmounted(cleanup)
 
   return {
     map,
@@ -462,10 +402,8 @@ export function useLeafletMap() {
     clearDynamicMarkers,
     setSelectedMarker,
     updateMarkerPositions,
-    setView,
     fitAllMarkers,
     invalidateSize,
-    getMarker,
     cleanup,
   }
 }
