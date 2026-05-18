@@ -140,7 +140,7 @@ onMounted(async () => {
   initMap(mapContainerId, {
     isDarkMode: uiStore.theme === 'dark',
     onClusterClick: handleClusterClick,
-    zoomControlPosition: 'topright',
+    zoomControlPosition: 'bottomleft',
   })
   renderMarkers(markersForMap.value, handleMarkerClick, { fitBounds: true })
 })
@@ -165,7 +165,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Map Controls (Top Right) -->
-    <div v-if="filteredThings.length > 0" class="absolute top-[80px] right-[10px] z-[400] flex flex-col gap-2">
+    <div v-if="filteredThings.length > 0" class="absolute top-[10px] right-[10px] z-[400] flex flex-col gap-2">
       <button
         class="btn btn-sm btn-square bg-base-100 border-base-300 shadow-sm hover:bg-base-200"
         @click="fitAllMarkers()"
