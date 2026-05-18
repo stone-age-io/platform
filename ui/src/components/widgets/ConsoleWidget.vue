@@ -42,10 +42,13 @@
       ref="scrollContainer"
       :style="{ fontSize: `${config.consoleConfig?.fontSize || 12}px` }"
     >
-      <div v-if="displayMessages.length === 0" class="empty-state">
-        <span v-if="filterText">No matching messages</span>
-        <span v-else>Waiting for messages...</span>
-      </div>
+      <WidgetStateOverlay
+        v-if="displayMessages.length === 0"
+        state="empty"
+        icon="📡"
+        :message="filterText ? 'No matching messages' : 'Waiting for messages...'"
+        :compact="layoutMode === 'card'"
+      />
 
       <div 
         v-for="(msg, index) in displayMessages" 
@@ -100,9 +103,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useWidgetDataStore } from '@/stores/widgetData'
 import JsonViewer from '@/components/common/JsonViewer.vue'
+import WidgetStateOverlay from '@/components/dashboard/WidgetStateOverlay.vue'
 import type { WidgetConfig } from '@/types/dashboard'
 
 const props = withDefaults(defineProps<{
@@ -242,8 +246,19 @@ watch(buffer, () => {
   }
 }, { deep: true })
 
+function handleRefresh() {
+  // Grug say: refresh means show new data, not stay stuck on old snapshot.
+  isPaused.value = false
+  pausedMessages.value = []
+}
+
 onMounted(() => {
   scrollToBottom()
+  window.addEventListener('dashboard:refresh', handleRefresh)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('dashboard:refresh', handleRefresh)
 })
 </script>
 

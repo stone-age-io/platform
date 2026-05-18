@@ -161,12 +161,15 @@ function handleReloadRemote() {
 
 /**
  * Force Refresh Dashboard
- * Grug say: Wipe data, stop subs, then start all over.
+ * Grug say: Wipe data, stop subs, start all over, and shout so self-managed widgets reload too.
  */
 function handleRefreshDashboard() {
   unsubscribeAllWidgets(false) // false = wipe data
   nextTick(() => {
     subscribeAllWidgets()
+    // Self-managed widgets (kv, kvtable, switch, slider, pocketbase, status-kv)
+    // don't go through subscribeAllWidgets — tell them to reload themselves.
+    window.dispatchEvent(new Event('dashboard:refresh'))
     toast.info('Dashboard data refreshed')
   })
 }

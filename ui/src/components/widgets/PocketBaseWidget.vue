@@ -2,15 +2,20 @@
 <template>
   <div class="pb-widget" :class="{ 'card-layout': layoutMode === 'card' }">
     <!-- Loading -->
-    <div v-if="loading && items.length === 0" class="loading-overlay">
-      <span class="loading loading-spinner"></span>
-    </div>
+    <WidgetStateOverlay
+      v-if="loading && items.length === 0"
+      state="loading"
+      :compact="layoutMode === 'card'"
+    />
 
     <!-- Error -->
-    <div v-else-if="error" class="error-state">
-      <span class="text-error">⚠️ {{ error }}</span>
-      <button class="btn btn-xs btn-ghost mt-2" @click="fetchData">Retry</button>
-    </div>
+    <WidgetStateOverlay
+      v-else-if="error"
+      state="error"
+      :message="error"
+      :compact="layoutMode === 'card'"
+      @retry="fetchData"
+    />
 
     <!-- Data -->
     <div v-else class="data-container">
@@ -61,6 +66,7 @@ import { pb } from '@/utils/pb'
 import { useDashboardStore } from '@/stores/dashboard'
 import { resolveTemplate } from '@/utils/variables'
 import ResponsiveList, { type Column } from '@/components/ui/ResponsiveList.vue'
+import WidgetStateOverlay from '@/components/dashboard/WidgetStateOverlay.vue'
 import type { WidgetConfig } from '@/types/dashboard'
 
 const props = withDefaults(defineProps<{
@@ -160,10 +166,12 @@ function setupTimer() {
 onMounted(() => {
   fetchData()
   setupTimer()
+  window.addEventListener('dashboard:refresh', fetchData)
 })
 
 onUnmounted(() => {
   if (refreshTimer) clearInterval(refreshTimer)
+  window.removeEventListener('dashboard:refresh', fetchData)
 })
 
 // Watch for config changes

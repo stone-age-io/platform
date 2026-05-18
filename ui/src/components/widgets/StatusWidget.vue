@@ -190,20 +190,29 @@ function stopKvWatcher() {
   }
 }
 
+function handleRefresh() {
+  if (isKvMode.value) {
+    stopKvWatcher()
+    startKvWatcher()
+  }
+}
+
 // Lifecycle
 onMounted(() => {
   timer = window.setInterval(() => {
     now.value = Date.now()
   }, 1000)
-  
+
   if (isKvMode.value) {
     startKvWatcher()
   }
+  window.addEventListener('dashboard:refresh', handleRefresh)
 })
 
 onUnmounted(() => {
   if (timer) clearInterval(timer)
   stopKvWatcher()
+  window.removeEventListener('dashboard:refresh', handleRefresh)
 })
 
 // Watch for mode changes or connection changes

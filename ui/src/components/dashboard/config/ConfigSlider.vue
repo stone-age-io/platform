@@ -13,32 +13,13 @@
 
     <!-- KV Mode Fields -->
     <template v-if="form.sliderMode === 'kv'">
-      <div class="form-group">
-        <label>KV Bucket</label>
-        <input 
-          v-model="form.kvBucket" 
-          type="text" 
-          class="form-input"
-          :class="{ 'has-error': errors.kvBucket }"
-          placeholder="device-config"
-        />
-        <div v-if="errors.kvBucket" class="error-text">
-          {{ errors.kvBucket }}
-        </div>
-      </div>
-      <div class="form-group">
-        <label>KV Key</label>
-        <input 
-          v-model="form.kvKey" 
-          type="text" 
-          class="form-input"
-          :class="{ 'has-error': errors.kvKey }"
-          placeholder="device.brightness"
-        />
-        <div v-if="errors.kvKey" class="error-text">
-          {{ errors.kvKey }}
-        </div>
-      </div>
+      <ConfigKvSource
+        :form="form"
+        :errors="errors"
+        bucket-placeholder="device-config"
+        key-placeholder="device.brightness"
+        :show-json-path="false"
+      />
     </template>
 
     <!-- CORE Mode Fields -->
@@ -172,6 +153,7 @@
 
 <script setup lang="ts">
 import type { WidgetFormState } from '@/types/config'
+import ConfigKvSource from './ConfigKvSource.vue'
 
 defineProps<{
   form: WidgetFormState

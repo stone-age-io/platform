@@ -13,39 +13,15 @@
 
     <!-- KV Mode Fields -->
     <template v-if="form.switchMode === 'kv'">
-      <div class="form-group">
-        <label>KV Bucket</label>
-        <input 
-          v-model="form.kvBucket" 
-          type="text" 
-          class="form-input"
-          :class="{ 'has-error': errors.kvBucket }"
-          placeholder="device-states"
-        />
-        <div v-if="errors.kvBucket" class="error-text">
-          {{ errors.kvBucket }}
-        </div>
-        <div v-else class="help-text">
-          Bucket where switch state will be stored
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label>KV Key</label>
-        <input 
-          v-model="form.kvKey" 
-          type="text" 
-          class="form-input"
-          :class="{ 'has-error': errors.kvKey }"
-          placeholder="device.switch"
-        />
-        <div v-if="errors.kvKey" class="error-text">
-          {{ errors.kvKey }}
-        </div>
-        <div v-else class="help-text">
-          Key to store switch state (will be watched for changes)
-        </div>
-      </div>
+      <ConfigKvSource
+        :form="form"
+        :errors="errors"
+        bucket-placeholder="device-states"
+        key-placeholder="device.switch"
+        bucket-help="Bucket where switch state will be stored"
+        key-help="Key to store switch state (will be watched for changes)"
+        :show-json-path="false"
+      />
     </template>
 
     <!-- CORE Mode Fields -->
@@ -141,6 +117,7 @@
 
 <script setup lang="ts">
 import type { WidgetFormState } from '@/types/config'
+import ConfigKvSource from './ConfigKvSource.vue'
 
 defineProps<{
   form: WidgetFormState

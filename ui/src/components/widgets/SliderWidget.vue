@@ -330,12 +330,21 @@ function cleanup() {
   kvInstance = null
 }
 
+function handleRefresh() {
+  cleanup()
+  if (natsStore.isConnected) initialize()
+}
+
 onMounted(() => {
   localValue.value = cfg.value.defaultValue
   if (natsStore.isConnected) initialize()
+  window.addEventListener('dashboard:refresh', handleRefresh)
 })
 
-onUnmounted(cleanup)
+onUnmounted(() => {
+  cleanup()
+  window.removeEventListener('dashboard:refresh', handleRefresh)
+})
 
 watch(() => natsStore.isConnected, (connected) => {
   if (connected) initialize()

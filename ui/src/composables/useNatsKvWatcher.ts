@@ -206,12 +206,19 @@ export function useNatsKvWatcher(
     rows.value = new Map()
   }
 
+  function refresh() {
+    stopWatching()
+    if (natsStore.isConnected) startWatching()
+  }
+
   onMounted(() => {
     if (natsStore.isConnected) startWatching()
+    window.addEventListener('dashboard:refresh', refresh)
   })
 
   onUnmounted(() => {
     stopWatching()
+    window.removeEventListener('dashboard:refresh', refresh)
   })
 
   // Restart when connection, bucket, or pattern changes
@@ -227,5 +234,5 @@ export function useNatsKvWatcher(
     }
   )
 
-  return { rows, loading, error }
+  return { rows, loading, error, refresh }
 }

@@ -26,7 +26,7 @@
         {{ errors.subjects }}
       </div>
       <div v-else class="help-text">
-        Type subject and press Enter. Supports wildcards (e.g. <code>logs.></code>).
+        Type subject and press Enter. Supports wildcards (e.g. <code>logs.></code>) and variables like <code v-pre>{{device_id}}</code>.
       </div>
     </div>
 
@@ -44,7 +44,7 @@
         {{ errors.subject }}
       </div>
       <div v-else class="help-text">
-        NATS subject pattern to subscribe to
+        NATS subject pattern to subscribe to. Supports variables like <code v-pre>{{device_id}}</code>.
       </div>
     </div>
     

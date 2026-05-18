@@ -318,13 +318,22 @@ export function useSwitchState(configSource: Ref<SwitchStateConfig> | SwitchStat
     }
   }
 
+  function refresh() {
+    if (instance) {
+      instance.stop()
+      if (natsStore.isConnected) instance.start()
+    }
+  }
+
   onMounted(() => {
     init()
+    window.addEventListener('dashboard:refresh', refresh)
   })
 
   onUnmounted(() => {
     if (instance) instance.stop()
     if (stateWatcherStop) stateWatcherStop()
+    window.removeEventListener('dashboard:refresh', refresh)
   })
 
   if (isRef(configSource)) {

@@ -1,13 +1,17 @@
 <template>
   <div class="kv-widget" :class="{ 'single-value-mode': isSingleValue, 'card-layout': layoutMode === 'card' }">
-    <div v-if="loading" class="kv-loading">
-      <LoadingState size="small" inline />
-    </div>
-    
-    <div v-else-if="error" class="kv-error">
-      <div class="error-icon">⚠️</div>
-      <div class="error-text">{{ layoutMode === 'card' ? 'Error' : error }}</div>
-    </div>
+    <WidgetStateOverlay
+      v-if="loading"
+      state="loading"
+      :compact="layoutMode === 'card'"
+    />
+
+    <WidgetStateOverlay
+      v-else-if="error"
+      state="error"
+      :message="error"
+      :compact="layoutMode === 'card'"
+    />
     
     <div v-else-if="kvValue !== null" class="kv-content">
       
@@ -77,10 +81,13 @@
       </template>
     </div>
     
-    <div v-else class="kv-empty">
-      <div class="empty-icon">🗄️</div>
-      <div v-if="layoutMode !== 'card'">Key not found</div>
-    </div>
+    <WidgetStateOverlay
+      v-else
+      state="empty"
+      icon="🗄️"
+      message="Key not found"
+      :compact="layoutMode === 'card'"
+    />
   </div>
 </template>
 
@@ -90,8 +97,8 @@ import { useNatsStore } from '@/stores/nats'
 import { useDashboardStore } from '@/stores/dashboard'
 import { Kvm } from '@nats-io/kv'
 import { JSONPath } from 'jsonpath-plus'
-import LoadingState from '@/components/common/LoadingState.vue'
 import JsonViewer from '@/components/common/JsonViewer.vue'
+import WidgetStateOverlay from '@/components/dashboard/WidgetStateOverlay.vue'
 import { useThresholds } from '@/composables/useThresholds'
 import type { WidgetConfig } from '@/types/dashboard'
 import { decodeBytes } from '@/utils/encoding'
@@ -233,8 +240,19 @@ function cleanup() {
   if (watcher) { try { watcher.stop() } catch {} watcher = null }
 }
 
-onMounted(() => { if (natsStore.isConnected) loadKvValue() })
-onUnmounted(cleanup)
+function handleRefresh() {
+  cleanup()
+  if (natsStore.isConnected) loadKvValue()
+}
+
+onMounted(() => {
+  if (natsStore.isConnected) loadKvValue()
+  window.addEventListener('dashboard:refresh', handleRefresh)
+})
+onUnmounted(() => {
+  cleanup()
+  window.removeEventListener('dashboard:refresh', handleRefresh)
+})
 watch(resolvedConfig, () => { cleanup(); if (natsStore.isConnected) loadKvValue() }, { deep: true })
 
 watch(() => natsStore.isConnected, (isConnected) => {

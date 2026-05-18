@@ -23,41 +23,12 @@
       />
 
       <!-- KV Inputs -->
-      <template v-if="form.dataSourceType === 'kv'">
-        <div class="form-group">
-          <label>KV Bucket</label>
-          <input 
-            v-model="form.kvBucket" 
-            type="text" 
-            class="form-input"
-            :class="{ 'has-error': errors.kvBucket }"
-            placeholder="my-bucket"
-          />
-          <div v-if="errors.kvBucket" class="error-text">{{ errors.kvBucket }}</div>
-        </div>
-        <div class="form-group">
-          <label>KV Key</label>
-          <input 
-            v-model="form.kvKey" 
-            type="text" 
-            class="form-input"
-            :class="{ 'has-error': errors.kvKey }"
-            placeholder="status.key"
-          />
-          <div v-if="errors.kvKey" class="error-text">{{ errors.kvKey }}</div>
-        </div>
-        <div class="form-group">
-          <label>JSONPath (optional)</label>
-          <input 
-            v-model="form.jsonPath" 
-            type="text" 
-            class="form-input"
-            :class="{ 'has-error': errors.jsonPath }"
-            placeholder="$.status"
-          />
-          <div v-if="errors.jsonPath" class="error-text">{{ errors.jsonPath }}</div>
-        </div>
-      </template>
+      <ConfigKvSource
+        v-if="form.dataSourceType === 'kv'"
+        :form="form"
+        :errors="errors"
+        key-placeholder="status.key"
+      />
     </div>
 
     <!-- Content Section -->
@@ -83,6 +54,7 @@
 <script setup lang="ts">
 import type { WidgetFormState } from '@/types/config'
 import ConfigDataSource from './ConfigDataSource.vue'
+import ConfigKvSource from './ConfigKvSource.vue'
 
 defineProps<{
   form: WidgetFormState

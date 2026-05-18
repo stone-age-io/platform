@@ -1,19 +1,19 @@
 <!-- ui/src/components/widgets/ChartWidget.vue -->
 <template>
-  <div class="chart-widget">
-    <v-chart 
+  <div class="chart-widget" :class="{ 'card-layout': layoutMode === 'card' }">
+    <v-chart
       v-if="hasData"
-      :option="chartOption" 
+      :option="chartOption"
       :autoresize="true"
       class="chart"
     />
-    <div v-else class="no-data">
-      <div class="no-data-icon">📈</div>
-      <div class="no-data-text">Waiting for data...</div>
-      <div class="no-data-hint">
-        Subscribed to: <code>{{ resolvedSubject }}</code>
-      </div>
-    </div>
+    <WidgetStateOverlay
+      v-else
+      state="empty"
+      icon="📈"
+      message="Waiting for data..."
+      :compact="layoutMode === 'card'"
+    />
   </div>
 </template>
 
@@ -30,11 +30,10 @@ import {
 import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
 import { useWidgetDataStore } from '@/stores/widgetData'
-import { useDashboardStore } from '@/stores/dashboard'
 import { useDesignTokens } from '@/composables/useDesignTokens'
 import { useUIStore } from '@/stores/ui'
+import WidgetStateOverlay from '@/components/dashboard/WidgetStateOverlay.vue'
 import type { WidgetConfig } from '@/types/dashboard'
-import { resolveTemplate } from '@/utils/variables'
 
 // Register ECharts components
 use([
@@ -49,12 +48,14 @@ use([
   CanvasRenderer,
 ])
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   config: WidgetConfig
-}>()
+  layoutMode?: 'standard' | 'card'
+}>(), {
+  layoutMode: 'standard'
+})
 
 const dataStore = useWidgetDataStore()
-const dashboardStore = useDashboardStore()
 const uiStore = useUIStore()
 const { chartColors, chartStyling, getChartColorArray } = useDesignTokens()
 
@@ -66,11 +67,6 @@ const hasData = computed(() => buffer.value.length > 0)
 
 // Get chart type (default to line)
 const chartType = computed(() => props.config.chartConfig?.chartType || 'line')
-
-// Resolve subject for display
-const resolvedSubject = computed(() => {
-  return resolveTemplate(props.config.dataSource.subject, dashboardStore.currentVariableValues)
-})
 
 /**
  * Generate chart option based on chart type
@@ -388,40 +384,7 @@ watch(() => uiStore.theme, () => {
   min-height: 0;
 }
 
-.no-data {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: var(--muted);
-  padding: 20px;
-}
-
-.no-data-icon {
-  font-size: 48px;
-  margin-bottom: 12px;
-  opacity: 0.5;
-}
-
-.no-data-text {
-  font-size: 16px;
-  font-weight: 500;
-  margin-bottom: 8px;
-  color: var(--text);
-}
-
-.no-data-hint {
-  font-size: 12px;
-  text-align: center;
-  line-height: 1.4;
-}
-
-.no-data-hint code {
-  background: rgba(255, 255, 255, 0.1);
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-family: var(--mono);
-  color: var(--color-accent);
+.chart-widget.card-layout {
+  padding: 4px;
 }
 </style>

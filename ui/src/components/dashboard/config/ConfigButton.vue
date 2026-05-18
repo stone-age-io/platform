@@ -62,9 +62,9 @@
     
     <div class="form-group">
       <label>Subject</label>
-      <input 
-        v-model="form.subject" 
-        type="text" 
+      <input
+        v-model="form.subject"
+        type="text"
         class="form-input"
         :class="{ 'has-error': errors.subject }"
         placeholder="service.action"
@@ -72,12 +72,15 @@
       <div v-if="errors.subject" class="error-text">
         {{ errors.subject }}
       </div>
+      <div v-else class="help-text">
+        Supports variables like <code v-pre>{{device_id}}</code>.
+      </div>
     </div>
-    
+
     <div class="form-group">
       <label>Message Payload</label>
-      <textarea 
-        v-model="form.buttonPayload" 
+      <textarea
+        v-model="form.buttonPayload"
         class="form-textarea"
         :class="{ 'has-error': errors.buttonPayload }"
         rows="6"
@@ -85,6 +88,9 @@
       />
       <div v-if="errors.buttonPayload" class="error-text">
         {{ errors.buttonPayload }}
+      </div>
+      <div v-else class="help-text">
+        Supports variables like <code v-pre>{{device_id}}</code>.
       </div>
     </div>
   </div>

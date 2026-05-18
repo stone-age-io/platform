@@ -2,20 +2,28 @@
 <template>
   <div class="kvtable-widget" :class="{ 'card-layout': layoutMode === 'card' }">
     <!-- Loading -->
-    <div v-if="loading && tableRows.length === 0" class="loading-overlay">
-      <span class="loading loading-spinner"></span>
-    </div>
+    <WidgetStateOverlay
+      v-if="loading && tableRows.length === 0"
+      state="loading"
+      :compact="layoutMode === 'card'"
+    />
 
     <!-- Error -->
-    <div v-else-if="error" class="error-state">
-      <span class="text-error">{{ error }}</span>
-    </div>
+    <WidgetStateOverlay
+      v-else-if="error"
+      state="error"
+      :message="error"
+      :compact="layoutMode === 'card'"
+    />
 
     <!-- Not Configured -->
-    <div v-else-if="!cfg.kvBucket" class="empty-state">
-      <div class="empty-icon">📋</div>
-      <div v-if="layoutMode !== 'card'">Configure bucket &amp; key pattern</div>
-    </div>
+    <WidgetStateOverlay
+      v-else-if="!cfg.kvBucket"
+      state="empty"
+      icon="📋"
+      message="Configure bucket & key pattern"
+      :compact="layoutMode === 'card'"
+    />
 
     <!-- Data -->
     <template v-else>
@@ -122,6 +130,7 @@ import { formatColumnValue } from '@/utils/format'
 import { JSONPath } from 'jsonpath-plus'
 import ResponsiveList, { type Column } from '@/components/ui/ResponsiveList.vue'
 import JsonViewer from '@/components/common/JsonViewer.vue'
+import WidgetStateOverlay from '@/components/dashboard/WidgetStateOverlay.vue'
 import type { WidgetConfig, TableColumn } from '@/types/dashboard'
 import {
   cellClass as cellClassFor,

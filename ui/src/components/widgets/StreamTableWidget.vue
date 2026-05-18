@@ -111,7 +111,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useWidgetDataStore } from '@/stores/widgetData'
 import { formatColumnValue } from '@/utils/format'
 import { JSONPath } from 'jsonpath-plus'
@@ -253,6 +253,20 @@ function downloadCsv() {
     filename: props.config.title || 'stream-table',
   })
 }
+
+function handleRefresh() {
+  // Grug say: refresh means show new data, not stay stuck on old snapshot.
+  isPaused.value = false
+  pausedSnapshot.value = []
+}
+
+onMounted(() => {
+  window.addEventListener('dashboard:refresh', handleRefresh)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('dashboard:refresh', handleRefresh)
+})
 </script>
 
 <style scoped>

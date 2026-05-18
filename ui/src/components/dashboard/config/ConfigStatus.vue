@@ -20,35 +20,12 @@
       />
 
       <!-- KV Inputs (Only shown if KV mode) -->
-      <template v-if="form.dataSourceType === 'kv'">
-        <div class="form-group">
-          <label>KV Bucket</label>
-          <input 
-            v-model="form.kvBucket" 
-            type="text" 
-            class="form-input"
-            placeholder="my-bucket"
-          />
-        </div>
-        <div class="form-group">
-          <label>KV Key</label>
-          <input 
-            v-model="form.kvKey" 
-            type="text" 
-            class="form-input"
-            placeholder="status.key"
-          />
-        </div>
-        <div class="form-group">
-          <label>JSONPath (optional)</label>
-          <input 
-            v-model="form.jsonPath" 
-            type="text" 
-            class="form-input"
-            placeholder="$.status"
-          />
-        </div>
-      </template>
+      <ConfigKvSource
+        v-if="form.dataSourceType === 'kv'"
+        :form="form"
+        :errors="errors"
+        key-placeholder="status.key"
+      />
     </div>
 
     <!-- Mappings Section -->
@@ -205,6 +182,7 @@
 <script setup lang="ts">
 import type { WidgetFormState } from '@/types/config'
 import ConfigDataSource from './ConfigDataSource.vue'
+import ConfigKvSource from './ConfigKvSource.vue'
 
 const props = defineProps<{
   form: WidgetFormState
