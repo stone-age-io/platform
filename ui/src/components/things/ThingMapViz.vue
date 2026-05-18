@@ -122,7 +122,7 @@ watch(() => authStore.currentOrgId, () => {
 })
 
 watch(markersForMap, (next) => {
-  renderMarkers(next, handleMarkerClick)
+  renderMarkers(next, handleMarkerClick, { fitBounds: true })
   if (selectedThings.value.length === 0) return
   const visibleIds = new Set(next.map(m => m.id))
   const stillVisible = selectedThings.value.filter(t => visibleIds.has(t.id))
@@ -140,8 +140,9 @@ onMounted(async () => {
   initMap(mapContainerId, {
     isDarkMode: uiStore.theme === 'dark',
     onClusterClick: handleClusterClick,
+    zoomControlPosition: 'topright',
   })
-  renderMarkers(markersForMap.value, handleMarkerClick)
+  renderMarkers(markersForMap.value, handleMarkerClick, { fitBounds: true })
 })
 
 onUnmounted(() => {

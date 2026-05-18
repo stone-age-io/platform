@@ -47,6 +47,8 @@ export interface MapMarkerInput {
   popupHtml?: string
 }
 
+export type ZoomControlPosition = 'topleft' | 'topright' | 'bottomleft' | 'bottomright' | 'none'
+
 export interface InitMapOptions {
   isDarkMode: boolean
   center?: { lat: number; lon: number }
@@ -55,6 +57,8 @@ export interface InitMapOptions {
   // When provided, clustering is forced on, default zoom/spiderfy is suppressed,
   // and the handler receives the child marker ids.
   onClusterClick?: (markerIds: string[]) => void
+  // Position of Leaflet's built-in zoom control. 'none' hides it. Default 'topleft'.
+  zoomControlPosition?: ZoomControlPosition
 }
 
 export interface FitOptions {
@@ -94,12 +98,18 @@ export function useLeafletMap() {
     const center = opts.center ?? DEFAULT_CENTER
     const zoom = opts.zoom ?? DEFAULT_ZOOM
 
+    const zoomControlPosition = opts.zoomControlPosition ?? 'topleft'
+
     const mapInstance = L.map(containerId, {
       center: [center.lat, center.lon],
       zoom,
-      zoomControl: true,
+      zoomControl: false,
       attributionControl: true,
     })
+
+    if (zoomControlPosition !== 'none') {
+      L.control.zoom({ position: zoomControlPosition }).addTo(mapInstance)
+    }
 
     map.value = mapInstance
     updateTheme(opts.isDarkMode)
@@ -153,7 +163,8 @@ export function useLeafletMap() {
 
   function renderMarkers(
     markers: MapMarkerInput[],
-    onMarkerClick?: (id: string) => void
+    onMarkerClick?: (id: string) => void,
+    opts: { fitBounds?: boolean } = {}
   ) {
     if (!map.value || !markersLayer.value) return
 
@@ -186,6 +197,10 @@ export function useLeafletMap() {
 
     if (selectedMarkerId) {
       applySelectionClass(selectedMarkerId)
+    }
+
+    if (opts.fitBounds) {
+      fitAllMarkers()
     }
   }
 

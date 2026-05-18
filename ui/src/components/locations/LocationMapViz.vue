@@ -91,7 +91,7 @@ async function loadData() {
       return lat !== 0 || lon !== 0
     })
 
-    renderMarkers(toMarkers(filteredLocations.value), handleMarkerClick)
+    renderMarkers(toMarkers(filteredLocations.value), handleMarkerClick, { fitBounds: true })
   } catch (err) {
     console.error('Failed to load map data:', err)
   } finally {
@@ -106,7 +106,7 @@ watch(() => authStore.currentOrgId, () => {
 })
 
 watch(filteredLocations, (next) => {
-  renderMarkers(toMarkers(next), handleMarkerClick)
+  renderMarkers(toMarkers(next), handleMarkerClick, { fitBounds: true })
   if (selectedLocation.value && !next.some(l => l.id === selectedLocation.value!.id)) {
     closeDrawer()
   }
@@ -116,8 +116,11 @@ onMounted(async () => {
   checkMobile()
   window.addEventListener('resize', checkMobile)
   await loadData()
-  initMap(mapContainerId, { isDarkMode: uiStore.theme === 'dark' })
-  renderMarkers(toMarkers(filteredLocations.value), handleMarkerClick)
+  initMap(mapContainerId, {
+    isDarkMode: uiStore.theme === 'dark',
+    zoomControlPosition: 'topright',
+  })
+  renderMarkers(toMarkers(filteredLocations.value), handleMarkerClick, { fitBounds: true })
 })
 
 onUnmounted(() => {

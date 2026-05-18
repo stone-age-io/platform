@@ -276,6 +276,7 @@ async function initializeMap() {
       zoom: mapZoom.value,
       isDarkMode: uiStore.theme === 'dark',
       enableClustering: enableClustering.value,
+      zoomControlPosition: 'bottomleft',
     })
 
     // Render static markers
@@ -448,7 +449,7 @@ onUnmounted(() => {
 @keyframes spin { to { transform: rotate(360deg); } }
 .no-markers-hint { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 5; display: flex; align-items: center; gap: 6px; padding: 6px 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 4px; font-size: 12px; color: var(--muted); pointer-events: none; }
 .hint-icon { font-size: 14px; }
-.map-controls { position: absolute; top: 10px; right: 10px; z-index: 5; display: flex; flex-direction: column; gap: 6px; }
+.map-controls { position: absolute; top: 10px; right: 10px; z-index: 5; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .map-control-btn { width: 32px; height: 32px; background: var(--panel); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2); }
 .map-control-btn:hover { background: var(--color-info-bg); border-color: var(--color-info-border); }
 .map-control-btn:active { transform: scale(0.95); }
