@@ -35,6 +35,7 @@
 <script setup lang="ts">
 import { computed, ref, onUnmounted, watch } from 'vue'
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import { JSONPath } from 'jsonpath-plus'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useWidgetDataStore } from '@/stores/widgetData'
@@ -209,7 +210,10 @@ const renderedContent = computed(() => {
   }
 
   const resolved = resolveTemplate(raw, stringContext)
-  return marked.parse(resolved)
+  // Sanitize before this feeds a v-html sink: markdown content can carry
+  // resolved template variables / live NATS data, and marked does not strip
+  // raw HTML. DOMPurify removes script/event-handler vectors.
+  return DOMPurify.sanitize(marked.parse(resolved) as string)
 })
 
 // --- Edit Mode Logic ---

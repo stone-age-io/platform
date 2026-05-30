@@ -9,6 +9,7 @@ import { useNatsStore } from '@/stores/nats'
 import type { Thing, NatsUser, NebulaHost, Location } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import KvDashboard from '@/components/nats/KvDashboard.vue'
+import JsonViewer from '@/components/common/JsonViewer.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -22,29 +23,6 @@ const regenerating = ref(false)
 const showRegenerateModal = ref(false)
 
 const thingId = route.params.id as string
-
-/**
- * JSON Highlighter
- */
-const highlightedMetadata = computed(() => {
-  if (!thing.value?.metadata) return '{}'
-  const json = JSON.stringify(thing.value.metadata, null, 2)
-  return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, (match) => {
-    let cls = 'text-warning'
-    if (/^"/.test(match)) {
-      if (/:$/.test(match)) {
-        cls = 'text-primary font-bold'
-      } else {
-        cls = 'text-secondary'
-      }
-    } else if (/true|false/.test(match)) {
-      cls = 'text-info'
-    } else if (/null/.test(match)) {
-      cls = 'text-error'
-    }
-    return `<span class="${cls}">${match}</span>`
-  })
-})
 
 /**
  * Grug utility: Copy raw JSON to clipboard
@@ -236,7 +214,7 @@ onMounted(() => {
 
             <div class="bg-base-200 rounded-lg p-4 border border-base-300 overflow-hidden">
               <div class="max-h-[500px] overflow-y-auto overflow-x-auto custom-scrollbar">
-                <pre class="text-sm font-mono leading-relaxed" v-html="highlightedMetadata"></pre>
+                <JsonViewer :data="thing.metadata" class="text-sm leading-relaxed" />
               </div>
             </div>
           </BaseCard>

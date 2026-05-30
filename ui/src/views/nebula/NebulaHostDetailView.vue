@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
@@ -7,6 +7,7 @@ import { useConfirm } from '@/composables/useConfirm'
 import { formatDate } from '@/utils/format'
 import type { NebulaHost } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import JsonViewer from '@/components/common/JsonViewer.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -19,26 +20,6 @@ const regenerating = ref(false)
 const showRegenerateModal = ref(false)
 
 const hostId = route.params.id as string
-
-/**
- * JSON Highlighter Helper
- */
-function highlightJson(data: any) {
-  if (!data) return '{}'
-  const json = JSON.stringify(data, null, 2)
-  return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, (match) => {
-    let cls = 'text-warning'
-    if (/^"/.test(match)) {
-      if (/:$/.test(match)) { cls = 'text-primary font-bold' } 
-      else { cls = 'text-secondary' }
-    } else if (/true|false/.test(match)) { cls = 'text-info' } 
-    else if (/null/.test(match)) { cls = 'text-error' }
-    return `<span class="${cls}">${match}</span>`
-  })
-}
-
-const highlightedOutbound = computed(() => highlightJson(host.value?.firewall_outbound))
-const highlightedInbound = computed(() => highlightJson(host.value?.firewall_inbound))
 
 async function loadHost() {
   loading.value = true
@@ -206,13 +187,13 @@ onMounted(() => {
               <div>
                 <div class="text-xs font-bold text-base-content/50 uppercase tracking-wider mb-2">Inbound</div>
                 <div class="bg-base-200 rounded-lg p-3 overflow-x-auto border border-base-300 max-h-60">
-                  <pre class="text-xs font-mono" v-html="highlightedInbound"></pre>
+                  <JsonViewer :data="host.firewall_inbound" class="text-xs" />
                 </div>
               </div>
               <div>
                 <div class="text-xs font-bold text-base-content/50 uppercase tracking-wider mb-2">Outbound</div>
                 <div class="bg-base-200 rounded-lg p-3 overflow-x-auto border border-base-300 max-h-60">
-                  <pre class="text-xs font-mono" v-html="highlightedOutbound"></pre>
+                  <JsonViewer :data="host.firewall_outbound" class="text-xs" />
                 </div>
               </div>
             </div>
