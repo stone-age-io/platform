@@ -403,9 +403,3 @@ export function getSubscriptionManager(): ReturnType<typeof useSubscriptionManag
   if (!managerInstance) managerInstance = useSubscriptionManager()
   return managerInstance
 }
-export function resetSubscriptionManager(): void {
-  if (managerInstance) {
-    managerInstance.cleanupAll()
-    managerInstance = null
-  }
-}
