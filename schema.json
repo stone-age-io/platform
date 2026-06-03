@@ -1086,6 +1086,16 @@
         "type": "json"
       },
       {
+        "hidden": false,
+        "id": "json2891045517",
+        "maxSize": 0,
+        "name": "floorplan_position",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
+      },
+      {
         "cascadeDelete": false,
         "collectionId": "pbc_4097575383",
         "hidden": false,

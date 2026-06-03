@@ -30,7 +30,6 @@ const { initMap, renderMarkers, updateTheme, invalidateSize, cleanup: cleanupMap
 // --- State ---
 const location = ref<Location | null>(null)
 const loading = ref(true)
-const isPositioningMode = ref(false)
 const mapContainerId = 'mini-map-container'
 const activeTab = ref<'floorplan' | 'coordinates'>('floorplan')
 const miniMapInitialized = ref(false)
@@ -140,8 +139,8 @@ async function loadData(id: string) {
       // 3. Load Map Data (All items, strictly for coordinates)
       pb.collection('things').getFullList<Thing>({
         filter: `location = "${id}"`,
-        fields: 'id,name,metadata,expand.type.name', // optimize fetch
-        expand: 'type'
+        fields: 'id,name,description,code,floorplan_position,expand.type.name,expand.location.id,expand.location.name', // optimize fetch
+        expand: 'type,location'
       }).then(res => allThingsForMap.value = res)
     ])
 
@@ -199,19 +198,18 @@ async function refreshThings() {
 }
 
 /**
- * Handle Floor Plan Coordinate Updates
+ * Persist a thing's floor-plan position. A null position un-maps it from the plan.
  */
-async function handleThingMoved({ id, x, y }: { id: string, x: number, y: number }) {
+async function handleUpdatePosition({ id, position }: { id: string, position: { x: number, y: number } | null }) {
   try {
     // Update local map data
     const thing = allThingsForMap.value.find(t => t.id === id)
     if (!thing) return
 
-    const metadata = { ...(thing.metadata || {}), x, y }
-    await pb.collection('things').update(id, { metadata })
-    thing.metadata = metadata
-    
-    toast.success(`${thing.name} position saved`)
+    await pb.collection('things').update(id, { floorplan_position: position })
+    thing.floorplan_position = position ?? undefined
+
+    toast.success(position ? `${thing.name} position saved` : `${thing.name} removed from plan`)
   } catch (err: any) {
     toast.error('Failed to save position')
   }
@@ -365,34 +363,15 @@ onUnmounted(() => cleanupMap())
               <h2 v-else class="font-bold uppercase text-[10px] tracking-widest opacity-60 flex items-center gap-2">
                 {{ location.floorplan ? '🖼️ Floor Plan' : location.coordinates ? '📍 Geo Location' : '🗺️ Location' }}
               </h2>
-
-              <div class="flex gap-2 shrink-0">
-                <button
-                  v-if="location.coordinates && activeTab === 'coordinates'"
-                  @click="openNavigation"
-                  class="btn btn-xs sm:btn-sm btn-primary btn-outline"
-                >
-                  🧭 Navigate
-                </button>
-                <button
-                  v-if="location.floorplan && activeTab === 'floorplan'"
-                  @click="isPositioningMode = !isPositioningMode"
-                  class="btn btn-xs sm:btn-sm"
-                  :class="isPositioningMode ? 'btn-success' : 'btn-primary btn-outline'"
-                >
-                  {{ isPositioningMode ? '💾 Save Positions' : '🛠️ Position Things' }}
-                </button>
-              </div>
             </div>
 
-            <!-- Floorplan panel -->
+            <!-- Floorplan panel (overlay controls + drawers live inside FloorPlanMap) -->
             <div v-show="location.floorplan && activeTab === 'floorplan'" class="flex-grow flex flex-col">
               <FloorPlanMap
                 v-if="location.floorplan"
                 :location="location"
                 :things="allThingsForMap"
-                :editable="isPositioningMode"
-                @thing-moved="handleThingMoved"
+                @update-position="handleUpdatePosition"
               />
             </div>
 
@@ -408,8 +387,17 @@ onUnmounted(() => cleanupMap())
                   <span class="font-mono text-xs">{{ location.coordinates.lon }}</span>
                 </div>
               </div>
-              <div class="flex-grow min-h-[300px] w-full rounded-lg relative z-0 border border-base-300">
+              <div class="flex-grow min-h-[300px] w-full rounded-lg relative z-0 border border-base-300 overflow-hidden">
                 <div :id="mapContainerId" class="absolute inset-0 rounded-lg"></div>
+                <div v-if="location.coordinates" class="absolute top-[10px] right-[10px] z-[400]">
+                  <button
+                    @click="openNavigation"
+                    class="btn btn-sm bg-base-100 border-base-300 shadow-sm hover:bg-base-200 gap-1"
+                    title="Open in Google Maps"
+                  >
+                    🧭 <span class="hidden sm:inline">Navigate</span>
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -527,5 +515,9 @@ onUnmounted(() => cleanupMap())
 /* Grug UX: Invert floorplan colors in dark mode for better visual cohesion */
 :deep([data-theme='dark']) .leaflet-image-layer {
   filter: invert(0.9) hue-rotate(180deg) brightness(0.8) contrast(1.2);
+}
+/* Highlight the floor-plan marker for the selected thing (mirrors the map-viz views) */
+:deep(.marker-selected) {
+  filter: hue-rotate(180deg) saturate(1.5) drop-shadow(0 0 8px rgba(116, 128, 255, 0.8));
 }
 </style>

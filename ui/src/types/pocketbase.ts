@@ -105,6 +105,7 @@ export interface Thing extends AuthRecord {
   code?: string
   location?: string // Location ID
   metadata?: Record<string, any>
+  floorplan_position?: { x: number; y: number } // Pixel coords on the location's floorplan image
   nats_user?: string
   nebula_host?: string
 }
