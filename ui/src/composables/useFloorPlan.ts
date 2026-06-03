@@ -1,6 +1,7 @@
 import { ref, shallowRef, onUnmounted } from 'vue'
 import L from 'leaflet'
 import type { Thing } from '@/types/pocketbase'
+import { fixLeafletIcons } from '@/utils/leafletIcons'
 
 export interface RenderOptions {
   draggable: boolean
@@ -21,10 +22,20 @@ export function useFloorPlan() {
   const markerInstances = new Map<string, L.Marker>()
   let selectedId: string | null = null
 
-  const initFloorPlan = (containerId: string, imageUrl: string, width: number, height: number) => {
-    if (map.value) map.value.remove()
+  // Detach handlers and drop all markers — used on re-render, re-init, and cleanup.
+  // off() releases the click/dragend closures (which capture the parent's emit).
+  const clearMarkers = () => {
+    markerInstances.forEach(m => m.off())
+    markerLayer.value?.clearLayers()
     markerInstances.clear()
+  }
+
+  const initFloorPlan = (containerId: string, imageUrl: string, width: number, height: number) => {
+    clearMarkers()
+    if (map.value) map.value.remove()
     selectedId = null
+
+    fixLeafletIcons() // ensure default marker icons resolve (broken on iOS otherwise)
 
     map.value = L.map(containerId, {
       crs: L.CRS.Simple, // pixel coordinate space (1 unit = 1 image pixel)
@@ -44,8 +55,7 @@ export function useFloorPlan() {
   // live in the positioning drawer until explicitly placed.
   const renderMarkers = (things: Thing[], opts: RenderOptions) => {
     if (!markerLayer.value || !map.value) return
-    markerLayer.value.clearLayers()
-    markerInstances.clear()
+    clearMarkers()
 
     things.forEach(thing => {
       const pos = thing.floorplan_position
@@ -91,12 +101,12 @@ export function useFloorPlan() {
   const invalidateSize = () => map.value?.invalidateSize()
 
   const cleanup = () => {
+    clearMarkers()
     if (map.value) {
       map.value.remove()
       map.value = null
     }
     markerLayer.value = null
-    markerInstances.clear()
     selectedId = null
     mapInitialized.value = false
   }

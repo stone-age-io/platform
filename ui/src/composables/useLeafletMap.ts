@@ -10,6 +10,7 @@ import { MAP_LIMITS } from '@/types/dashboard'
 import type { KvRow } from '@/composables/useNatsKvWatcher'
 import { JSONPath } from 'jsonpath-plus'
 import { resolveTemplate } from '@/utils/variables'
+import { fixLeafletIcons } from '@/utils/leafletIcons'
 import type { BufferedMessage } from '@/stores/widgetData'
 
 /**
@@ -28,16 +29,6 @@ const TILE_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyrigh
 
 const DEFAULT_CENTER = { lat: 39.8283, lon: -98.5795 }
 const DEFAULT_ZOOM = 4
-
-function fixLeafletIcons() {
-  // @ts-ignore
-  delete L.Icon.Default.prototype._getIconUrl
-  L.Icon.Default.mergeOptions({
-    iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-    iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-  })
-}
 
 export interface MapMarkerInput {
   id: string
