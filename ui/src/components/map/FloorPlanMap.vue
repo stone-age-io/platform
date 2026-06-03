@@ -120,7 +120,7 @@ watch(() => props.location?.floorplan, loadMap)
 </script>
 
 <template>
-  <div class="relative w-full h-full min-h-[500px] bg-base-300 rounded-xl overflow-hidden border border-base-300 shadow-inner">
+  <div class="relative z-0 w-full h-full min-h-[500px] bg-base-300 rounded-xl overflow-hidden border border-base-300 shadow-inner">
     <div v-if="loading" class="absolute inset-0 z-20 bg-base-300/50 backdrop-blur-sm flex items-center justify-center">
       <span class="loading loading-spinner loading-lg"></span>
     </div>
