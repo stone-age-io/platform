@@ -9,7 +9,14 @@ import type { LeafNode, Location } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 
 // Hard allowlist — must match the server-side rule grants + leaf-sync allowlist.
-const SYNCABLE_COLLECTIONS = ['things', 'locations', 'thing_types', 'location_types']
+const SYNCABLE_COLLECTIONS = [
+  'things',
+  'locations',
+  'thing_types',
+  'location_types',
+  'thing_type_operations',
+  'message_schemas',
+]
 
 const router = useRouter()
 const route = useRoute()

@@ -48,6 +48,24 @@ const filteredUsers = computed(() => {
   })
 })
 
+// A user carries pb-nats per-user permission overrides when any of its
+// publish/subscribe (allow or deny) lists is non-empty. These merge with the
+// role's permissions, so it's worth flagging at a glance.
+function hasOverrides(user: NatsUser): boolean {
+  const lists = [
+    user.publish_permissions,
+    user.subscribe_permissions,
+    user.publish_deny_permissions,
+    user.subscribe_deny_permissions,
+  ]
+  return lists.some((v) => {
+    if (!v) return false
+    if (Array.isArray(v)) return v.length > 0
+    const t = String(v).trim()
+    return t !== '' && t !== '[]'
+  })
+}
+
 // Column configuration
 const columns: Column<NatsUser>[] = [
   {
@@ -212,8 +230,13 @@ onUnmounted(() => {
         <!-- Custom cell for username -->
         <template #cell-nats_username="{ item }">
           <div>
-            <div class="font-medium font-mono">
+            <div class="font-medium font-mono flex items-center gap-2">
               {{ item.nats_username }}
+              <span
+                v-if="hasOverrides(item)"
+                class="badge badge-xs badge-warning badge-outline"
+                title="Has per-user permission overrides (merged with role)"
+              >overrides</span>
             </div>
             <div v-if="item.description" class="text-sm text-base-content/60 line-clamp-1">
               {{ item.description }}
@@ -224,8 +247,13 @@ onUnmounted(() => {
         <!-- Custom mobile card for username -->
         <template #card-nats_username="{ item }">
           <div>
-            <div class="font-semibold font-mono text-base">
+            <div class="font-semibold font-mono text-base flex items-center gap-2">
               {{ item.nats_username }}
+              <span
+                v-if="hasOverrides(item)"
+                class="badge badge-xs badge-warning badge-outline"
+                title="Has per-user permission overrides (merged with role)"
+              >overrides</span>
             </div>
             <div v-if="item.description" class="text-sm text-base-content/60 mt-1">
               {{ item.description }}
