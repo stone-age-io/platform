@@ -220,223 +220,228 @@ onMounted(loadNode)
           <h1 class="text-3xl font-bold">{{ node.name || 'Unnamed' }}</h1>
           <p v-if="node.description" class="text-base-content/70 mt-1">{{ node.description }}</p>
         </div>
-        <div class="flex gap-2">
-          <router-link :to="`/leaf-nodes/${node.id}/edit`" class="btn btn-primary">Edit</router-link>
-          <button @click="handleDelete" class="btn btn-outline btn-error">Delete</button>
+        <div class="flex gap-2 w-full sm:w-auto">
+          <router-link :to="`/leaf-nodes/${node.id}/edit`" class="btn btn-primary flex-1 sm:flex-initial">Edit</router-link>
+          <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial">Delete</button>
         </div>
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-        <BaseCard title="Identity">
-          <dl class="space-y-3">
-            <div>
-              <dt class="text-xs uppercase text-base-content/50">Code</dt>
-              <dd><code class="text-sm">{{ node.code || '-' }}</code></dd>
-            </div>
-            <div>
-              <dt class="text-xs uppercase text-base-content/50">JetStream Domain</dt>
-              <dd><code class="text-sm">{{ node.domain || '-' }}</code></dd>
-            </div>
-            <div>
-              <dt class="text-xs uppercase text-base-content/50">Location</dt>
-              <dd>
-                <router-link
-                  v-if="node.expand?.location"
-                  :to="`/locations/${node.location}`"
-                  class="link link-primary hover:no-underline inline-flex items-center gap-1"
-                >
-                  📍 {{ node.expand.location.name }}
-                </router-link>
-                <span v-else class="text-base-content/40">No location assigned</span>
-              </dd>
-            </div>
-          </dl>
-        </BaseCard>
+        <!-- Left column: identity, synced collections, metadata -->
+        <div class="space-y-6">
+          <BaseCard title="Identity">
+            <dl class="space-y-3">
+              <div>
+                <dt class="text-xs uppercase text-base-content/50">Code</dt>
+                <dd><code class="text-sm">{{ node.code || '-' }}</code></dd>
+              </div>
+              <div>
+                <dt class="text-xs uppercase text-base-content/50">JetStream Domain</dt>
+                <dd><code class="text-sm">{{ node.domain || '-' }}</code></dd>
+              </div>
+              <div>
+                <dt class="text-xs uppercase text-base-content/50">Location</dt>
+                <dd>
+                  <router-link
+                    v-if="node.expand?.location"
+                    :to="`/locations/${node.location}`"
+                    class="link link-primary hover:no-underline inline-flex items-center gap-1"
+                  >
+                    📍 {{ node.expand.location.name }}
+                  </router-link>
+                  <span v-else class="text-base-content/40">No location assigned</span>
+                </dd>
+              </div>
+            </dl>
+          </BaseCard>
 
-        <BaseCard title="Synced Collections">
-          <div v-if="node.synced_collections?.length" class="flex flex-wrap gap-2">
-            <span v-for="col in node.synced_collections" :key="col" class="badge badge-ghost">
-              <code>{{ col }}</code>
-            </span>
-          </div>
-          <p v-else class="text-base-content/60 text-sm">No collections selected.</p>
+          <BaseCard title="Synced Collections">
+            <div v-if="node.synced_collections?.length" class="flex flex-wrap gap-2">
+              <span v-for="col in node.synced_collections" :key="col" class="badge badge-ghost">
+                <code>{{ col }}</code>
+              </span>
+            </div>
+            <p v-else class="text-base-content/60 text-sm">No collections selected.</p>
 
-          <div class="divider"></div>
-          <div class="text-sm text-base-content/70 space-y-1">
-            <p class="font-semibold">Bootstrap on the edge:</p>
-            <pre class="bg-base-200 rounded p-2 text-xs overflow-x-auto">leaf-sync config   # writes nats-leaf.conf + creds
+            <div class="divider"></div>
+            <div class="text-sm text-base-content/70 space-y-1">
+              <p class="font-semibold">Bootstrap on the edge:</p>
+              <pre class="bg-base-200 rounded p-2 text-xs overflow-x-auto">leaf-sync config   # writes nats-leaf.conf + creds
 leaf-sync run      # mirror config → local KV</pre>
-          </div>
-        </BaseCard>
-      </div>
-
-      <!-- Connectivity: NATS + Nebula (a leaf can have both) -->
-      <BaseCard>
-        <template #header>
-          <div class="flex justify-between items-center mb-2">
-            <h3 class="card-title text-base">Connectivity</h3>
-            <div class="flex gap-2">
-              <button
-                v-if="nebulaHost"
-                @click="downloadNebulaConfig"
-                class="btn btn-sm btn-outline h-8 min-h-0"
-                title="Download Nebula config"
-              >
-                📥 Config
-              </button>
-              <button
-                v-if="canManage && natsUser"
-                @click="showRegenerateModal = true"
-                class="btn btn-sm btn-outline btn-error h-8 min-h-0"
-                title="Regenerate credentials"
-              >
-                🔄
-              </button>
             </div>
-          </div>
-        </template>
+          </BaseCard>
 
-        <!-- NATS Section -->
-        <div class="mb-1">
-          <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider">NATS</span>
-        </div>
-        <div v-if="natsUser" class="flex flex-col gap-3">
-          <div class="bg-base-200 rounded-lg p-3 border border-base-300">
-            <div class="flex justify-between items-start mb-1">
-              <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Username</span>
-              <div class="flex items-center gap-1.5" v-if="natsUser.active">
-                <span class="w-2 h-2 rounded-full bg-success"></span>
-                <span class="text-xs font-medium text-base-content/70">Active</span>
-              </div>
-              <div class="flex items-center gap-1.5" v-else>
-                <span class="w-2 h-2 rounded-full bg-error"></span>
-                <span class="text-xs font-medium text-base-content/70">Inactive</span>
-              </div>
-            </div>
-            <router-link :to="`/nats/users/${natsUser.id}`" class="link link-primary font-mono text-base break-all">
-              {{ natsUser.nats_username }}
-            </router-link>
-          </div>
-
-          <div class="bg-base-200 rounded-lg p-3 border border-base-300">
-            <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider block mb-1">Role</span>
-            <router-link :to="`/nats/roles/${natsUser.role_id}`" class="link link-primary text-sm font-mono">
-              🎭 {{ natsUser.expand?.role_id?.name || natsUser.role_id }}
-            </router-link>
-            <p class="text-xs text-base-content/60 mt-2">
-              The role defines this edge's publish/subscribe permissions within its NATS account.
-              The default <code>leaf-node</code> role is allow-all inside the account.
-            </p>
-
-            <div v-if="canManage" class="mt-3 space-y-2">
-              <label class="text-xs uppercase text-base-content/50">Reassign role</label>
-              <div class="flex flex-col sm:flex-row gap-2">
-                <select v-model="selectedRoleId" class="select select-bordered select-sm flex-1">
-                  <option v-for="role in roles" :key="role.id" :value="role.id">
-                    {{ role.name }}<span v-if="role.is_default"> (default)</span>
-                  </option>
-                </select>
-                <button class="btn btn-sm btn-primary" :disabled="!roleDirty || savingRole" @click="applyRole">
-                  <span v-if="savingRole" class="loading loading-spinner loading-xs"></span>
-                  <span v-else>Apply</span>
+          <!-- Metadata -->
+          <BaseCard v-if="node.metadata && Object.keys(node.metadata).length">
+            <template #header>
+              <div class="flex justify-between items-center mb-2">
+                <h3 class="card-title text-base">Metadata</h3>
+                <button @click="copyMetadata" class="btn btn-xs btn-ghost gap-1 opacity-70 hover:opacity-100" title="Copy raw JSON">
+                  📋 Copy
                 </button>
               </div>
-              <p class="text-xs text-base-content/50">
-                Assign a narrower role to shrink this edge's blast radius.
-                <router-link :to="`/nats/roles/${natsUser.role_id}/edit`" class="link">
-                  Edit this role's permissions
+            </template>
+
+            <div class="bg-base-200 rounded-lg p-4 border border-base-300 overflow-hidden">
+              <div class="max-h-[500px] overflow-y-auto overflow-x-auto custom-scrollbar">
+                <JsonViewer :data="node.metadata" class="text-sm leading-relaxed" />
+              </div>
+            </div>
+          </BaseCard>
+        </div>
+
+        <!-- Right column: connectivity (NATS + Nebula — a leaf can have both) -->
+        <div class="space-y-6">
+          <BaseCard>
+            <template #header>
+              <div class="flex justify-between items-center mb-2">
+                <h3 class="card-title text-base">Connectivity</h3>
+                <div class="flex gap-2">
+                  <button
+                    v-if="nebulaHost"
+                    @click="downloadNebulaConfig"
+                    class="btn btn-sm btn-outline h-8 min-h-0"
+                    title="Download Nebula config"
+                  >
+                    📥 Config
+                  </button>
+                  <button
+                    v-if="canManage && natsUser"
+                    @click="showRegenerateModal = true"
+                    class="btn btn-sm btn-outline btn-error h-8 min-h-0"
+                    title="Regenerate credentials"
+                  >
+                    🔄
+                  </button>
+                </div>
+              </div>
+            </template>
+
+            <!-- NATS Section -->
+            <div class="mb-1">
+              <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider">NATS</span>
+            </div>
+            <div v-if="natsUser" class="flex flex-col gap-3">
+              <div class="bg-base-200 rounded-lg p-3 border border-base-300">
+                <div class="flex justify-between items-start mb-1">
+                  <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Username</span>
+                  <div class="flex items-center gap-1.5" v-if="natsUser.active">
+                    <span class="w-2 h-2 rounded-full bg-success"></span>
+                    <span class="text-xs font-medium text-base-content/70">Active</span>
+                  </div>
+                  <div class="flex items-center gap-1.5" v-else>
+                    <span class="w-2 h-2 rounded-full bg-error"></span>
+                    <span class="text-xs font-medium text-base-content/70">Inactive</span>
+                  </div>
+                </div>
+                <router-link :to="`/nats/users/${natsUser.id}`" class="link link-primary font-mono text-base break-all">
+                  {{ natsUser.nats_username }}
                 </router-link>
-                <span v-if="usingSharedRole" class="text-warning">
-                  — heads up: the <code>leaf-node</code> role is shared by every leaf node in this org.
-                </span>
-              </p>
-            </div>
-          </div>
+              </div>
 
-          <div class="bg-base-200 rounded-lg p-3 border border-base-300">
-            <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider block mb-1">Credentials</span>
-            <p class="text-sm text-base-content/70">
-              The edge fetches its <code>.creds</code> via <code>leaf-sync config</code>.
-              Regenerating rotates them — the edge must re-run <code>leaf-sync config</code>.
-            </p>
-            <div v-if="natsUser.jwt_expires_at" class="mt-2 text-sm">
-              <span class="text-xs uppercase text-base-content/50">JWT expires</span>
-              <div>{{ formatDate(natsUser.jwt_expires_at) }}</div>
-            </div>
-          </div>
+              <div class="bg-base-200 rounded-lg p-3 border border-base-300">
+                <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider block mb-1">Role</span>
+                <router-link :to="`/nats/roles/${natsUser.role_id}`" class="link link-primary text-sm font-mono">
+                  🎭 {{ natsUser.expand?.role_id?.name || natsUser.role_id }}
+                </router-link>
+                <p class="text-xs text-base-content/60 mt-2">
+                  The role defines this edge's publish/subscribe permissions within its NATS account.
+                  The default <code>leaf-node</code> role is allow-all inside the account.
+                </p>
 
-          <!-- Per-user permission overrides (merged with the role, union) -->
-          <div v-if="hasPermissionOverrides" class="bg-base-200 rounded-lg p-3 border border-base-300">
-            <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider block mb-1">Permission Overrides</span>
-            <p class="text-xs text-base-content/60 mb-3">User-level overrides merged with the role (union).</p>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div v-if="getSubjectArray(natsUser.publish_permissions).length || getSubjectArray(natsUser.publish_deny_permissions).length">
-                <span class="text-xs text-base-content/50">📤 Publish</span>
-                <div class="flex flex-wrap gap-1 mt-1">
-                  <code v-for="s in getSubjectArray(natsUser.publish_permissions)" :key="`pa-${s}`" class="badge badge-outline font-mono text-xs">{{ s }}</code>
-                  <code v-for="s in getSubjectArray(natsUser.publish_deny_permissions)" :key="`pd-${s}`" class="badge badge-error badge-outline font-mono text-xs">!{{ s }}</code>
+                <div v-if="canManage" class="mt-3 space-y-2">
+                  <label class="text-xs uppercase text-base-content/50">Reassign role</label>
+                  <div class="flex flex-col sm:flex-row gap-2">
+                    <select v-model="selectedRoleId" class="select select-bordered select-sm flex-1">
+                      <option v-for="role in roles" :key="role.id" :value="role.id">
+                        {{ role.name }}<span v-if="role.is_default"> (default)</span>
+                      </option>
+                    </select>
+                    <button class="btn btn-sm btn-primary" :disabled="!roleDirty || savingRole" @click="applyRole">
+                      <span v-if="savingRole" class="loading loading-spinner loading-xs"></span>
+                      <span v-else>Apply</span>
+                    </button>
+                  </div>
+                  <p class="text-xs text-base-content/50">
+                    Assign a narrower role to shrink this edge's blast radius.
+                    <router-link :to="`/nats/roles/${natsUser.role_id}/edit`" class="link">
+                      Edit this role's permissions
+                    </router-link>
+                    <span v-if="usingSharedRole" class="text-warning">
+                      — heads up: the <code>leaf-node</code> role is shared by every leaf node in this org.
+                    </span>
+                  </p>
                 </div>
               </div>
-              <div v-if="getSubjectArray(natsUser.subscribe_permissions).length || getSubjectArray(natsUser.subscribe_deny_permissions).length">
-                <span class="text-xs text-base-content/50">📥 Subscribe</span>
-                <div class="flex flex-wrap gap-1 mt-1">
-                  <code v-for="s in getSubjectArray(natsUser.subscribe_permissions)" :key="`sa-${s}`" class="badge badge-outline font-mono text-xs">{{ s }}</code>
-                  <code v-for="s in getSubjectArray(natsUser.subscribe_deny_permissions)" :key="`sd-${s}`" class="badge badge-error badge-outline font-mono text-xs">!{{ s }}</code>
+
+              <div class="bg-base-200 rounded-lg p-3 border border-base-300">
+                <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider block mb-1">Credentials</span>
+                <p class="text-sm text-base-content/70">
+                  The edge fetches its <code>.creds</code> via <code>leaf-sync config</code>.
+                  Regenerating rotates them — the edge must re-run <code>leaf-sync config</code>.
+                </p>
+                <div v-if="natsUser.jwt_expires_at" class="mt-2 text-sm">
+                  <span class="text-xs uppercase text-base-content/50">JWT expires</span>
+                  <div>{{ formatDate(natsUser.jwt_expires_at) }}</div>
                 </div>
               </div>
+
+              <!-- Per-user permission overrides (merged with the role, union) -->
+              <div v-if="hasPermissionOverrides" class="bg-base-200 rounded-lg p-3 border border-base-300">
+                <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider block mb-1">Permission Overrides</span>
+                <p class="text-xs text-base-content/60 mb-3">User-level overrides merged with the role (union).</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div v-if="getSubjectArray(natsUser.publish_permissions).length || getSubjectArray(natsUser.publish_deny_permissions).length">
+                    <span class="text-xs text-base-content/50">📤 Publish</span>
+                    <div class="flex flex-wrap gap-1 mt-1">
+                      <code v-for="s in getSubjectArray(natsUser.publish_permissions)" :key="`pa-${s}`" class="badge badge-outline font-mono text-xs">{{ s }}</code>
+                      <code v-for="s in getSubjectArray(natsUser.publish_deny_permissions)" :key="`pd-${s}`" class="badge badge-error badge-outline font-mono text-xs">!{{ s }}</code>
+                    </div>
+                  </div>
+                  <div v-if="getSubjectArray(natsUser.subscribe_permissions).length || getSubjectArray(natsUser.subscribe_deny_permissions).length">
+                    <span class="text-xs text-base-content/50">📥 Subscribe</span>
+                    <div class="flex flex-wrap gap-1 mt-1">
+                      <code v-for="s in getSubjectArray(natsUser.subscribe_permissions)" :key="`sa-${s}`" class="badge badge-outline font-mono text-xs">{{ s }}</code>
+                      <code v-for="s in getSubjectArray(natsUser.subscribe_deny_permissions)" :key="`sd-${s}`" class="badge badge-error badge-outline font-mono text-xs">!{{ s }}</code>
+                    </div>
+                  </div>
+                </div>
+                <router-link v-if="canManage" :to="`/nats/users/${natsUser.id}/edit`" class="link text-xs mt-3 inline-block">
+                  Edit permission overrides
+                </router-link>
+              </div>
             </div>
-            <router-link v-if="canManage" :to="`/nats/users/${natsUser.id}/edit`" class="link text-xs mt-3 inline-block">
-              Edit permission overrides
-            </router-link>
-          </div>
-        </div>
-        <div v-else class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">
-          <span class="text-2xl block mb-2">📡</span>
-          <p class="text-sm">Not provisioned yet</p>
-        </div>
+            <div v-else class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">
+              <span class="text-2xl block mb-2">📡</span>
+              <p class="text-sm">Not provisioned yet</p>
+            </div>
 
-        <!-- Divider -->
-        <div class="border-t border-base-300 my-4"></div>
+            <!-- Divider -->
+            <div class="border-t border-base-300 my-4"></div>
 
-        <!-- Nebula Section -->
-        <div class="mb-1">
-          <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Nebula</span>
+            <!-- Nebula Section -->
+            <div class="mb-1">
+              <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Nebula</span>
+            </div>
+            <div v-if="nebulaHost" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div class="bg-base-200 rounded-lg p-3 border border-base-300">
+                <span class="text-xs font-bold text-base-content/50 uppercase block mb-1">Hostname</span>
+                <router-link :to="`/nebula/hosts/${node.nebula_host}`" class="link link-primary font-mono text-sm break-all">
+                  {{ nebulaHost.hostname }}
+                </router-link>
+              </div>
+              <div class="bg-base-200 rounded-lg p-3 border border-base-300">
+                <span class="text-xs font-bold text-base-content/50 uppercase block mb-1">Overlay IP</span>
+                <div class="font-mono text-sm">{{ nebulaHost.overlay_ip }}</div>
+              </div>
+            </div>
+            <div v-else class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">
+              <span class="text-2xl block mb-2">🌐</span>
+              <p class="text-sm">No Nebula host linked</p>
+            </div>
+          </BaseCard>
         </div>
-        <div v-if="nebulaHost" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div class="bg-base-200 rounded-lg p-3 border border-base-300">
-            <span class="text-xs font-bold text-base-content/50 uppercase block mb-1">Hostname</span>
-            <router-link :to="`/nebula/hosts/${node.nebula_host}`" class="link link-primary font-mono text-sm break-all">
-              {{ nebulaHost.hostname }}
-            </router-link>
-          </div>
-          <div class="bg-base-200 rounded-lg p-3 border border-base-300">
-            <span class="text-xs font-bold text-base-content/50 uppercase block mb-1">Overlay IP</span>
-            <div class="font-mono text-sm">{{ nebulaHost.overlay_ip }}</div>
-          </div>
-        </div>
-        <div v-else class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">
-          <span class="text-2xl block mb-2">🌐</span>
-          <p class="text-sm">No Nebula host linked</p>
-        </div>
-      </BaseCard>
-
-      <!-- Metadata -->
-      <BaseCard v-if="node.metadata && Object.keys(node.metadata).length">
-        <template #header>
-          <div class="flex justify-between items-center mb-2">
-            <h3 class="card-title text-base">Metadata</h3>
-            <button @click="copyMetadata" class="btn btn-xs btn-ghost gap-1 opacity-70 hover:opacity-100" title="Copy raw JSON">
-              📋 Copy
-            </button>
-          </div>
-        </template>
-
-        <div class="bg-base-200 rounded-lg p-4 border border-base-300 overflow-hidden">
-          <div class="max-h-[500px] overflow-y-auto overflow-x-auto custom-scrollbar">
-            <JsonViewer :data="node.metadata" class="text-sm leading-relaxed" />
-          </div>
-        </div>
-      </BaseCard>
+      </div>
 
       <p class="text-xs text-base-content/50">
         Created {{ formatDate(node.created, 'PPpp') }} · Updated {{ formatDate(node.updated, 'PPpp') }}
