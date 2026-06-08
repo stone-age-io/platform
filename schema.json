@@ -3869,8 +3869,8 @@
   },
   {
     "id": "pbc_1722283898",
-    "listRule": "@request.auth.collectionName = \"users\" && \norganization = @request.auth.current_organization",
-    "viewRule": "@request.auth.collectionName = \"users\" && \norganization = @request.auth.current_organization",
+    "listRule": "// Users see their active organization's operations; a leaf node mirrors its own organization's operations.\n(@request.auth.collectionName = \"users\" && \norganization = @request.auth.current_organization) || \n(@request.auth.collectionName = \"leaf_nodes\" && organization = @request.auth.organization)",
+    "viewRule": "// Users see their active organization's operations; a leaf node mirrors its own organization's operations.\n(@request.auth.collectionName = \"users\" && \norganization = @request.auth.current_organization) || \n(@request.auth.collectionName = \"leaf_nodes\" && organization = @request.auth.organization)",
     "createRule": "@request.auth.collectionName = \"users\" && \n@request.body.organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n @request.auth.memberships_via_user.role ?!= \"member\")",
     "updateRule": "organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n @request.auth.memberships_via_user.role ?!= \"member\") && \n@request.body.organization:changed = false",
     "deleteRule": "organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n @request.auth.memberships_via_user.role ?!= \"member\")",
@@ -4003,8 +4003,8 @@
   },
   {
     "id": "pbc_1612162572",
-    "listRule": "@request.auth.collectionName = \"users\" && \norganization = @request.auth.current_organization",
-    "viewRule": "@request.auth.collectionName = \"users\" && \norganization = @request.auth.current_organization",
+    "listRule": "// Users see their active organization's schemas; a leaf node mirrors its own organization's schemas.\n(@request.auth.collectionName = \"users\" && \norganization = @request.auth.current_organization) || \n(@request.auth.collectionName = \"leaf_nodes\" && organization = @request.auth.organization)",
+    "viewRule": "// Users see their active organization's schemas; a leaf node mirrors its own organization's schemas.\n(@request.auth.collectionName = \"users\" && \norganization = @request.auth.current_organization) || \n(@request.auth.collectionName = \"leaf_nodes\" && organization = @request.auth.organization)",
     "createRule": "@request.auth.collectionName = \"users\" && \n@request.body.organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n @request.auth.memberships_via_user.role ?!= \"member\")",
     "updateRule": "organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n @request.auth.memberships_via_user.role ?!= \"member\") && \n@request.body.organization:changed = false",
     "deleteRule": "organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n @request.auth.memberships_via_user.role ?!= \"member\")",

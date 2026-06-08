@@ -20,14 +20,17 @@ import (
 // (nats_*, nebula_*) are intentionally excluded and can never be synced even if
 // they somehow appear in a leaf node's synced_collections.
 //
-// All four are keyed in KV by `code` (see candidateKey), matching stone-cli's
-// EntitySpec.LookupKey for these collections. Keep this set — and the key
-// precedence in candidateKey — in step with stone-cli's cmd/entity.go specs.
+// Records are keyed in KV by the handle candidateKey derives (composite, code,
+// then name), matching stone-cli's EntitySpec.LookupKey for these collections.
+// Keep this set — and the key precedence in candidateKey — in step with
+// stone-cli's cmd/entity.go specs.
 var allowedCollections = map[string]bool{
-	"things":         true,
-	"locations":      true,
-	"thing_types":    true,
-	"location_types": true,
+	"things":                true,
+	"locations":             true,
+	"thing_types":           true,
+	"location_types":        true,
+	"thing_type_operations": true, // keyed by name; completes thing_type -> operation graph
+	"message_schemas":       true, // keyed by namespace__name__version
 }
 
 const listPageSize = 500 // PocketBase per-page maximum
@@ -209,8 +212,8 @@ func validKVKey(s string) bool {
 
 // candidateKey returns the human-facing handle for a record, following
 // stone-cli's recordFilename precedence: a message_schema's composite identity
-// (namespace__name__version) wins, otherwise `code`. An empty result means the
-// record has no good handle and should be keyed by id.
+// (namespace__name__version) wins, then `code`, then `name`. An empty result
+// means the record has no good handle and should be keyed by id.
 func candidateKey(rec pbclient.Record) string {
 	if ns, _ := rec["namespace"].(string); ns != "" {
 		if nm, _ := rec["name"].(string); nm != "" {
@@ -221,6 +224,9 @@ func candidateKey(rec pbclient.Record) string {
 	}
 	if code, _ := rec["code"].(string); code != "" {
 		return code
+	}
+	if name, _ := rec["name"].(string); name != "" {
+		return name
 	}
 	return ""
 }

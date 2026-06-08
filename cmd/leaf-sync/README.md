@@ -67,9 +67,10 @@ leaf-sync run      # daemon: mirror config collections into local KV
 - **`run`** connects to the local leaf and, every `sync.interval`, performs a
   full reconcile of each allowed collection: upsert every record into KV bucket
   `<collection>`, then delete KV keys for records that no longer exist. Each
-  record is keyed by its `code` (the same handle `stone` uses), falling back to
-  the PocketBase record id when `code` is absent, duplicated within the
-  collection, or not a valid NATS KV key; the id always remains inside the
+  record is keyed by the same handle `stone` uses — `message_schemas` by their
+  `namespace__name__version`, everything else by `code`, then `name` — falling
+  back to the PocketBase record id when that handle is absent, duplicated within
+  the collection, or not a valid NATS KV key; the id always remains inside the
   stored JSON, so relation fields still resolve. Server-only noise fields
   (`collectionId`, `collectionName`, `expand`) are stripped from the value.
   Fail-soft: on any PocketBase/NATS error it keeps local KV as-is and retries —
@@ -100,10 +101,16 @@ A hard allowlist, enforced both in the server's API rules and in `leaf-sync`:
 
 ```
 things   locations   thing_types   location_types
+thing_type_operations   message_schemas
 ```
 
+`thing_type_operations` and `message_schemas` complete the
+thing_type → operation → message_schema graph, so an edge node can resolve what
+a thing's type can do — and validate the messages it exchanges — entirely
+offline.
+
 A leaf node can only read these (and only within its own organization). Secret-
-bearing collections (`nats_users`, `nats_accounts`, `nebula_hosts`) are never
+bearing collections (`nats_users`, `nats_accounts`, `nebula_*`) are never
 exposed to a leaf node identity and can never be synced. A leaf node's
 `synced_collections` field (set in the UI) selects which of the allowlist to
 mirror.

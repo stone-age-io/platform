@@ -28,6 +28,13 @@ func TestResolveCollections(t *testing.T) {
 			want: []string{"things", "locations", "thing_types", "location_types"},
 		},
 		{
+			name: "graph collections allowed",
+			leaf: pbclient.Record{"synced_collections": []any{
+				"thing_types", "thing_type_operations", "message_schemas",
+			}},
+			want: []string{"thing_types", "thing_type_operations", "message_schemas"},
+		},
+		{
 			name: "missing field",
 			leaf: pbclient.Record{},
 			want: nil,
@@ -108,6 +115,27 @@ func TestRecordKey(t *testing.T) {
 			name:    "code with spaces is not a valid KV key, falls back to id",
 			records: []pbclient.Record{{"id": "rec0000000000007", "code": "has space"}},
 			want:    map[string]string{"rec0000000000007": "rec0000000000007"},
+		},
+		{
+			name:    "name is used when there is no code (e.g. thing_type_operations)",
+			records: []pbclient.Record{{"id": "rec0000000000010", "name": "read_temp"}},
+			want:    map[string]string{"rec0000000000010": "read_temp"},
+		},
+		{
+			name:    "code wins over name when both present",
+			records: []pbclient.Record{{"id": "rec0000000000011", "code": "S01", "name": "Front Sensor"}},
+			want:    map[string]string{"rec0000000000011": "S01"},
+		},
+		{
+			name: "duplicate name falls back to id",
+			records: []pbclient.Record{
+				{"id": "rec0000000000012", "name": "read_temp"},
+				{"id": "rec0000000000013", "name": "read_temp"},
+			},
+			want: map[string]string{
+				"rec0000000000012": "rec0000000000012",
+				"rec0000000000013": "rec0000000000013",
+			},
 		},
 		{
 			name:    "code fenced by dot falls back to id",
