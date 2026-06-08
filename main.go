@@ -208,6 +208,18 @@ func main() {
 		NebulaDefaultCAValidityYears: viper.GetInt("nebula.default_ca_validity_years"),
 	})
 
+	// Platform-owned hooks: auto-provision a single NATS user per new leaf node.
+	hooks.RegisterLeafNodeProvisioning(app, hooks.LeafNodeProvisioningOptions{
+		LeafNodeCollection:    "leaf_nodes",
+		NatsAccountCollection: natsOptions.AccountCollectionName,
+		NatsUserCollection:    natsOptions.UserCollectionName,
+		NatsRoleCollection:    natsOptions.RoleCollectionName,
+	})
+
+	// Narrow, leaf-node-authenticated route exposing only the operator JWT
+	// (nats_system_operator stays superuser-only at the collection level).
+	hooks.RegisterLeafNodeRoutes(app)
+
 	// 6. Serve Embedded UI with SPA Support
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 		subFS, err := fs.Sub(embeddedFS, "pb_public")

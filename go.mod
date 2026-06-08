@@ -3,6 +3,7 @@ module platform
 go 1.25.0
 
 require (
+	github.com/nats-io/nats.go v1.49.0
 	github.com/pocketbase/pocketbase v0.38.0
 	github.com/skeeeon/pb-audit v0.0.0-20260509164131-d384bb182a41
 	github.com/skeeeon/pb-nats v0.0.0-20260509163949-d0bcc08e578c
@@ -32,7 +33,6 @@ require (
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/nats-io/jwt/v2 v2.8.0 // indirect
-	github.com/nats-io/nats.go v1.49.0 // indirect
 	github.com/nats-io/nkeys v0.4.15 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect

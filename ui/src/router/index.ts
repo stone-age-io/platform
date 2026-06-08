@@ -66,7 +66,13 @@ const routes: RouteRecordRaw[] = [
       { path: 'things/new', name: 'ThingNew', component: () => import('@/views/things/ThingFormView.vue') },
       { path: 'things/:id', name: 'ThingDetail', component: () => import('@/views/things/ThingDetailView.vue') },
       { path: 'things/:id/edit', name: 'ThingEdit', component: () => import('@/views/things/ThingFormView.vue') },
-      
+
+      // Leaf Nodes (edge nodes)
+      { path: 'leaf-nodes', name: 'LeafNodes', component: () => import('@/views/leaf_nodes/LeafNodeListView.vue') },
+      { path: 'leaf-nodes/new', name: 'LeafNodeNew', component: () => import('@/views/leaf_nodes/LeafNodeFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
+      { path: 'leaf-nodes/:id', name: 'LeafNodeDetail', component: () => import('@/views/leaf_nodes/LeafNodeDetailView.vue') },
+      { path: 'leaf-nodes/:id/edit', name: 'LeafNodeEdit', component: () => import('@/views/leaf_nodes/LeafNodeFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
+
       // Locations
       { path: 'locations/types', name: 'LocationTypes', component: () => import('@/views/locations/LocationTypeListView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
       { path: 'locations/types/new', name: 'LocationTypeNew', component: () => import('@/views/locations/LocationTypeFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },

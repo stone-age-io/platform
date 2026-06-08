@@ -1,0 +1,35 @@
+# leaf-sync configuration.
+#
+# Copy to leaf-sync.yaml and fill in the leaf node's PocketBase credentials —
+# shown once when you create the leaf node in the platform UI ("New Leaf Node").
+# Everything else (JetStream domain, synced collections, NATS creds, and the
+# operator/account JWTs) is pulled from PocketBase automatically.
+#
+# Values can also be supplied via environment variables, e.g.
+#   LEAF_SYNC_POCKETBASE_PASSWORD=...
+
+pocketbase:
+  url: https://platform.example.com   # central platform base URL
+  email: edge01@acme.leaf.local        # leaf node email (from the UI success modal)
+  password: ""                         # leaf node password (from the UI success modal)
+
+nats:
+  hub_leaf_url: nats-leaf://hub.example.com:7422  # where the leaf remote dials the hub
+  local_url: nats://127.0.0.1:4222                # the local leaf this agent connects to
+  creds_file: edge.creds                          # written by `config`, read by `run`
+
+output:
+  dir: .            # where `config` writes nats-leaf.conf + the creds file
+
+sync:
+  interval: 30s     # full-reconcile cadence
+
+# --- Reserved (not yet active in v0) ---------------------------------------
+# Optional account-JWT refresh. When enabled, leaf-sync watches the org account
+# JWT and runs reload_hook after rewriting resolver_preload. Portable across
+# init systems:
+#   reload_hook: "systemctl reload nats-server"
+#   reload_hook: "docker kill -s HUP nats"
+reload_hook: ""
+jwt_refresh:
+  enabled: false

@@ -16,6 +16,10 @@ dist-ssr
 /pb_public
 
 stone-age
+*.exe
+
+# Claude Code local git worktrees (never commit nested working copies)
+.claude/worktrees/
 
 # Editor directories and files
 .vscode/*

@@ -110,6 +110,21 @@ export interface Thing extends AuthRecord {
   nebula_host?: string
 }
 
+// Leaf Node (edge node) — a "special thing": one NATS identity, mirrors its
+// organization's config into local JetStream KV via the leaf-sync agent.
+export interface LeafNode extends AuthRecord {
+  organization?: string
+  name?: string
+  description?: string
+  code?: string // slug → derived nats_username + JetStream domain
+  domain?: string // local JetStream domain (e.g. edge-<code>)
+  synced_collections?: string[] // collections this node mirrors (allowlist-bound)
+  location?: string // Location ID
+  nats_user?: string // set by the server-side provisioning hook
+  nebula_host?: string
+  metadata?: Record<string, any>
+}
+
 // Location Type
 export interface LocationType extends BaseRecord {
   organization?: string

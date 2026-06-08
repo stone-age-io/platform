@@ -69,6 +69,7 @@ const menuItems = computed(() => {
   const items: any[] = [
     { label: 'Dashboard', icon: '📊', path: '/' },
     { label: 'Things', icon: '📦', path: '/things' },
+    { label: 'Leaf Nodes', icon: '🍃', path: '/leaf-nodes' },
     { label: 'Locations', icon: '📍', path: '/locations' },
     {
       label: 'NATS',
