@@ -150,6 +150,15 @@ function downloadFile(filename: string, content: string, contentType: string) {
   URL.revokeObjectURL(url)
 }
 
+function downloadNatsCreds() {
+  if (!natsUser.value?.creds_file) {
+    toast.error('No credentials file available')
+    return
+  }
+  downloadFile(`${natsUser.value.nats_username}.creds`, natsUser.value.creds_file, 'text/plain')
+  toast.success('Credentials downloaded')
+}
+
 function downloadNebulaConfig() {
   if (!nebulaHost.value?.config_yaml) {
     toast.error('No configuration available')
@@ -297,6 +306,20 @@ leaf-sync run      # mirror config → local KV</pre>
               <div class="flex justify-between items-center mb-2">
                 <h3 class="card-title text-base">Connectivity</h3>
                 <div class="flex gap-2">
+                  <template v-if="natsUser">
+                    <button @click="downloadNatsCreds" class="btn btn-sm btn-outline h-8 min-h-0" title="Download .creds file">
+                      <span class="text-lg">📥</span>
+                      <span class="hidden sm:inline">.creds</span>
+                    </button>
+                    <button
+                      v-if="canManage"
+                      @click="showRegenerateModal = true"
+                      class="btn btn-sm btn-outline btn-error h-8 min-h-0"
+                      title="Regenerate credentials"
+                    >
+                      🔄
+                    </button>
+                  </template>
                   <button
                     v-if="nebulaHost"
                     @click="downloadNebulaConfig"
@@ -304,14 +327,6 @@ leaf-sync run      # mirror config → local KV</pre>
                     title="Download Nebula config"
                   >
                     📥 Config
-                  </button>
-                  <button
-                    v-if="canManage && natsUser"
-                    @click="showRegenerateModal = true"
-                    class="btn btn-sm btn-outline btn-error h-8 min-h-0"
-                    title="Regenerate credentials"
-                  >
-                    🔄
                   </button>
                 </div>
               </div>
@@ -344,10 +359,6 @@ leaf-sync run      # mirror config → local KV</pre>
                 <router-link :to="`/nats/roles/${natsUser.role_id}`" class="link link-primary text-sm font-mono">
                   🎭 {{ natsUser.expand?.role_id?.name || natsUser.role_id }}
                 </router-link>
-                <p class="text-xs text-base-content/60 mt-2">
-                  The role defines this edge's publish/subscribe permissions within its NATS account.
-                  The default <code>leaf-node</code> role is allow-all inside the account.
-                </p>
 
                 <div v-if="canManage" class="mt-3 space-y-2">
                   <label class="text-xs uppercase text-base-content/50">Reassign role</label>
@@ -362,28 +373,15 @@ leaf-sync run      # mirror config → local KV</pre>
                       <span v-else>Apply</span>
                     </button>
                   </div>
-                  <p class="text-xs text-base-content/50">
-                    Assign a narrower role to shrink this edge's blast radius.
-                    <router-link :to="`/nats/roles/${natsUser.role_id}/edit`" class="link">
-                      Edit this role's permissions
-                    </router-link>
-                    <span v-if="usingSharedRole" class="text-warning">
-                      — heads up: the <code>leaf-node</code> role is shared by every leaf node in this org.
-                    </span>
+                  <p v-if="usingSharedRole" class="text-xs text-warning">
+                    The <code>leaf-node</code> role is shared by every leaf node in this org.
                   </p>
                 </div>
               </div>
 
-              <div class="bg-base-200 rounded-lg p-3 border border-base-300">
-                <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider block mb-1">Credentials</span>
-                <p class="text-sm text-base-content/70">
-                  The edge fetches its <code>.creds</code> via <code>leaf-sync config</code>.
-                  Regenerating rotates them — the edge must re-run <code>leaf-sync config</code>.
-                </p>
-                <div v-if="natsUser.jwt_expires_at" class="mt-2 text-sm">
-                  <span class="text-xs uppercase text-base-content/50">JWT expires</span>
-                  <div>{{ formatDate(natsUser.jwt_expires_at) }}</div>
-                </div>
+              <div v-if="natsUser.jwt_expires_at" class="bg-base-200 rounded-lg p-3 border border-base-300">
+                <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider block mb-1">Credentials expire</span>
+                <div class="text-sm">{{ formatDate(natsUser.jwt_expires_at) }}</div>
               </div>
 
               <!-- Per-user permission overrides (merged with the role, union) -->
