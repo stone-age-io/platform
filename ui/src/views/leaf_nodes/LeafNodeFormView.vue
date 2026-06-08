@@ -5,8 +5,9 @@ import { pb } from '@/utils/pb'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import { generateRandomPassword } from '@/utils/password'
-import type { LeafNode, Location } from '@/types/pocketbase'
+import type { LeafNode, Location, NebulaHost } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import NebulaHostFormView from '@/views/nebula/NebulaHostFormView.vue'
 
 // Hard allowlist — must match the server-side rule grants + leaf-sync allowlist.
 const SYNCABLE_COLLECTIONS = [
@@ -32,6 +33,7 @@ const formData = ref({
   code: '',
   domain: '',
   location: '',
+  nebula_host: '',
   synced_collections: [] as string[],
   metadata: '',
 })
@@ -40,12 +42,16 @@ const codeManuallyEdited = ref(false)
 const domainManuallyEdited = ref(false)
 
 const locations = ref<Location[]>([])
+const nebulaHosts = ref<NebulaHost[]>([])
 const loading = ref(false)
 const loadingOptions = ref(true)
 
 // Success modal (create only)
 const showSuccessModal = ref(false)
 const successCredentials = ref({ email: '', password: '' })
+
+// Quick Add Nebula host modal
+const showNebulaModal = ref(false)
 
 function slugify(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
@@ -81,9 +87,14 @@ function onDomainInput() {
 async function loadOptions() {
   loadingOptions.value = true
   try {
-    locations.value = await pb.collection('locations').getFullList<Location>({ sort: 'name' })
+    const [locs, hosts] = await Promise.all([
+      pb.collection('locations').getFullList<Location>({ sort: 'name' }),
+      pb.collection('nebula_hosts').getFullList<NebulaHost>({ sort: 'hostname' }),
+    ])
+    locations.value = locs
+    nebulaHosts.value = hosts
   } catch {
-    // Non-fatal — location is optional.
+    // Non-fatal — both location and nebula host are optional.
   } finally {
     loadingOptions.value = false
   }
@@ -100,6 +111,7 @@ async function loadNode() {
       code: node.code || '',
       domain: node.domain || '',
       location: node.location || '',
+      nebula_host: node.nebula_host || '',
       synced_collections: Array.isArray(node.synced_collections) ? [...node.synced_collections] : [],
       metadata: node.metadata ? JSON.stringify(node.metadata, null, 2) : '',
     }
@@ -163,6 +175,7 @@ async function handleCreate() {
       code: formData.value.code,
       domain: formData.value.domain || `edge-${formData.value.code}`,
       location: formData.value.location || null,
+      nebula_host: formData.value.nebula_host || null,
       synced_collections: formData.value.synced_collections,
       metadata: formData.value.metadata ? JSON.parse(formData.value.metadata) : null,
       email: leafEmail.value,
@@ -190,6 +203,7 @@ async function handleUpdate() {
       description: formData.value.description || null,
       domain: formData.value.domain || null,
       location: formData.value.location || null,
+      nebula_host: formData.value.nebula_host || null,
       synced_collections: formData.value.synced_collections,
       metadata: formData.value.metadata ? JSON.parse(formData.value.metadata) : null,
     })
@@ -211,6 +225,14 @@ function copyCredentials() {
 function closeSuccessModal() {
   showSuccessModal.value = false
   router.push('/leaf-nodes')
+}
+
+// Quick Add: select the freshly-created host so it's linked on save.
+function onNebulaCreated(record: NebulaHost) {
+  nebulaHosts.value.push(record)
+  nebulaHosts.value.sort((a, b) => a.hostname.localeCompare(b.hostname))
+  formData.value.nebula_host = record.id
+  showNebulaModal.value = false
 }
 
 onMounted(() => {
@@ -305,6 +327,31 @@ onMounted(() => {
             </div>
           </BaseCard>
 
+          <BaseCard title="Nebula Connectivity">
+            <div class="form-control">
+              <label class="label"><span class="label-text">Nebula Host</span></label>
+              <div class="flex gap-2">
+                <select v-model="formData.nebula_host" class="select select-bordered font-mono flex-1 min-w-0">
+                  <option value="">None</option>
+                  <option v-for="host in nebulaHosts" :key="host.id" :value="host.id">
+                    {{ host.hostname }} ({{ host.overlay_ip }})
+                  </option>
+                </select>
+                <button
+                  type="button"
+                  class="btn btn-square btn-outline"
+                  @click="showNebulaModal = true"
+                  title="Quick Add Nebula Host"
+                >
+                  +
+                </button>
+              </div>
+              <label class="label">
+                <span class="label-text-alt">Optional — links this edge to a Nebula VPN node for overlay connectivity.</span>
+              </label>
+            </div>
+          </BaseCard>
+
           <BaseCard title="Metadata (JSON)">
             <div class="form-control">
               <textarea v-model="formData.metadata" class="textarea textarea-bordered font-mono" rows="6" placeholder='{"key": "value"}'></textarea>
@@ -350,5 +397,19 @@ onMounted(() => {
         <div class="modal-backdrop" @click="closeSuccessModal"></div>
       </dialog>
     </Teleport>
+
+    <!-- Quick Add Nebula Host -->
+    <dialog class="modal" :class="{ 'modal-open': showNebulaModal }">
+      <div class="modal-box w-11/12 max-w-3xl">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="font-bold text-lg">Quick Add Nebula Host</h3>
+          <button class="btn btn-sm btn-circle btn-ghost" @click="showNebulaModal = false">&#x2715;</button>
+        </div>
+        <div v-if="showNebulaModal">
+          <NebulaHostFormView :embedded="true" @success="onNebulaCreated" @cancel="showNebulaModal = false" />
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop" @click="showNebulaModal = false"><button>close</button></form>
+    </dialog>
   </div>
 </template>

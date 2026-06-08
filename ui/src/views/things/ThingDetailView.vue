@@ -48,7 +48,7 @@ async function loadThing() {
   loading.value = true
   try {
     thing.value = await pb.collection('things').getOne<Thing>(thingId, {
-      expand: 'type,location,nats_user,nebula_host',
+      expand: 'type,location,nats_user.role_id,nebula_host',
     })
   } catch (err: any) {
     toast.error(err.message || 'Failed to load thing')
@@ -242,7 +242,7 @@ onMounted(() => {
             <div class="mb-1">
               <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider">NATS</span>
             </div>
-            <div v-if="thing.expand?.nats_user" class="flex flex-col gap-4">
+            <div v-if="thing.expand?.nats_user" class="flex flex-col gap-3">
               <div class="bg-base-200 rounded-lg p-3 border border-base-300">
                 <div class="flex justify-between items-start mb-1">
                   <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Username</span>
@@ -256,6 +256,17 @@ onMounted(() => {
                   </div>
                 </div>
                 <div class="font-mono text-base break-all select-all">{{ thing.expand.nats_user.nats_username }}</div>
+              </div>
+              <div class="bg-base-200 rounded-lg p-3 border border-base-300">
+                <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider block mb-1">Role</span>
+                <router-link
+                  v-if="thing.expand.nats_user.expand?.role_id"
+                  :to="`/nats/roles/${thing.expand.nats_user.role_id}`"
+                  class="link link-primary text-sm font-mono"
+                >
+                  🎭 {{ thing.expand.nats_user.expand.role_id.name }}
+                </router-link>
+                <span v-else class="font-mono text-sm text-base-content/60">{{ thing.expand.nats_user.role_id || '—' }}</span>
               </div>
             </div>
             <div v-else class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">

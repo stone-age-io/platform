@@ -1,3 +1,4 @@
+<!-- ui/src/views/leaf_nodes/LeafNodeDetailView.vue -->
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -6,8 +7,9 @@ import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { useAuthStore } from '@/stores/auth'
 import { formatDate } from '@/utils/format'
-import type { LeafNode, NatsUser, NatsRole } from '@/types/pocketbase'
+import type { LeafNode, NatsUser, NatsRole, NebulaHost } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import JsonViewer from '@/components/common/JsonViewer.vue'
 
 // The broad role the provisioning hook mints per org. When a leaf node still
 // uses it, editing it would affect every leaf node in the org — so we warn.
@@ -32,6 +34,8 @@ const regenerating = ref(false)
 const showRegenerateModal = ref(false)
 
 const canManage = computed(() => authStore.canManageUsers)
+
+const nebulaHost = computed(() => node.value?.expand?.nebula_host as NebulaHost | undefined)
 
 const usingSharedRole = computed(
   () => natsUser.value?.expand?.role_id?.name === LEAF_NODE_ROLE_NAME,
@@ -73,7 +77,7 @@ async function loadNode() {
   error.value = null
   try {
     node.value = await pb.collection('leaf_nodes').getOne<LeafNode>(nodeId, {
-      expand: 'location,nats_user',
+      expand: 'location,nats_user,nebula_host',
     })
     if (node.value.nats_user) {
       await loadNatsIdentity(node.value.nats_user)
@@ -127,6 +131,41 @@ async function confirmRegenerate() {
     toast.error(err.message || 'Failed to regenerate credentials')
   } finally {
     regenerating.value = false
+  }
+}
+
+function downloadFile(filename: string, content: string, contentType: string) {
+  if (!content) {
+    toast.error('No content to download')
+    return
+  }
+  const blob = new Blob([content], { type: contentType })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+function downloadNebulaConfig() {
+  if (!nebulaHost.value?.config_yaml) {
+    toast.error('No configuration available')
+    return
+  }
+  downloadFile(`${nebulaHost.value.hostname}.yaml`, nebulaHost.value.config_yaml, 'text/yaml')
+  toast.success('Config downloaded')
+}
+
+async function copyMetadata() {
+  if (!node.value?.metadata) return
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(node.value.metadata, null, 2))
+    toast.success('Metadata copied to clipboard')
+  } catch {
+    toast.error('Failed to copy')
   }
 }
 
@@ -200,19 +239,15 @@ onMounted(loadNode)
             </div>
             <div>
               <dt class="text-xs uppercase text-base-content/50">Location</dt>
-              <dd>{{ node.expand?.location?.name || '-' }}</dd>
-            </div>
-            <div>
-              <dt class="text-xs uppercase text-base-content/50">NATS User</dt>
               <dd>
                 <router-link
-                  v-if="node.nats_user"
-                  :to="`/nats/users/${node.nats_user}`"
-                  class="link link-primary text-sm font-mono"
+                  v-if="node.expand?.location"
+                  :to="`/locations/${node.location}`"
+                  class="link link-primary hover:no-underline inline-flex items-center gap-1"
                 >
-                  {{ node.expand?.nats_user?.nats_username || node.nats_user }}
+                  📍 {{ node.expand.location.name }}
                 </router-link>
-                <span v-else class="text-warning text-sm">Not provisioned yet</span>
+                <span v-else class="text-base-content/40">No location assigned</span>
               </dd>
             </div>
           </dl>
@@ -235,26 +270,65 @@ leaf-sync run      # mirror config → local KV</pre>
         </BaseCard>
       </div>
 
-      <!-- NATS role & credentials -->
-      <BaseCard v-if="natsUser" title="NATS Role & Credentials">
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-          <!-- Role -->
-          <div class="space-y-3">
-            <div>
-              <dt class="text-xs uppercase text-base-content/50">Role</dt>
-              <dd class="mt-1">
-                <router-link :to="`/nats/roles/${natsUser.role_id}`" class="link link-primary">
-                  🎭 {{ natsUser.expand?.role_id?.name || natsUser.role_id }}
-                </router-link>
-              </dd>
+      <!-- Connectivity: NATS + Nebula (a leaf can have both) -->
+      <BaseCard>
+        <template #header>
+          <div class="flex justify-between items-center mb-2">
+            <h3 class="card-title text-base">Connectivity</h3>
+            <div class="flex gap-2">
+              <button
+                v-if="nebulaHost"
+                @click="downloadNebulaConfig"
+                class="btn btn-sm btn-outline h-8 min-h-0"
+                title="Download Nebula config"
+              >
+                📥 Config
+              </button>
+              <button
+                v-if="canManage && natsUser"
+                @click="showRegenerateModal = true"
+                class="btn btn-sm btn-outline btn-error h-8 min-h-0"
+                title="Regenerate credentials"
+              >
+                🔄
+              </button>
             </div>
+          </div>
+        </template>
 
-            <p class="text-xs text-base-content/60">
+        <!-- NATS Section -->
+        <div class="mb-1">
+          <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider">NATS</span>
+        </div>
+        <div v-if="natsUser" class="flex flex-col gap-3">
+          <div class="bg-base-200 rounded-lg p-3 border border-base-300">
+            <div class="flex justify-between items-start mb-1">
+              <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Username</span>
+              <div class="flex items-center gap-1.5" v-if="natsUser.active">
+                <span class="w-2 h-2 rounded-full bg-success"></span>
+                <span class="text-xs font-medium text-base-content/70">Active</span>
+              </div>
+              <div class="flex items-center gap-1.5" v-else>
+                <span class="w-2 h-2 rounded-full bg-error"></span>
+                <span class="text-xs font-medium text-base-content/70">Inactive</span>
+              </div>
+            </div>
+            <router-link :to="`/nats/users/${natsUser.id}`" class="link link-primary font-mono text-base break-all">
+              {{ natsUser.nats_username }}
+            </router-link>
+          </div>
+
+          <div class="bg-base-200 rounded-lg p-3 border border-base-300">
+            <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider block mb-1">Role</span>
+            <router-link :to="`/nats/roles/${natsUser.role_id}`" class="link link-primary text-sm font-mono">
+              🎭 {{ natsUser.expand?.role_id?.name || natsUser.role_id }}
+            </router-link>
+            <p class="text-xs text-base-content/60 mt-2">
               The role defines this edge's publish/subscribe permissions within its NATS account.
               The default <code>leaf-node</code> role is allow-all inside the account.
             </p>
 
-            <div v-if="canManage" class="space-y-2">
+            <div v-if="canManage" class="mt-3 space-y-2">
               <label class="text-xs uppercase text-base-content/50">Reassign role</label>
               <div class="flex flex-col sm:flex-row gap-2">
                 <select v-model="selectedRoleId" class="select select-bordered select-sm flex-1">
@@ -262,11 +336,7 @@ leaf-sync run      # mirror config → local KV</pre>
                     {{ role.name }}<span v-if="role.is_default"> (default)</span>
                   </option>
                 </select>
-                <button
-                  class="btn btn-sm btn-primary"
-                  :disabled="!roleDirty || savingRole"
-                  @click="applyRole"
-                >
+                <button class="btn btn-sm btn-primary" :disabled="!roleDirty || savingRole" @click="applyRole">
                   <span v-if="savingRole" class="loading loading-spinner loading-xs"></span>
                   <span v-else>Apply</span>
                 </button>
@@ -283,58 +353,89 @@ leaf-sync run      # mirror config → local KV</pre>
             </div>
           </div>
 
-          <!-- Credentials -->
-          <div class="space-y-3">
-            <div>
-              <dt class="text-xs uppercase text-base-content/50">Credentials</dt>
-              <dd class="mt-1 text-sm text-base-content/70">
-                The edge fetches its <code>.creds</code> via <code>leaf-sync config</code>.
-                Regenerating rotates them — the edge must re-run <code>leaf-sync config</code>.
-              </dd>
-            </div>
-            <div v-if="natsUser.jwt_expires_at" class="text-sm">
+          <div class="bg-base-200 rounded-lg p-3 border border-base-300">
+            <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider block mb-1">Credentials</span>
+            <p class="text-sm text-base-content/70">
+              The edge fetches its <code>.creds</code> via <code>leaf-sync config</code>.
+              Regenerating rotates them — the edge must re-run <code>leaf-sync config</code>.
+            </p>
+            <div v-if="natsUser.jwt_expires_at" class="mt-2 text-sm">
               <span class="text-xs uppercase text-base-content/50">JWT expires</span>
               <div>{{ formatDate(natsUser.jwt_expires_at) }}</div>
             </div>
-            <button
-              v-if="canManage"
-              class="btn btn-sm btn-outline btn-error"
-              @click="showRegenerateModal = true"
-            >
-              🔄 Regenerate credentials
-            </button>
+          </div>
+
+          <!-- Per-user permission overrides (merged with the role, union) -->
+          <div v-if="hasPermissionOverrides" class="bg-base-200 rounded-lg p-3 border border-base-300">
+            <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider block mb-1">Permission Overrides</span>
+            <p class="text-xs text-base-content/60 mb-3">User-level overrides merged with the role (union).</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div v-if="getSubjectArray(natsUser.publish_permissions).length || getSubjectArray(natsUser.publish_deny_permissions).length">
+                <span class="text-xs text-base-content/50">📤 Publish</span>
+                <div class="flex flex-wrap gap-1 mt-1">
+                  <code v-for="s in getSubjectArray(natsUser.publish_permissions)" :key="`pa-${s}`" class="badge badge-outline font-mono text-xs">{{ s }}</code>
+                  <code v-for="s in getSubjectArray(natsUser.publish_deny_permissions)" :key="`pd-${s}`" class="badge badge-error badge-outline font-mono text-xs">!{{ s }}</code>
+                </div>
+              </div>
+              <div v-if="getSubjectArray(natsUser.subscribe_permissions).length || getSubjectArray(natsUser.subscribe_deny_permissions).length">
+                <span class="text-xs text-base-content/50">📥 Subscribe</span>
+                <div class="flex flex-wrap gap-1 mt-1">
+                  <code v-for="s in getSubjectArray(natsUser.subscribe_permissions)" :key="`sa-${s}`" class="badge badge-outline font-mono text-xs">{{ s }}</code>
+                  <code v-for="s in getSubjectArray(natsUser.subscribe_deny_permissions)" :key="`sd-${s}`" class="badge badge-error badge-outline font-mono text-xs">!{{ s }}</code>
+                </div>
+              </div>
+            </div>
+            <router-link v-if="canManage" :to="`/nats/users/${natsUser.id}/edit`" class="link text-xs mt-3 inline-block">
+              Edit permission overrides
+            </router-link>
           </div>
         </div>
+        <div v-else class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">
+          <span class="text-2xl block mb-2">📡</span>
+          <p class="text-sm">Not provisioned yet</p>
+        </div>
 
-        <!-- Per-user permission overrides (merged with the role, union) -->
-        <template v-if="hasPermissionOverrides">
-          <div class="divider"></div>
-          <h4 class="text-xs font-black uppercase opacity-50 tracking-widest mb-2">Permission Overrides</h4>
-          <p class="text-xs text-base-content/60 mb-3">User-level overrides merged with the role (union).</p>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div v-if="getSubjectArray(natsUser.publish_permissions).length || getSubjectArray(natsUser.publish_deny_permissions).length">
-              <span class="text-xs text-base-content/50">📤 Publish</span>
-              <div class="flex flex-wrap gap-1 mt-1">
-                <code v-for="s in getSubjectArray(natsUser.publish_permissions)" :key="`pa-${s}`" class="badge badge-outline font-mono text-xs">{{ s }}</code>
-                <code v-for="s in getSubjectArray(natsUser.publish_deny_permissions)" :key="`pd-${s}`" class="badge badge-error badge-outline font-mono text-xs">!{{ s }}</code>
-              </div>
-            </div>
-            <div v-if="getSubjectArray(natsUser.subscribe_permissions).length || getSubjectArray(natsUser.subscribe_deny_permissions).length">
-              <span class="text-xs text-base-content/50">📥 Subscribe</span>
-              <div class="flex flex-wrap gap-1 mt-1">
-                <code v-for="s in getSubjectArray(natsUser.subscribe_permissions)" :key="`sa-${s}`" class="badge badge-outline font-mono text-xs">{{ s }}</code>
-                <code v-for="s in getSubjectArray(natsUser.subscribe_deny_permissions)" :key="`sd-${s}`" class="badge badge-error badge-outline font-mono text-xs">!{{ s }}</code>
-              </div>
-            </div>
+        <!-- Divider -->
+        <div class="border-t border-base-300 my-4"></div>
+
+        <!-- Nebula Section -->
+        <div class="mb-1">
+          <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Nebula</span>
+        </div>
+        <div v-if="nebulaHost" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div class="bg-base-200 rounded-lg p-3 border border-base-300">
+            <span class="text-xs font-bold text-base-content/50 uppercase block mb-1">Hostname</span>
+            <router-link :to="`/nebula/hosts/${node.nebula_host}`" class="link link-primary font-mono text-sm break-all">
+              {{ nebulaHost.hostname }}
+            </router-link>
           </div>
-          <router-link v-if="canManage" :to="`/nats/users/${natsUser.id}/edit`" class="link text-xs mt-3 inline-block">
-            Edit permission overrides
-          </router-link>
-        </template>
+          <div class="bg-base-200 rounded-lg p-3 border border-base-300">
+            <span class="text-xs font-bold text-base-content/50 uppercase block mb-1">Overlay IP</span>
+            <div class="font-mono text-sm">{{ nebulaHost.overlay_ip }}</div>
+          </div>
+        </div>
+        <div v-else class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">
+          <span class="text-2xl block mb-2">🌐</span>
+          <p class="text-sm">No Nebula host linked</p>
+        </div>
       </BaseCard>
 
-      <BaseCard title="Metadata" v-if="node.metadata && Object.keys(node.metadata).length">
-        <pre class="bg-base-200 rounded p-3 text-xs overflow-x-auto"><code>{{ JSON.stringify(node.metadata, null, 2) }}</code></pre>
+      <!-- Metadata -->
+      <BaseCard v-if="node.metadata && Object.keys(node.metadata).length">
+        <template #header>
+          <div class="flex justify-between items-center mb-2">
+            <h3 class="card-title text-base">Metadata</h3>
+            <button @click="copyMetadata" class="btn btn-xs btn-ghost gap-1 opacity-70 hover:opacity-100" title="Copy raw JSON">
+              📋 Copy
+            </button>
+          </div>
+        </template>
+
+        <div class="bg-base-200 rounded-lg p-4 border border-base-300 overflow-hidden">
+          <div class="max-h-[500px] overflow-y-auto overflow-x-auto custom-scrollbar">
+            <JsonViewer :data="node.metadata" class="text-sm leading-relaxed" />
+          </div>
+        </div>
       </BaseCard>
 
       <p class="text-xs text-base-content/50">
@@ -365,3 +466,17 @@ leaf-sync run      # mirror config → local KV</pre>
     </dialog>
   </div>
 </template>
+
+<style scoped>
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: oklch(var(--bc) / 0.2);
+  border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+</style>
