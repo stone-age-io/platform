@@ -58,6 +58,104 @@ func TestResolveCollections(t *testing.T) {
 	}
 }
 
+// countCandidates mirrors the tally syncCollection builds before keying.
+func countCandidates(recs []pbclient.Record) map[string]int {
+	counts := make(map[string]int)
+	for _, r := range recs {
+		if c := candidateKey(r); c != "" {
+			counts[c]++
+		}
+	}
+	return counts
+}
+
+func TestRecordKey(t *testing.T) {
+	cases := []struct {
+		name    string
+		records []pbclient.Record
+		// want maps each record id to its expected key.
+		want map[string]string
+	}{
+		{
+			name:    "code wins when present, unique and valid",
+			records: []pbclient.Record{{"id": "rec0000000000001", "code": "S01"}},
+			want:    map[string]string{"rec0000000000001": "S01"},
+		},
+		{
+			name:    "missing code falls back to id",
+			records: []pbclient.Record{{"id": "rec0000000000002"}},
+			want:    map[string]string{"rec0000000000002": "rec0000000000002"},
+		},
+		{
+			name:    "empty code falls back to id",
+			records: []pbclient.Record{{"id": "rec0000000000003", "code": ""}},
+			want:    map[string]string{"rec0000000000003": "rec0000000000003"},
+		},
+		{
+			name: "duplicate code falls back to id for all sharers",
+			records: []pbclient.Record{
+				{"id": "rec0000000000004", "code": "DUP"},
+				{"id": "rec0000000000005", "code": "DUP"},
+				{"id": "rec0000000000006", "code": "UNIQ"},
+			},
+			want: map[string]string{
+				"rec0000000000004": "rec0000000000004",
+				"rec0000000000005": "rec0000000000005",
+				"rec0000000000006": "UNIQ",
+			},
+		},
+		{
+			name:    "code with spaces is not a valid KV key, falls back to id",
+			records: []pbclient.Record{{"id": "rec0000000000007", "code": "has space"}},
+			want:    map[string]string{"rec0000000000007": "rec0000000000007"},
+		},
+		{
+			name:    "code fenced by dot falls back to id",
+			records: []pbclient.Record{{"id": "rec0000000000008", "code": ".lead"}},
+			want:    map[string]string{"rec0000000000008": "rec0000000000008"},
+		},
+		{
+			name:    "message_schema composite wins over code precedence",
+			records: []pbclient.Record{{"id": "rec0000000000009", "namespace": "sensors", "name": "temp", "version": "1"}},
+			want:    map[string]string{"rec0000000000009": "sensors__temp__1"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			counts := countCandidates(c.records)
+			for _, rec := range c.records {
+				id, _ := rec["id"].(string)
+				if got := recordKey(rec, counts); got != c.want[id] {
+					t.Errorf("recordKey(%v) = %q, want %q", rec, got, c.want[id])
+				}
+			}
+		})
+	}
+}
+
+func TestStrip(t *testing.T) {
+	rec := pbclient.Record{
+		"id":             "rec0000000000001",
+		"code":           "S01",
+		"collectionId":   "pbc_123",
+		"collectionName": "things",
+		"expand":         map[string]any{"type": "sensor"},
+		"created":        "2026-01-01 00:00:00Z",
+		"updated":        "2026-06-08 00:00:00Z",
+	}
+	got := strip(rec)
+	for _, gone := range serverOnlyFields {
+		if _, ok := got[gone]; ok {
+			t.Errorf("strip kept server-only field %q", gone)
+		}
+	}
+	for _, kept := range []string{"id", "code", "created", "updated"} {
+		if _, ok := got[kept]; !ok {
+			t.Errorf("strip dropped field %q (should be kept)", kept)
+		}
+	}
+}
+
 func TestKeysToDelete(t *testing.T) {
 	cases := []struct {
 		name     string

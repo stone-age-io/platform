@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"regexp"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -18,6 +19,10 @@ import (
 // mirror. It mirrors the server-side API-rule grants; secret-bearing collections
 // (nats_*, nebula_*) are intentionally excluded and can never be synced even if
 // they somehow appear in a leaf node's synced_collections.
+//
+// All four are keyed in KV by `code` (see candidateKey), matching stone-cli's
+// EntitySpec.LookupKey for these collections. Keep this set — and the key
+// precedence in candidateKey — in step with stone-cli's cmd/entity.go specs.
 var allowedCollections = map[string]bool{
 	"things":         true,
 	"locations":      true,
@@ -118,30 +123,44 @@ func syncCollection(ctx context.Context, pb *pbclient.Client, kw *kvWriter, col 
 		return fmt.Errorf("kv bucket: %w", err)
 	}
 
-	fetched := make(map[string]bool)
+	// Fetch the whole collection before writing: KV keys prefer the record's
+	// `code`, which is optional and non-unique in the schema, so we must see
+	// every record to detect duplicate codes before choosing keys.
+	var records []pbclient.Record
 	for page := 1; ; page++ {
 		res, err := pb.List(ctx, col, page, listPageSize, "")
 		if err != nil {
 			return err
 		}
-		for _, rec := range res.Items {
-			id, _ := rec["id"].(string)
-			if id == "" {
-				continue
-			}
-			payload, err := json.Marshal(rec)
-			if err != nil {
-				continue
-			}
-			if _, err := kv.Put(ctx, id, payload); err != nil {
-				log.Printf("leaf-sync: kv put %s/%s: %v", col, id, err)
-				continue
-			}
-			fetched[id] = true
-		}
+		records = append(records, res.Items...)
 		if res.TotalPages == 0 || res.Page >= res.TotalPages {
 			break
 		}
+	}
+
+	// Count candidate handles so a code shared by two records falls back to id.
+	counts := make(map[string]int)
+	for _, rec := range records {
+		if c := candidateKey(rec); c != "" {
+			counts[c]++
+		}
+	}
+
+	fetched := make(map[string]bool)
+	for _, rec := range records {
+		if id, _ := rec["id"].(string); id == "" {
+			continue
+		}
+		key := recordKey(rec, counts)
+		payload, err := json.Marshal(strip(rec))
+		if err != nil {
+			continue
+		}
+		if _, err := kv.Put(ctx, key, payload); err != nil {
+			log.Printf("leaf-sync: kv put %s/%s: %v", col, key, err)
+			continue
+		}
+		fetched[key] = true
 	}
 
 	// Reconcile deletions: remove KV keys for records that no longer exist.
@@ -158,6 +177,64 @@ func syncCollection(ctx context.Context, pb *pbclient.Client, kw *kvWriter, col 
 		}
 	}
 	return nil
+}
+
+// serverOnlyFields are written by PocketBase and carry no value to a KV consumer.
+// We strip the pure-noise ones (collectionId/collectionName/expand) but keep
+// created/updated, which give edge consumers a useful freshness signal. This
+// mirrors stone-cli's pb.ServerOnlyFields, minus the timestamps it drops only
+// because `apply` would reject them.
+var serverOnlyFields = []string{"collectionId", "collectionName", "expand"}
+
+// strip removes server-only noise fields from a record in place and returns it.
+func strip(rec pbclient.Record) pbclient.Record {
+	for _, f := range serverOnlyFields {
+		delete(rec, f)
+	}
+	return rec
+}
+
+// kvKeyRe is the set of characters NATS permits in a KV key.
+var kvKeyRe = regexp.MustCompile(`^[-/_=\.a-zA-Z0-9]+$`)
+
+// validKVKey reports whether s is usable as a NATS KV key (non-empty, not
+// fenced by '.', and within the allowed character set). Codes that fail this
+// fall back to the record id.
+func validKVKey(s string) bool {
+	if s == "" || s[0] == '.' || s[len(s)-1] == '.' {
+		return false
+	}
+	return kvKeyRe.MatchString(s)
+}
+
+// candidateKey returns the human-facing handle for a record, following
+// stone-cli's recordFilename precedence: a message_schema's composite identity
+// (namespace__name__version) wins, otherwise `code`. An empty result means the
+// record has no good handle and should be keyed by id.
+func candidateKey(rec pbclient.Record) string {
+	if ns, _ := rec["namespace"].(string); ns != "" {
+		if nm, _ := rec["name"].(string); nm != "" {
+			if v, _ := rec["version"].(string); v != "" {
+				return ns + "__" + nm + "__" + v
+			}
+		}
+	}
+	if code, _ := rec["code"].(string); code != "" {
+		return code
+	}
+	return ""
+}
+
+// recordKey chooses the KV key for a record: its candidate handle when that
+// handle is present, unique across the fetch (counts[c] == 1), and a valid KV
+// key; otherwise the opaque-but-always-unique record id. The id stays inside
+// the stored value either way, so id-based relation joins keep working.
+func recordKey(rec pbclient.Record, counts map[string]int) string {
+	id, _ := rec["id"].(string)
+	if c := candidateKey(rec); c != "" && counts[c] == 1 && validKVKey(c) {
+		return c
+	}
+	return id
 }
 
 // keysToDelete returns the KV keys that should be purged: those present locally

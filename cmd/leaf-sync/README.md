@@ -66,11 +66,15 @@ leaf-sync run      # daemon: mirror config collections into local KV
   connection needed — run it before the leaf is up.
 - **`run`** connects to the local leaf and, every `sync.interval`, performs a
   full reconcile of each allowed collection: upsert every record into KV bucket
-  `<collection>` (key = record id, value = record JSON), then delete KV keys for
-  records that no longer exist. Fail-soft: on any PocketBase/NATS error it keeps
-  local KV as-is and retries — it never wipes local state. It stops cleanly on
-  `SIGINT`/`SIGTERM` (cancelling any in-flight PocketBase/NATS call), so it's
-  safe to run under systemd/Docker.
+  `<collection>`, then delete KV keys for records that no longer exist. Each
+  record is keyed by its `code` (the same handle `stone` uses), falling back to
+  the PocketBase record id when `code` is absent, duplicated within the
+  collection, or not a valid NATS KV key; the id always remains inside the
+  stored JSON, so relation fields still resolve. Server-only noise fields
+  (`collectionId`, `collectionName`, `expand`) are stripped from the value.
+  Fail-soft: on any PocketBase/NATS error it keeps local KV as-is and retries —
+  it never wipes local state. It stops cleanly on `SIGINT`/`SIGTERM` (cancelling
+  any in-flight PocketBase/NATS call), so it's safe to run under systemd/Docker.
 
 Any config key can be overridden by an environment variable: upper-case the key,
 replace dots with underscores, and prefix with `LEAF_SYNC_` — e.g.
