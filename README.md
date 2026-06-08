@@ -19,8 +19,9 @@ The platform is designed as a **Single Deployment Unit**:
     *   **Thing Types** (`thing_types`) define a subject prefix and a set of Operations.
     *   **Operations** (`thing_type_operations`) declare a capability (`publish` / `subscribe` / `request` / `reply`), a subject suffix, and an optional Message Schema.
     *   **Message Schemas** (`message_schemas`) are versioned JSON Schema documents (namespace / name / semver) that describe operation payloads. The console includes a visual schema builder and an "infer from sample" tool.
-4.  **Audit Logging**: comprehensive tracking of all create/update/delete/auth events.
-5.  **Embedded UI**: The frontend is compiled and embedded directly into the Go binary using `embed.FS`, served via a custom SPA fallback handler.
+4.  **Edge / Leaf Nodes**: Each edge site is a `leaf_nodes` record ("a special thing" with one server-provisioned NATS user). The separate **`leaf-sync`** agent runs on the edge, authenticates as the leaf node, and mirrors its organization's config collections into a local NATS leaf node's JetStream KV. See [`cmd/leaf-sync/README.md`](./cmd/leaf-sync/README.md).
+5.  **Audit Logging**: comprehensive tracking of all create/update/delete/auth events.
+6.  **Embedded UI**: The frontend is compiled and embedded directly into the Go binary using `embed.FS`, served via a custom SPA fallback handler.
 
 ---
 
@@ -51,6 +52,13 @@ go build -o stone-age main.go
 ./stone-age serve
 ```
 Access the dashboard at: `http://localhost:8090`
+
+### Edge Agent (Optional)
+The edge agent is a separate, lean binary built from the same repo — it runs on edge boxes, not the central server:
+```bash
+go build -o leaf-sync ./cmd/leaf-sync
+```
+See [`cmd/leaf-sync/README.md`](./cmd/leaf-sync/README.md) for the full edge deployment flow.
 
 ---
 
@@ -158,5 +166,7 @@ The `main.go` file contains critical business logic hooks:
 *   **`OnRecordAfterCreateSuccess` (Organizations)**:
     1.  Creates a **NATS Account** specifically for that organization.
     2.  Creates a **Nebula CA** specifically for that organization.
+*   **`OnRecordAfterCreateSuccess` (Leaf Nodes)**: Mints the edge node's **NATS user** so the `leaf-sync` agent can authenticate as the leaf node (`hooks/leaf_node_provisioning.go`).
+*   **Leaf operator-JWT route**: `GET /api/leaf/operator-jwt` serves the operator JWT to leaf-node-authenticated callers, so the `nats_system_operator` collection can stay superuser-only (`hooks/leaf_node_routes.go`).
 *   **`OnServe`**: Registers the custom router handler that serves the embedded `pb_public` filesystem, handling SPA history mode (redirecting unknown routes to `index.html`).
 

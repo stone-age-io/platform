@@ -10,7 +10,7 @@ The official web management console for the Stone Age Platform. A "Single Pane o
 *   **Styling**: [Tailwind CSS](https://tailwindcss.com/) + [DaisyUI](https://daisyui.com/)
 *   **Routing**: [Vue Router](https://router.vuejs.org/)
 *   **Maps**: [Leaflet](https://leafletjs.com/) (geospatial + floor-plan overlays)
-*   **Charts**: Chart.js-based visualizations inside the Visualizer
+*   **Charts**: [ECharts](https://echarts.apache.org/) via `vue-echarts` (Visualizer chart/gauge widgets)
 *   **QR / Scanning**: `qrcode` for badge rendering, camera-based scanner widget
 *   **Real-time / Messaging**: [NATS.js](https://github.com/nats-io/nats.js) (Modular: Core, KV, JetStream)
 *   **Backend SDK**: [PocketBase JS SDK](https://github.com/pocketbase/js-sdk)
@@ -54,6 +54,7 @@ src/
     ├── auth/          # Login, invitation acceptance
     ├── badge/         # Badge identity card (QR + NKey + live status)
     ├── dashboard/     # Visualizer (also reused as the Badge dashboard)
+    ├── leaf_nodes/    # Edge nodes (leaf_nodes records) + NATS identity / Nebula linking
     ├── locations/     # Locations + LocationTypes
     ├── nats/          # Account, Users, Roles, Imports, Exports, Streams, KV Buckets
     ├── nebula/        # CA, Networks, Hosts
@@ -80,6 +81,7 @@ We manage the connectivity layer as first-class entities:
 *   **JetStream:** Browse and manage Streams and KV Buckets (create, inspect, edit) directly from the console, backed by `useJetStreamManager`.
 *   **Nebula:** Manage Certificate Authorities, Networks, and Hosts.
 *   **Provisioning:** The UI facilitates the creation of cryptographic identities (NKeys, Certificates) via backend hooks and allows downloading `.creds` and `config.yaml` files directly.
+*   **Edge / Leaf Nodes:** Provision and manage `leaf_nodes` (edge sites) under `views/leaf_nodes/`. Each gets a server-minted NATS user and an optional Nebula host link; the detail view mirrors the Thing layout — identity, a Connectivity card (NATS role with reassignment, permission overrides, `.creds` download, plus Nebula hostname/IP/config), and synced-collection selection. The off-box [`leaf-sync`](../cmd/leaf-sync/README.md) agent mirrors the org's config into the edge's local NATS KV.
 
 ### 3. Thing Modeling
 Things aren't just inventory records — they declare a messaging contract via three related collections managed under `views/things/`:
