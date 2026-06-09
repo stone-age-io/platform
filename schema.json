@@ -472,6 +472,50 @@
         "presentable": false,
         "system": false,
         "type": "autodate"
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "json1222209967",
+        "maxSize": 5000,
+        "name": "publish_permissions",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "json4032180518",
+        "maxSize": 5000,
+        "name": "subscribe_permissions",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "json1060489524",
+        "maxSize": 5000,
+        "name": "publish_deny_permissions",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "json3735174119",
+        "maxSize": 5000,
+        "name": "subscribe_deny_permissions",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
       }
     ],
     "indexes": [
@@ -1644,119 +1688,6 @@
     "system": false
   },
   {
-    "id": "pbc_1242646933",
-    "listRule": "// Only allow users to see records belonging to their active organization context.\n@request.auth.collectionName = \"users\" && \norganization = @request.auth.current_organization",
-    "viewRule": "// Only allow users to see records belonging to their active organization context.\n@request.auth.collectionName = \"users\" && \norganization = @request.auth.current_organization",
-    "createRule": "// Only Admins or Owners can create types for their active organization.\n@request.auth.collectionName = \"users\" && \n@request.body.organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n @request.auth.memberships_via_user.role ?!= \"member\")",
-    "updateRule": "// 1. Must be Admin/Owner.\n// 2. Must belong to active org.\n// 3. Prevent organization field tampering.\norganization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n @request.auth.memberships_via_user.role ?!= \"member\") && \n@request.body.organization:changed = false",
-    "deleteRule": "// Only Admins or Owners can delete types.\norganization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n @request.auth.memberships_via_user.role ?!= \"member\")",
-    "name": "edge_types",
-    "type": "base",
-    "fields": [
-      {
-        "autogeneratePattern": "[a-z0-9]{15}",
-        "hidden": false,
-        "id": "text3208210256",
-        "max": 15,
-        "min": 15,
-        "name": "id",
-        "pattern": "^[a-z0-9]+$",
-        "presentable": false,
-        "primaryKey": true,
-        "required": true,
-        "system": true,
-        "type": "text"
-      },
-      {
-        "cascadeDelete": false,
-        "collectionId": "pbc_2873630990",
-        "hidden": false,
-        "id": "relation3253625724",
-        "maxSelect": 1,
-        "minSelect": 0,
-        "name": "organization",
-        "presentable": false,
-        "required": false,
-        "system": false,
-        "type": "relation"
-      },
-      {
-        "autogeneratePattern": "",
-        "hidden": false,
-        "id": "text1579384326",
-        "max": 0,
-        "min": 0,
-        "name": "name",
-        "pattern": "",
-        "presentable": false,
-        "primaryKey": false,
-        "required": false,
-        "system": false,
-        "type": "text"
-      },
-      {
-        "autogeneratePattern": "",
-        "hidden": false,
-        "id": "text1843675174",
-        "max": 0,
-        "min": 0,
-        "name": "description",
-        "pattern": "",
-        "presentable": false,
-        "primaryKey": false,
-        "required": false,
-        "system": false,
-        "type": "text"
-      },
-      {
-        "autogeneratePattern": "",
-        "hidden": false,
-        "id": "text1997877400",
-        "max": 0,
-        "min": 0,
-        "name": "code",
-        "pattern": "",
-        "presentable": false,
-        "primaryKey": false,
-        "required": false,
-        "system": false,
-        "type": "text"
-      },
-      {
-        "hidden": false,
-        "id": "json3217087507",
-        "maxSize": 0,
-        "name": "features",
-        "presentable": false,
-        "required": false,
-        "system": false,
-        "type": "json"
-      },
-      {
-        "hidden": false,
-        "id": "autodate2990389176",
-        "name": "created",
-        "onCreate": true,
-        "onUpdate": false,
-        "presentable": false,
-        "system": false,
-        "type": "autodate"
-      },
-      {
-        "hidden": false,
-        "id": "autodate3332085495",
-        "name": "updated",
-        "onCreate": true,
-        "onUpdate": true,
-        "presentable": false,
-        "system": false,
-        "type": "autodate"
-      }
-    ],
-    "indexes": [],
-    "system": false
-  },
-  {
     "id": "pbc_2452428166",
     "listRule": "// 1. The invitation must belong to the user's active organization context.\n// 2. The user must be the Organization Owner OR have an Admin/Owner membership in that org.\norganization = @request.auth.current_organization && \n(\n  (organization.owner = @request.auth.id) || \n  (organization.memberships_via_organization.user ?= @request.auth.id && \n   organization.memberships_via_organization.role ?!= \"member\")\n)",
     "viewRule": "// 1. The invitation must belong to the user's active organization context.\n// 2. The user must be the Organization Owner OR have an Admin/Owner membership in that org.\norganization = @request.auth.current_organization && \n(\n  (organization.owner = @request.auth.id) || \n  (organization.memberships_via_organization.user ?= @request.auth.id && \n   organization.memberships_via_organization.role ?!= \"member\")\n)",
@@ -2512,6 +2443,53 @@
         "required": false,
         "system": false,
         "type": "relation"
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "json2320959689",
+        "maxSize": 10000,
+        "name": "signing_keys",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
+      },
+      {
+        "help": "",
+        "hidden": true,
+        "id": "json446014123",
+        "maxSize": 10000,
+        "name": "signing_keys_private",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "bool1877871817",
+        "name": "add_signing_key",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "bool"
+      },
+      {
+        "autogeneratePattern": "",
+        "help": "",
+        "hidden": false,
+        "id": "text333673157",
+        "max": 200,
+        "min": 0,
+        "name": "remove_signing_key",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
       }
     ],
     "indexes": [],
@@ -2938,6 +2916,28 @@
         "presentable": false,
         "system": false,
         "type": "autodate"
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "json2320959689",
+        "maxSize": 10000,
+        "name": "signing_keys",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
+      },
+      {
+        "help": "",
+        "hidden": true,
+        "id": "json446014123",
+        "maxSize": 10000,
+        "name": "signing_keys_private",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
       }
     ],
     "indexes": [],
@@ -3476,6 +3476,20 @@
         "presentable": false,
         "system": false,
         "type": "autodate"
+      },
+      {
+        "cascadeDelete": false,
+        "collectionId": "pbc_3780300774",
+        "help": "",
+        "hidden": false,
+        "id": "relation_tt_nats_role",
+        "maxSelect": 1,
+        "minSelect": 0,
+        "name": "nats_role",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "relation"
       }
     ],
     "indexes": [],
