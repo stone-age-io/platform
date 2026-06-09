@@ -1,6 +1,6 @@
 // ui/src/composables/useJetStreamManager.ts
 import { jetstreamManager } from '@nats-io/jetstream'
-import type { StreamInfo, ConsumerInfo, JetStreamAccountStats, PurgeOpts, PurgeResponse } from '@nats-io/jetstream'
+import type { StreamInfo, ConsumerInfo, JetStreamAccountStats, PurgeOpts, PurgeResponse, StoredMsg } from '@nats-io/jetstream'
 import { Kvm, type KV, type KvStatus } from '@nats-io/kv'
 import { useNatsStore } from '@/stores/nats'
 import { useToast } from '@/composables/useToast'
@@ -110,6 +110,34 @@ export function nanosToFormValue(nanos: number): string {
 export function millisToFormValue(ms: number): string {
   if (!ms || ms === 0) return '0'
   return nanosToFormValue(ms * NANOS_PER_MS)
+}
+
+// --- Stored message view (decoded, UI-friendly) ---
+
+export interface StoredMessageView {
+  seq: number
+  subject: string
+  time: string          // ISO timestamp
+  payload: any          // parsed JSON, or raw string
+  isJson: boolean
+}
+
+function toMessageView(msg: StoredMsg): StoredMessageView {
+  let payload: any
+  let isJson = false
+  try {
+    payload = msg.json()
+    isJson = true
+  } catch {
+    try { payload = msg.string() } catch { payload = '[binary data]' }
+  }
+  return {
+    seq: msg.seq,
+    subject: msg.subject,
+    time: msg.timestamp || (msg.time ? msg.time.toISOString() : ''),
+    payload,
+    isJson,
+  }
 }
 
 // --- Composable ---
@@ -226,6 +254,41 @@ export function useJetStreamManager() {
       return result
     } catch (e: any) {
       toast.error(`Failed to purge stream: ${e.message}`)
+      throw e
+    }
+  }
+
+  /**
+   * Fetch the most recent stored messages from a stream, newest first.
+   * Walks backward from last_seq via direct getMessage; tolerates gaps from
+   * deleted/purged sequences. Returns up to `count` messages (capped at 50).
+   */
+  async function getRecentMessages(name: string, count = 50): Promise<StoredMessageView[]> {
+    const limit = Math.min(Math.max(count, 1), 50)
+    try {
+      const jsm = await getJsm()
+      const info = await jsm.streams.info(name)
+      const out: StoredMessageView[] = []
+      if (info.state.messages === 0 || info.state.last_seq === 0) return out
+
+      const firstSeq = info.state.first_seq
+      let seq = info.state.last_seq
+      let attempts = 0
+      const maxAttempts = limit * 4   // slack so gaps don't end the walk early
+
+      while (seq >= firstSeq && out.length < limit && attempts < maxAttempts) {
+        attempts++
+        try {
+          const msg = await jsm.streams.getMessage(name, { seq })
+          if (msg) out.push(toMessageView(msg))
+        } catch {
+          // sequence missing (deleted/purged) — skip and keep walking back
+        }
+        seq--
+      }
+      return out
+    } catch (e: any) {
+      toast.error(`Failed to load messages: ${e.message}`)
       throw e
     }
   }
@@ -455,6 +518,7 @@ export function useJetStreamManager() {
     updateStream,
     deleteStream,
     purgeStream,
+    getRecentMessages,
     // Consumers
     listConsumers,
     deleteConsumer,

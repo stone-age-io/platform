@@ -2,8 +2,9 @@
 import { ref, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useNatsStore } from '@/stores/nats'
-import { useJetStreamManager, formatNanos } from '@/composables/useJetStreamManager'
+import { useJetStreamManager, formatNanos, type StoredMessageView } from '@/composables/useJetStreamManager'
 import { useConfirm } from '@/composables/useConfirm'
+import { useToast } from '@/composables/useToast'
 import { formatBytes, formatDate } from '@/utils/format'
 import type { StreamInfo } from '@nats-io/jetstream'
 import type { ConsumerSummary } from '@/types/jetstream'
@@ -13,8 +14,9 @@ const router = useRouter()
 const route = useRoute()
 const natsStore = useNatsStore()
 const { confirm } = useConfirm()
+const toast = useToast()
 const {
-  getStreamInfo, listConsumers, deleteStream, purgeStream,
+  getStreamInfo, listConsumers, deleteStream, purgeStream, getRecentMessages,
   deleteConsumer, pauseConsumer, resumeConsumer,
 } = useJetStreamManager()
 
@@ -28,15 +30,46 @@ const showPurgeModal = ref(false)
 const purgeSubject = ref('')
 const purging = ref(false)
 
+// Recent messages browser
+const messages = ref<StoredMessageView[]>([])
+const messagesLoading = ref(false)
+const messageLimit = ref(25)
+const selectedMessage = ref<StoredMessageView | null>(null)
+
 async function loadData() {
   loading.value = true
   try {
     streamInfo.value = await getStreamInfo(streamName)
-    await loadConsumers()
+    await Promise.all([loadConsumers(), loadMessages()])
   } catch {
     router.push('/nats/streams')
   } finally {
     loading.value = false
+  }
+}
+
+async function loadMessages() {
+  messagesLoading.value = true
+  try {
+    messages.value = await getRecentMessages(streamName, messageLimit.value)
+  } catch {
+    // Error toasted by composable
+  } finally {
+    messagesLoading.value = false
+  }
+}
+
+function getPayloadString(payload: any): string {
+  if (payload !== null && typeof payload === 'object') return JSON.stringify(payload, null, 2)
+  return String(payload)
+}
+
+async function copyText(text: string, label = 'Text') {
+  try {
+    await navigator.clipboard.writeText(text)
+    toast.success(`${label} copied`)
+  } catch {
+    toast.error('Failed to copy')
   }
 }
 
@@ -340,6 +373,59 @@ watch(() => natsStore.isConnected, (connected) => {
           </BaseCard>
         </div>
       </div>
+
+      <!-- Recent Messages -->
+      <BaseCard>
+        <template #header>
+          <div class="flex flex-wrap justify-between items-center gap-2 mb-4">
+            <h3 class="card-title text-base">Recent Messages</h3>
+            <div class="flex items-center gap-2">
+              <select
+                v-model.number="messageLimit"
+                @change="loadMessages"
+                class="select select-bordered select-sm"
+                :disabled="messagesLoading"
+              >
+                <option :value="10">Last 10</option>
+                <option :value="25">Last 25</option>
+                <option :value="50">Last 50</option>
+              </select>
+              <button @click="loadMessages" class="btn btn-ghost btn-sm" :disabled="messagesLoading">
+                <span v-if="messagesLoading" class="loading loading-spinner loading-xs"></span>
+                <span v-else>Refresh</span>
+              </button>
+            </div>
+          </div>
+        </template>
+
+        <div v-if="messagesLoading && messages.length === 0" class="flex justify-center p-8">
+          <span class="loading loading-spinner loading-md"></span>
+        </div>
+
+        <div v-else-if="messages.length === 0" class="text-center py-8">
+          <span class="text-4xl">📭</span>
+          <p class="text-base-content/70 mt-2">No messages stored</p>
+        </div>
+
+        <div v-else class="space-y-2">
+          <p class="text-xs text-base-content/50 mb-2">Newest first — click a message to view its full payload.</p>
+          <div
+            v-for="msg in messages"
+            :key="msg.seq"
+            @click="selectedMessage = msg"
+            class="bg-base-200 rounded-lg border border-base-300 p-3 cursor-pointer hover:border-primary/50 transition-colors"
+          >
+            <div class="flex justify-between items-center gap-2 mb-1">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="badge badge-xs badge-ghost font-mono shrink-0">#{{ msg.seq }}</span>
+                <span class="font-mono text-sm text-primary truncate" :title="msg.subject">{{ msg.subject }}</span>
+              </div>
+              <span class="text-xs text-base-content/50 shrink-0">{{ msg.time ? formatDate(msg.time, 'HH:mm:ss') : '-' }}</span>
+            </div>
+            <pre class="text-xs text-base-content/70 font-mono max-h-16 overflow-hidden whitespace-pre-wrap break-all">{{ getPayloadString(msg.payload) }}</pre>
+          </div>
+        </div>
+      </BaseCard>
     </template>
 
     <!-- Purge Modal -->
@@ -370,6 +456,45 @@ watch(() => natsStore.isConnected, (connected) => {
       <form method="dialog" class="modal-backdrop">
         <button @click="showPurgeModal = false">close</button>
       </form>
+    </dialog>
+
+    <!-- Message Detail Modal -->
+    <dialog class="modal" :class="{ 'modal-open': !!selectedMessage }">
+      <div class="modal-box w-11/12 max-w-3xl" v-if="selectedMessage">
+        <div class="flex justify-between items-start mb-4">
+          <div class="min-w-0">
+            <h3 class="font-bold text-lg">Message #{{ selectedMessage.seq }}</h3>
+            <p class="text-xs opacity-50 font-mono break-all">{{ selectedMessage.subject }}</p>
+          </div>
+          <button class="btn btn-sm btn-circle btn-ghost" @click="selectedMessage = null">✕</button>
+        </div>
+
+        <div class="space-y-4">
+          <div class="form-control">
+            <label class="label pb-1"><span class="label-text text-xs uppercase font-bold opacity-50">Timestamp</span></label>
+            <input
+              type="text"
+              class="input input-bordered w-full font-mono text-sm"
+              :value="selectedMessage.time ? formatDate(selectedMessage.time, 'PPpp') : '-'"
+              readonly
+            />
+          </div>
+          <div class="form-control">
+            <label class="label pb-1 flex justify-between">
+              <span class="label-text text-xs uppercase font-bold opacity-50">Payload</span>
+              <button @click="copyText(getPayloadString(selectedMessage.payload), 'Payload')" class="btn btn-xs btn-ghost">Copy Data</button>
+            </label>
+            <div class="mockup-code bg-base-300 text-base-content text-sm min-h-[200px] max-h-[60vh] overflow-y-auto">
+              <pre class="px-4 py-2 whitespace-pre-wrap break-all">{{ getPayloadString(selectedMessage.payload) }}</pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-action">
+          <button class="btn" @click="selectedMessage = null">Close</button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop" @click="selectedMessage = null"><button>close</button></form>
     </dialog>
   </div>
 </template>

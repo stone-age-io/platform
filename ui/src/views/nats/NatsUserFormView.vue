@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { format } from 'date-fns'
 import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useAuthStore } from '@/stores/auth'
@@ -48,6 +49,9 @@ const formData = ref({
   // Options
   bearer_token: false,
   active: true,
+
+  // Credential lifetime (optional; empty = never expires)
+  jwt_expires_at: '',
 })
 
 /**
@@ -67,6 +71,16 @@ function formatForApi(val: string): string[] {
   return val.split(',')
     .map(s => s.trim())
     .filter(s => s !== '')
+}
+
+/**
+ * Grug helper: PocketBase date string -> <input type="datetime-local"> value.
+ * PB stores UTC ("2026-12-31 23:59:59.000Z"); the input wants local "yyyy-MM-ddTHH:mm".
+ */
+function pbDateToInput(val?: string): string {
+  if (!val) return ''
+  const d = new Date(val.replace(' ', 'T'))
+  return isNaN(d.getTime()) ? '' : format(d, "yyyy-MM-dd'T'HH:mm")
 }
 
 // Relation options
@@ -135,6 +149,7 @@ async function loadUser() {
       subscribe_deny_permissions: formatForInput(user.subscribe_deny_permissions),
       bearer_token: user.bearer_token || false,
       active: user.active || true,
+      jwt_expires_at: pbDateToInput(user.jwt_expires_at),
     }
   } catch (err: any) {
     toast.error('Failed to load NATS user')
@@ -175,6 +190,10 @@ async function handleSubmit() {
       subscribe_deny_permissions: formatForApi(formData.value.subscribe_deny_permissions),
       bearer_token: formData.value.bearer_token,
       active: formData.value.active,
+      // Empty string clears the date in PocketBase (never expires).
+      jwt_expires_at: formData.value.jwt_expires_at
+        ? new Date(formData.value.jwt_expires_at).toISOString()
+        : '',
     }
 
     // Only send password if entered
@@ -393,6 +412,22 @@ onMounted(() => {
                     <span class="block text-sm text-base-content/70">
                       Generate a long-lived bearer token for simplified auth
                     </span>
+                  </span>
+                </label>
+              </div>
+
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text font-medium">JWT Expiry</span>
+                </label>
+                <input
+                  v-model="formData.jwt_expires_at"
+                  type="datetime-local"
+                  class="input input-bordered"
+                />
+                <label class="label">
+                  <span class="label-text-alt">
+                    Optional. Leave blank for a non-expiring credential. Applied to the JWT on save.
                   </span>
                 </label>
               </div>

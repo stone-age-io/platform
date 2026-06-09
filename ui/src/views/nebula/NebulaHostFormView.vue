@@ -41,6 +41,9 @@ const formData = ref({
   is_lighthouse: false,
   public_host_port: '',
   active: true,
+
+  // Certificate (optional; empty = network default)
+  validity_years: '',
 })
 
 // Relation options
@@ -98,6 +101,7 @@ async function loadHost() {
       is_lighthouse: host.is_lighthouse || false,
       public_host_port: host.public_host_port || '',
       active: host.active ?? true,
+      validity_years: host.validity_years ? String(host.validity_years) : '',
     }
   } catch (err: any) {
     toast.error('Failed to load Nebula host')
@@ -142,7 +146,13 @@ async function handleSubmit() {
       active: formData.value.active,
       overlay_ip: formData.value.overlay_ip,
     }
-    
+
+    // Only send validity_years when set; empty lets pb-nebula use its default
+    // (and avoids the schema's min:1 check rejecting a null/0).
+    if (formData.value.validity_years) {
+      data.validity_years = parseInt(formData.value.validity_years, 10)
+    }
+
     // Only send password if entered
     if (formData.value.password) {
       data.password = formData.value.password
@@ -392,6 +402,26 @@ onMounted(() => {
                     <span class="block text-sm text-base-content/70">
                       Allow this host to connect to the network
                     </span>
+                  </span>
+                </label>
+              </div>
+
+              <!-- Certificate Validity -->
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">Certificate Validity (years)</span>
+                </label>
+                <input
+                  v-model="formData.validity_years"
+                  type="number"
+                  min="1"
+                  max="10"
+                  placeholder="Network default"
+                  class="input input-bordered font-mono"
+                />
+                <label class="label">
+                  <span class="label-text-alt">
+                    Optional (1–10). Leave blank to use the default. Changing it on an existing host re-issues the certificate.
                   </span>
                 </label>
               </div>

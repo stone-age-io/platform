@@ -12,6 +12,7 @@ import { usePagination } from '@/composables/usePagination'
 import { useUIStore } from '@/stores/ui'
 import { useNatsStore } from '@/stores/nats'
 import { formatDate } from '@/utils/format'
+import JsonViewer from '@/components/common/JsonViewer.vue'
 import type { Location, Thing } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
@@ -23,6 +24,16 @@ const router = useRouter()
 const route = useRoute()
 const toast = useToast()
 const { confirm } = useConfirm()
+
+async function copyMetadata() {
+  if (!location.value?.metadata) return
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(location.value.metadata, null, 2))
+    toast.success('Metadata copied')
+  } catch {
+    toast.error('Failed to copy')
+  }
+}
 const uiStore = useUIStore()
 const natsStore = useNatsStore()
 const { initMap, renderMarkers, updateTheme, invalidateSize, cleanup: cleanupMap } = useLeafletMap()
@@ -337,6 +348,24 @@ onUnmounted(() => cleanupMap())
                 <dd class="mt-1 text-sm">{{ formatDate(location.created) }}</dd>
               </div>
             </dl>
+          </BaseCard>
+
+          <!-- Metadata -->
+          <BaseCard v-if="location.metadata && Object.keys(location.metadata).length > 0">
+            <template #header>
+              <div class="flex justify-between items-center mb-2">
+                <h3 class="card-title text-base">Metadata</h3>
+                <button @click="copyMetadata" class="btn btn-xs btn-ghost gap-1 opacity-70 hover:opacity-100" title="Copy raw JSON">
+                  📋 Copy
+                </button>
+              </div>
+            </template>
+
+            <div class="bg-base-200 rounded-lg p-4 border border-base-300 overflow-hidden">
+              <div class="max-h-[500px] overflow-y-auto overflow-x-auto custom-scrollbar">
+                <JsonViewer :data="location.metadata" class="text-sm leading-relaxed" />
+              </div>
+            </div>
           </BaseCard>
 
         </div>
