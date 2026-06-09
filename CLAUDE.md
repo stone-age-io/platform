@@ -111,6 +111,8 @@ go build -o stone-age main.go
 
 # Build the edge agent (separate lean binary — runs on edge boxes, not the server)
 go build -o leaf-sync ./cmd/leaf-sync
+# Release build with the version stamped in (surfaced by `leaf-sync --version` and in heartbeats):
+go build -ldflags "-X platform/internal/leafsync.Version=$(git describe --tags --always --dirty)" -o leaf-sync ./cmd/leaf-sync
 
 # Run
 ./stone-age serve
@@ -205,7 +207,7 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
 8. **Maps** - Leaflet-based maps with floorplan overlays
 9. **PWA** - Service worker, manifest, installable
 10. **Keyboard Shortcuts** - Configurable keyboard shortcuts with modal reference
-11. **Edge / Leaf Nodes** - `leaf_nodes` auth collection (a "special thing" with one nats_user, server-provisioned). The `leaf-sync` agent runs on the edge, authenticates as the leaf node, and mirrors its org's config collections into a NATS leaf node's local JetStream KV. Operator JWT served via the dedicated `GET /api/leaf/operator-jwt` route (nats_system_operator stays superuser-only).
+11. **Edge / Leaf Nodes** - `leaf_nodes` auth collection (a "special thing" with one nats_user, server-provisioned). The `leaf-sync` agent runs on the edge, authenticates as the leaf node, and mirrors its org's config collections into a NATS leaf node's local JetStream KV. Operator JWT served via the dedicated `GET /api/leaf/operator-jwt` route (nats_system_operator stays superuser-only). `leaf-sync` writes a best-effort liveness heartbeat into the hub's `leaf_status` KV (when `nats.hub_domain` is set); the UI reads it to show online/offline status on the leaf node list + detail views. Credentials are resettable by org Admins/Owners (collection `manageRule`).
 
 ## Testing
 

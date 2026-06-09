@@ -1,15 +1,21 @@
 <!-- ui/src/views/leaf_nodes/LeafNodeDetailView.vue -->
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useNow } from '@vueuse/core'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { useAuthStore } from '@/stores/auth'
-import { formatDate } from '@/utils/format'
+import { useNatsStore } from '@/stores/nats'
+import { useNatsKv } from '@/composables/useNatsKv'
+import { formatDate, formatRelativeTime } from '@/utils/format'
+import { generateRandomPassword } from '@/utils/password'
+import { leafStatus, type LeafHeartbeat, type LeafStatusState } from '@/utils/leafStatus'
 import type { LeafNode, NatsUser, NatsRole, NebulaHost } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import JsonViewer from '@/components/common/JsonViewer.vue'
+import LeafStatusBadge from '@/components/leaf_nodes/LeafStatusBadge.vue'
 
 // The broad role the provisioning hook mints per org. When a leaf node still
 // uses it, editing it would affect every leaf node in the org — so we warn.
@@ -33,9 +39,35 @@ const savingRole = ref(false)
 const regenerating = ref(false)
 const showRegenerateModal = ref(false)
 
+// PocketBase credential reset (the login leaf-sync authenticates with).
+const showResetModal = ref(false)
+const resettingPassword = ref(false)
+const showResetResultModal = ref(false)
+const newCredentials = ref({ email: '', password: '' })
+
 const canManage = computed(() => authStore.canManageUsers)
 
 const nebulaHost = computed(() => node.value?.expand?.nebula_host as NebulaHost | undefined)
+
+// Live status from the leaf_status NATS KV (written by leaf-sync). Keyed by code.
+const natsStore = useNatsStore()
+const { entries: statusEntries, init: initStatus } = useNatsKv('leaf_status')
+const now = useNow({ interval: 15000 })
+
+const heartbeat = computed<LeafHeartbeat | undefined>(() =>
+  node.value?.code
+    ? (statusEntries.value.get(node.value.code)?.value as LeafHeartbeat | undefined)
+    : undefined,
+)
+const liveStatus = computed<LeafStatusState>(() =>
+  leafStatus(heartbeat.value, natsStore.isConnected, now.value.getTime()),
+)
+
+watch(
+  () => natsStore.isConnected,
+  (connected) => { if (connected) initStatus() },
+  { immediate: true },
+)
 
 const usingSharedRole = computed(
   () => natsUser.value?.expand?.role_id?.name === LEAF_NODE_ROLE_NAME,
@@ -132,6 +164,30 @@ async function confirmRegenerate() {
   } finally {
     regenerating.value = false
   }
+}
+
+// Reset the leaf node's PocketBase password (manageRule lets org Admins/Owners
+// do this). The new password is shown once — leaf-sync must be updated with it.
+async function confirmResetPassword() {
+  if (!node.value) return
+  resettingPassword.value = true
+  try {
+    const password = generateRandomPassword(24)
+    await pb.collection('leaf_nodes').update(nodeId, { password, passwordConfirm: password })
+    newCredentials.value = { email: node.value.email, password }
+    showResetModal.value = false
+    showResetResultModal.value = true
+  } catch (err: any) {
+    toast.error(err.message || 'Failed to reset credentials')
+  } finally {
+    resettingPassword.value = false
+  }
+}
+
+function copyNewCredentials() {
+  const text = `PocketBase URL: ${window.location.origin}\nEmail: ${newCredentials.value.email}\nPassword: ${newCredentials.value.password}`
+  navigator.clipboard.writeText(text)
+  toast.success('Credentials copied to clipboard')
 }
 
 function downloadFile(filename: string, content: string, contentType: string) {
@@ -236,8 +292,45 @@ onMounted(loadNode)
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-        <!-- Left column: identity, synced collections, metadata -->
+        <!-- Left column: liveness, identity, synced collections, metadata -->
         <div class="space-y-6">
+          <BaseCard title="Liveness">
+            <div v-if="!natsStore.isConnected" class="space-y-2">
+              <LeafStatusBadge :status="liveStatus" />
+              <p class="text-sm text-base-content/60">Connect to NATS to see this leaf node's live heartbeat.</p>
+            </div>
+            <div v-else class="space-y-3">
+              <div class="flex items-center justify-between">
+                <LeafStatusBadge :status="liveStatus" :hb="heartbeat" />
+                <span v-if="heartbeat" class="text-xs text-base-content/50">agent {{ heartbeat.version }}</span>
+              </div>
+              <template v-if="heartbeat">
+                <div>
+                  <dt class="text-xs uppercase text-base-content/50">Last heartbeat</dt>
+                  <dd class="text-sm">{{ formatRelativeTime(heartbeat.ts) }}</dd>
+                </div>
+                <div v-if="Object.keys(heartbeat.synced || {}).length">
+                  <dt class="text-xs uppercase text-base-content/50">Synced records</dt>
+                  <dd class="flex flex-wrap gap-2 mt-1">
+                    <span v-for="(count, col) in heartbeat.synced" :key="col" class="badge badge-ghost badge-sm gap-1">
+                      <code>{{ col }}</code> {{ count }}
+                    </span>
+                  </dd>
+                </div>
+                <div v-if="heartbeat.errors?.length">
+                  <dt class="text-xs uppercase text-error">Sync errors</dt>
+                  <dd class="mt-1 space-y-1">
+                    <p v-for="(e, i) in heartbeat.errors" :key="i" class="text-xs text-error font-mono break-all">{{ e }}</p>
+                  </dd>
+                </div>
+              </template>
+              <p v-else class="text-sm text-base-content/60">
+                No heartbeat received yet. Ensure <code>leaf-sync run</code> is active and
+                <code>nats.hub_domain</code> is set on the edge.
+              </p>
+            </div>
+          </BaseCard>
+
           <BaseCard title="Identity">
             <dl class="space-y-3">
               <div>
@@ -247,6 +340,20 @@ onMounted(loadNode)
               <div>
                 <dt class="text-xs uppercase text-base-content/50">JetStream Domain</dt>
                 <dd><code class="text-sm">{{ node.domain || '-' }}</code></dd>
+              </div>
+              <div>
+                <dt class="text-xs uppercase text-base-content/50">leaf-sync Login</dt>
+                <dd class="flex items-center justify-between gap-2">
+                  <code class="text-sm break-all">{{ node.email }}</code>
+                  <button
+                    v-if="canManage"
+                    @click="showResetModal = true"
+                    class="btn btn-xs btn-outline btn-warning shrink-0"
+                    title="Reset the PocketBase password leaf-sync authenticates with"
+                  >
+                    Reset
+                  </button>
+                </dd>
               </div>
               <div>
                 <dt class="text-xs uppercase text-base-content/50">Location</dt>
@@ -465,6 +572,56 @@ leaf-sync run      # mirror config → local KV</pre>
       </div>
       <form method="dialog" class="modal-backdrop">
         <button @click="showRegenerateModal = false">close</button>
+      </form>
+    </dialog>
+
+    <!-- Reset PocketBase credentials: confirm -->
+    <dialog class="modal" :class="{ 'modal-open': showResetModal }">
+      <div class="modal-box">
+        <h3 class="font-bold text-lg text-warning">Reset PocketBase Credentials?</h3>
+        <p class="py-4">
+          This sets a new password for the leaf node's PocketBase login. The current password stops
+          working immediately — <code>leaf-sync</code> cannot authenticate until you update
+          <code>leaf-sync.yaml</code> with the new password and restart the agent.
+        </p>
+        <div class="modal-action">
+          <button class="btn" @click="showResetModal = false" :disabled="resettingPassword">Cancel</button>
+          <button class="btn btn-warning" @click="confirmResetPassword" :disabled="resettingPassword">
+            <span v-if="resettingPassword" class="loading loading-spinner"></span>
+            Reset Credentials
+          </button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button @click="showResetModal = false">close</button>
+      </form>
+    </dialog>
+
+    <!-- Reset PocketBase credentials: new password shown once -->
+    <dialog class="modal" :class="{ 'modal-open': showResetResultModal }">
+      <div class="modal-box">
+        <h3 class="font-bold text-lg text-success">New Credentials</h3>
+        <p class="py-4 text-sm text-base-content/70">
+          Update <code>leaf-sync.yaml</code> on the edge with these, then restart
+          <code>leaf-sync</code>. <strong>Save this password now — it cannot be recovered later.</strong>
+        </p>
+        <div class="bg-base-200 p-4 rounded-lg space-y-3 font-mono text-sm">
+          <div>
+            <span class="text-base-content/50 text-xs uppercase block">Email</span>
+            <span class="select-all break-all">{{ newCredentials.email }}</span>
+          </div>
+          <div>
+            <span class="text-base-content/50 text-xs uppercase block">Password</span>
+            <span class="select-all text-primary font-bold break-all">{{ newCredentials.password }}</span>
+          </div>
+        </div>
+        <div class="modal-action">
+          <button class="btn btn-ghost" @click="showResetResultModal = false">Close</button>
+          <button class="btn btn-primary" @click="copyNewCredentials">Copy</button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button @click="showResetResultModal = false">close</button>
       </form>
     </dialog>
   </div>

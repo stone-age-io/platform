@@ -4378,7 +4378,7 @@
     ],
     "system": false,
     "authRule": "",
-    "manageRule": null,
+    "manageRule": "// Org Admins/Owners may manage (e.g. reset the PocketBase password of) their organization's leaf nodes.\norganization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n @request.auth.memberships_via_user.role ?!= \"member\")",
     "authAlert": {
       "enabled": true,
       "emailTemplate": {

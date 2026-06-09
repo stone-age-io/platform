@@ -17,6 +17,8 @@ nats:
   hub_leaf_url: nats-leaf://hub.example.com:7422  # where the leaf remote dials the hub
   local_url: nats://127.0.0.1:4222                # the local leaf this agent connects to
   creds_file: edge.creds                          # written by `config`, read by `run`
+  hub_domain: hub                                 # hub's JetStream domain; enables the liveness
+                                                  # heartbeat (leaf_status KV). Empty = no heartbeat.
 
 output:
   dir: .            # where `config` writes nats-leaf.conf + the creds file

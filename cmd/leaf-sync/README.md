@@ -47,6 +47,7 @@ working directory or `/etc/leaf-sync/`.
 | `nats.hub_leaf_url` | for `config` | Where the leaf remote dials the hub; written into `nats-leaf.conf`. |
 | `nats.local_url` | | Local leaf the daemon connects to (default `nats://127.0.0.1:4222`). |
 | `nats.creds_file` | | Creds filename (default `edge.creds`); written by `config`, read by `run`. |
+| `nats.hub_domain` | | Hub's JetStream domain. When set, `run` writes a liveness heartbeat into the hub's `leaf_status` KV. Empty = heartbeat off. |
 | `output.dir` | | Where `config` writes files (default `.`). |
 | `sync.interval` | | Full-reconcile cadence (default `30s`). |
 | `reload_hook`, `jwt_refresh.enabled` | | Reserved — not yet active. |
@@ -54,8 +55,9 @@ working directory or `/etc/leaf-sync/`.
 ## Commands
 
 ```sh
-leaf-sync config   # one-shot: write nats-leaf.conf + edge.creds from PocketBase
-leaf-sync run      # daemon: mirror config collections into local KV
+leaf-sync config    # one-shot: write nats-leaf.conf + edge.creds from PocketBase
+leaf-sync run       # daemon: mirror config collections into local KV
+leaf-sync --version # print the build version
 ```
 
 - **`config`** authenticates to PocketBase as the leaf node and fetches its own
@@ -74,12 +76,36 @@ leaf-sync run      # daemon: mirror config collections into local KV
   stored JSON, so relation fields still resolve. Server-only noise fields
   (`collectionId`, `collectionName`, `expand`) are stripped from the value.
   Fail-soft: on any PocketBase/NATS error it keeps local KV as-is and retries —
-  it never wipes local state. It stops cleanly on `SIGINT`/`SIGTERM` (cancelling
-  any in-flight PocketBase/NATS call), so it's safe to run under systemd/Docker.
+  it never wipes local state. A *successful but empty* fetch is also guarded: if
+  a collection returns zero records while local KV still holds keys, the purge is
+  skipped for that cycle (a transient auth/scoping glitch can't wipe the mirror).
+  It stops cleanly on `SIGINT`/`SIGTERM` (cancelling any in-flight PocketBase/NATS
+  call), so it's safe to run under systemd/Docker.
+
+After each cycle, if `nats.hub_domain` is set, `run` writes a small liveness
+**heartbeat** into the hub's `leaf_status` KV bucket (keyed by the leaf node's
+`code`): agent version, timestamp, sync interval, per-collection record counts,
+and any sync errors. The platform UI reads this to show each leaf node's
+online/offline status. The write is best-effort — a heartbeat failure (e.g.
+during a WAN outage) is logged and never disturbs the sync loop. The heartbeat
+targets the *hub's* JetStream domain because `leaf-sync` is connected to the
+local leaf (whose own domain is `edge-<code>`); the absence of a recent beat is
+what the UI treats as "offline."
 
 Any config key can be overridden by an environment variable: upper-case the key,
 replace dots with underscores, and prefix with `LEAF_SYNC_` — e.g.
 `LEAF_SYNC_POCKETBASE_PASSWORD`, `LEAF_SYNC_SYNC_INTERVAL=15s`.
+
+## Building
+
+```sh
+# Plain build (version reports "dev"):
+go build -o leaf-sync ./cmd/leaf-sync
+
+# Release build (stamp the version, surfaced by --version and in each heartbeat):
+go build -ldflags "-X platform/internal/leafsync.Version=$(git describe --tags --always --dirty)" \
+  -o leaf-sync ./cmd/leaf-sync
+```
 
 ## Deploy flow
 
@@ -128,7 +154,8 @@ mirror.
 
 ## Roadmap
 
-- **v0 (current):** full-collection reconcile on an interval.
+- **v0 (current):** full-collection reconcile on an interval, with an
+  empty-fetch purge guard and a best-effort liveness heartbeat.
 - **v1:** incremental sync (`updated > cursor` + PocketBase `/api/realtime` SSE)
   with periodic full reconcile as the correctness backbone; optional account-JWT
   refresh with `reload_hook`.

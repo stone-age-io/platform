@@ -17,6 +17,7 @@ type Config struct {
 	PocketBasePassword string
 
 	HubLeafURL   string // where the leaf node's remote dials (written into nats-leaf.conf)
+	HubDomain    string // hub's JetStream domain; target for the liveness heartbeat (empty = off)
 	LocalNatsURL string // the local leaf this agent connects to at run time
 	CredsFile    string // path to the creds file (written by `config`, read by `run`)
 	OutputDir    string // where `config` writes nats-leaf.conf + creds
@@ -71,6 +72,7 @@ func LoadConfig(path string) (*Config, error) {
 		PocketBaseEmail:    v.GetString("pocketbase.email"),
 		PocketBasePassword: v.GetString("pocketbase.password"),
 		HubLeafURL:         v.GetString("nats.hub_leaf_url"),
+		HubDomain:          v.GetString("nats.hub_domain"),
 		LocalNatsURL:       v.GetString("nats.local_url"),
 		CredsFile:          v.GetString("nats.creds_file"),
 		OutputDir:          v.GetString("output.dir"),

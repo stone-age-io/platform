@@ -1,15 +1,20 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useNow } from '@vueuse/core'
 import { usePagination } from '@/composables/usePagination'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
+import { useNatsStore } from '@/stores/nats'
+import { useNatsKv } from '@/composables/useNatsKv'
 import { pb } from '@/utils/pb'
 import { formatDate } from '@/utils/format'
+import { leafStatus, type LeafHeartbeat, type LeafStatusState } from '@/utils/leafStatus'
 import type { LeafNode } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
+import LeafStatusBadge from '@/components/leaf_nodes/LeafStatusBadge.vue'
 
 const router = useRouter()
 const toast = useToast()
@@ -29,6 +34,26 @@ const {
 
 const searchQuery = ref('')
 
+// Live status from the leaf_status NATS KV (written by leaf-sync). Read-only;
+// shows "Unknown" when NATS isn't connected. The shared `now` ticker lets a
+// node flip to "offline" once its heartbeats stop, not just when data changes.
+const natsStore = useNatsStore()
+const { entries: statusEntries, init: initStatus } = useNatsKv('leaf_status')
+const now = useNow({ interval: 15000 })
+
+function statusBadge(node: LeafNode): { status: LeafStatusState; hb?: LeafHeartbeat } {
+  const hb = node.code
+    ? (statusEntries.value.get(node.code)?.value as LeafHeartbeat | undefined)
+    : undefined
+  return { status: leafStatus(hb, natsStore.isConnected, now.value.getTime()), hb }
+}
+
+watch(
+  () => natsStore.isConnected,
+  (connected) => { if (connected) initStatus() },
+  { immediate: true },
+)
+
 const filteredLeafNodes = computed(() => {
   const query = searchQuery.value.toLowerCase().trim()
   if (!query) return leafNodes.value
@@ -43,6 +68,7 @@ const columns: Column<LeafNode>[] = [
   { key: 'name', label: 'Name', mobileLabel: 'Name' },
   { key: 'code', label: 'Code', mobileLabel: 'Code' },
   { key: 'domain', label: 'Domain', mobileLabel: 'Domain' },
+  { key: 'status', label: 'Status', mobileLabel: 'Status' },
   { key: 'synced_collections', label: 'Synced', mobileLabel: 'Synced' },
   { key: 'created', label: 'Created', mobileLabel: 'Created', format: (value) => formatDate(value, 'PP') },
 ]
@@ -114,6 +140,9 @@ onUnmounted(() => {
         placeholder="Search leaf nodes by name, code, or domain..."
         class="input input-bordered w-full"
       />
+      <p v-if="!natsStore.isConnected" class="text-xs text-base-content/50 mt-1">
+        Connect to NATS to see live leaf node status.
+      </p>
     </div>
 
     <!-- Loading State -->
@@ -180,6 +209,10 @@ onUnmounted(() => {
         <template #cell-domain="{ item }">
           <code v-if="item.domain" class="text-xs">{{ item.domain }}</code>
           <span v-else class="text-base-content/40">-</span>
+        </template>
+
+        <template #cell-status="{ item }">
+          <LeafStatusBadge v-bind="statusBadge(item)" />
         </template>
 
         <template #cell-synced_collections="{ item }">

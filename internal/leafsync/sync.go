@@ -66,8 +66,20 @@ func Run(ctx context.Context, cfg *Config) error {
 		return fmt.Errorf("init JetStream: %w", err)
 	}
 
+	// Optional heartbeat: write liveness into the hub-domain leaf_status KV after
+	// each cycle. Disabled (best-effort, never fatal) when hub_domain is unset or
+	// the bucket can't be opened — the sync loop runs regardless.
+	code, _ := leaf["code"].(string)
+	hb := openHeartbeat(ctx, nc, cfg.HubDomain, code)
+
+	// One cycle: reconcile every collection, then publish a heartbeat.
+	cycle := func() {
+		synced, errs := syncAll(ctx, pb, kw, collections)
+		hb.publish(ctx, synced, errs, cfg.SyncInterval)
+	}
+
 	// Run once immediately, then on the ticker until cancelled.
-	syncAll(ctx, pb, kw, collections)
+	cycle()
 
 	ticker := time.NewTicker(cfg.SyncInterval)
 	defer ticker.Stop()
@@ -77,7 +89,7 @@ func Run(ctx context.Context, cfg *Config) error {
 			log.Printf("leaf-sync: shutdown signal received, stopping")
 			return nil
 		case <-ticker.C:
-			syncAll(ctx, pb, kw, collections)
+			cycle()
 		}
 	}
 }
@@ -106,24 +118,36 @@ func resolveCollections(leaf pbclient.Record) []string {
 	return out
 }
 
-func syncAll(ctx context.Context, pb *pbclient.Client, kw *kvWriter, collections []string) {
+// syncAll reconciles every configured collection and returns the per-collection
+// synced record count plus any errors, for the heartbeat payload. Fail-soft: a
+// collection that errors is logged and recorded, local KV left as-is, and the
+// remaining collections still run.
+func syncAll(ctx context.Context, pb *pbclient.Client, kw *kvWriter, collections []string) (map[string]int, []string) {
+	synced := make(map[string]int, len(collections))
+	var errs []string
 	for _, col := range collections {
 		if ctx.Err() != nil {
-			return // cancelled; stop promptly
+			return synced, errs // cancelled; stop promptly
 		}
-		if err := syncCollection(ctx, pb, kw, col); err != nil {
+		n, err := syncCollection(ctx, pb, kw, col)
+		if err != nil {
 			// Fail-soft: keep local KV as-is and retry next interval.
 			log.Printf("leaf-sync: sync %q failed (will retry): %v", col, err)
+			errs = append(errs, fmt.Sprintf("%s: %v", col, err))
+			continue
 		}
+		synced[col] = n
 	}
+	return synced, errs
 }
 
 // syncCollection performs a full reconcile of one collection: upsert every record
 // fetched from PocketBase, then purge any KV key whose record no longer exists.
-func syncCollection(ctx context.Context, pb *pbclient.Client, kw *kvWriter, col string) error {
+// It returns the number of records synced.
+func syncCollection(ctx context.Context, pb *pbclient.Client, kw *kvWriter, col string) (int, error) {
 	kv, err := kw.bucket(ctx, col)
 	if err != nil {
-		return fmt.Errorf("kv bucket: %w", err)
+		return 0, fmt.Errorf("kv bucket: %w", err)
 	}
 
 	// Fetch the whole collection before writing: KV keys prefer the record's
@@ -133,11 +157,21 @@ func syncCollection(ctx context.Context, pb *pbclient.Client, kw *kvWriter, col 
 	for page := 1; ; page++ {
 		res, err := pb.List(ctx, col, page, listPageSize, "")
 		if err != nil {
-			return err
+			return 0, err
 		}
 		records = append(records, res.Items...)
 		if res.TotalPages == 0 || res.Page >= res.TotalPages {
 			break
+		}
+	}
+
+	// Empty-fetch guard: a successful-but-empty response (e.g. a transient auth
+	// or org-scoping glitch) must never purge an existing mirror. If we fetched
+	// zero records but local KV still holds keys, leave it untouched this cycle.
+	if len(records) == 0 {
+		if keys, _ := kv.Keys(ctx); len(keys) > 0 {
+			log.Printf("⚠️ leaf-sync: %q returned 0 records but %d keys exist locally; skipping purge this cycle", col, len(keys))
+			return 0, nil
 		}
 	}
 
@@ -170,16 +204,16 @@ func syncCollection(ctx context.Context, pb *pbclient.Client, kw *kvWriter, col 
 	keys, err := kv.Keys(ctx)
 	if err != nil {
 		if errors.Is(err, jetstream.ErrNoKeysFound) {
-			return nil
+			return len(fetched), nil
 		}
-		return fmt.Errorf("kv keys: %w", err)
+		return len(fetched), fmt.Errorf("kv keys: %w", err)
 	}
 	for _, k := range keysToDelete(keys, fetched) {
 		if err := kv.Delete(ctx, k); err != nil {
 			log.Printf("leaf-sync: kv delete %s/%s: %v", col, k, err)
 		}
 	}
-	return nil
+	return len(fetched), nil
 }
 
 // serverOnlyFields are written by PocketBase and carry no value to a KV consumer.
