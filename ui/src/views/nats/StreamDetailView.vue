@@ -30,9 +30,10 @@ const showPurgeModal = ref(false)
 const purgeSubject = ref('')
 const purging = ref(false)
 
-// Recent messages browser
+// Recent messages browser (opt-in — not loaded on mount to keep the page snappy)
 const messages = ref<StoredMessageView[]>([])
 const messagesLoading = ref(false)
+const messagesLoaded = ref(false)
 const messageLimit = ref(25)
 const selectedMessage = ref<StoredMessageView | null>(null)
 
@@ -40,7 +41,7 @@ async function loadData() {
   loading.value = true
   try {
     streamInfo.value = await getStreamInfo(streamName)
-    await Promise.all([loadConsumers(), loadMessages()])
+    await loadConsumers()
   } catch {
     router.push('/nats/streams')
   } finally {
@@ -52,6 +53,7 @@ async function loadMessages() {
   messagesLoading.value = true
   try {
     messages.value = await getRecentMessages(streamName, messageLimit.value)
+    messagesLoaded.value = true
   } catch {
     // Error toasted by composable
   } finally {
@@ -379,7 +381,7 @@ watch(() => natsStore.isConnected, (connected) => {
         <template #header>
           <div class="flex flex-wrap justify-between items-center gap-2 mb-4">
             <h3 class="card-title text-base">Recent Messages</h3>
-            <div class="flex items-center gap-2">
+            <div v-if="messagesLoaded" class="flex items-center gap-2">
               <select
                 v-model.number="messageLimit"
                 @change="loadMessages"
@@ -398,7 +400,21 @@ watch(() => natsStore.isConnected, (connected) => {
           </div>
         </template>
 
-        <div v-if="messagesLoading && messages.length === 0" class="flex justify-center p-8">
+        <!-- Opt-in: messages are fetched on demand so the initial page load stays snappy -->
+        <div v-if="!messagesLoaded && !messagesLoading" class="text-center py-8">
+          <span class="text-4xl">📨</span>
+          <p class="text-base-content/70 mt-2 mb-4">Browse the most recent messages stored in this stream.</p>
+          <div class="flex items-center justify-center gap-2">
+            <select v-model.number="messageLimit" class="select select-bordered select-sm">
+              <option :value="10">Last 10</option>
+              <option :value="25">Last 25</option>
+              <option :value="50">Last 50</option>
+            </select>
+            <button @click="loadMessages" class="btn btn-primary btn-sm">Load messages</button>
+          </div>
+        </div>
+
+        <div v-else-if="messagesLoading && messages.length === 0" class="flex justify-center p-8">
           <span class="loading loading-spinner loading-md"></span>
         </div>
 
