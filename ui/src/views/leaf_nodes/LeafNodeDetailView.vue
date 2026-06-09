@@ -292,45 +292,8 @@ onMounted(loadNode)
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-        <!-- Left column: liveness, identity, synced collections, metadata -->
+        <!-- Left column: identity, synced collections, metadata -->
         <div class="space-y-6">
-          <BaseCard title="Liveness">
-            <div v-if="!natsStore.isConnected" class="space-y-2">
-              <LeafStatusBadge :status="liveStatus" />
-              <p class="text-sm text-base-content/60">Connect to NATS to see this leaf node's live heartbeat.</p>
-            </div>
-            <div v-else class="space-y-3">
-              <div class="flex items-center justify-between">
-                <LeafStatusBadge :status="liveStatus" :hb="heartbeat" />
-                <span v-if="heartbeat" class="text-xs text-base-content/50">agent {{ heartbeat.version }}</span>
-              </div>
-              <template v-if="heartbeat">
-                <div>
-                  <dt class="text-xs uppercase text-base-content/50">Last heartbeat</dt>
-                  <dd class="text-sm">{{ formatRelativeTime(heartbeat.ts) }}</dd>
-                </div>
-                <div v-if="Object.keys(heartbeat.synced || {}).length">
-                  <dt class="text-xs uppercase text-base-content/50">Synced records</dt>
-                  <dd class="flex flex-wrap gap-2 mt-1">
-                    <span v-for="(count, col) in heartbeat.synced" :key="col" class="badge badge-ghost badge-sm gap-1">
-                      <code>{{ col }}</code> {{ count }}
-                    </span>
-                  </dd>
-                </div>
-                <div v-if="heartbeat.errors?.length">
-                  <dt class="text-xs uppercase text-error">Sync errors</dt>
-                  <dd class="mt-1 space-y-1">
-                    <p v-for="(e, i) in heartbeat.errors" :key="i" class="text-xs text-error font-mono break-all">{{ e }}</p>
-                  </dd>
-                </div>
-              </template>
-              <p v-else class="text-sm text-base-content/60">
-                No heartbeat received yet. Ensure <code>leaf-sync run</code> is active and
-                <code>nats.hub_domain</code> is set on the edge.
-              </p>
-            </div>
-          </BaseCard>
-
           <BaseCard title="Identity">
             <dl class="space-y-3">
               <div>
@@ -543,6 +506,43 @@ leaf-sync run      # mirror config → local KV</pre>
             <div v-else class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">
               <span class="text-2xl block mb-2">🌐</span>
               <p class="text-sm">No Nebula host linked</p>
+            </div>
+          </BaseCard>
+
+          <BaseCard title="Liveness">
+            <div v-if="!natsStore.isConnected" class="space-y-2">
+              <LeafStatusBadge :status="liveStatus" />
+              <p class="text-sm text-base-content/60">Connect to NATS to see this leaf node's live heartbeat.</p>
+            </div>
+            <div v-else class="space-y-3">
+              <div class="flex items-center justify-between">
+                <LeafStatusBadge :status="liveStatus" :hb="heartbeat" />
+                <span v-if="heartbeat" class="text-xs text-base-content/50">agent {{ heartbeat.version }}</span>
+              </div>
+              <template v-if="heartbeat">
+                <div>
+                  <dt class="text-xs uppercase text-base-content/50">Last heartbeat</dt>
+                  <dd class="text-sm">{{ formatRelativeTime(heartbeat.ts) }}</dd>
+                </div>
+                <div v-if="Object.keys(heartbeat.synced || {}).length">
+                  <dt class="text-xs uppercase text-base-content/50">Synced records</dt>
+                  <dd class="flex flex-wrap gap-2 mt-1">
+                    <span v-for="(count, col) in heartbeat.synced" :key="col" class="badge badge-ghost badge-sm gap-1">
+                      <code>{{ col }}</code> {{ count }}
+                    </span>
+                  </dd>
+                </div>
+                <div v-if="heartbeat.errors?.length">
+                  <dt class="text-xs uppercase text-error">Sync errors</dt>
+                  <dd class="mt-1 space-y-1">
+                    <p v-for="(e, i) in heartbeat.errors" :key="i" class="text-xs text-error font-mono break-all">{{ e }}</p>
+                  </dd>
+                </div>
+              </template>
+              <p v-else class="text-sm text-base-content/60">
+                No heartbeat received yet. Ensure <code>leaf-sync run</code> is active and
+                <code>nats.hub_domain</code> is set on the edge.
+              </p>
             </div>
           </BaseCard>
         </div>
