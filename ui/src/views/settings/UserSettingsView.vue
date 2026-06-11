@@ -121,6 +121,7 @@ async function loadIdentities() {
     })
   } catch (e) {
     console.warn('Could not load NATS identities', e)
+    toast.error('Could not load NATS identities')
   } finally {
     loadingIdentities.value = false
   }

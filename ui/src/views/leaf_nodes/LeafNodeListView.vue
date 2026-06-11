@@ -34,6 +34,8 @@ const {
 
 const searchQuery = ref('')
 
+const deleting = ref(false)
+
 // Live status from the leaf_status NATS KV (written by leaf-sync). Read-only;
 // shows "Unknown" when NATS isn't connected. The shared `now` ticker lets a
 // node flip to "offline" once its heartbeats stop, not just when data changes.
@@ -92,12 +94,15 @@ async function handleDelete(node: LeafNode) {
   })
   if (!confirmed) return
 
+  deleting.value = true
   try {
     await pb.collection('leaf_nodes').delete(node.id)
     toast.success('Leaf node deleted')
     loadLeafNodes()
   } catch (err: any) {
     toast.error(err.message || 'Failed to delete leaf node')
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -225,7 +230,7 @@ onUnmounted(() => {
           <router-link :to="`/leaf-nodes/${item.id}/edit`" class="btn btn-xs flex-1 sm:flex-initial">
             Edit
           </router-link>
-          <button @click="handleDelete(item)" class="btn btn-xs text-error flex-1 sm:flex-initial">
+          <button @click="handleDelete(item)" class="btn btn-xs text-error flex-1 sm:flex-initial" :disabled="deleting">
             Delete
           </button>
         </template>

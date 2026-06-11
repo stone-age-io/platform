@@ -82,6 +82,7 @@ async function loadNatsAccount() {
     }
   } catch (err) {
     console.error('Failed to load NATS account:', err)
+    toast.error('Failed to load NATS account')
   }
 }
 

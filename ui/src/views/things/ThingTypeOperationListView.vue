@@ -29,6 +29,8 @@ const {
 
 const searchQuery = ref('')
 
+const deleting = ref(false)
+
 const filteredItems = computed(() => {
   const query = searchQuery.value.toLowerCase().trim()
   if (!query) return items.value
@@ -63,12 +65,15 @@ async function handleDelete(item: ThingTypeOperation) {
     variant: 'danger'
   })
   if (!confirmed) return
+  deleting.value = true
   try {
     await pb.collection('thing_type_operations').delete(item.id)
     toast.success('Deleted')
     loadData()
   } catch (err: any) {
     toast.error(err.message)
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -153,7 +158,7 @@ onUnmounted(() => {
 
         <template #actions="{ item }">
           <router-link :to="`/things/operations/${item.id}/edit`" class="btn btn-xs flex-1 sm:flex-initial">Edit</router-link>
-          <button @click.stop="handleDelete(item)" class="btn btn-xs text-error flex-1 sm:flex-initial">Delete</button>
+          <button @click.stop="handleDelete(item)" class="btn btn-xs text-error flex-1 sm:flex-initial" :disabled="deleting">Delete</button>
         </template>
       </ResponsiveList>
 

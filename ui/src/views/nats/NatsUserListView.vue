@@ -31,6 +31,8 @@ const {
 // Search query
 const searchQuery = ref('')
 
+const deleting = ref(false)
+
 /**
  * Filtered users based on client-side search
  */
@@ -126,12 +128,15 @@ async function handleDelete(user: NatsUser) {
   })
   if (!confirmed) return
 
+  deleting.value = true
   try {
     await pb.collection('nats_users').delete(user.id)
     toast.success('NATS user deleted')
     loadUsers()
   } catch (err: any) {
     toast.error(err.message || 'Failed to delete NATS user')
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -291,6 +296,7 @@ onUnmounted(() => {
           <button 
             @click="handleDelete(item)" 
             class="btn btn-xs text-error flex-1 sm:flex-initial"
+            :disabled="deleting"
           >
             Delete
           </button>

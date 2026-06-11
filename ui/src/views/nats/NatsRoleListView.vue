@@ -31,6 +31,8 @@ const {
 // Search query
 const searchQuery = ref('')
 
+const deleting = ref(false)
+
 /**
  * Filtered roles based on client-side search
  */
@@ -100,12 +102,15 @@ async function handleDelete(role: NatsRole) {
   })
   if (!confirmed) return
 
+  deleting.value = true
   try {
     await pb.collection('nats_roles').delete(role.id)
     toast.success('Role deleted')
     loadRoles()
   } catch (err: any) {
     toast.error(err.message || 'Failed to delete role')
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -244,6 +249,7 @@ onUnmounted(() => {
           <button 
             @click="handleDelete(item)" 
             class="btn btn-xs text-error flex-1 sm:flex-initial"
+            :disabled="deleting"
           >
             Delete
           </button>

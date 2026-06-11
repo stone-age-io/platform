@@ -30,6 +30,7 @@ const {
 
 // Search query
 const searchQuery = ref('')
+const deleting = ref(false)
 
 /**
  * Filtered hosts based on client-side search
@@ -114,12 +115,15 @@ async function handleDelete(host: NebulaHost) {
   })
   if (!confirmed) return
 
+  deleting.value = true
   try {
     await pb.collection('nebula_hosts').delete(host.id)
     toast.success('Nebula host deleted')
     loadHosts()
   } catch (err: any) {
     toast.error(err.message || 'Failed to delete Nebula host')
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -290,9 +294,10 @@ onUnmounted(() => {
           >
             Edit
           </router-link>
-          <button 
-            @click="handleDelete(item)" 
+          <button
+            @click="handleDelete(item)"
             class="btn btn-xs text-error flex-1 sm:flex-initial"
+            :disabled="deleting"
           >
             Delete
           </button>

@@ -21,6 +21,7 @@ const thing = ref<Thing | null>(null)
 const loading = ref(true)
 const regenerating = ref(false)
 const showRegenerateModal = ref(false)
+const deleting = ref(false)
 
 const thingId = route.params.id as string
 
@@ -122,12 +123,15 @@ async function handleDelete() {
   })
   if (!confirmed) return
 
+  deleting.value = true
   try {
     await pb.collection('things').delete(thing.value.id)
     toast.success('Thing deleted')
     router.push('/things')
   } catch (err: any) {
     toast.error(err.message || 'Failed to delete thing')
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -158,7 +162,7 @@ onMounted(() => {
             <router-link :to="`/things/${thing.id}/edit`" class="btn btn-primary flex-1 sm:flex-initial">
               Edit
             </router-link>
-            <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial">
+            <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial" :disabled="deleting">
               Delete
             </button>
           </div>

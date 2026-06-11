@@ -136,7 +136,7 @@ export const useNatsStore = defineStore('nats', () => {
       const encoder = new TextEncoder()
       const credsBytes = encoder.encode(natsUserRecord.creds_file)
 
-      console.log(`Connecting to NATS at ${servers.join(', ')} as ${natsUserRecord.nats_username}...`)
+      console.debug(`Connecting to NATS at ${servers.join(', ')} as ${natsUserRecord.nats_username}...`)
 
       const newNc = await wsconnect({
         servers,

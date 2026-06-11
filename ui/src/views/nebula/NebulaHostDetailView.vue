@@ -16,6 +16,7 @@ const { confirm } = useConfirm()
 
 const host = ref<NebulaHost | null>(null)
 const loading = ref(true)
+const deleting = ref(false)
 const regenerating = ref(false)
 const showRegenerateModal = ref(false)
 
@@ -46,12 +47,15 @@ async function handleDelete() {
   })
   if (!confirmed) return
 
+  deleting.value = true
   try {
     await pb.collection('nebula_hosts').delete(host.value.id)
     toast.success('Nebula host deleted')
     router.push('/nebula/hosts')
   } catch (err: any) {
     toast.error(err.message || 'Failed to delete Nebula host')
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -121,7 +125,7 @@ onMounted(() => {
             <router-link :to="`/nebula/hosts/${host.id}/edit`" class="btn btn-primary flex-1 sm:flex-initial">
               Edit
             </router-link>
-            <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial">
+            <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial" :disabled="deleting">
               Delete
             </button>
           </div>

@@ -18,6 +18,7 @@ const bucketName = route.params.name as string
 
 const status = ref<KvStatus | null>(null)
 const loading = ref(true)
+const deleting = ref(false)
 
 async function loadData() {
   loading.value = true
@@ -40,11 +41,14 @@ async function handleDelete() {
   })
   if (!confirmed) return
 
+  deleting.value = true
   try {
     await deleteKvBucket(bucketName)
     router.push('/nats/kv')
   } catch {
     // Error toasted
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -83,7 +87,7 @@ watch(() => natsStore.isConnected, (connected) => {
             <p v-if="status.description" class="text-base-content/70 mt-1">{{ status.description }}</p>
           </div>
           <div class="flex gap-2 w-full sm:w-auto shrink-0">
-            <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial">Delete</button>
+            <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial" :disabled="deleting">Delete</button>
           </div>
         </div>
       </div>

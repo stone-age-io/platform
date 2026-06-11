@@ -35,6 +35,8 @@ const {
 // Search query (client-side filtering)
 const searchQuery = ref('')
 
+const deleting = ref(false)
+
 /**
  * Filtered things based on client-side search
  * Searches in: name, description, code, type name, location name
@@ -127,12 +129,15 @@ async function handleDelete(thing: Thing) {
   })
   if (!confirmed) return
 
+  deleting.value = true
   try {
     await pb.collection('things').delete(thing.id)
     toast.success('Thing deleted')
     loadThings()
   } catch (err: any) {
     toast.error(err.message || 'Failed to delete thing')
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -340,9 +345,10 @@ onUnmounted(() => {
           >
             Edit
           </router-link>
-          <button 
-            @click="handleDelete(item)" 
+          <button
+            @click="handleDelete(item)"
             class="btn btn-xs text-error flex-1 sm:flex-initial"
+            :disabled="deleting"
           >
             Delete
           </button>

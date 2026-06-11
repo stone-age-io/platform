@@ -41,6 +41,8 @@ const inviteForm = ref({
 })
 const submitting = ref(false)
 
+const deleting = ref(false)
+
 /**
  * Load all organizations for operator org selector
  */
@@ -57,6 +59,7 @@ async function loadOrganizations() {
     }
   } catch (err) {
     console.error('Failed to load organizations:', err)
+    toast.error('Failed to load organizations')
   } finally {
     loadingOrgs.value = false
   }
@@ -232,12 +235,15 @@ async function handleDelete(invite: Invitation) {
   })
   if (!confirmed) return
 
+  deleting.value = true
   try {
     await pb.collection('invites').delete(invite.id)
     toast.success('Invitation revoked')
     await loadInvitations()
   } catch (err: any) {
     toast.error(err.message || 'Failed to revoke invitation')
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -544,6 +550,7 @@ onUnmounted(() => {
           <button 
             @click="handleDelete(item)" 
             class="btn btn-sm text-error flex-1 sm:flex-initial"
+            :disabled="deleting"
           >
             Revoke
           </button>

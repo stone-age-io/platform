@@ -15,6 +15,7 @@ const { confirm } = useConfirm()
 
 const role = ref<NatsRole | null>(null)
 const loading = ref(true)
+const deleting = ref(false)
 const roleId = route.params.id as string
 
 /**
@@ -64,12 +65,15 @@ async function handleDelete() {
   })
   if (!confirmed) return
 
+  deleting.value = true
   try {
     await pb.collection('nats_roles').delete(role.value.id)
     toast.success('Role deleted')
     router.push('/nats/roles')
   } catch (err: any) {
     toast.error(err.message)
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -103,7 +107,7 @@ onMounted(loadRole)
           </div>
           <div class="flex gap-2 w-full sm:w-auto">
             <router-link :to="`/nats/roles/${role.id}/edit`" class="btn btn-primary flex-1 sm:flex-initial">Edit</router-link>
-            <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial">Delete</button>
+            <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial" :disabled="deleting">Delete</button>
           </div>
         </div>
       </div>

@@ -29,6 +29,8 @@ const {
 
 const searchQuery = ref('')
 
+const deleting = ref(false)
+
 const filteredExports = computed(() => {
   const query = searchQuery.value.toLowerCase().trim()
   if (!query) return exports.value
@@ -82,12 +84,15 @@ async function handleDelete(exp: NatsAccountExport) {
   })
   if (!confirmed) return
 
+  deleting.value = true
   try {
     await pb.collection('nats_account_exports').delete(exp.id)
     toast.success('Export deleted')
     loadExports()
   } catch (err: any) {
     toast.error(err.message || 'Failed to delete export')
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -222,6 +227,7 @@ onUnmounted(() => {
           <button
             @click="handleDelete(item)"
             class="btn btn-xs text-error flex-1 sm:flex-initial"
+            :disabled="deleting"
           >
             Delete
           </button>

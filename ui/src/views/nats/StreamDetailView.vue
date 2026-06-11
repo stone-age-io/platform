@@ -29,6 +29,7 @@ const consumersLoading = ref(false)
 const showPurgeModal = ref(false)
 const purgeSubject = ref('')
 const purging = ref(false)
+const deleting = ref(false)
 
 // Recent messages browser (opt-in — not loaded on mount to keep the page snappy)
 const messages = ref<StoredMessageView[]>([])
@@ -96,11 +97,14 @@ async function handleDelete() {
   })
   if (!confirmed) return
 
+  deleting.value = true
   try {
     await deleteStream(streamName)
     router.push('/nats/streams')
   } catch {
     // Error toasted
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -128,11 +132,14 @@ async function handleDeleteConsumer(consumer: ConsumerSummary) {
   })
   if (!confirmed) return
 
+  deleting.value = true
   try {
     await deleteConsumer(streamName, consumer.name)
     await loadConsumers()
   } catch {
     // Error toasted
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -186,7 +193,7 @@ watch(() => natsStore.isConnected, (connected) => {
           <div class="flex gap-2 w-full sm:w-auto">
             <router-link :to="`/nats/streams/${streamName}/edit`" class="btn btn-primary flex-1 sm:flex-initial">Edit</router-link>
             <button @click="showPurgeModal = true" class="btn btn-warning flex-1 sm:flex-initial">Purge</button>
-            <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial">Delete</button>
+            <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial" :disabled="deleting">Delete</button>
           </div>
         </div>
       </div>
@@ -366,6 +373,7 @@ watch(() => natsStore.isConnected, (connected) => {
                   <button
                     @click="handleDeleteConsumer(consumer)"
                     class="btn btn-xs text-error flex-1"
+                    :disabled="deleting"
                   >
                     Delete
                   </button>

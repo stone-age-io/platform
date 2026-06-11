@@ -41,6 +41,7 @@ const { initMap, renderMarkers, updateTheme, invalidateSize, cleanup: cleanupMap
 // --- State ---
 const location = ref<Location | null>(null)
 const loading = ref(true)
+const deleting = ref(false)
 const mapContainerId = 'mini-map-container'
 const activeTab = ref<'floorplan' | 'coordinates'>('floorplan')
 const miniMapInitialized = ref(false)
@@ -243,12 +244,15 @@ async function handleDelete() {
   })
   if (!confirmed) return
 
+  deleting.value = true
   try {
     await pb.collection('locations').delete(location.value.id)
     toast.success('Location deleted')
     router.push('/locations')
   } catch (err: any) {
     toast.error(err.message)
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -307,7 +311,7 @@ onUnmounted(() => cleanupMap())
             <router-link :to="`/locations/${location.id}/edit`" class="btn btn-primary flex-1 sm:flex-initial">
               Edit
             </router-link>
-            <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial">
+            <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial" :disabled="deleting">
               Delete
             </button>
           </div>

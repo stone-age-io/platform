@@ -29,6 +29,8 @@ const {
 
 const searchQuery = ref('')
 
+const deleting = ref(false)
+
 const filteredImports = computed(() => {
   const query = searchQuery.value.toLowerCase().trim()
   if (!query) return imports.value
@@ -94,12 +96,15 @@ async function handleDelete(imp: NatsAccountImport) {
   })
   if (!confirmed) return
 
+  deleting.value = true
   try {
     await pb.collection('nats_account_imports').delete(imp.id)
     toast.success('Import deleted')
     loadImports()
   } catch (err: any) {
     toast.error(err.message || 'Failed to delete import')
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -238,6 +243,7 @@ onUnmounted(() => {
           <button
             @click="handleDelete(item)"
             class="btn btn-xs text-error flex-1 sm:flex-initial"
+            :disabled="deleting"
           >
             Delete
           </button>

@@ -29,6 +29,7 @@ const {
 } = usePagination<LocationType>('location_types', 20)
 
 const searchQuery = ref('')
+const deleting = ref(false)
 
 const filteredItems = computed(() => {
   const query = searchQuery.value.toLowerCase().trim()
@@ -71,12 +72,15 @@ async function handleDelete(item: LocationType) {
     variant: 'danger'
   })
   if (!confirmed) return
+  deleting.value = true
   try {
     await pb.collection('location_types').delete(item.id)
     toast.success('Deleted')
     loadData()
   } catch (err: any) {
     toast.error(err.message)
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -169,7 +173,7 @@ onUnmounted(() => {
 
         <template #actions="{ item }">
           <router-link :to="`/locations/types/${item.id}/edit`" class="btn btn-xs flex-1 sm:flex-initial">Edit</router-link>
-          <button @click.stop="handleDelete(item)" class="btn btn-xs text-error flex-1 sm:flex-initial">Delete</button>
+          <button @click.stop="handleDelete(item)" class="btn btn-xs text-error flex-1 sm:flex-initial" :disabled="deleting">Delete</button>
         </template>
       </ResponsiveList>
 

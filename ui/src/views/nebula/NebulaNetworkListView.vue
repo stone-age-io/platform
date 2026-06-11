@@ -30,6 +30,7 @@ const {
 
 // Search query
 const searchQuery = ref('')
+const deleting = ref(false)
 
 /**
  * Filtered networks based on client-side search
@@ -108,12 +109,15 @@ async function handleDelete(network: NebulaNetwork) {
   })
   if (!confirmed) return
 
+  deleting.value = true
   try {
     await pb.collection('nebula_networks').delete(network.id)
     toast.success('Network deleted')
     loadNetworks()
   } catch (err: any) {
     toast.error(err.message || 'Failed to delete network')
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -265,9 +269,10 @@ onUnmounted(() => {
           >
             Edit
           </router-link>
-          <button 
-            @click="handleDelete(item)" 
+          <button
+            @click="handleDelete(item)"
             class="btn btn-xs text-error flex-1 sm:flex-initial"
+            :disabled="deleting"
           >
             Delete
           </button>

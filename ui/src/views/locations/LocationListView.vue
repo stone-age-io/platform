@@ -22,6 +22,7 @@ const viewMode = ref<'list' | 'map'>('list')
 const allLocations = ref<Location[]>([])
 const loading = ref(false)
 const searchQuery = ref('')
+const deleting = ref(false)
 
 // Pagination State (Client-Side)
 const currentPage = ref(1)
@@ -108,6 +109,7 @@ async function handleDelete(location: Location) {
   })
   if (!confirmed) return
 
+  deleting.value = true
   try {
     await pb.collection('locations').delete(location.id)
     toast.success('Location deleted')
@@ -115,6 +117,8 @@ async function handleDelete(location: Location) {
     allLocations.value = allLocations.value.filter(l => l.id !== location.id)
   } catch (err: any) {
     toast.error(err.message || 'Failed to delete location')
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -282,7 +286,7 @@ onUnmounted(() => {
 
             <template #actions="{ item }">
               <router-link :to="`/locations/${item.id}/edit`" class="btn btn-xs flex-1 sm:flex-initial" @click.stop>Edit</router-link>
-              <button @click.stop="handleDelete(item)" class="btn btn-xs text-error flex-1 sm:flex-initial">Delete</button>
+              <button @click.stop="handleDelete(item)" class="btn btn-xs text-error flex-1 sm:flex-initial" :disabled="deleting">Delete</button>
             </template>
           </ResponsiveList>
 

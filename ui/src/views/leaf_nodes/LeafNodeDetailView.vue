@@ -38,6 +38,7 @@ const selectedRoleId = ref('')
 const savingRole = ref(false)
 const regenerating = ref(false)
 const showRegenerateModal = ref(false)
+const deleting = ref(false)
 
 // PocketBase credential reset (the login leaf-sync authenticates with).
 const showResetModal = ref(false)
@@ -244,12 +245,15 @@ async function handleDelete() {
     variant: 'danger',
   })
   if (!confirmed) return
+  deleting.value = true
   try {
     await pb.collection('leaf_nodes').delete(nodeId)
     toast.success('Leaf node deleted')
     router.push('/leaf-nodes')
   } catch (err: any) {
     toast.error(err.message || 'Failed to delete leaf node')
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -287,7 +291,7 @@ onMounted(loadNode)
         </div>
         <div class="flex gap-2 w-full sm:w-auto">
           <router-link :to="`/leaf-nodes/${node.id}/edit`" class="btn btn-primary flex-1 sm:flex-initial">Edit</router-link>
-          <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial">Delete</button>
+          <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial" :disabled="deleting">Delete</button>
         </div>
       </div>
 

@@ -61,6 +61,7 @@ async function loadUsers() {
     }
   } catch (err) {
     console.error('Failed to load users:', err)
+    toast.error('Failed to load users')
   } finally {
     loadingUsers.value = false
   }
