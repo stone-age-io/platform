@@ -83,8 +83,8 @@ github.com/skeeeon/pb-audit v0.0.0-20260509164131-d384bb182a41 h1:yiH5gw55kFzScs
 github.com/skeeeon/pb-audit v0.0.0-20260509164131-d384bb182a41/go.mod h1:R4eorDgzHYQrz/V4INCY8VXvH5fGXCm7aTIiBZeiTFE=
 github.com/skeeeon/pb-nats v0.0.0-20260509163949-d0bcc08e578c h1:BzV4ael6onr+ESeeQc8yalFsS7N+HuuIXc83KV+ZGd0=
 github.com/skeeeon/pb-nats v0.0.0-20260509163949-d0bcc08e578c/go.mod h1:EUzRJJvLcZArAixb4XS1qKZo/mA+gGCx/96NwYAkPpQ=
-github.com/skeeeon/pb-nebula v0.0.0-20260509164003-b5fec76fda08 h1:JOSn8/TYPBCYtN6JBWTbE0PHD/mq/CQ/376W216OlHU=
-github.com/skeeeon/pb-nebula v0.0.0-20260509164003-b5fec76fda08/go.mod h1:yGocVgnRbZducO0uRHLGpIaiTo+aRT94pT+KNKI3OJw=
+github.com/skeeeon/pb-nebula v0.0.0-20260611021205-2e1b4dfdf33f h1:dfqGUmxj3Nhn4BEpVK5c1MyoWj2at+Q0izHpm8HZrFw=
+github.com/skeeeon/pb-nebula v0.0.0-20260611021205-2e1b4dfdf33f/go.mod h1:yGocVgnRbZducO0uRHLGpIaiTo+aRT94pT+KNKI3OJw=
 github.com/skeeeon/pb-tenancy v0.0.0-20260509164438-78df1343ea65 h1:Vk5Ph9kELDgR5kXLbii3pkwGnh/fkjfMEh47MNYbSbc=
 github.com/skeeeon/pb-tenancy v0.0.0-20260509164438-78df1343ea65/go.mod h1:34sL44B8a67kCTi6MyV3RDNUGQPmRJBc96aA46sUwI8=
 github.com/slackhq/nebula v1.10.3 h1:EstYj8ODEcv6T0R9X5BVq1zgWZnyU5gtPzk99QF1PMU=

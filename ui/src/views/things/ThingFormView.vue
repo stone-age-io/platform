@@ -292,13 +292,13 @@ async function runPreflightChecks(): Promise<boolean> {
       }
     }
 
-    // Check Nebula hostname uniqueness
+    // Check Nebula hostname/IP uniqueness (scoped to the selected network)
     if (nebulaMode.value === 'auto') {
       try {
         await pb.collection('nebula_hosts').getFirstListItem(
-          `hostname = "${code}" || overlay_ip = "${autoNebulaOverlayIp.value}"`
+          `network_id = "${autoNebulaNetworkId.value}" && (hostname = "${code}" || overlay_ip = "${autoNebulaOverlayIp.value}")`
         )
-        toast.error(`Nebula hostname "${code}" or IP "${autoNebulaOverlayIp.value}" is already taken.`)
+        toast.error(`Nebula hostname "${code}" or IP "${autoNebulaOverlayIp.value}" is already taken on the selected network.`)
         return false
       } catch (e: any) {
         if (e.status !== 404) throw e

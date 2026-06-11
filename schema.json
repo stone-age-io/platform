@@ -887,7 +887,7 @@
     ],
     "indexes": [
       "CREATE UNIQUE INDEX idx_host_network_ip ON nebula_hosts (network_id, overlay_ip)",
-      "CREATE UNIQUE INDEX idx_host_hostname ON nebula_hosts (hostname)",
+      "CREATE UNIQUE INDEX idx_host_network_hostname ON nebula_hosts (network_id, hostname)",
       "CREATE UNIQUE INDEX `idx_tokenKey_pbc_789448849` ON `nebula_hosts` (`tokenKey`)",
       "CREATE UNIQUE INDEX `idx_email_pbc_789448849` ON `nebula_hosts` (`email`) WHERE `email` != ''"
     ],
@@ -3208,7 +3208,8 @@
       }
     ],
     "indexes": [
-      "CREATE UNIQUE INDEX idx_network_cidr ON nebula_networks (cidr_range)"
+      "CREATE UNIQUE INDEX idx_network_ca_name ON nebula_networks (ca_id, name)",
+      "CREATE UNIQUE INDEX idx_network_ca_cidr ON nebula_networks (ca_id, cidr_range)"
     ],
     "system": false
   },
