@@ -13,7 +13,7 @@
       :compact="layoutMode === 'card'"
     />
     
-    <div v-else-if="kvValue !== null" class="kv-content">
+    <div v-else-if="hasValue" class="kv-content">
       
       <!-- CARD LAYOUT (Mobile/Compact) -->
       <template v-if="layoutMode === 'card'">
@@ -92,16 +92,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useNatsStore } from '@/stores/nats'
 import { useDashboardStore } from '@/stores/dashboard'
-import { Kvm } from '@nats-io/kv'
 import { JSONPath } from 'jsonpath-plus'
 import JsonViewer from '@/components/common/JsonViewer.vue'
 import WidgetStateOverlay from '@/components/dashboard/WidgetStateOverlay.vue'
 import { useThresholds } from '@/composables/useThresholds'
+import { useNatsKvWatcher } from '@/composables/useNatsKvWatcher'
 import type { WidgetConfig } from '@/types/dashboard'
-import { decodeBytes } from '@/utils/encoding'
 import { resolveTemplate } from '@/utils/variables'
 
 const props = withDefaults(defineProps<{
@@ -115,13 +114,6 @@ const natsStore = useNatsStore()
 const dashboardStore = useDashboardStore()
 const { evaluateThresholds } = useThresholds()
 
-const kvValue = ref<string | null>(null)
-const revision = ref<number>(0)
-const lastUpdated = ref<string | null>(null)
-const loading = ref(true)
-const error = ref<string | null>(null)
-let watcher: any = null
-
 const resolvedConfig = computed(() => {
   const vars = dashboardStore.currentVariableValues
   return {
@@ -131,29 +123,62 @@ const resolvedConfig = computed(() => {
   }
 })
 
-const processedValue = computed(() => {
-  if (kvValue.value === null) return null
-  let val: any = kvValue.value
-  let isJson = false
-  try {
-    val = JSON.parse(kvValue.value)
-    isJson = true
-  } catch { }
+// The watcher handles lifecycle, dashboard:refresh, reconnects, and variable
+// changes (it resolves templates internally, so pass the raw config values).
+const { rows, loading, error: watchError } = useNatsKvWatcher(
+  () => props.config.dataSource.kvBucket || '',
+  () => props.config.dataSource.kvKey || ''
+)
 
-  if (resolvedConfig.value.jsonPath && isJson) {
+// Latest entry for the watched key. Kept (stale) across disconnects;
+// cleared only when the key is deleted or missing while connected.
+const kvData = ref<any>(null)
+const wasJson = ref(false)
+const hasValue = ref(false)
+const revision = ref<number>(0)
+const lastUpdated = ref<string | null>(null)
+
+watch(rows, (map) => {
+  const row = map.values().next().value
+  if (row) {
+    const data: any = row.data
+    if (data && typeof data === 'object' && '__value__' in data) {
+      // Non-JSON value — the watcher wraps the raw string
+      kvData.value = data.__value__
+      wasJson.value = false
+    } else {
+      kvData.value = data
+      wasJson.value = true
+    }
+    hasValue.value = true
+    revision.value = row.revision
+    lastUpdated.value = new Date().toLocaleTimeString()
+  } else if (natsStore.isConnected) {
+    hasValue.value = false
+    kvData.value = null
+  }
+})
+
+const error = computed(() => {
+  const { bucket, key } = resolvedConfig.value
+  if (!bucket || !key || bucket === 'my-bucket') return 'Config required'
+  return watchError.value
+})
+
+const processedValue = computed(() => {
+  if (!hasValue.value) return null
+  if (resolvedConfig.value.jsonPath && wasJson.value) {
     try {
-      const extracted = JSONPath({ 
-        path: resolvedConfig.value.jsonPath, 
-        json: val, 
-        wrap: false 
+      return JSONPath({
+        path: resolvedConfig.value.jsonPath,
+        json: kvData.value,
+        wrap: false
       })
-      if (extracted === undefined) return undefined
-      return extracted
     } catch (err) {
       return undefined
     }
   }
-  return val
+  return kvData.value
 })
 
 const isSingleValue = computed(() => {
@@ -177,93 +202,6 @@ const valueColor = computed(() => {
   return color || 'var(--text)'
 })
 
-async function loadKvValue() {
-  const { bucket, key } = resolvedConfig.value
-  if (!bucket || !key || bucket === 'my-bucket') {
-    error.value = 'Config required'
-    loading.value = false
-    return
-  }
-  
-  // Grug say: If not connected, stop here. 
-  // Do NOT set error.value, just leave existing data (stale) or loading state.
-  if (!natsStore.nc || !natsStore.isConnected) {
-    loading.value = false
-    return
-  }
-
-  try {
-    loading.value = true
-    error.value = null
-    const kvm = new Kvm(natsStore.nc)
-    const kv = await kvm.open(bucket)
-    const entry = await kv.get(key)
-    if (entry) {
-      kvValue.value = decodeBytes(entry.value)
-      revision.value = entry.revision
-      lastUpdated.value = new Date().toLocaleTimeString()
-    } else {
-      kvValue.value = null
-    }
-    const iter = await kv.watch({ key })
-    watcher = iter
-    ;(async () => {
-      try {
-        for await (const e of iter) {
-          if (e.key === key) {
-            if (e.operation === 'PUT') {
-              const decoder = new TextDecoder()
-              kvValue.value = decoder.decode(e.value!)
-              revision.value = e.revision
-              lastUpdated.value = new Date().toLocaleTimeString()
-            } else if (e.operation === 'DEL' || e.operation === 'PURGE') {
-              kvValue.value = null
-              revision.value = e.revision
-              lastUpdated.value = new Date().toLocaleTimeString()
-            }
-          }
-        }
-      } catch (err) {}
-    })()
-    loading.value = false
-  } catch (err: any) {
-    if (err.message.includes('stream not found')) {
-      error.value = `Bucket not found`
-    } else {
-      error.value = err.message
-    }
-    loading.value = false
-  }
-}
-
-function cleanup() {
-  if (watcher) { try { watcher.stop() } catch {} watcher = null }
-}
-
-function handleRefresh() {
-  cleanup()
-  if (natsStore.isConnected) loadKvValue()
-}
-
-onMounted(() => {
-  if (natsStore.isConnected) loadKvValue()
-  window.addEventListener('dashboard:refresh', handleRefresh)
-})
-onUnmounted(() => {
-  cleanup()
-  window.removeEventListener('dashboard:refresh', handleRefresh)
-})
-watch(resolvedConfig, () => { cleanup(); if (natsStore.isConnected) loadKvValue() }, { deep: true })
-
-watch(() => natsStore.isConnected, (isConnected) => {
-  if (isConnected) {
-    loadKvValue()
-  } else { 
-    cleanup()
-    loading.value = false
-    // Grug say: Keep old value on screen.
-  }
-})
 </script>
 
 <style scoped>

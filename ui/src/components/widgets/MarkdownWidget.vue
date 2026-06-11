@@ -33,7 +33,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onUnmounted, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { JSONPath } from 'jsonpath-plus'
@@ -41,9 +41,8 @@ import { useDashboardStore } from '@/stores/dashboard'
 import { useWidgetDataStore } from '@/stores/widgetData'
 import { useNatsStore } from '@/stores/nats'
 import { useWidgetOperations } from '@/composables/useWidgetOperations'
-import { Kvm } from '@nats-io/kv'
+import { useNatsKvWatcher } from '@/composables/useNatsKvWatcher'
 import { resolveTemplate } from '@/utils/variables'
-import { decodeBytes } from '@/utils/encoding'
 import type { WidgetConfig } from '@/types/dashboard'
 
 const props = withDefaults(defineProps<{
@@ -62,10 +61,6 @@ const { updateWidgetConfiguration } = useWidgetOperations()
 const isEditing = ref(false)
 const localContent = ref('')
 
-// KV State
-const kvData = ref<any>(null)
-let kvWatcher: any = null
-
 // --- Data Logic ---
 
 // 1. Subscription Data (NATS Core/JetStream)
@@ -79,77 +74,42 @@ const latestSubData = computed(() => {
   return buffer.value[buffer.value.length - 1].value
 })
 
-// 2. KV Data (Direct Watch)
-async function setupKvWatcher() {
-  if (props.config.dataSource.type !== 'kv') return
-  if (!natsStore.nc || !natsStore.isConnected) return
+// 2. KV Data — the watcher handles lifecycle, dashboard:refresh, reconnects,
+// and variable changes (it resolves templates internally). Watches nothing
+// when the widget isn't in KV mode.
+const { rows: kvRows } = useNatsKvWatcher(
+  () => props.config.dataSource.type === 'kv' ? (props.config.dataSource.kvBucket || '') : '',
+  () => props.config.dataSource.type === 'kv' ? (props.config.dataSource.kvKey || '') : ''
+)
 
-  const bucket = resolveTemplate(props.config.dataSource.kvBucket, dashboardStore.currentVariableValues)
-  const key = resolveTemplate(props.config.dataSource.kvKey, dashboardStore.currentVariableValues)
+// Latest KV value. Kept (stale) across disconnects; cleared when the key is
+// deleted or missing while connected, or when leaving KV mode.
+const kvData = ref<any>(null)
 
-  if (!bucket || !key) return
-
-  try {
-    const kvm = new Kvm(natsStore.nc)
-    const kv = await kvm.open(bucket)
-    
-    // Initial Get
-    try {
-      const entry = await kv.get(key)
-      if (entry) {
-        processKvEntry(entry.value)
-      } else {
-        kvData.value = null // Key missing
-      }
-    } catch {
-      kvData.value = null
-    }
-
-    // Watch
-    if (kvWatcher) { try { kvWatcher.stop() } catch {} }
-    kvWatcher = await kv.watch({ key })
-    
-    ;(async () => {
-      for await (const e of kvWatcher) {
-        if (e.key === key) {
-          if (e.operation === 'PUT') {
-            processKvEntry(e.value!)
-          } else if (e.operation === 'DEL' || e.operation === 'PURGE') {
-            kvData.value = null
-          }
-        }
-      }
-    })()
-  } catch (err) {
-    console.warn('[Markdown] KV Error:', err)
-  }
-}
-
-function processKvEntry(data: Uint8Array) {
-  try {
-    const str = decodeBytes(data)
-    let val = JSON.parse(str)
-    
-    // Apply JSONPath if configured
-    if (props.config.jsonPath) {
+watch(kvRows, (map) => {
+  const row = map.values().next().value
+  if (row) {
+    let val: any = row.data
+    if (val && typeof val === 'object' && '__value__' in val) {
+      // Non-JSON value — the watcher wraps the raw string
+      val = val.__value__
+    } else if (props.config.jsonPath) {
       try {
-        const extracted = JSONPath({ 
-          path: props.config.jsonPath, 
-          json: val, 
-          wrap: false 
+        const extracted = JSONPath({
+          path: props.config.jsonPath,
+          json: val,
+          wrap: false
         })
         if (extracted !== undefined) val = extracted
       } catch (err) {
         console.warn('[Markdown] JSONPath Error:', err)
       }
     }
-    
     kvData.value = val
-  } catch {
-    // If not JSON, return as simple value object
-    kvData.value = decodeBytes(data)
+  } else if (props.config.dataSource.type !== 'kv' || natsStore.isConnected) {
+    kvData.value = null
   }
-}
+})
 
 // 3. Flatten Helper
 function flatten(obj: any, prefix = '', res: Record<string, any> = {}) {
@@ -241,21 +201,6 @@ function saveChanges() {
     })
   }
 }
-
-// Lifecycle
-watch(() => [props.config.dataSource, dashboardStore.currentVariableValues, natsStore.isConnected], () => {
-  if (props.config.dataSource.type === 'kv') {
-    setupKvWatcher()
-  } else {
-    if (kvWatcher) { try { kvWatcher.stop() } catch {} kvWatcher = null }
-    // We are definitely not in KV mode here, so safe to clear
-    kvData.value = null
-  }
-}, { deep: true, immediate: true })
-
-onUnmounted(() => {
-  if (kvWatcher) { try { kvWatcher.stop() } catch {} }
-})
 </script>
 
 <style scoped>

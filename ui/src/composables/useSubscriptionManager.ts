@@ -1,6 +1,7 @@
 // ui/src/composables/useSubscriptionManager.ts
 import { useNatsStore } from '@/stores/nats'
 import { useWidgetDataStore } from '@/stores/widgetData'
+import { useToast } from '@/composables/useToast'
 import { JSONPath } from 'jsonpath-plus'
 import type { Subscription } from '@nats-io/nats-core'
 import { 
@@ -58,6 +59,7 @@ const MAX_QUEUE_SIZE = 5000
 export function useSubscriptionManager() {
   const natsStore = useNatsStore()
   const dataStore = useWidgetDataStore()
+  const toast = useToast()
   
   const subscriptions = new Map<string, SubscriptionRef>()
   const stats: SubscriptionStats = {
@@ -149,6 +151,7 @@ export function useSubscriptionManager() {
 
   async function handleReconnect() {
     const subsToRefresh = Array.from(subscriptions.entries())
+    let failedCount = 0
     for (const [key, subRef] of subsToRefresh) {
       if (subRef.listeners.size === 0) {
         subscriptions.delete(key)
@@ -161,7 +164,13 @@ export function useSubscriptionManager() {
         console.error(`[SubMgr] Failed to refresh ${subRef.subject}:`, err)
         subRef.lastError = String(err)
         stats.subscriptionErrors++
+        failedCount++
       }
+    }
+    // Affected widgets silently stop updating otherwise — one aggregated
+    // toast per reconnect, not one per subscription.
+    if (failedCount > 0) {
+      toast.error(`Failed to restore ${failedCount} widget subscription${failedCount === 1 ? '' : 's'} after reconnect`)
     }
   }
 
