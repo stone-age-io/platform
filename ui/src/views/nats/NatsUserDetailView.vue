@@ -18,6 +18,10 @@ const loading = ref(true)
 const deleting = ref(false)
 const regenerating = ref(false)
 const showRegenerateModal = ref(false)
+const revoking = ref(false)
+const showRevokeModal = ref(false)
+const reenabling = ref(false)
+const showReenableModal = ref(false)
 
 function getSubjectArray(val: any): string[] {
   if (!val) return []
@@ -106,6 +110,51 @@ async function confirmRegenerate() {
     toast.error(err.message || 'Failed to regenerate credentials')
   } finally {
     regenerating.value = false
+  }
+}
+
+/**
+ * Revoke the user's currently distributed credentials.
+ *
+ * pb-nats adds the user's public key to the owning account's revocation list
+ * (embedded in the account JWT) and marks the user inactive. NATS then rejects
+ * the user's existing .creds immediately. The cutoff is permanent — only a
+ * freshly issued JWT (see re-enable) is accepted afterward.
+ */
+async function confirmRevoke() {
+  if (!user.value) return
+
+  revoking.value = true
+  try {
+    await pb.collection('nats_users').update(user.value.id, { revoke: true })
+    toast.success('Credentials revoked')
+    showRevokeModal.value = false
+    await loadUser()
+  } catch (err: any) {
+    toast.error(err.message || 'Failed to revoke credentials')
+  } finally {
+    revoking.value = false
+  }
+}
+
+/**
+ * Re-enable a revoked/inactive user by marking them active and issuing a fresh
+ * JWT. The new credentials carry a later issue time so NATS accepts them, while
+ * any previously revoked credentials stay permanently invalid.
+ */
+async function confirmReenable() {
+  if (!user.value) return
+
+  reenabling.value = true
+  try {
+    await pb.collection('nats_users').update(user.value.id, { active: true, regenerate: true })
+    toast.success('User re-enabled with fresh credentials')
+    showReenableModal.value = false
+    await loadUser()
+  } catch (err: any) {
+    toast.error(err.message || 'Failed to re-enable user')
+  } finally {
+    reenabling.value = false
   }
 }
 
@@ -277,23 +326,45 @@ onMounted(() => {
         <div class="space-y-6">
           <BaseCard>
             <template #header>
-              <div class="flex justify-between items-center mb-4">
+              <div class="flex flex-wrap justify-between items-center gap-2 mb-4">
                 <h3 class="card-title text-base">Security & Credentials</h3>
-                <div class="flex gap-2">
-                  <button 
-                    v-if="user.creds_file"
-                    @click="downloadCredsFile"
-                    class="btn btn-sm btn-outline"
+                <div class="flex flex-wrap gap-2">
+                  <!-- Active user: download / rotate / revoke -->
+                  <template v-if="user.active">
+                    <button
+                      v-if="user.creds_file"
+                      @click="downloadCredsFile"
+                      class="btn btn-sm btn-outline"
+                    >
+                      <span class="text-lg">📥</span>
+                      .creds
+                    </button>
+                    <button
+                      @click="showRegenerateModal = true"
+                      class="btn btn-sm btn-outline"
+                      title="Issue a fresh .creds file"
+                    >
+                      <span class="text-lg">🔄</span>
+                      Regenerate
+                    </button>
+                    <button
+                      @click="showRevokeModal = true"
+                      class="btn btn-sm btn-outline btn-error"
+                      title="Reject this user's current credentials"
+                    >
+                      <span class="text-lg">⛔</span>
+                      Revoke
+                    </button>
+                  </template>
+                  <!-- Revoked / inactive user: re-enable with fresh credentials -->
+                  <button
+                    v-else
+                    @click="showReenableModal = true"
+                    class="btn btn-sm btn-outline btn-success"
+                    title="Re-enable this user and issue new credentials"
                   >
-                    <span class="text-lg">📥</span>
-                    .creds
-                  </button>
-                  <button 
-                    @click="showRegenerateModal = true" 
-                    class="btn btn-sm btn-outline btn-error"
-                    title="Regenerate credentials"
-                  >
-                    <span class="text-lg">🔄</span>
+                    <span class="text-lg">✅</span>
+                    Re-enable
                   </button>
                 </div>
               </div>
@@ -320,6 +391,16 @@ onMounted(() => {
                     <span class="font-medium text-sm">{{ user.bearer_token ? 'Enabled' : 'Disabled' }}</span>
                   </div>
                 </div>
+              </div>
+
+              <!-- Revoked / inactive notice -->
+              <div v-if="!user.active" class="alert alert-warning py-2 text-sm">
+                <span class="text-lg">⛔</span>
+                <span>
+                  This user is inactive — any credentials it currently holds are rejected by NATS.
+                  Use <span class="font-semibold">Re-enable</span> to issue a fresh <code>.creds</code> file;
+                  previously revoked credentials stay permanently invalid.
+                </span>
               </div>
 
               <!-- JWT Expiry -->
@@ -360,19 +441,21 @@ onMounted(() => {
       <div class="modal-box">
         <h3 class="font-bold text-lg text-warning">Regenerate Credentials?</h3>
         <p class="py-4">
-          This will invalidate the existing credentials immediately. Any device using the current 
-          <code>.creds</code> file will lose connectivity until updated with the new file.
+          A fresh <code>.creds</code> file will be issued for this user. Note that regeneration
+          does <strong>not</strong> invalidate previously distributed credentials — they keep
+          working until the user is revoked. To immediately reject the current credentials, use
+          <span class="font-semibold">Revoke</span> instead.
         </p>
         <div class="modal-action">
-          <button 
-            class="btn" 
+          <button
+            class="btn"
             @click="showRegenerateModal = false"
             :disabled="regenerating"
           >
             Cancel
           </button>
-          <button 
-            class="btn btn-error" 
+          <button
+            class="btn btn-warning"
             @click="confirmRegenerate"
             :disabled="regenerating"
           >
@@ -383,6 +466,75 @@ onMounted(() => {
       </div>
       <form method="dialog" class="modal-backdrop">
         <button @click="showRegenerateModal = false">close</button>
+      </form>
+    </dialog>
+
+    <!-- Revoke Modal -->
+    <dialog class="modal" :class="{ 'modal-open': showRevokeModal }">
+      <div class="modal-box">
+        <h3 class="font-bold text-lg text-error">Revoke Credentials?</h3>
+        <p class="py-4">
+          This immediately and permanently invalidates every credential currently issued to
+          <span class="font-mono font-semibold">{{ user?.nats_username }}</span>. NATS will reject
+          their existing <code>.creds</code> file, and the user will be marked inactive.
+        </p>
+        <p class="pb-4 text-sm text-base-content/70">
+          The revocation is permanent and cannot be lifted for the current credentials. You can
+          later <span class="font-semibold">Re-enable</span> the user, which issues brand-new
+          credentials while the revoked ones stay invalid.
+        </p>
+        <div class="modal-action">
+          <button
+            class="btn"
+            @click="showRevokeModal = false"
+            :disabled="revoking"
+          >
+            Cancel
+          </button>
+          <button
+            class="btn btn-error"
+            @click="confirmRevoke"
+            :disabled="revoking"
+          >
+            <span v-if="revoking" class="loading loading-spinner"></span>
+            Revoke
+          </button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button @click="showRevokeModal = false">close</button>
+      </form>
+    </dialog>
+
+    <!-- Re-enable Modal -->
+    <dialog class="modal" :class="{ 'modal-open': showReenableModal }">
+      <div class="modal-box">
+        <h3 class="font-bold text-lg text-success">Re-enable User?</h3>
+        <p class="py-4">
+          This marks <span class="font-mono font-semibold">{{ user?.nats_username }}</span> active
+          and issues a fresh <code>.creds</code> file. You'll need to distribute the new credentials
+          to the user's devices — any previously revoked credentials remain permanently invalid.
+        </p>
+        <div class="modal-action">
+          <button
+            class="btn"
+            @click="showReenableModal = false"
+            :disabled="reenabling"
+          >
+            Cancel
+          </button>
+          <button
+            class="btn btn-success"
+            @click="confirmReenable"
+            :disabled="reenabling"
+          >
+            <span v-if="reenabling" class="loading loading-spinner"></span>
+            Re-enable
+          </button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button @click="showReenableModal = false">close</button>
       </form>
     </dialog>
   </div>

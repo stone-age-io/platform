@@ -185,6 +185,7 @@ export interface NatsUser extends AuthRecord {
   bearer_token?: boolean
   jwt_expires_at?: string
   regenerate?: boolean
+  revoke?: boolean
   active?: boolean
   publish_permissions?: string
   subscribe_permissions?: string
