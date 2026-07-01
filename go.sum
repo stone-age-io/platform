@@ -81,8 +81,8 @@ github.com/sirupsen/logrus v1.9.4 h1:TsZE7l11zFCLZnZ+teH4Umoq5BhEIfIzfRDZ1Uzql2w
 github.com/sirupsen/logrus v1.9.4/go.mod h1:ftWc9WdOfJ0a92nsE2jF5u5ZwH8Bv2zdeOC42RjbV2g=
 github.com/skeeeon/pb-audit v0.0.0-20260509164131-d384bb182a41 h1:yiH5gw55kFzScsbcJxJ+GS6vy4h2R3QxVQM9gXoN2ko=
 github.com/skeeeon/pb-audit v0.0.0-20260509164131-d384bb182a41/go.mod h1:R4eorDgzHYQrz/V4INCY8VXvH5fGXCm7aTIiBZeiTFE=
-github.com/skeeeon/pb-nats v0.0.0-20260701031601-4f93f536eef4 h1:wd/mglu6a2Q/75+tBg5W3u5w5qOncQjl3AjMTlAMM2I=
-github.com/skeeeon/pb-nats v0.0.0-20260701031601-4f93f536eef4/go.mod h1:zeUvzzEfTzJrZH3ZMXO3uGKc6ABK488YXoN60Vc82qc=
+github.com/skeeeon/pb-nats v0.0.0-20260701043900-c38f9be1e285 h1:Rh7n+Exy2Es09zmXH4+sfPMB+MMfIgaLmfnNfqGGzn8=
+github.com/skeeeon/pb-nats v0.0.0-20260701043900-c38f9be1e285/go.mod h1:zeUvzzEfTzJrZH3ZMXO3uGKc6ABK488YXoN60Vc82qc=
 github.com/skeeeon/pb-nebula v0.0.0-20260611021205-2e1b4dfdf33f h1:dfqGUmxj3Nhn4BEpVK5c1MyoWj2at+Q0izHpm8HZrFw=
 github.com/skeeeon/pb-nebula v0.0.0-20260611021205-2e1b4dfdf33f/go.mod h1:yGocVgnRbZducO0uRHLGpIaiTo+aRT94pT+KNKI3OJw=
 github.com/skeeeon/pb-tenancy v0.0.0-20260509164438-78df1343ea65 h1:Vk5Ph9kELDgR5kXLbii3pkwGnh/fkjfMEh47MNYbSbc=

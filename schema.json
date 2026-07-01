@@ -2544,7 +2544,7 @@
         "autogeneratePattern": "",
         "help": "",
         "hidden": false,
-        "id": "relation2607505338",
+        "id": "text2607505338",
         "max": 200,
         "min": 0,
         "name": "account_id",
