@@ -26,6 +26,7 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 			email, _ := cmd.Flags().GetString("email")
 			password, _ := cmd.Flags().GetString("password")
 			orgName, _ := cmd.Flags().GetString("org")
+			operatorOrgName, _ := cmd.Flags().GetString("operator-org")
 
 			if email == "" {
 				fmt.Print("Admin Email: ")
@@ -36,6 +37,10 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 				bytePassword, _ := term.ReadPassword(int(syscall.Stdin))
 				password = string(bytePassword)
 				fmt.Println()
+			}
+			if operatorOrgName == "" {
+				fmt.Print("Operator Organization (blank to skip): ")
+				fmt.Scanln(&operatorOrgName)
 			}
 
 			usersCol, err := app.FindCollectionByNameOrId("users")
@@ -83,11 +88,21 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 				org.Set("name", orgName)
 				org.Set("active", true)
 				org.Set("owner", user.Id)
-				// The org-provisioning hook skips "System" by name, avoiding duplicate provisioning.
+				// The org-provisioning hook skips system orgs, avoiding duplicate
+				// provisioning — this org adopts the pre-seeded $SYS NATS records below.
+				org.Set("is_system_org", true)
 				if err := app.Save(org); err != nil {
 					log.Fatalf("❌ Failed to create organization: %v", err)
 				}
 				log.Printf("✅ Created organization '%s'", orgName)
+			}
+
+			// Backfill the flag on re-runs against DBs bootstrapped before it existed.
+			if !org.GetBool("is_system_org") {
+				org.Set("is_system_org", true)
+				if err := app.Save(org); err != nil {
+					log.Printf("⚠️ Failed to set system org flag: %v", err)
+				}
 			}
 
 			linkSingleton(app, natsOpts.AccountCollectionName, org.Id, "NATS Account", "name", orgName)
@@ -115,23 +130,23 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 				log.Fatalf("❌ Failed to find memberships collection '%s': %v", memberColName, err)
 			}
 
-			existingMember, _ := app.FindFirstRecordByFilter(memberColName, "user = {:user} && organization = {:org}", map[string]interface{}{
-				"user": user.Id,
-				"org":  org.Id,
-			})
+			ensureOwnerMembership(app, memberCol, user, org)
 
-			if existingMember == nil {
-				member := core.NewRecord(memberCol)
-				member.Set("user", user.Id)
-				member.Set("organization", org.Id)
-				member.Set("role", "owner")
-				if err := app.Save(member); err != nil {
-					log.Fatalf("❌ Failed to create membership: %v", err)
-				}
-				log.Printf("✅ Linked user to organization as Owner")
+			// Operator organization: the platform operator's own org, whose NATS
+			// account acts as the hub for cross-account service imports (helpdesk
+			// etc.). Provisioned like any regular org via the org-provisioning hook.
+			operatorOrg := ensureOperatorOrg(app, orgCol, user, operatorOrgName)
+			if operatorOrg != nil {
+				ensureOwnerMembership(app, memberCol, user, operatorOrg)
 			}
 
-			user.Set("current_organization", org.Id)
+			// Default working context: the operator org is the day-to-day org;
+			// the System org exists only for cluster-level NATS operations.
+			currentOrg := org
+			if operatorOrg != nil {
+				currentOrg = operatorOrg
+			}
+			user.Set("current_organization", currentOrg.Id)
 			if err := app.Save(user); err != nil {
 				log.Printf("⚠️ Failed to set user context: %v", err)
 			}
@@ -143,42 +158,90 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 	cmd.Flags().String("email", "", "Email address for the admin user")
 	cmd.Flags().String("password", "", "Password for the admin user")
 	cmd.Flags().String("org", "System", "Name of the initial organization")
+	cmd.Flags().String("operator-org", "", "Name of the platform operator's organization (hub for shared services)")
 
 	app.RootCmd.AddCommand(cmd)
 }
 
 // linkSingleton adopts the single pre-existing NATS Account/User/Role
 // (seeded by `pb-nats superuser upsert`) into the given organization.
-// Fatal on ambiguous state — more than one record of the seed collection
-// means bootstrap cannot safely pick one.
+// Only unlinked records are candidates — regular orgs provision their own
+// records via hooks, so those must not make adoption look ambiguous.
+// Fatal only when more than one unlinked record exists.
 func linkSingleton(app *pocketbase.PocketBase, colName, orgID, label, nameField, orgName string) {
 	col, _ := app.FindCollectionByNameOrId(colName)
 	if col == nil {
 		return
 	}
-	count, _ := app.CountRecords(col)
-	switch {
-	case count == 0:
-		log.Printf("⚠️ Warning: No %ss found. Did you run 'superuser upsert' first?", label)
+
+	if linked, _ := app.FindFirstRecordByFilter(col.Id, "organization = {:org}", map[string]interface{}{"org": orgID}); linked != nil {
+		log.Printf("ℹ️ %s already linked to this organization", label)
 		return
-	case count > 1:
-		log.Fatalf("❌ Ambiguous state: Found %d %ss. Expected exactly 1 (System) for bootstrap.", count, label)
 	}
 
-	rec, err := app.FindFirstRecordByFilter(col.Id, "1=1")
-	if err != nil {
-		return
-	}
-	switch rec.GetString("organization") {
-	case "":
+	unlinked, _ := app.FindRecordsByFilter(col.Id, "organization = ''", "", 2, 0)
+	switch len(unlinked) {
+	case 0:
+		log.Printf("⚠️ Warning: No unlinked %s found. Did you run 'superuser upsert' first?", label)
+	case 1:
+		rec := unlinked[0]
 		rec.Set("organization", orgID)
 		if err := app.Save(rec); err != nil {
 			log.Fatalf("❌ Failed to update %s: %v", label, err)
 		}
 		log.Printf("🔗 Linked %s '%s' to Organization '%s'", label, rec.GetString(nameField), orgName)
-	case orgID:
-		log.Printf("ℹ️ %s already linked to this organization", label)
 	default:
-		log.Printf("⚠️ %s is linked to a different organization. Skipping.", label)
+		log.Fatalf("❌ Ambiguous state: multiple unlinked %ss. Expected exactly 1 (System) for bootstrap.", label)
 	}
+}
+
+// ensureOwnerMembership creates the admin user's Owner membership in the
+// given organization if it doesn't already exist.
+func ensureOwnerMembership(app *pocketbase.PocketBase, memberCol *core.Collection, user, org *core.Record) {
+	existing, _ := app.FindFirstRecordByFilter(memberCol.Id, "user = {:user} && organization = {:org}", map[string]interface{}{
+		"user": user.Id,
+		"org":  org.Id,
+	})
+	if existing != nil {
+		return
+	}
+	member := core.NewRecord(memberCol)
+	member.Set("user", user.Id)
+	member.Set("organization", org.Id)
+	member.Set("role", "owner")
+	if err := app.Save(member); err != nil {
+		log.Fatalf("❌ Failed to create membership for '%s': %v", org.GetString("name"), err)
+	}
+	log.Printf("✅ Linked user to organization '%s' as Owner", org.GetString("name"))
+}
+
+// ensureOperatorOrg finds or creates the single operator organization.
+// Saving a new org fires the org-provisioning hook, which creates its NATS
+// account (the services hub) and Nebula CA like any regular organization.
+// Returns nil when no operator org exists and no name was given.
+func ensureOperatorOrg(app *pocketbase.PocketBase, orgCol *core.Collection, user *core.Record, name string) *core.Record {
+	if existing, _ := app.FindFirstRecordByFilter(orgCol.Id, "is_operator_org = true"); existing != nil {
+		log.Printf("🏢 Operator organization '%s' already exists.", existing.GetString("name"))
+		return existing
+	}
+	if name == "" {
+		log.Printf("⚠️ No operator organization configured — cross-account service imports (helpdesk etc.) need one. Re-run bootstrap with --operator-org to add it.")
+		return nil
+	}
+
+	// A same-named org may predate the flag (e.g. created via the UI).
+	// Adopt it instead of tripping the unique name index.
+	org, _ := app.FindFirstRecordByFilter(orgCol.Id, "name = {:name}", map[string]interface{}{"name": name})
+	if org == nil {
+		org = core.NewRecord(orgCol)
+		org.Set("name", name)
+		org.Set("active", true)
+		org.Set("owner", user.Id)
+	}
+	org.Set("is_operator_org", true)
+	if err := app.Save(org); err != nil {
+		log.Fatalf("❌ Failed to create operator organization: %v", err)
+	}
+	log.Printf("✅ Created operator organization '%s'", name)
+	return org
 }

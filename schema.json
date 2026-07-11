@@ -3271,7 +3271,7 @@
     "listRule": "@request.auth.id != '' && (@request.auth.is_operator = true || (@collection.memberships.user.id ?= @request.auth.id && @collection.memberships.organization.id ?= id))",
     "viewRule": "@request.auth.id != '' && (@request.auth.is_operator = true || (@collection.memberships.user.id ?= @request.auth.id && @collection.memberships.organization.id ?= id))",
     "createRule": "@request.auth.id != '' && @request.auth.is_operator = true",
-    "updateRule": "@request.auth.is_operator = true || owner = @request.auth.id",
+    "updateRule": "@request.auth.is_operator = true || (owner = @request.auth.id && @request.body.managed:isset = false && @request.body.is_operator_org:isset = false && @request.body.is_system_org:isset = false)",
     "deleteRule": "@request.auth.is_operator = true || owner = @request.auth.id",
     "name": "organizations",
     "type": "base",
@@ -3365,6 +3365,33 @@
       },
       {
         "hidden": false,
+        "id": "bool_is_system_org",
+        "name": "is_system_org",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "bool"
+      },
+      {
+        "hidden": false,
+        "id": "bool_is_operator_org",
+        "name": "is_operator_org",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "bool"
+      },
+      {
+        "hidden": false,
+        "id": "bool_managed_org",
+        "name": "managed",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "bool"
+      },
+      {
+        "hidden": false,
         "id": "autodate2990389176",
         "name": "created",
         "onCreate": true,
@@ -3385,7 +3412,9 @@
       }
     ],
     "indexes": [
-      "CREATE UNIQUE INDEX idx_unique_org_name ON organizations (name)"
+      "CREATE UNIQUE INDEX idx_unique_org_name ON organizations (name)",
+      "CREATE UNIQUE INDEX idx_one_system_org ON organizations (is_system_org) WHERE is_system_org = true",
+      "CREATE UNIQUE INDEX idx_one_operator_org ON organizations (is_operator_org) WHERE is_operator_org = true"
     ],
     "system": false
   },

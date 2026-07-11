@@ -161,6 +161,9 @@ onMounted(() => loadData())
             <span class="badge" :class="org.active ? 'badge-success' : 'badge-error'">
               {{ org.active ? 'Active' : 'Inactive' }}
             </span>
+            <span v-if="org.is_system_org" class="badge badge-neutral">System</span>
+            <span v-if="org.is_operator_org" class="badge badge-secondary">Operator</span>
+            <span v-if="org.managed" class="badge badge-primary">Managed</span>
           </div>
         </div>
         <div class="flex gap-2">

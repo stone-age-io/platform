@@ -30,6 +30,9 @@ export interface Organization extends BaseRecord {
   active: boolean
   owner: string // User ID
   logo?: string
+  is_system_org?: boolean // adopts the $SYS NATS records (cluster ops only)
+  is_operator_org?: boolean // the platform operator's org; its NATS account is the services hub
+  managed?: boolean // exports its service events into the operator hub account
 }
 
 // Membership

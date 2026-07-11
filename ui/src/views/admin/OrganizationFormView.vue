@@ -22,8 +22,15 @@ const form = ref({
   name: '',
   description: '',
   active: true,
+  managed: false,
   owner: '',
 })
+
+// The system and operator orgs are infrastructure — never offer the managed
+// toggle on them (the export hook skips them anyway).
+const isReservedOrg = computed(
+  () => !!existingRecord.value?.is_system_org || !!existingRecord.value?.is_operator_org
+)
 
 // Logo state
 // - logoFile: a newly-selected File (null if user hasn't picked anything new)
@@ -77,6 +84,7 @@ async function loadData() {
       name: record.name,
       description: record.description || '',
       active: record.active,
+      managed: !!record.managed,
       owner: record.owner,
     }
     if (record.logo) {
@@ -179,6 +187,9 @@ async function submit() {
     data.append('name', form.value.name)
     data.append('description', form.value.description)
     data.append('active', String(form.value.active))
+    if (!isReservedOrg.value) {
+      data.append('managed', String(form.value.managed))
+    }
     data.append('owner', ownerId)
     if (logoFile.value) {
       data.append('logo', logoFile.value)
@@ -262,6 +273,17 @@ onMounted(() => {
                 <label class="label cursor-pointer justify-start gap-4">
                   <input v-model="form.active" type="checkbox" class="toggle toggle-success" :disabled="loading" />
                   <span class="label-text">Active</span>
+                </label>
+              </div>
+
+              <!-- Managed Toggle -->
+              <div v-if="!isReservedOrg" class="form-control">
+                <label class="label cursor-pointer justify-start gap-4">
+                  <input v-model="form.managed" type="checkbox" class="toggle toggle-primary" :disabled="loading" />
+                  <span class="label-text">Managed</span>
+                </label>
+                <label class="label pt-0">
+                  <span class="label-text-alt text-base-content/60">Export this org's service events to the operator account (helpdesk)</span>
                 </label>
               </div>
 

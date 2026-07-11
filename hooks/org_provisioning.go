@@ -26,8 +26,9 @@ type OrgProvisioningOptions struct {
 // which the bootstrap command handles explicitly).
 func RegisterOrgProvisioning(app *pocketbase.PocketBase, opts OrgProvisioningOptions) {
 	app.OnRecordAfterCreateSuccess(opts.OrgCollection).BindFunc(func(e *core.RecordEvent) error {
-		// Prevent recursion if this is the System org we update manually in bootstrap.
-		if e.Record.GetString("name") == "System" {
+		// The System org adopts the pre-seeded $SYS records in bootstrap instead.
+		// Flag is authoritative; the name check covers DBs bootstrapped before it existed.
+		if e.Record.GetBool("is_system_org") || e.Record.GetString("name") == "System" {
 			return e.Next()
 		}
 

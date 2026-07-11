@@ -89,6 +89,9 @@ func setDefaults() {
 	viper.SetDefault("nats.export_collection_name", "nats_account_exports")
 	viper.SetDefault("nats.import_collection_name", "nats_account_imports")
 	viper.SetDefault("nats.encryption_key", "")
+	// Subject subtree exported from every managed org's account into the
+	// operator hub account (import remaps it to "<prefix>.{orgId}.>").
+	viper.SetDefault("nats.managed_export_subject", "helpdesk.>")
 
 	// Nebula
 	viper.SetDefault("nebula.ca_collection_name", "nebula_ca")
@@ -206,6 +209,20 @@ func main() {
 		NatsMaxSubscriptions:         viper.GetInt("nats.default_limits.max_subscriptions"),
 		NatsMaxPayload:               viper.GetInt("nats.default_limits.max_payload"),
 		NebulaDefaultCAValidityYears: viper.GetInt("nebula.default_ca_validity_years"),
+	})
+
+	// Platform-owned hooks: managed orgs export their service-event subtree
+	// into the operator hub account with an org-prefixed local subject.
+	managedExportSubject := viper.GetString("nats.managed_export_subject")
+	if !strings.HasSuffix(managedExportSubject, ".>") {
+		log.Fatalf("❌ nats.managed_export_subject must end in '.>' (got %q)", managedExportSubject)
+	}
+	hooks.RegisterManagedOrgExports(app, hooks.ManagedOrgExportsOptions{
+		OrgCollection:     tenancyOptions.OrganizationsCollection,
+		AccountCollection: natsOptions.AccountCollectionName,
+		ExportCollection:  natsOptions.ExportCollectionName,
+		ImportCollection:  natsOptions.ImportCollectionName,
+		ExportSubject:     managedExportSubject,
 	})
 
 	// Platform-owned hooks: auto-provision a single NATS user per new leaf node.
