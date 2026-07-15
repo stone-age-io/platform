@@ -102,6 +102,7 @@ func ensureManagedExports(app core.App, opts ManagedOrgExportsOptions, org *core
 	if existingExport == nil {
 		rec := core.NewRecord(exportCol)
 		rec.Set("account_id", account.Id)
+		rec.Set("organization", org.Id)
 		rec.Set("name", managedExportName)
 		rec.Set("subject", opts.ExportSubject)
 		rec.Set("type", "stream")
@@ -111,6 +112,14 @@ func ensureManagedExports(app core.App, opts ManagedOrgExportsOptions, org *core
 			return fmt.Errorf("create export: %w", err)
 		}
 		log.Printf("✅ Exported '%s' from org '%s'", opts.ExportSubject, org.GetString("name"))
+	} else if existingExport.GetString("organization") != org.Id {
+		// Backfill records created before organization stamping — otherwise the
+		// tenant-scoped list rule keeps them invisible in the UI.
+		existingExport.Set("organization", org.Id)
+		if err := app.Save(existingExport); err != nil {
+			return fmt.Errorf("backfill export organization: %w", err)
+		}
+		log.Printf("✅ Backfilled organization on export for org '%s'", org.GetString("name"))
 	}
 
 	importName := hubImportName(org.Id)
@@ -122,6 +131,7 @@ func ensureManagedExports(app core.App, opts ManagedOrgExportsOptions, org *core
 		localSubject := strings.TrimSuffix(opts.ExportSubject, ".>") + "." + org.Id + ".>"
 		rec := core.NewRecord(importCol)
 		rec.Set("account_id", hubAccount.Id)
+		rec.Set("organization", operatorOrg.Id)
 		rec.Set("name", importName)
 		rec.Set("subject", opts.ExportSubject)
 		rec.Set("account", publicKey)
@@ -132,6 +142,14 @@ func ensureManagedExports(app core.App, opts ManagedOrgExportsOptions, org *core
 			return fmt.Errorf("create hub import: %w", err)
 		}
 		log.Printf("✅ Imported org '%s' events into hub as '%s'", org.GetString("name"), localSubject)
+	} else if existingImport.GetString("organization") != operatorOrg.Id {
+		// Backfill records created before organization stamping — the hub import
+		// belongs to the operator org and is otherwise invisible there.
+		existingImport.Set("organization", operatorOrg.Id)
+		if err := app.Save(existingImport); err != nil {
+			return fmt.Errorf("backfill hub import organization: %w", err)
+		}
+		log.Printf("✅ Backfilled organization on hub import for org '%s'", org.GetString("name"))
 	}
 
 	return nil
