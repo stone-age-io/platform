@@ -1,6 +1,7 @@
 package leafsync
 
 import (
+	"crypto/sha256"
 	"reflect"
 	"testing"
 
@@ -182,6 +183,40 @@ func TestStrip(t *testing.T) {
 			t.Errorf("strip dropped field %q (should be kept)", kept)
 		}
 	}
+}
+
+func TestSyncCache(t *testing.T) {
+	c := newSyncCache()
+	a := sha256.Sum256([]byte(`{"v":1}`))
+	b := sha256.Sum256([]byte(`{"v":2}`))
+
+	// Cold cache: nothing is known yet, so every key reads as changed.
+	if c.unchanged("things", "k1", a) {
+		t.Fatal("cold cache should report changed")
+	}
+
+	// After remembering, the same hash is unchanged but a different one is not.
+	c.remember("things", "k1", a)
+	if !c.unchanged("things", "k1", a) {
+		t.Fatal("same hash should report unchanged after remember")
+	}
+	if c.unchanged("things", "k1", b) {
+		t.Fatal("different hash should report changed")
+	}
+
+	// The cache is scoped per collection: the same key elsewhere is independent.
+	if c.unchanged("locations", "k1", a) {
+		t.Fatal("cache must be scoped per collection")
+	}
+
+	// Forgetting a deleted key re-arms the write.
+	c.forget("things", "k1")
+	if c.unchanged("things", "k1", a) {
+		t.Fatal("forgotten key should report changed")
+	}
+
+	// forget on an unknown collection/key must not panic.
+	c.forget("never", "nope")
 }
 
 func TestKeysToDelete(t *testing.T) {

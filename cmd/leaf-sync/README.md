@@ -75,6 +75,9 @@ leaf-sync --version # print the build version
   the collection, or not a valid NATS KV key; the id always remains inside the
   stored JSON, so relation fields still resolve. Server-only noise fields
   (`collectionId`, `collectionName`, `expand`) are stripped from the value.
+  Writes are changed-only: a record is re-`Put` into KV only when its content
+  actually differs from what was last written, so a static collection produces
+  no KV writes and the bucket's 5-revision history does not roll over on churn.
   Fail-soft: on any PocketBase/NATS error it keeps local KV as-is and retries —
   it never wipes local state. A *successful but empty* fetch is also guarded: if
   a collection returns zero records while local KV still holds keys, the purge is
@@ -131,15 +134,40 @@ thing_type_operations   message_schemas
 ```
 
 `thing_type_operations` and `message_schemas` complete the
-thing_type → operation → message_schema graph, so an edge node can resolve what
-a thing's type can do — and validate the messages it exchanges — entirely
-offline.
+thing_type → operation → message_schema graph, so a consumer can resolve what a
+thing's type can do — and, if it chooses, check the messages it exchanges
+against their schemas — entirely offline. leaf-sync itself never validates; see
+[Contract model](#contract-model) below.
 
 A leaf node can only read these (and only within its own organization). Secret-
 bearing collections (`nats_users`, `nats_accounts`, `nebula_*`) are never
 exposed to a leaf node identity and can never be synced. A leaf node's
 `synced_collections` field (set in the UI) selects which of the allowlist to
 mirror.
+
+## Contract model
+
+**leaf-sync publishes the contract; it does not enforce it.** The
+`thing_type → operation → message_schema` graph is mirrored to local KV — and is
+equally available from the central PocketBase API — as machine-readable
+reference data. Nothing in the platform validates live traffic against it:
+not leaf-sync, not the leaf node, and not `rule-router` (which routes by
+*subject*, not payload).
+
+This is deliberate. Enforcement that is built in but optional is worse than
+none — consumers come to trust a gate that only half-closes. Instead the
+platform is the *authority on the contract* and ships it to where consumers
+are; each consumer decides whether to act on it. An application that wants to
+reject malformed payloads pulls the relevant `message_schema` — from local KV at
+the edge, or the PocketBase API centrally — and checks against it on its own
+terms. Most consumers won't, and that is fine: the schema still earns its keep
+as documentation.
+
+The accepted tradeoff is drift: a published schema and the actual traffic can
+diverge, and the platform will not notice. The schema is documentation that
+*may* lie. leaf-sync's job is to keep that documentation present, well-formed,
+and current wherever a consumer might want it — not to be the thing that acts on
+it.
 
 ## Security model
 
@@ -154,11 +182,14 @@ mirror.
 
 ## Roadmap
 
-- **v0 (current):** full-collection reconcile on an interval, with an
-  empty-fetch purge guard and a best-effort liveness heartbeat.
-- **v1:** incremental sync (`updated > cursor` + PocketBase `/api/realtime` SSE)
-  with periodic full reconcile as the correctness backbone; optional account-JWT
-  refresh with `reload_hook`.
+- **v0 (current):** full-collection reconcile on an interval with changed-only KV
+  writes (a static collection produces no writes), an empty-fetch purge guard, and
+  a best-effort liveness heartbeat.
+- **v1:** incremental *fetch* (`updated > cursor` + PocketBase `/api/realtime` SSE)
+  so a full page of records no longer crosses the wire each cycle — with a periodic
+  full reconcile kept as the correctness backbone, since deletions and duplicate-
+  `code` keying still need to see the whole set. Optional account-JWT refresh with
+  `reload_hook`.
 
 ## Tests
 

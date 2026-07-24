@@ -2,6 +2,7 @@ package leafsync
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -72,9 +73,13 @@ func Run(ctx context.Context, cfg *Config) error {
 	code, _ := leaf["code"].(string)
 	hb := openHeartbeat(ctx, nc, cfg.HubDomain, code)
 
+	// Remembers what was last written to each key so a reconcile only re-Puts
+	// records that actually changed. Persists for the lifetime of this daemon.
+	cache := newSyncCache()
+
 	// One cycle: reconcile every collection, then publish a heartbeat.
 	cycle := func() {
-		synced, errs := syncAll(ctx, pb, kw, collections)
+		synced, errs := syncAll(ctx, pb, kw, cache, collections)
 		hb.publish(ctx, synced, errs, cfg.SyncInterval)
 	}
 
@@ -122,14 +127,14 @@ func resolveCollections(leaf pbclient.Record) []string {
 // synced record count plus any errors, for the heartbeat payload. Fail-soft: a
 // collection that errors is logged and recorded, local KV left as-is, and the
 // remaining collections still run.
-func syncAll(ctx context.Context, pb *pbclient.Client, kw *kvWriter, collections []string) (map[string]int, []string) {
+func syncAll(ctx context.Context, pb *pbclient.Client, kw *kvWriter, cache *syncCache, collections []string) (map[string]int, []string) {
 	synced := make(map[string]int, len(collections))
 	var errs []string
 	for _, col := range collections {
 		if ctx.Err() != nil {
 			return synced, errs // cancelled; stop promptly
 		}
-		n, err := syncCollection(ctx, pb, kw, col)
+		n, err := syncCollection(ctx, pb, kw, cache, col)
 		if err != nil {
 			// Fail-soft: keep local KV as-is and retry next interval.
 			log.Printf("leaf-sync: sync %q failed (will retry): %v", col, err)
@@ -144,7 +149,7 @@ func syncAll(ctx context.Context, pb *pbclient.Client, kw *kvWriter, collections
 // syncCollection performs a full reconcile of one collection: upsert every record
 // fetched from PocketBase, then purge any KV key whose record no longer exists.
 // It returns the number of records synced.
-func syncCollection(ctx context.Context, pb *pbclient.Client, kw *kvWriter, col string) (int, error) {
+func syncCollection(ctx context.Context, pb *pbclient.Client, kw *kvWriter, cache *syncCache, col string) (int, error) {
 	kv, err := kw.bucket(ctx, col)
 	if err != nil {
 		return 0, fmt.Errorf("kv bucket: %w", err)
@@ -184,6 +189,7 @@ func syncCollection(ctx context.Context, pb *pbclient.Client, kw *kvWriter, col 
 	}
 
 	fetched := make(map[string]bool)
+	changed := 0
 	for _, rec := range records {
 		if id, _ := rec["id"].(string); id == "" {
 			continue
@@ -193,11 +199,27 @@ func syncCollection(ctx context.Context, pb *pbclient.Client, kw *kvWriter, col 
 		if err != nil {
 			continue
 		}
+		// Changed-only write: skip the Put when this key's content is byte-for-byte
+		// what we last wrote. json.Marshal of a map emits sorted keys, so an
+		// unchanged record hashes identically cycle to cycle. Without this, a full
+		// reconcile re-Puts every record every interval, so each key rolls over its
+		// 5-revision KV history on churn alone. The record is still marked fetched
+		// so the deletion pass leaves it in place.
+		sum := sha256.Sum256(payload)
+		if cache.unchanged(col, key, sum) {
+			fetched[key] = true
+			continue
+		}
 		if _, err := kv.Put(ctx, key, payload); err != nil {
 			log.Printf("leaf-sync: kv put %s/%s: %v", col, key, err)
 			continue
 		}
+		cache.remember(col, key, sum)
 		fetched[key] = true
+		changed++
+	}
+	if changed > 0 {
+		log.Printf("leaf-sync: %s: wrote %d changed of %d records", col, changed, len(fetched))
 	}
 
 	// Reconcile deletions: remove KV keys for records that no longer exist.
@@ -211,7 +233,9 @@ func syncCollection(ctx context.Context, pb *pbclient.Client, kw *kvWriter, col 
 	for _, k := range keysToDelete(keys, fetched) {
 		if err := kv.Delete(ctx, k); err != nil {
 			log.Printf("leaf-sync: kv delete %s/%s: %v", col, k, err)
+			continue
 		}
+		cache.forget(col, k) // key is gone; re-Put it if a record ever reuses it
 	}
 	return len(fetched), nil
 }
@@ -287,4 +311,42 @@ func keysToDelete(existing []string, fetched map[string]bool) []string {
 		}
 	}
 	return stale
+}
+
+// syncCache remembers, per collection, the content hash of the value last written
+// to each KV key, so a reconcile only re-Puts records that actually changed. It
+// lives for one `run` process; on restart the first cycle re-Puts everything once
+// (cold cache) and then goes quiet. This is what keeps a bucket's 5-revision
+// history from rolling over every interval when the underlying data is static.
+type syncCache struct {
+	seen map[string]map[string][32]byte // collection -> KV key -> sha256(payload)
+}
+
+func newSyncCache() *syncCache {
+	return &syncCache{seen: make(map[string]map[string][32]byte)}
+}
+
+// unchanged reports whether sum matches the hash last remembered for (col, key).
+// A miss — never seen, or a prior Put that failed and so was never remembered —
+// returns false, so the caller writes.
+func (c *syncCache) unchanged(col, key string, sum [32]byte) bool {
+	prev, ok := c.seen[col][key] // reading a nil inner map is safe: ok == false
+	return ok && prev == sum
+}
+
+// remember records sum as the latest value written for (col, key). Call it only
+// after a successful Put, so a failed Put is retried next cycle.
+func (c *syncCache) remember(col, key string, sum [32]byte) {
+	m := c.seen[col]
+	if m == nil {
+		m = make(map[string][32]byte)
+		c.seen[col] = m
+	}
+	m[key] = sum
+}
+
+// forget drops a key after it has been deleted from KV, so the entry doesn't leak
+// and a future record that reuses the key is written afresh.
+func (c *syncCache) forget(col, key string) {
+	delete(c.seen[col], key) // deleting from a nil map is a no-op
 }
