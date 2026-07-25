@@ -99,54 +99,54 @@ export default { name: 'LoadingState' }
 
 /* Default variant (accent color) */
 .spinner-default .spinner-ring:nth-child(1) {
-  border-top-color: var(--accent, #58a6ff);
+  border-top-color: var(--color-accent);
   animation-delay: -0.45s;
 }
 
 .spinner-default .spinner-ring:nth-child(2) {
-  border-top-color: var(--accent, #58a6ff);
+  border-top-color: var(--color-accent);
   opacity: 0.6;
   animation-delay: -0.3s;
 }
 
 .spinner-default .spinner-ring:nth-child(3) {
-  border-top-color: var(--accent, #58a6ff);
+  border-top-color: var(--color-accent);
   opacity: 0.3;
   animation-delay: -0.15s;
 }
 
 /* Primary variant */
 .spinner-primary .spinner-ring:nth-child(1) {
-  border-top-color: var(--primary, #3fb950);
+  border-top-color: var(--color-primary);
   animation-delay: -0.45s;
 }
 
 .spinner-primary .spinner-ring:nth-child(2) {
-  border-top-color: var(--primary, #3fb950);
+  border-top-color: var(--color-primary);
   opacity: 0.6;
   animation-delay: -0.3s;
 }
 
 .spinner-primary .spinner-ring:nth-child(3) {
-  border-top-color: var(--primary, #3fb950);
+  border-top-color: var(--color-primary);
   opacity: 0.3;
   animation-delay: -0.15s;
 }
 
 /* Accent variant */
 .spinner-accent .spinner-ring:nth-child(1) {
-  border-top-color: var(--accent, #58a6ff);
+  border-top-color: var(--color-accent);
   animation-delay: -0.45s;
 }
 
 .spinner-accent .spinner-ring:nth-child(2) {
-  border-top-color: var(--accent, #58a6ff);
+  border-top-color: var(--color-accent);
   opacity: 0.6;
   animation-delay: -0.3s;
 }
 
 .spinner-accent .spinner-ring:nth-child(3) {
-  border-top-color: var(--accent, #58a6ff);
+  border-top-color: var(--color-accent);
   opacity: 0.3;
   animation-delay: -0.15s;
 }

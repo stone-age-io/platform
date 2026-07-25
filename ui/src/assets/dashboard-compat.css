@@ -15,12 +15,18 @@
 
   /* Semantic Colors */
   --color-primary: oklch(var(--p));
-  --color-primary-hover: oklch(var(--pf));
-  
+  /* DaisyUI v4 dropped the *-focus palette entries (--pf/--sf/--af are absent
+     from daisyui/src/theming/colorNames.js), so oklch(var(--pf)) resolved to an
+     invalid color and every declaration using it was silently discarded — the
+     hover state simply did nothing. An alpha step is used rather than a computed
+     lightness step: relative color syntax (`oklch(from ...)`) and color-mix()
+     both fail on older engines in exactly the same silent way as --pf did. */
+  --color-primary-hover: oklch(var(--p) / 0.85);
+
   --color-secondary: oklch(var(--s));
-  
+
   --color-accent: oklch(var(--a));
-  
+
   --color-success: oklch(var(--su));
   --color-success-bg: oklch(var(--su) / 0.1);
   --color-success-border: oklch(var(--su) / 0.3);

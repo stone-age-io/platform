@@ -23,6 +23,38 @@ function resolveColor(colorString: string): string {
   return computed || colorString
 }
 
+/**
+ * Categorical chart series ramp.
+ *
+ * Chart series identity is NOT taken from the DaisyUI theme. The theme's
+ * `secondary` (#64748B / #94A3B8) and `neutral` (#1F2733 / #232A35) are
+ * deliberately desaturated for UI chrome, and the ramp used to map series 2 and
+ * 4 onto them — two near-grays in the same chart. The theme's `primary` is also
+ * the color of every button and link, so reusing it as series 1 conflates
+ * "interactive control" with "series identity".
+ *
+ * These eight hues are the validated default categorical palette: both modes are
+ * separately stepped for their own surface (not an automatic flip of the same
+ * hex). Verified against platform's real chart surfaces — base-100 #FFFFFF light
+ * and #12161D dark — for the lightness band, chroma floor, adjacent-pair CVD
+ * separation (worst ΔE 9.1 light / 8.4 dark against a ≥8 target), the
+ * normal-vision floor (19.6 / 19.3 against a ≥15 floor), and contrast.
+ *
+ * Light mode: aqua, yellow and magenta land at 2.2–2.8:1 against white, under
+ * the 3:1 bar. That is a documented conditional — it obligates a legend or
+ * direct labels so identity never rests on color alone. ChartWidget renders an
+ * ECharts legend, which satisfies it; don't ship a chart from this ramp with the
+ * legend suppressed.
+ *
+ * Order is fixed and must not be reordered — color follows the entity, so a
+ * filter that drops a series must not repaint the survivors.
+ */
+const CHART_SERIES: Record<'light' | 'dark', readonly string[]> = {
+  //        blue       orange     aqua       yellow     magenta    green      violet     red
+  light: ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'],
+  dark:  ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'],
+}
+
 // Helper to add alpha to an RGB string
 function resolveAlpha(colorString: string, alpha: number): string {
   const rgb = resolveColor(colorString)
@@ -65,17 +97,20 @@ export function useDesignTokens() {
   const semanticColors = computed(() => {
     void theme.value
     return {
+      // DaisyUI v4 dropped the *-focus palette entries, so --pf/--sf/--af are
+      // undefined and the old oklch(var(--pf)) resolved to an invalid color.
+      // An alpha step gives the hover state without depending on those vars.
       primary: resolveColor('oklch(var(--p))'),
-      primaryHover: resolveColor('oklch(var(--pf))'),
+      primaryHover: resolveAlpha('oklch(var(--p))', 0.85),
       primaryActive: resolveColor('oklch(var(--p))'),
-      
+
       secondary: resolveColor('oklch(var(--s))'),
-      secondaryHover: resolveColor('oklch(var(--sf))'),
+      secondaryHover: resolveAlpha('oklch(var(--s))', 0.85),
       secondaryActive: resolveColor('oklch(var(--s))'),
-      
+
       accent: resolveColor('oklch(var(--a))'),
-      accentHover: resolveColor('oklch(var(--af))'),
-      
+      accentHover: resolveAlpha('oklch(var(--a))', 0.85),
+
       success: resolveColor('oklch(var(--su))'),
       successBg: resolveAlpha('oklch(var(--su))', 0.15),
       successBorder: resolveAlpha('oklch(var(--su))', 0.4),
@@ -99,23 +134,23 @@ export function useDesignTokens() {
    * Resolved to RGB for ECharts
    */
   const chartColors = computed(() => {
-    void theme.value
+    const ramp = CHART_SERIES[theme.value]
     return {
-      color1: resolveColor('oklch(var(--p))'),
-      color2: resolveColor('oklch(var(--s))'),
-      color3: resolveColor('oklch(var(--a))'),
-      color4: resolveColor('oklch(var(--n))'),
-      color5: resolveColor('oklch(var(--su))'),
-      color6: resolveColor('oklch(var(--wa))'),
-      color7: resolveColor('oklch(var(--er))'),
-      color8: resolveColor('oklch(var(--in))'),
-      
-      color1Alpha30: resolveAlpha('oklch(var(--p))', 0.3),
-      color1Alpha05: resolveAlpha('oklch(var(--p))', 0.05),
-      color2Alpha30: resolveAlpha('oklch(var(--s))', 0.3),
-      color2Alpha05: resolveAlpha('oklch(var(--s))', 0.05),
-      color3Alpha30: resolveAlpha('oklch(var(--a))', 0.3),
-      color3Alpha05: resolveAlpha('oklch(var(--a))', 0.05),
+      color1: ramp[0],
+      color2: ramp[1],
+      color3: ramp[2],
+      color4: ramp[3],
+      color5: ramp[4],
+      color6: ramp[5],
+      color7: ramp[6],
+      color8: ramp[7],
+
+      color1Alpha30: resolveAlpha(ramp[0], 0.3),
+      color1Alpha05: resolveAlpha(ramp[0], 0.05),
+      color2Alpha30: resolveAlpha(ramp[1], 0.3),
+      color2Alpha05: resolveAlpha(ramp[1], 0.05),
+      color3Alpha30: resolveAlpha(ramp[2], 0.3),
+      color3Alpha05: resolveAlpha(ramp[2], 0.05),
     }
   })
 
@@ -185,18 +220,18 @@ export function useDesignTokens() {
 
   // --- Helpers ---
 
+  /**
+   * Series color for a 1-based series index.
+   *
+   * Past eight series the ramp wraps, which means two series share a hue — the
+   * right fix is at the data layer (fold the tail into "Other", or facet into
+   * small multiples), not by generating a ninth hue here: a generated hue has
+   * passed none of the separation checks the eight above were chosen for.
+   * Wrapping rather than throwing keeps an over-wide chart rendering.
+   */
   function getChartColor(index: number): string {
-    const map = [
-      resolveColor('oklch(var(--p))'),
-      resolveColor('oklch(var(--s))'),
-      resolveColor('oklch(var(--a))'),
-      resolveColor('oklch(var(--n))'),
-      resolveColor('oklch(var(--su))'),
-      resolveColor('oklch(var(--wa))'),
-      resolveColor('oklch(var(--er))'),
-      resolveColor('oklch(var(--in))')
-    ]
-    return map[(index - 1) % map.length]
+    const ramp = CHART_SERIES[theme.value]
+    return ramp[(index - 1) % ramp.length]
   }
 
   function getChartColorArray(count: number): string[] {

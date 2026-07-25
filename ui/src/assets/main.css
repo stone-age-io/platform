@@ -4,6 +4,14 @@
 @tailwind components;
 @tailwind utilities;
 
+/* index.html paints <body> a fixed dark #0a0a0a for the pre-mount loader. Once
+   the themed app is up, the body has to follow the theme instead — otherwise a
+   short page (or a mobile overscroll bounce) reveals a black band behind the
+   shell in the light theme. base-200 matches MainLayout's <main>. */
+body {
+  background-color: oklch(var(--b2));
+}
+
 /* Custom scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;
