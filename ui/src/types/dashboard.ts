@@ -1,5 +1,7 @@
 // ui/src/types/dashboard.ts
 
+import { TWIN_BUCKET, TWIN_DESIRED_BUCKET } from '@/utils/twin'
+
 /**
  * Widget Types
  */
@@ -509,9 +511,9 @@ export function createDefaultWidget(type: WidgetType, position: { x: number; y: 
       base.textConfig = { fontSize: 24, thresholds: [] }
       break
     case 'button':
-      base.buttonConfig = { 
-        label: 'Send', 
-        publishSubject: 'button.clicked', 
+      base.buttonConfig = {
+        label: 'Send',
+        publishSubject: 'cmd.thing.DEVICE_01.action',
         payload: '{}',
         actionType: 'publish',
         timeout: 1000
@@ -521,11 +523,14 @@ export function createDefaultWidget(type: WidgetType, position: { x: number; y: 
       base.kvConfig = { displayFormat: 'json', thresholds: [] }
       break
     case 'switch':
+      // A switch writes, so it defaults to the writable half of the twin.
+      // Widgets are general-purpose — any bucket works; these are only a
+      // starting point that points somewhere real.
       base.switchConfig = {
         mode: 'kv',
-        kvBucket: 'device-states',
-        kvKey: 'device.switch',
-        publishSubject: 'device.control',
+        kvBucket: TWIN_DESIRED_BUCKET,
+        kvKey: 'thing.DEVICE_01.switch',
+        publishSubject: 'cmd.thing.DEVICE_01.switch',
         onPayload: { state: 'on' },
         offPayload: { state: 'off' },
         labels: { on: 'ON', off: 'OFF' }
@@ -534,7 +539,7 @@ export function createDefaultWidget(type: WidgetType, position: { x: number; y: 
     case 'slider':
       base.sliderConfig = {
         mode: 'core',
-        publishSubject: 'device.slider',
+        publishSubject: 'cmd.thing.DEVICE_01.level',
         min: 0,
         max: 100,
         step: 1,
@@ -620,8 +625,9 @@ export function createDefaultWidget(type: WidgetType, position: { x: number; y: 
     case 'kvtable':
       base.title = 'KV Table'
       base.kvtableConfig = {
-        kvBucket: '',
-        keyPattern: '>',
+        kvBucket: TWIN_BUCKET,
+        keyPattern: 'thing.>',
+        // reads reported state; see utils/twin.ts
         columns: [
           { id: 'col_1', label: 'Key', path: '__key_suffix__', format: 'text' }
         ],
@@ -702,8 +708,8 @@ export function createDefaultItem(type: MapItemType = 'publish'): MapMarkerItem 
       label: 'Toggle',
       switchConfig: {
         mode: 'kv',
-        kvBucket: 'device-states',
-        kvKey: 'device.switch',
+        kvBucket: TWIN_DESIRED_BUCKET,
+        kvKey: 'thing.DEVICE_01.switch',
         onPayload: { state: 'on' },
         offPayload: { state: 'off' },
         labels: { on: 'ON', off: 'OFF' }
@@ -728,8 +734,8 @@ export function createDefaultItem(type: MapItemType = 'publish'): MapMarkerItem 
       type: 'kv',
       label: 'KV Value',
       kvConfig: {
-        kvBucket: 'my-bucket',
-        kvKey: 'my-key'
+        kvBucket: TWIN_BUCKET,
+        kvKey: 'thing.DEVICE_01.temp'
       }
     }
   }

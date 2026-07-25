@@ -73,6 +73,12 @@ func Run(ctx context.Context, cfg *Config) error {
 	code, _ := leaf["code"].(string)
 	hb := openHeartbeat(ctx, nc, cfg.HubDomain, code)
 
+	// Optional data plane: mirror `twin_desired` down from the hub and relay
+	// `twin` up to it. Independent of the config cycle below, and disables itself
+	// (logging why) rather than failing the agent — config sync must survive a
+	// data-plane problem.
+	startTwin(ctx, nc, cfg)
+
 	// Remembers what was last written to each key so a reconcile only re-Puts
 	// records that actually changed. Persists for the lifetime of this daemon.
 	cache := newSyncCache()

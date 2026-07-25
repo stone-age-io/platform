@@ -19,6 +19,7 @@ import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 import FloorPlanMap from '@/components/map/FloorPlanMap.vue'
 import KvDashboard from '@/components/nats/KvDashboard.vue'
+import { TWIN_BUCKET, TWIN_DESIRED_BUCKET } from '@/utils/twin'
 
 const router = useRouter()
 const route = useRoute()
@@ -522,18 +523,21 @@ onUnmounted(() => cleanupMap())
           </div>
         </BaseCard>
 
-        <!-- Digital Twin / KV Dashboard -->
+        <!-- Live State (digital twin) -->
         <template v-if="location.code">
           <div v-if="natsStore.isConnected" class="mt-6">
             <KvDashboard
               :key="location.code"
+              title="Live State"
+              :bucket="TWIN_BUCKET"
+              :desired-bucket="TWIN_DESIRED_BUCKET"
               :base-key="`location.${location.code}`"
             />
           </div>
           <div v-else class="alert shadow-sm border border-base-300 bg-base-100">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-info shrink-0 w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
             <div class="text-xs">
-              <div class="font-bold">Digital Twin Offline</div>
+              <div class="font-bold">Live State Offline</div>
               <span class="text-base-content/70">Connect to NATS in <router-link to="/settings" class="link">Settings</router-link> to view live data for this location.</span>
             </div>
           </div>

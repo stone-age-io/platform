@@ -2,6 +2,7 @@ import { ref, onUnmounted } from 'vue'
 import { Kvm, type KV } from '@nats-io/kv'
 import { useNatsStore } from '@/stores/nats'
 import { useToast } from '@/composables/useToast'
+import { TWIN_BUCKET, TWIN_BUCKET_CONFIG, TWIN_BUCKET_DESCRIPTIONS } from '@/utils/twin'
 
 export interface KvEntry {
   key: string
@@ -13,11 +14,12 @@ export interface KvEntry {
 
 /**
  * useNatsKv handles interactions with a NATS Key-Value bucket.
- * @param bucketName Defaults to 'twin' for the global organization state.
- * @param baseKey Optional prefix (e.g., 'thing.S01'). If provided, the watcher 
+ * @param bucketName Defaults to the org-wide `twin` bucket. See utils/twin.ts
+ *                   for the key convention.
+ * @param baseKey Optional prefix (e.g., 'thing.S01'). If provided, the watcher
  *                and writers will be scoped to this prefix.
  */
-export function useNatsKv(bucketName: string = 'twin', baseKey?: string) {
+export function useNatsKv(bucketName: string = TWIN_BUCKET, baseKey?: string) {
   const natsStore = useNatsStore()
   const toast = useToast()
   
@@ -173,11 +175,13 @@ export function useNatsKv(bucketName: string = 'twin', baseKey?: string) {
     if (!natsStore.nc) return
     loading.value = true
     try {
+      // Retention comes from one shared definition so that whichever creator
+      // gets here first — this button, or leaf-sync on an edge box — produces
+      // the same bucket. See utils/twin.ts.
       const kvm = new Kvm(natsStore.nc)
       await kvm.create(bucketName, {
-        description: description || 'Digital Twin Store',
-        history: 10,
-        storage: 'file'
+        ...TWIN_BUCKET_CONFIG,
+        description: description || TWIN_BUCKET_DESCRIPTIONS[bucketName] || bucketName,
       })
       toast.success(`Bucket ${bucketName} initialized`)
       await init()
