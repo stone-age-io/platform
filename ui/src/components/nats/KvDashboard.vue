@@ -98,6 +98,20 @@ const selectedDriftPairs = computed(() =>
   selectedEntry.value ? driftPairs(selectedEntry.value.key) : [],
 )
 
+/**
+ * When the value on the open side was last written. NATS carries it on every
+ * entry; the pane was showing a revision number and no clock, which answers
+ * "how many times" but never "how long ago" — the question people actually have
+ * about a desired value someone else set.
+ */
+const editorStamp = computed(() => {
+  if (!twinMode.value || isAddingNew.value) return ''
+  const e = editorTarget.value === 'desired' ? selectedDesired.value?.entry : selectedEntry.value
+  if (!e || !e.revision) return '' // revision 0 is the synthetic desired-only row
+  const verb = editorTarget.value === 'desired' ? 'Set' : 'Reported'
+  return `${verb} ${formatRelativeTime(e.created)} · rev ${e.revision}`
+})
+
 function displayKey(fullKey: string) {
   if (!props.baseKey) return fullKey
   const prefix = `${props.baseKey}.`
@@ -216,14 +230,42 @@ function isReported(key: string): boolean {
   return entries.value.has(key)
 }
 
+/**
+ * Twin-state filter. Lives alongside the text filter rather than inside it, so
+ * "show me what differs" does not need a magic search term. Ignored entirely
+ * outside twin mode, where every row's `twin` is undefined anyway.
+ */
+const twinFilter = ref<'all' | 'desired' | 'differs'>('all')
+
 const filteredEntries = computed(() => {
   const q = debouncedSearch.value
-  if (!q) return allEntries.value
-  return allEntries.value.filter(item => {
+  let out = allEntries.value
+
+  if (twinMode.value && twinFilter.value !== 'all') {
+    out = out.filter(item => {
+      if (!item.twin) return false
+      return twinFilter.value === 'desired' || !item.twin.agrees
+    })
+  }
+
+  if (!q) return out
+  return out.filter(item => {
     const keyMatch = displayKey(item.key).toLowerCase().includes(q)
     const valMatch = JSON.stringify(item.value).toLowerCase().includes(q)
     return keyMatch || valMatch
   })
+})
+
+watch(twinFilter, () => {
+  currentPage.value = 1
+})
+
+/** An empty list should name the filter that emptied it, not guess at the search box. */
+const emptyMessage = computed(() => {
+  if (twinMode.value && twinFilter.value === 'differs') return 'Nothing differs from its desired value'
+  if (twinMode.value && twinFilter.value === 'desired') return 'No properties have a desired value'
+  if (debouncedSearch.value) return 'No properties match your search'
+  return 'No properties yet'
 })
 
 const totalPages = computed(() => Math.max(1, Math.ceil(filteredEntries.value.length / itemsPerPage)))
@@ -348,6 +390,7 @@ async function handleSave() {
       await desiredKv.put(inputKey.value, parsed.value)
       toast.success('Desired value saved')
       isAddingNew.value = false
+      if (selectedEntry.value) loadHistory(selectedEntry.value.key)
     } catch (e: any) {
       toast.error(e?.message || 'Save failed')
     }
@@ -397,12 +440,13 @@ function switchEditorTarget(target: 'reported' | 'desired') {
   editorTarget.value = target
   valueParseError.value = ''
   loadEditorValue()
+  if (selectedEntry.value) loadHistory(selectedEntry.value.key)
 }
 
 /** Seed a new desired value from what the device reports — usually a small edit. */
 function seedDesiredFromReported() {
-  editorTarget.value = 'desired'
   const v = selectedEntry.value?.value
+  switchEditorTarget('desired')
   inputValue.value = v === undefined ? '' : valueToEditable(v)
 }
 
@@ -462,11 +506,17 @@ async function handleDelete() {
   }
 }
 
+/**
+ * History belongs to a bucket, so it has to follow the Reported/Desired toggle.
+ * Reading the reported bucket while the pane showed the desired value produced
+ * a revision list that silently described the other side.
+ */
 async function loadHistory(key: string) {
   historyLoading.value = true
   expandedRevisions.value = new Set()
+  const read = editorTarget.value === 'desired' ? desiredKv.getHistory : getHistory
   try {
-    const raw = await getHistory(key)
+    const raw = await read(key)
     historyEntries.value = raw.map(h => ({ ...h, id: `${h.key}-${h.revision}` }))
   } finally {
     historyLoading.value = false
@@ -533,7 +583,14 @@ function previewValue(val: any): string {
     <template v-if="baseKey" #header>
       <div class="flex items-center gap-3">
         <code class="font-mono text-xs text-base-content/70">{{ effectiveBucket }} / {{ baseKey }}.&gt;</code>
-        <span v-if="driftCount" class="badge badge-warning badge-sm">{{ driftCount }} differs</span>
+        <!-- The count is also the filter — it is the thing you want to act on. -->
+        <button
+          v-if="driftCount"
+          class="badge badge-warning badge-sm cursor-pointer"
+          :class="{ 'badge-outline': twinFilter === 'differs' }"
+          :title="twinFilter === 'differs' ? 'Show all properties' : 'Show only what differs'"
+          @click="twinFilter = twinFilter === 'differs' ? 'all' : 'differs'"
+        >{{ driftCount }} differs</button>
       </div>
     </template>
 
@@ -588,11 +645,36 @@ function previewValue(val: any): string {
           <button @click="openAdd" class="btn btn-xs btn-primary shrink-0">+ Add</button>
         </div>
 
-        <!-- Tree controls -->
-        <div v-if="viewMode === 'tree'" class="px-3 py-1.5 border-b border-base-300 flex items-center gap-2 bg-base-200/20 text-[10px]">
-          <button class="btn btn-ghost btn-xs h-6 min-h-0" @click="expandAll">Expand all</button>
-          <button class="btn btn-ghost btn-xs h-6 min-h-0" @click="collapseAll">Collapse all</button>
-          <span class="opacity-40 ml-auto">{{ filteredEntries.length }} keys</span>
+        <!-- Tree controls and the twin-state filter share one strip; two would
+             stack on mobile for no reason. -->
+        <div
+          v-if="viewMode === 'tree' || twinMode"
+          class="px-3 py-1.5 border-b border-base-300 flex items-center gap-2 bg-base-200/20 text-[10px] flex-wrap"
+        >
+          <template v-if="viewMode === 'tree'">
+            <button class="btn btn-ghost btn-xs h-6 min-h-0" @click="expandAll">Expand all</button>
+            <button class="btn btn-ghost btn-xs h-6 min-h-0" @click="collapseAll">Collapse all</button>
+          </template>
+          <div v-if="twinMode" class="join">
+            <button
+              class="join-item btn btn-xs h-6 min-h-0"
+              :class="{ 'btn-primary': twinFilter === 'all' }"
+              @click="twinFilter = 'all'"
+            >All</button>
+            <button
+              class="join-item btn btn-xs h-6 min-h-0"
+              :class="{ 'btn-primary': twinFilter === 'desired' }"
+              @click="twinFilter = 'desired'"
+              title="Only properties that have a desired value"
+            >Desired</button>
+            <button
+              class="join-item btn btn-xs h-6 min-h-0"
+              :class="{ 'btn-primary': twinFilter === 'differs' }"
+              @click="twinFilter = 'differs'"
+              title="Only properties whose desired value the device does not match"
+            >Differs</button>
+          </div>
+          <span v-if="viewMode === 'tree'" class="opacity-40 ml-auto">{{ filteredEntries.length }} keys</span>
         </div>
 
         <!-- FLAT VIEW -->
@@ -629,19 +711,22 @@ function previewValue(val: any): string {
 
                     <!-- Twin marker: only rows that carry an assertion show one,
                          and it shows the desired VALUE rather than a word about
-                         it wherever the value is a primitive. -->
-                    <template v-if="item.twin">
-                      <span v-if="item.twin.agrees" class="text-success shrink-0 leading-none" :title="item.twin.title">✓</span>
+                         it wherever the value is a primitive. `ml-auto` pins it
+                         to the right of the cell in every case — hanging it off
+                         the value left it at a different x on every row,
+                         depending on how long the value happened to be. -->
+                    <span v-if="item.twin" class="flex items-center gap-1.5 shrink-0 ml-auto pl-2">
+                      <span v-if="item.twin.agrees" class="text-success leading-none" :title="item.twin.title">✓</span>
                       <template v-else>
-                        <span class="opacity-30 text-xs shrink-0">→</span>
+                        <span class="opacity-30 text-xs">→</span>
                         <span
                           v-if="item.twin.inline !== null"
-                          class="font-mono text-xs font-semibold text-warning shrink-0 truncate max-w-[12rem]"
+                          class="font-mono text-xs font-semibold text-warning truncate max-w-[12rem]"
                           :title="item.twin.title"
                         >{{ item.twin.inline }}</span>
-                        <span v-else class="badge badge-warning badge-xs shrink-0" :title="item.twin.title">{{ item.twin.badge }}</span>
+                        <span v-else class="badge badge-warning badge-xs" :title="item.twin.title">{{ item.twin.badge }}</span>
                       </template>
-                    </template>
+                    </span>
                   </div>
                 </td>
                 <td class="py-3 text-right align-top font-mono text-[10px] opacity-40">
@@ -650,7 +735,7 @@ function previewValue(val: any): string {
               </tr>
               <tr v-if="paginatedEntries.length === 0">
                 <td colspan="3" class="py-20 text-center opacity-30 italic">
-                  {{ debouncedSearch ? 'No properties match your search' : 'No properties yet' }}
+                  {{ emptyMessage }}
                 </td>
               </tr>
             </tbody>
@@ -686,24 +771,30 @@ function previewValue(val: any): string {
                 </span>
                 <span v-else-if="row.node.entry.value === null" class="badge badge-sm badge-ghost shrink-0">null</span>
                 <span v-else class="text-xs opacity-70 truncate min-w-0 flex-1 font-mono">{{ previewValue(row.node.entry.value) }}</span>
-                <template v-if="row.node.entry.twin">
-                  <span v-if="row.node.entry.twin.agrees" class="text-success shrink-0 leading-none" :title="row.node.entry.twin.title">✓</span>
-                  <template v-else>
-                    <span class="opacity-30 text-xs shrink-0">→</span>
-                    <span
-                      v-if="row.node.entry.twin.inline !== null"
-                      class="font-mono text-xs font-semibold text-warning shrink-0 truncate max-w-[12rem]"
-                      :title="row.node.entry.twin.title"
-                    >{{ row.node.entry.twin.inline }}</span>
-                    <span v-else class="badge badge-warning badge-xs shrink-0" :title="row.node.entry.twin.title">{{ row.node.entry.twin.badge }}</span>
+                <!-- Marker and revision travel together in one right-anchored
+                     group. Two separate `ml-auto` siblings would split the free
+                     space between them instead of both hugging the right edge,
+                     and the marker's x would still wander per row. -->
+                <span class="flex items-center gap-1.5 shrink-0 ml-auto pl-2">
+                  <template v-if="row.node.entry.twin">
+                    <span v-if="row.node.entry.twin.agrees" class="text-success leading-none" :title="row.node.entry.twin.title">✓</span>
+                    <template v-else>
+                      <span class="opacity-30 text-xs">→</span>
+                      <span
+                        v-if="row.node.entry.twin.inline !== null"
+                        class="font-mono text-xs font-semibold text-warning truncate max-w-[12rem]"
+                        :title="row.node.entry.twin.title"
+                      >{{ row.node.entry.twin.inline }}</span>
+                      <span v-else class="badge badge-warning badge-xs" :title="row.node.entry.twin.title">{{ row.node.entry.twin.badge }}</span>
+                    </template>
                   </template>
-                </template>
-                <span class="text-[10px] opacity-30 font-mono shrink-0 ml-auto">r{{ row.node.entry.revision }}</span>
+                  <span class="text-[10px] opacity-30 font-mono">r{{ row.node.entry.revision }}</span>
+                </span>
               </template>
               <span v-else class="text-[10px] opacity-40 ml-auto shrink-0 font-mono">{{ row.node.children.length }}</span>
             </li>
             <li v-if="flatTree.length === 0" class="py-20 text-center opacity-30 italic text-sm">
-              {{ debouncedSearch ? 'No properties match your search' : 'No properties yet' }}
+              {{ emptyMessage }}
             </li>
           </ul>
         </div>
@@ -813,6 +904,11 @@ function previewValue(val: any): string {
                     placeholder='Examples: 42  ·  "hello"  ·  true  ·  {"foo":"bar"}'
                     spellcheck="false"
                   ></textarea>
+                  <p
+                    v-if="editorStamp"
+                    class="text-[10px] opacity-60 mt-1 font-mono"
+                    :title="formatDate((editorTarget === 'desired' ? selectedDesired!.entry : selectedEntry!).created)"
+                  >{{ editorStamp }}</p>
                   <p v-if="editorReadOnly" class="text-[10px] opacity-50 mt-1">
                     Reported by the device — read-only. The edge overwrites this on every sync.
                   </p>
@@ -849,7 +945,12 @@ function previewValue(val: any): string {
               <!-- History -->
               <div v-if="!isAddingNew" class="pt-4 border-t border-base-300">
                 <div class="flex justify-between items-center mb-4">
-                  <span class="text-[10px] font-bold uppercase opacity-50">Revision History</span>
+                  <!-- Name the side. History comes from whichever bucket the
+                       toggle points at, and an unlabelled list of revisions
+                       looks identical either way. -->
+                  <span class="text-[10px] font-bold uppercase opacity-50">
+                    {{ twinMode ? `${editorTarget} history` : 'Revision History' }}
+                  </span>
                   <span v-if="historyEntries.length > 0" class="text-[10px] opacity-40">{{ historyEntries.length }} revisions</span>
                 </div>
 

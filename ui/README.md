@@ -123,7 +123,16 @@ We bridge the gap between **SQL Metadata** (PocketBase) and **Live State** (NATS
     the row. Object-valued rows fall back to a `differs` badge (the value will not
     fit) and the detail pane lists each differing path as a reported/desired pair.
     Agreement is a quiet `✓`. "Differs on: mode" was the same width and sent the
-    reader off to look both values up.
+    reader off to look both values up. Markers are right-anchored in both views,
+    so they line up in a column instead of landing wherever the value ends.
+    All / Desired / Differs filters sit with the tree controls, and the `N differs`
+    badge in the card header is itself the Differs toggle.
+*   **History follows the toggle.** Revisions come from whichever bucket the
+    Reported/Desired switch points at — reading `twin` while the pane displayed a
+    desired value produced a list that silently described the other side. The
+    pane also stamps each side with when it was last written (`Set 2 minutes ago
+    · rev 386`); NATS carries `created` on every entry and the revision number
+    alone answers "how many times", never "how long ago".
 *   **A desired value is a partial assertion, not a replacement.** `twinDrift()`
     checks only the keys present in the desired value, so `{arm: "armed"}` against
     a twelve-field object asserts one field and stays quiet about the rest. Full
