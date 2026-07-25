@@ -61,3 +61,9 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 	modernc.org/sqlite v1.50.0 // indirect
 )
+
+// TEMPORARY -- remove before merge. Requires the model-hook fix in pb-nats
+// (commit baab962). Once that is pushed:
+//   go mod edit -dropreplace github.com/skeeeon/pb-nats
+//   go get github.com/skeeeon/pb-nats@latest
+replace github.com/skeeeon/pb-nats => ../pb-nats

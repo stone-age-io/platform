@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=68          # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=84          # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -442,15 +442,22 @@ fi
 
 # Rotation is a route, not a rule: it must permit a write to exactly one field
 # (`regenerate`), which a rule can only approximate with an :isset deny-list.
+#
+# Re-read creds IMMEDIATELY before rotating. An earlier check in section 8 PATCHes
+# publish_permissions on this same record, and pb-nats re-mints the JWT on any
+# API update whose JWT-relevant fields changed -- so comparing against a value
+# captured earlier would pass whether or not the route did anything.
+req GET "/collections/nats_users/records/$BOB_NATS" "$TB"
+ROT_BEFORE=$(j "$RBODY" creds_file)
 req POST "/me/nats-creds/rotate" "$TB" ""
 expect "member CAN rotate their own credentials" 200 "$RCODE" "$RBODY"
 sleep 1
 req GET "/collections/nats_users/records/$BOB_NATS" "$TB"
-CREDS_AFTER=$(j "$RBODY" creds_file)
-if [ -n "$CREDS_AFTER" ] && [ "$CREDS_AFTER" != "$CREDS_BEFORE" ]; then
+ROT_AFTER=$(j "$RBODY" creds_file)
+if [ -n "$ROT_AFTER" ] && [ "$ROT_AFTER" != "$ROT_BEFORE" ]; then
   ok "rotation actually re-minted the credential"
 else
-  no "creds_file did not change after rotation"
+  no "creds_file unchanged after rotation -- the route set the flag but nothing acted on it"
 fi
 
 echo ""
@@ -565,7 +572,95 @@ req GET "/leaf/bootstrap" ""
 expect "anonymous cannot reach the leaf bootstrap route" "401|403|404" "$RCODE" "$RBODY"
 
 echo ""
-echo "=== 13. regression: ordinary tenant reads still work ==="
+echo "=== 13. account + CA writes are operator-only; key ops are a route ==="
+# Both updateRules used to carry an owner/admin branch commented "can only change
+# rotate_keys", built from `:changed = false` on the limit fields. Deny-list: every
+# field NOT named stayed writable -- on nats_accounts that included `jwt` and
+# `revocations`, on nebula_ca the CA `certificate`. Now operator-only, with the
+# three legitimate key operations behind POST /api/org/nats-account/keys.
+req PATCH "/collections/nats_accounts/records/$ACCT" "$TA" '{"description":"owner edit"}'
+expect "owner cannot update their org's NATS account" "403|400|404" "$RCODE" "$RBODY"
+req PATCH "/collections/nats_accounts/records/$ACCT" "$TA" '{"revocations":{"*":1}}'
+expect "owner cannot write the account's revocations list" "403|400|404" "$RCODE" "$RBODY"
+req PATCH "/collections/nats_accounts/records/$ACCT" "$TO" '{"description":"operator edit"}'
+expect "platform operator CAN update it (same field, so the deny was authz)" 200 "$RCODE" "$RBODY"
+
+# nebula_ca has no rotate_keys field at all, so there is no tenant key operation to
+# preserve -- the whole owner/admin branch is gone.
+req GET "/collections/nebula_ca/records?filter=(organization='$ORG')" "$SU"
+CA=$(jn "$RBODY" 'o.items[0].id')
+if [ -n "$CA" ]; then
+  req PATCH "/collections/nebula_ca/records/$CA" "$TA" '{"name":"owner renamed CA"}'
+  expect "owner cannot update their org's Nebula CA" "403|400|404" "$RCODE" "$RBODY"
+  req PATCH "/collections/nebula_ca/records/$CA" "$TO" '{"name":"operator renamed CA"}'
+  expect "platform operator CAN update the CA (same field)" 200 "$RCODE" "$RBODY"
+else
+  # Keep the count stable whether or not this deployment auto-provisions a CA.
+  ok "nebula_ca not provisioned for this org; update-rule check skipped"
+  ok "nebula_ca not provisioned for this org; operator check skipped"
+fi
+
+# Reads must survive: the console's account and CA detail views need them.
+req GET "/collections/nats_accounts/records" "$TB"
+expect "member can still read the org's NATS account" 200 "$RCODE" "$RBODY"
+
+# The route is the replacement, so it has to actually work for owner/admin --
+# and the trigger must reach pb-nats, not just persist a flag. `keymat` is every
+# non-secret field a re-key should move.
+keymat() { jn "$1" 'JSON.stringify([o.public_key,o.signing_public_key,o.signing_keys])'; }
+req GET "/collections/nats_accounts/records/$ACCT" "$SU"
+KEYS_BEFORE=$(keymat "$RBODY")
+req POST "/org/nats-account/keys" "$TA" '{"action":"rotate"}'
+expect "owner CAN rotate account keys through the route" 200 "$RCODE" "$RBODY"
+sleep 1
+req GET "/collections/nats_accounts/records/$ACCT" "$SU"
+KEYS_AFTER=$(keymat "$RBODY")
+if [ "$KEYS_AFTER" != "$KEYS_BEFORE" ]; then
+  ok "rotation actually re-keyed the account (pb-nats acted on the trigger)"
+else
+  no "account key material unchanged after rotate: $KEYS_BEFORE"
+fi
+
+req POST "/org/nats-account/keys" "$TA" '{"action":"add_signing"}'
+expect "owner CAN add a signing key through the route" 200 "$RCODE" "$RBODY"
+sleep 1
+req GET "/collections/nats_accounts/records/$ACCT" "$SU"
+if [ "$(keymat "$RBODY")" != "$KEYS_AFTER" ]; then
+  ok "add_signing appended a key (a distinct operation from rotate)"
+else
+  no "account key material unchanged after add_signing: $KEYS_AFTER"
+fi
+
+# ...and refuse everyone else, plus anything outside the action allowlist.
+req POST "/org/nats-account/keys" "$TB" '{"action":"rotate"}'
+expect "member cannot rotate account keys" "401|403|404" "$RCODE" "$RBODY"
+req POST "/org/nats-account/keys" "$TG" '{"action":"rotate"}'
+expect "badge cannot rotate account keys" "401|403|404" "$RCODE" "$RBODY"
+req POST "/org/nats-account/keys" "" '{"action":"rotate"}'
+expect "anonymous cannot rotate account keys" "401|403|404" "$RCODE" "$RBODY"
+req POST "/org/nats-account/keys" "$TA" '{"action":"set_limits","max_payload":99999999}'
+expect "an unknown action is rejected, not silently ignored" 400 "$RCODE" "$RBODY"
+req POST "/org/nats-account/keys" "$TA" '{"action":"remove_signing"}'
+expect "remove_signing without a public_key is rejected" 400 "$RCODE" "$RBODY"
+
+# The route takes no record id, so it can only ever reach the caller's own org.
+# eve owns OtherOrg; her rotate must not touch TestOrg's account.
+req PATCH "/collections/users/records/$EVE" "$SU" "{\"current_organization\":\"$ORG2\"}"
+TE=$(login eve@test.local)
+req GET "/collections/nats_accounts/records/$ACCT" "$SU"
+OTHER_BEFORE=$(j "$RBODY" signing_public_key)
+req POST "/org/nats-account/keys" "$TE" '{"action":"rotate"}'
+EVE_CODE="$RCODE"
+sleep 1
+req GET "/collections/nats_accounts/records/$ACCT" "$SU"
+if [ "$(j "$RBODY" signing_public_key)" = "$OTHER_BEFORE" ]; then
+  ok "another org's owner cannot re-key this org's account (HTTP $EVE_CODE, account untouched)"
+else
+  no "cross-tenant rotation reached TestOrg's account"
+fi
+
+echo ""
+echo "=== 14. regression: ordinary tenant reads still work ==="
 req GET "/collections/organizations/records" "$TB"
 expect "member can list their orgs" 200 "$RCODE" "$RBODY"
 req GET "/collections/memberships/records" "$TB"

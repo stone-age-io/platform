@@ -273,9 +273,21 @@ Rules to follow when touching authorization:
   point is that the edge's blast radius is a fixed list rather than a consequence
   of rules that change for unrelated reasons.
 - **A rule cannot express a single-field allowlist.** That is why self-service
-  rotation is `POST /api/me/nats-creds/rotate` (`hooks/credential_routes.go`)
-  rather than an update-rule branch: the alternative is `:isset = false` on every
-  other field, which silently opens up when a field is added.
+  rotation is `POST /api/me/nats-creds/rotate` (`hooks/credential_routes.go`) and
+  account key management is `POST /api/org/nats-account/keys`
+  (`hooks/nats_account_routes.go`), rather than update-rule branches: the
+  alternative is `:isset = false` on every other field, which silently opens up
+  when a field is added. Both routes take no record id — the target is derived from
+  the caller's own identity or active organization — and a `switch` maps each
+  action to exactly one field, rejecting anything unrecognised.
+- **pb-nats trigger fields only fire from a route if pb-nats watches them on the
+  MODEL hook.** `regenerate`, `revoke`, `rotate_keys`, `add_signing_key` and
+  `remove_signing_key` are all handled in `pb-nats internal/sync/manager.go`. Those
+  handlers used to be bound to `OnRecordUpdateRequest`, which fires **only for REST
+  requests** — so a route doing `app.Save()` persisted the flag and nothing acted on
+  it, leaving it set to fire later on an unrelated update. They are now on
+  `OnRecordUpdate`. If a trigger-setting route ever appears to do nothing, check
+  which hook the library binds before debugging the route.
 - **`nats_users.publish_permissions` is copied verbatim into the signed JWT**
   (pb-nats `internal/jwt/generator.go`). Write access to that collection is
   equivalent to granting NATS permissions, so it is owner/admin only.
@@ -283,6 +295,13 @@ Rules to follow when touching authorization:
   `schema.json` alone reaches fresh databases only.
 - **Run `./scripts/test-authz.sh` after any rule change** and add a check. Pair
   every "cannot" with a "can" on the same record, or a blanket deny passes.
+- **Capture "before" state immediately before the action it belongs to.** A check
+  that an operation had an effect is worthless if anything between the two reads
+  could have caused it. `rotation actually re-minted the credential` passed for
+  months against a route that did nothing, because its baseline was captured a
+  section earlier and an intervening `publish_permissions` PATCH re-minted the
+  credential as a side effect. Side-effect assertions need a baseline read on the
+  line above the call.
 
 UI side: the capability map lives in `ui/src/stores/auth.ts` (`can.*`); the router
 guards on `meta.requiresCapability` and the sidebar hides what a role can't reach.
@@ -292,7 +311,7 @@ Keep it in step with the table above.
 
 - `go test ./...` — Go unit tests (`internal/leafsync` has the bulk of them)
 - `./scripts/test-authz.sh` — **run after any API-rule change in `schema.json`.**
-  Builds the binary, stands up a throwaway DB, and asserts 68 authorization
+  Builds the binary, stands up a throwaway DB, and asserts 84 authorization
   behaviours against a live server. The rules are the only tenancy enforcement
   in the platform and nothing else type-checks them. Add a check when you add a
   rule, and bump `EXPECTED_CHECKS`. Note PocketBase answers 404 (not 403) when an

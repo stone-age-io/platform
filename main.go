@@ -308,6 +308,14 @@ func main() {
 		LeafNodeCollection:   "leaf_nodes",
 	})
 
+	// Signing-key operations on an org's own NATS account. Same reason as above:
+	// the update rule cannot permit three trigger fields and forbid the limits,
+	// so nats_accounts.updateRule is operator-only and these live in a route.
+	hooks.RegisterNatsAccountRoutes(app, hooks.NatsAccountRoutesOptions{
+		NatsAccountCollection: natsOptions.AccountCollectionName,
+		MembershipCollection:  tenancyOptions.MembershipsCollection,
+	})
+
 	// 6. Serve Embedded UI with SPA Support
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 		subFS, err := fs.Sub(embeddedFS, "pb_public")
