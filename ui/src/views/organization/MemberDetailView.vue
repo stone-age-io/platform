@@ -41,7 +41,7 @@ const memberId = route.params.id as string
 // --- Computeds ---
 const isSelf = computed(() => membership.value?.user === authStore.user?.id)
 const isOwner = computed(() => membership.value?.role === 'owner')
-const canManage = computed(() => authStore.canManageUsers && !isSelf.value && !isOwner.value)
+const canManage = computed(() => authStore.can.manageMembers && !isSelf.value && !isOwner.value)
 
 // --- Actions ---
 

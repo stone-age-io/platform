@@ -234,7 +234,7 @@ onUnmounted(() => {
             @click.stop="handleRowClick(item)"
             class="btn btn-xs flex-1 sm:flex-initial"
           >
-            {{ authStore.canManageUsers ? 'Manage' : 'View' }}
+            {{ authStore.can.manageMembers ? 'Manage' : 'View' }}
           </button>
         </template>
       </ResponsiveList>

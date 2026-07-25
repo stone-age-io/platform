@@ -66,40 +66,59 @@ const menuItems = computed(() => {
     ]
   }
 
+  // Only show what this role can actually reach. The capability table lives in
+  // stores/auth.ts and the router guards on the same values, so a member no
+  // longer sees NATS/Nebula nav that would bounce them back to the dashboard.
+  const can = authStore.can
+
   const items: any[] = [
     { label: 'Dashboard', icon: '📊', path: '/' },
-    { label: 'Things', icon: '📦', path: '/things' },
-    { label: 'Leaf Nodes', icon: '🍃', path: '/leaf-nodes' },
-    { label: 'Locations', icon: '📍', path: '/locations' },
-    {
-      label: 'NATS',
-      icon: '📡',
-      path: '/nats',
-      children: [
-        { label: 'Account', path: '/nats/account' },
-        { label: 'Users', path: '/nats/users' },
-        { label: 'Roles', path: '/nats/roles' },
-        { label: 'Exports', path: '/nats/exports' },
-        { label: 'Imports', path: '/nats/imports' },
-        ...(natsStore.isConnected && authStore.canManageUsers ? [
-          { label: 'Streams', path: '/nats/streams' },
-          { label: 'KV Buckets', path: '/nats/kv' },
-        ] : []),
-      ]
-    },
-    {
-      label: 'Nebula',
-      icon: '🌐',
-      path: '/nebula',
-      children: [
-        { label: 'Certificate Authority', path: '/nebula/ca' },
-        { label: 'Networks', path: '/nebula/networks' },
-        { label: 'Hosts', path: '/nebula/hosts' },
-      ]
-    },
   ]
 
-  if (authStore.canManageUsers) {
+  if (can.manageInventory) {
+    items.push(
+      { label: 'Things', icon: '📦', path: '/things' },
+      { label: 'Locations', icon: '📍', path: '/locations' },
+    )
+  }
+
+  if (can.manageLeafNodes) {
+    items.push({ label: 'Leaf Nodes', icon: '🍃', path: '/leaf-nodes' })
+  }
+
+  if (can.manageInfrastructure) {
+    items.push(
+      {
+        label: 'NATS',
+        icon: '📡',
+        path: '/nats',
+        children: [
+          { label: 'Account', path: '/nats/account' },
+          { label: 'Users', path: '/nats/users' },
+          { label: 'Roles', path: '/nats/roles' },
+          { label: 'Exports', path: '/nats/exports' },
+          { label: 'Imports', path: '/nats/imports' },
+          // Streams and KV need a live NATS connection, not just the capability.
+          ...(natsStore.isConnected && can.manageMessaging ? [
+            { label: 'Streams', path: '/nats/streams' },
+            { label: 'KV Buckets', path: '/nats/kv' },
+          ] : []),
+        ]
+      },
+      {
+        label: 'Nebula',
+        icon: '🌐',
+        path: '/nebula',
+        children: [
+          { label: 'Certificate Authority', path: '/nebula/ca' },
+          { label: 'Networks', path: '/nebula/networks' },
+          { label: 'Hosts', path: '/nebula/hosts' },
+        ]
+      },
+    )
+  }
+
+  if (can.manageDefinitions) {
     items.push({
       label: 'Types',
       icon: '🏷️',
@@ -113,7 +132,7 @@ const menuItems = computed(() => {
     })
   }
 
-  if (authStore.canManageUsers) {
+  if (can.manageMembers) {
     items.push({
       label: 'Team',
       icon: '👥',
@@ -133,11 +152,14 @@ const menuItems = computed(() => {
     })
   }
 
-  items.push({
-    label: 'Audit Logs',
-    icon: '📋',
-    path: '/audit'
-  })
+  // audit_logs is readable by operators only.
+  if (authStore.isOperator) {
+    items.push({
+      label: 'Audit Logs',
+      icon: '📋',
+      path: '/audit'
+    })
+  }
 
   return items
 })

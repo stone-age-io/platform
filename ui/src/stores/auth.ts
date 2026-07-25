@@ -50,8 +50,32 @@ export const useAuthStore = defineStore('auth', () => {
     return currentMembership.value?.role || 'member'
   })
   
-  const canManageUsers = computed(() => {
-    return ['owner', 'admin'].includes(userRole.value)
+  // What each role may do, in one place. The router, the sidebar, and individual
+  // views all read this, so a role change is a one-line edit here rather than a
+  // hunt through inline ['owner','admin'] arrays.
+  //
+  // This mirrors the API rules in schema.json and is a UI convenience only —
+  // the server enforces the same boundaries in its own rules. Keep the two in
+  // step: if you gate a collection there, add or reuse a capability here.
+  // scripts/test-authz.sh is what proves the server half.
+  const can = computed(() => {
+    const role = userRole.value
+    const isAdmin = role === 'owner' || role === 'admin'
+    return {
+      // Members and invitations.
+      manageMembers: isAdmin,
+      // NATS identities/roles/exports/imports, Nebula CA/networks/hosts. These
+      // records mint signed credentials, so they are owner/admin only.
+      manageInfrastructure: isAdmin,
+      // Thing types, thing operations, message schemas, location types.
+      manageDefinitions: isAdmin,
+      // Edge nodes.
+      manageLeafNodes: isAdmin,
+      // JetStream streams and KV buckets.
+      manageMessaging: isAdmin,
+      // Things and locations — the day-to-day inventory work, open to members.
+      manageInventory: isAdmin || role === 'member',
+    }
   })
 
   // Badge user: restricted to badge + dashboard views only
@@ -243,7 +267,7 @@ export const useAuthStore = defineStore('auth', () => {
     currentOrg,
     currentNatsUser,
     userRole,
-    canManageUsers,
+    can,
     isBadgeUser,
     isOperator,
     canManageOrganizations,
