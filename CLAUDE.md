@@ -96,10 +96,17 @@ npm run dev
 - PocketBase Admin: http://localhost:8090/_/
 
 ### Bootstrap (Initial Setup)
+Three commands, in this order — the order is load-bearing:
 ```bash
-# Interactive setup for first-time deployment
+./stone-age superuser upsert admin@example.com 'password'   # PB superuser + NATS $SYS seed
+./stone-age migrate up                                      # import schema.json
 ./stone-age bootstrap --email admin@example.com --org "System" --operator-org "816tech"
 ```
+`bootstrap` writes `is_operator` / `is_system_org` / `is_operator_org`, which only
+exist after the schema is imported. PocketBase silently drops writes to fields
+that don't exist, so running `bootstrap` first yields a platform with no operator;
+it now refuses to run before the migrations. This is also the only way to grant
+operator status apart from the admin panel — the API cannot.
 
 ### Production Build
 ```bash
@@ -210,12 +217,75 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
 11. **Operator Org & Managed Orgs** - Bootstrap creates the platform operator's own org (`is_operator_org`) alongside the `$SYS` org (`is_system_org`); its NATS account is the hub for shared operator services (helpdesk etc.). Flagging a customer org `managed` provisions a stream export of `helpdesk.>` (configurable: `nats.managed_export_subject`) from its account plus a hub-side import remapped to `helpdesk.{orgId}.>` — the org prefix is baked into the signed account JWT, so event provenance is subject-based and unforgeable (`hooks/managed_org_exports.go`).
 12. **Edge / Leaf Nodes** - `leaf_nodes` auth collection (a "special thing" with one nats_user, server-provisioned). The `leaf-sync` agent runs on the edge, authenticates as the leaf node, and mirrors its org's config collections into a NATS leaf node's local JetStream KV. Operator JWT served via the dedicated `GET /api/leaf/operator-jwt` route (nats_system_operator stays superuser-only). `leaf-sync` writes a best-effort liveness heartbeat into the hub's `leaf_status` KV (when `nats.hub_domain` is set); the UI reads it to show online/offline status on the leaf node list + detail views. Credentials are resettable by org Admins/Owners (collection `manageRule`).
 
+## Roles & Authorization
+
+**PocketBase API rules in `schema.json` are the only enforcement layer.** pb-nats
+and pb-nebula contain no tenancy logic — they never reference `organization`. The
+UI's capability map is navigation convenience, not a boundary.
+
+Four roles on `memberships.role` (`invites.role` offers all but `owner`):
+
+| | owner | admin | member | badge |
+|---|:-:|:-:|:-:|:-:|
+| Members, invitations | ✓ | ✓ | | |
+| NATS + Nebula infrastructure | ✓ | ✓ | | |
+| Thing/location types, operations, schemas | ✓ | ✓ | | |
+| Leaf nodes, JetStream streams, KV buckets | ✓ | ✓ | | |
+| Attach a NATS/Nebula identity to a Thing | ✓ | ✓ | | |
+| Delete a thing or location | ✓ | ✓ | | |
+| Things + locations: create and edit | ✓ | ✓ | ✓ | |
+| Own NATS credential + rotation | ✓ | ✓ | ✓ | ✓ |
+| Dashboards | ✓ | ✓ | ✓ | badge routes only |
+
+`owner` and `admin` are deliberately identical in the rules — the only difference
+is that an owner cannot leave their own organization (`ui/src/stores/auth.ts`).
+Editing the **organization record itself is a platform-operator action, not an
+owner one**: it carries the tenancy flags (`managed`, `is_operator_org`,
+`is_system_org`) and drives NATS account and Nebula CA provisioning, so no
+tenant role has an update path to it.
+
+Rules to follow when touching authorization:
+
+- **Use an allowlist, never a deny-list.** `role ?!= "member"` was satisfied by
+  `badge` — the *most* restricted role — so badge holders passed every admin
+  check. Write `(role ?= "owner" || role ?= "admin")`. Copy the canonical snippet
+  verbatim from a neighbouring rule; do not hand-write a variant.
+- **`?`-prefixed operators are row-correlated** on the same relation path, so
+  `memberships_via_user.organization ?= X && memberships_via_user.role ?= "owner"`
+  matches one membership row. Without `?`, the condition must hold for *all*
+  related rows.
+- **Credentials are protected by row scoping, not hidden fields.**
+  `nats_users.creds_file` and `nebula_hosts.config_yaml` stay readable because the
+  identity that owns them needs them (the browser's NATS connection, `leaf-sync
+  config`, the admin download button). The read rules restrict *which rows* a
+  caller sees. Do not add `hidden: true` to them — it breaks all three and buys
+  nothing.
+- **A rule cannot express a single-field allowlist.** That is why self-service
+  rotation is `POST /api/me/nats-creds/rotate` (`hooks/credential_routes.go`)
+  rather than an update-rule branch: the alternative is `:isset = false` on every
+  other field, which silently opens up when a field is added.
+- **`nats_users.publish_permissions` is copied verbatim into the signed JWT**
+  (pb-nats `internal/jwt/generator.go`). Write access to that collection is
+  equivalent to granting NATS permissions, so it is owner/admin only.
+- **Schema changes need a new `migrations/schema_update_*.go`** — editing
+  `schema.json` alone reaches fresh databases only.
+- **Run `./scripts/test-authz.sh` after any rule change** and add a check. Pair
+  every "cannot" with a "can" on the same record, or a blanket deny passes.
+
+UI side: the capability map lives in `ui/src/stores/auth.ts` (`can.*`); the router
+guards on `meta.requiresCapability` and the sidebar hides what a role can't reach.
+Keep it in step with the table above.
+
 ## Testing
 
-No automated test framework configured. Development relies on:
-- HMR during `npm run dev`
-- Browser DevTools
-- PocketBase admin panel at `/_/`
+- `go test ./...` — Go unit tests (`internal/leafsync` has the bulk of them)
+- `./scripts/test-authz.sh` — **run after any API-rule change in `schema.json`.**
+  Builds the binary, stands up a throwaway DB, and asserts 24 authorization
+  behaviours against a live server. The rules are the only tenancy enforcement
+  in the platform and nothing else type-checks them. Add a check when you add a
+  rule. Note PocketBase answers 404 (not 403) when an update rule rejects.
+- Frontend has no test runner; development relies on HMR (`npm run dev`),
+  browser DevTools, and the PocketBase admin panel at `/_/`
 
 ## Important Files
 

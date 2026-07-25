@@ -3,15 +3,22 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
+	"strings"
 	"syscall"
 
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"golang.org/x/term"
 
 	pbnats "github.com/skeeeon/pb-nats"
 )
+
+// PocketBase's own minimum for auth record passwords. Checked up front so a typo
+// surfaces as a clear message instead of a validation error after the prompts.
+const minPasswordLen = 8
 
 // addBootstrapCommand registers the `bootstrap` CLI command, which provisions
 // the initial System organization, admin user, and links the pre-existing NATS
@@ -32,31 +39,62 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 				fmt.Print("Admin Email: ")
 				fmt.Scanln(&email)
 			}
-			if password == "" {
-				fmt.Print("Admin Password: ")
-				bytePassword, _ := term.ReadPassword(int(syscall.Stdin))
-				password = string(bytePassword)
-				fmt.Println()
+			email = strings.TrimSpace(email)
+			if email == "" {
+				log.Fatal("❌ An admin email is required (pass --email or answer the prompt)")
+			}
+			if !strings.Contains(email, "@") {
+				log.Fatalf("❌ %q is not a valid email address", email)
 			}
 			if operatorOrgName == "" {
 				fmt.Print("Operator Organization (blank to skip): ")
 				fmt.Scanln(&operatorOrgName)
 			}
+			operatorOrgName = strings.TrimSpace(operatorOrgName)
 
 			usersCol, err := app.FindCollectionByNameOrId("users")
 			if err != nil {
 				log.Fatalf("❌ Failed to find users collection: %v", err)
 			}
 
+			// The platform's own fields (is_operator, the org flags) come from
+			// schema.json via the migrations. The embedded libraries create their
+			// collections during OnBootstrap, so those exist even on a virgin DB —
+			// which makes it perfectly possible to run bootstrap before any
+			// migration has been applied. Doing so used to "succeed" while losing
+			// every platform flag, because record.Set() on a field that does not
+			// exist is a silent no-op in PocketBase: no operator, no is_system_org,
+			// no is_operator_org, and no error anywhere.
+			requireSchemaFields(app, []collectionFields{
+				{"users", []string{"is_operator"}},
+				{orgColName, []string{"is_system_org", "is_operator_org"}},
+				{memberColName, []string{"role"}},
+			})
+
+			// Resolve the user before asking for a password: on a re-run the
+			// account already exists and the password is never used, so there is
+			// no reason to make the operator type one.
 			var user *core.Record
 			existingUser, _ := app.FindAuthRecordByEmail("users", email)
 			if existingUser != nil {
 				log.Printf("👤 User '%s' already exists, using existing record.", email)
 				user = existingUser
 			} else {
+				if password == "" {
+					password = os.Getenv("STONE_AGE_BOOTSTRAP_PASSWORD")
+				}
+				if password == "" {
+					password = promptNewPassword()
+				}
+				if len(password) < minPasswordLen {
+					log.Fatalf("❌ Password must be at least %d characters (got %d)", minPasswordLen, len(password))
+				}
 				user = core.NewRecord(usersCol)
 				user.Set("email", email)
 				user.Set("emailVisibility", true)
+				// No verification email is sent for the bootstrap account — it is
+				// created out-of-band by whoever owns the server.
+				user.Set("verified", true)
 				user.SetPassword(password)
 				if err := app.Save(user); err != nil {
 					log.Fatalf("❌ Failed to create user: %v", err)
@@ -105,9 +143,20 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 				}
 			}
 
-			linkSingleton(app, natsOpts.AccountCollectionName, org.Id, "NATS Account", "name", orgName)
-			linkSingleton(app, natsOpts.UserCollectionName, org.Id, "NATS User", "nats_username", orgName)
-			linkSingleton(app, natsOpts.RoleCollectionName, org.Id, "NATS Role", "name", orgName)
+			// Collected rather than fatal: each of these leaves the platform usable
+			// but incompletely provisioned, and the operator needs to see all of
+			// them at once instead of fixing one per run.
+			var problems []string
+
+			if !linkSingleton(app, natsOpts.AccountCollectionName, org.Id, "NATS Account", "name", orgName) {
+				problems = append(problems, "NATS Account not linked — new organizations cannot be provisioned")
+			}
+			if !linkSingleton(app, natsOpts.UserCollectionName, org.Id, "NATS User", "nats_username", orgName) {
+				problems = append(problems, "NATS User not linked — the console cannot connect to NATS")
+			}
+			if !linkSingleton(app, natsOpts.RoleCollectionName, org.Id, "NATS Role", "name", orgName) {
+				problems = append(problems, "NATS Role not linked — permission templates are unavailable")
+			}
 
 			nebulaCol, _ := app.FindCollectionByNameOrId("nebula_ca")
 			if nebulaCol != nil {
@@ -116,11 +165,14 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 					ca := core.NewRecord(nebulaCol)
 					ca.Set("name", orgName+" CA")
 					ca.Set("organization", org.Id)
-					ca.Set("validity_years", 10)
+					// Was hardcoded to 10; use the configured default so bootstrap
+					// and the org-provisioning hook agree.
+					ca.Set("validity_years", viper.GetInt("nebula.default_ca_validity_years"))
 					if err := app.Save(ca); err == nil {
 						log.Printf("✅ Provisioned Nebula CA for '%s'", orgName)
 					} else {
 						log.Printf("❌ Failed to provision Nebula CA: %v", err)
+						problems = append(problems, fmt.Sprintf("Nebula CA not provisioned: %v", err))
 					}
 				}
 			}
@@ -151,16 +203,93 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 				log.Printf("⚠️ Failed to set user context: %v", err)
 			}
 
+			// A missing operator org is NOT a problem here: --operator-org is
+			// documented as optional and ensureOperatorOrg already warns.
+
+			if len(problems) > 0 {
+				fmt.Println("\n⚠️  Bootstrap finished, but the platform is only partly provisioned:")
+				for _, p := range problems {
+					fmt.Printf("   • %s\n", p)
+				}
+				fmt.Println("\n   Fix the above and re-run — bootstrap is idempotent.")
+				fmt.Println("   Missing NATS records usually mean 'superuser upsert' has not been run yet.")
+				os.Exit(1)
+			}
+
 			fmt.Println("\n🚀 Bootstrap complete!")
+			fmt.Printf("   Operator user : %s  (is_operator = true)\n", email)
+			fmt.Printf("   System org    : %s\n", org.GetString("name"))
+			if operatorOrg != nil {
+				fmt.Printf("   Operator org  : %s  (default working context)\n", operatorOrg.GetString("name"))
+			}
+			fmt.Println("\n   Next: start the server with 'serve' and sign in with the address above.")
 		},
 	}
 
 	cmd.Flags().String("email", "", "Email address for the admin user")
-	cmd.Flags().String("password", "", "Password for the admin user")
+	cmd.Flags().String("password", "", "Password for the admin user (insecure: visible in shell history and process list — prefer the interactive prompt or STONE_AGE_BOOTSTRAP_PASSWORD)")
 	cmd.Flags().String("org", "System", "Name of the initial organization")
 	cmd.Flags().String("operator-org", "", "Name of the platform operator's organization (hub for shared services)")
 
 	app.RootCmd.AddCommand(cmd)
+}
+
+// collectionFields names the fields bootstrap requires on one collection.
+type collectionFields struct {
+	collection string
+	fields     []string
+}
+
+// requireSchemaFields aborts unless every listed field exists. Bootstrap writes
+// platform flags that only exist once schema.json has been imported, and a write
+// to a missing field is silently discarded — so without this check the operator
+// gets a "Bootstrap complete!" that produced no platform operator at all.
+func requireSchemaFields(app *pocketbase.PocketBase, want []collectionFields) {
+	var missing []string
+	for _, w := range want {
+		col, err := app.FindCollectionByNameOrId(w.collection)
+		if err != nil {
+			missing = append(missing, fmt.Sprintf("collection %q", w.collection))
+			continue
+		}
+		for _, f := range w.fields {
+			if col.Fields.GetByName(f) == nil {
+				missing = append(missing, w.collection+"."+f)
+			}
+		}
+	}
+	if len(missing) == 0 {
+		return
+	}
+
+	log.Printf("❌ Database schema is not initialized — missing: %s", strings.Join(missing, ", "))
+	log.Fatal("   Apply the migrations first, then re-run bootstrap:\n" +
+		"      stone-age migrate up\n" +
+		"   (Starting the server once with 'serve' also applies them.)")
+}
+
+// promptNewPassword reads a password twice from the terminal and returns it only
+// if both entries match. The bootstrap password cannot be recovered or reset
+// without another CLI run, so a silent typo here is expensive.
+func promptNewPassword() string {
+	fmt.Print("Admin Password: ")
+	first, err := term.ReadPassword(int(syscall.Stdin))
+	fmt.Println()
+	if err != nil {
+		log.Fatalf("❌ Failed to read password: %v", err)
+	}
+
+	fmt.Print("Confirm Password: ")
+	second, err := term.ReadPassword(int(syscall.Stdin))
+	fmt.Println()
+	if err != nil {
+		log.Fatalf("❌ Failed to read password: %v", err)
+	}
+
+	if string(first) != string(second) {
+		log.Fatal("❌ Passwords do not match")
+	}
+	return string(first)
 }
 
 // linkSingleton adopts the single pre-existing NATS Account/User/Role
@@ -168,21 +297,26 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 // Only unlinked records are candidates — regular orgs provision their own
 // records via hooks, so those must not make adoption look ambiguous.
 // Fatal only when more than one unlinked record exists.
-func linkSingleton(app *pocketbase.PocketBase, colName, orgID, label, nameField, orgName string) {
+//
+// Returns false when there was nothing to adopt, so the caller can report an
+// incompletely provisioned platform instead of printing unqualified success.
+func linkSingleton(app *pocketbase.PocketBase, colName, orgID, label, nameField, orgName string) bool {
 	col, _ := app.FindCollectionByNameOrId(colName)
 	if col == nil {
-		return
+		log.Printf("⚠️ Collection %q not found; cannot link %s", colName, label)
+		return false
 	}
 
 	if linked, _ := app.FindFirstRecordByFilter(col.Id, "organization = {:org}", map[string]interface{}{"org": orgID}); linked != nil {
 		log.Printf("ℹ️ %s already linked to this organization", label)
-		return
+		return true
 	}
 
 	unlinked, _ := app.FindRecordsByFilter(col.Id, "organization = ''", "", 2, 0)
 	switch len(unlinked) {
 	case 0:
 		log.Printf("⚠️ Warning: No unlinked %s found. Did you run 'superuser upsert' first?", label)
+		return false
 	case 1:
 		rec := unlinked[0]
 		rec.Set("organization", orgID)
@@ -190,9 +324,11 @@ func linkSingleton(app *pocketbase.PocketBase, colName, orgID, label, nameField,
 			log.Fatalf("❌ Failed to update %s: %v", label, err)
 		}
 		log.Printf("🔗 Linked %s '%s' to Organization '%s'", label, rec.GetString(nameField), orgName)
+		return true
 	default:
 		log.Fatalf("❌ Ambiguous state: multiple unlinked %ss. Expected exactly 1 (System) for bootstrap.", label)
 	}
+	return false
 }
 
 // ensureOwnerMembership creates the admin user's Owner membership in the

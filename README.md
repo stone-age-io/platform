@@ -47,11 +47,47 @@ npm run build
 go build -o stone-age main.go
 ```
 
-### 3. Run the Platform
+### 3. Initial Setup (first deployment only)
+
+Run these three in order — **the order matters**:
+
+```bash
+./stone-age superuser upsert admin@example.com 'your-password'
+```
+```bash
+./stone-age migrate up
+```
+```bash
+./stone-age bootstrap --email admin@example.com --org "System" --operator-org "your-company"
+```
+
+1.  **`superuser upsert`** creates the PocketBase superuser that owns the admin
+    panel at `/_/`. This is also what seeds the NATS operator and `$SYS` records.
+2.  **`migrate up`** imports `schema.json`, creating the platform's own
+    collections and fields. (Starting the server once with `serve` applies them
+    too, but the explicit command is better in a deploy script.)
+3.  **`bootstrap`** provisions the System organization, the platform operator
+    user, and the operator organization, and links the `$SYS` NATS records to the
+    System org. It prompts for anything not passed as a flag; prefer the prompt
+    over `--password`, which is visible in shell history and the process list
+    (`STONE_AGE_BOOTSTRAP_PASSWORD` also works for automation).
+
+**Why the order matters:** `bootstrap` writes platform flags — `is_operator`,
+`is_system_org`, `is_operator_org` — that exist only after `schema.json` has been
+imported. PocketBase silently discards a write to a field that does not exist, so
+running `bootstrap` before `migrate up` would print "Bootstrap complete!" while
+leaving you with **no platform operator at all**. `bootstrap` now refuses to run
+in that state and tells you what to do.
+
+Granting operator status is deliberately not possible through the API — only this
+command or the admin panel can do it.
+
+### 4. Run the Platform
 ```bash
 ./stone-age serve
 ```
-Access the dashboard at: `http://localhost:8090`
+Access the console at `http://localhost:8090`, and the PocketBase admin panel at
+`http://localhost:8090/_/`.
 
 ### Edge Agent (Optional)
 The edge agent is a separate, lean binary built from the same repo — it runs on edge boxes, not the central server:
@@ -122,6 +158,31 @@ For per-theme logo art (different SVG for light vs. dark), the example `theme.cs
 
 ---
 
+## 🔐 Authorization Tests
+
+Tenant isolation and privilege boundaries are enforced **entirely** by the
+PocketBase API rules in `schema.json` — the NATS and Nebula packages contain no
+tenancy logic. Those rules are plain strings with no compiler and no type
+checker behind them, so there is one script that exercises the ones that matter
+against a real server:
+
+```bash
+./scripts/test-authz.sh
+```
+
+It builds the binary, stands up a throwaway database, runs 24 checks, and tears
+everything down; `pb_data/` is never touched. Run it after any change to a
+`listRule` / `viewRule` / `createRule` / `updateRule` / `deleteRule`, and add a
+check whenever you add a rule. Requires `go`, `curl`, and `node`.
+
+Two things to know when reading a failure: PocketBase answers **404, not 403**,
+when an update rule rejects a request (deliberately — it avoids confirming the
+record exists), and every "cannot do X" check is paired with a "can still do Y"
+check on the same record, so a rule that simply denies everything fails the
+suite rather than passing it.
+
+---
+
 ## 🛠 Development Workflow
 
 For active development, run the backend and frontend separately to enable Hot Module Replacement (HMR).
@@ -145,7 +206,8 @@ npm run dev
 
 The platform uses a simple, declarative approach to schema management:
 
-*   **`schema.json`**: The single source of truth for all PocketBase collections. This file is embedded in the binary and imported on every startup.
+*   **`schema.json`**: The single source of truth for all PocketBase collections, embedded in the binary.
+*   **Applied by migrations — not on every startup.** Each file in `migrations/` calls `ImportCollectionsByMarshaledJSON(SchemaJSON, false)`, and PocketBase runs each migration exactly once per database. On a fresh database the first migration imports everything; on an existing database, only *new* migration files run.
 *   **Extend Mode**: The import uses `deleteMissing=false`, meaning it adds/updates collections from the schema but preserves any collections created by packages that aren't in the file.
 
 ### Updating the Schema
@@ -153,8 +215,14 @@ The platform uses a simple, declarative approach to schema management:
 1.  Make changes in the PocketBase Admin UI (`http://localhost:8090/_/`)
 2.  Export collections from **Settings → Export collections**
 3.  Replace `schema.json` with the exported file
-4.  Commit the updated `schema.json`
-5.  Rebuild the binary - the new schema is embedded automatically
+4.  **Add a new file to `migrations/`** that re-imports the schema — copy an existing `schema_update_*.go`, rename it, and describe the change in its doc comment
+5.  Commit both the updated `schema.json` and the new migration
+6.  Rebuild the binary - the new schema is embedded automatically
+
+> ⚠️ Step 4 is not optional. Every existing deployment has already run the
+> existing migrations, so editing `schema.json` alone changes *fresh* databases
+> only and is a silent no-op everywhere else. Skipping it is the easiest way to
+> ship a schema change that works on your laptop and does nothing in production.
 
 ---
 
@@ -162,7 +230,7 @@ The platform uses a simple, declarative approach to schema management:
 
 The `main.go` file contains critical business logic hooks:
 
-*   **`OnBootstrap`**: Imports `schema.json` to ensure all collections and fields are up to date.
+*   **Migrations** (`migrations/`): Import `schema.json` to bring collections and fields up to date. Each runs once per database — see [Schema Management](#-schema-management).
 *   **`OnRecordAfterCreateSuccess` (Organizations)**:
     1.  Creates a **NATS Account** specifically for that organization.
     2.  Creates a **Nebula CA** specifically for that organization.
