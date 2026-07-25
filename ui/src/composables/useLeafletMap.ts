@@ -20,6 +20,18 @@ import type { BufferedMessage } from '@/stores/widgetData'
  * (clustered + KV-driven dynamic markers), and cluster-click drawers.
  */
 
+/**
+ * Basemap tile sources. Both are keyless.
+ *
+ * The dark tiles are lifted by a brightness/contrast filter on .leaflet-tile-pane
+ * (see assets/main.css) — raw dark_all is near-black at the zooms a site map uses.
+ * If you change this URL, revisit that rule; it is tuned to this source.
+ *
+ * Alternatives evaluated and rejected: Stadia's Alidade Smooth Dark needs an API
+ * key (401 keyless), and Esri's Dark Gray Canvas stops at z16 — above it the
+ * server returns a *light* grey "Map data not yet available" tile rather than a
+ * blank one, which is conspicuous on a dark UI. Neither is worth the trade.
+ */
 const TILE_URLS = {
   light: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
   dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'

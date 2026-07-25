@@ -12,6 +12,24 @@ body {
   background-color: oklch(var(--b2));
 }
 
+/* Dark-mode basemap lift.
+ *
+ * CARTO's dark_all tiles bottom out near #0d0d0d at high zoom — at z18, which is
+ * where a site or building map actually sits, roads stop separating from the
+ * background. This lifts those tones to roughly #19–#2b. Brightness is the dial
+ * to turn; the contrast pullback offsets the flattening brightness alone causes.
+ *
+ * Scoped to the tile pane deliberately. On .leaflet-container the same filter
+ * washes out markers, cluster bubbles and popups along with the basemap. Floor
+ * plans use L.imageOverlay, which Leaflet puts in the overlay pane, so they are
+ * unaffected — a floor plan is already artwork at its intended exposure.
+ *
+ * Light mode uses OSM tiles and needs no correction. If the dark tile source in
+ * composables/useLeafletMap.ts ever changes, re-check or drop this. */
+[data-theme='dark'] .leaflet-tile-pane {
+  filter: brightness(1.5) contrast(0.95);
+}
+
 /* Custom scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;
