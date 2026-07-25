@@ -4,24 +4,27 @@
  * Live State for one Thing or Location: the digital twin, presented as what an
  * operator needs rather than as a key-value browser.
  *
- * ONE ROW PER PROPERTY, both halves side by side. Reported and desired are the
- * same key in two buckets (`twin/thing.S01.armed` and
- * `twin_desired/thing.S01.armed`), so they join naturally on the property name —
- * and the delta between them is the single most useful thing a twin can show:
- * "I asked for on, it still reports off." Stacking them in two lists, or hiding
- * one behind a tab, buries exactly that comparison.
+ * ONE LIST OF PROPERTIES. Desired is not a peer of reported here — it is an
+ * annotation on the few rows that have one, plus an action.
  *
- * It also fixes the interaction: setting a desired value from a merged row
- * pre-fills the property name, instead of asking an operator to retype it from
- * memory into an empty form.
+ * The two buckets exist because bidirectional sync needs exactly one writer
+ * each. That is a sync-layer concern, and earlier versions of this card let it
+ * become the organizing principle of the UI — two stacked lists, then two
+ * columns — which gave half the width and a peer-level heading to something
+ * that is empty for most properties. Real twins are mostly telemetry
+ * (`analytics`, `install-date`) with a handful of controllable settings. So a
+ * property with no desired value renders as an ordinary value row and costs
+ * nothing; only a desired value that DIFFERS from what the device reports earns
+ * screen space, because that is the one genuinely interesting state: asked for
+ * on, still reports off.
  *
  * Reported values are READ-ONLY here. The edge overwrites them, so an edit
  * button would be a lie — the value comes back on the next sync. Desired is the
  * writable half and the operator's actual control.
  *
  * The raw, fully general key browser is still KvDashboard, under NATS → KV
- * Buckets. This component is deliberately opinionated: it hides bucket names and
- * key prefixes, because the card already knows which Thing it is on.
+ * Buckets. This component hides bucket names and key prefixes, because the card
+ * already knows which Thing it is on.
  */
 import { ref, computed, onMounted, watch } from 'vue'
 import { useNatsKv, type KvEntry } from '@/composables/useNatsKv'
@@ -101,18 +104,17 @@ const rows = computed<PropRow[]>(() => {
 
   for (const row of byProp.values()) {
     row.differs =
-      !!row.reported &&
       !!row.desired &&
-      JSON.stringify(row.reported.value) !== JSON.stringify(row.desired.value)
+      (!row.reported ||
+        JSON.stringify(row.reported.value) !== JSON.stringify(row.desired.value))
   }
 
   return Array.from(byProp.values()).sort((a, b) => a.prop.localeCompare(b.prop))
 })
 
 const columns: Column<PropRow>[] = [
-  { key: 'prop', label: 'Property', class: 'w-1/4' },
-  { key: 'reported', label: 'Reported', mobileLabel: 'Reported', class: 'w-2/5' },
-  { key: 'desired', label: 'Desired', mobileLabel: 'Desired', class: 'w-2/5' },
+  { key: 'prop', label: 'Property', class: 'w-1/3' },
+  { key: 'value', label: 'Value', mobileLabel: 'Value' },
 ]
 
 const loading = computed(() => reportedLoading.value || desiredLoading.value)
@@ -156,13 +158,13 @@ async function openDetail(row: PropRow) {
 
 const editorOpen = ref(false)
 const editingProp = ref('')
-const editingIsNew = ref(false)
+const editingPropLocked = ref(false)
 const editorValue = ref('')
 const saving = ref(false)
 
 /** From a row: the property is known, so don't make anyone retype it. */
 function openSet(row: PropRow) {
-  editingIsNew.value = !row.desired
+  editingPropLocked.value = true
   editingProp.value = row.prop
   editorValue.value = row.desired
     ? toEditable(row.desired.value)
@@ -172,9 +174,9 @@ function openSet(row: PropRow) {
   editorOpen.value = true
 }
 
-/** From the header: a property that exists on neither side yet. */
+/** From the header: a property that may exist on neither side yet. */
 function openNew() {
-  editingIsNew.value = true
+  editingPropLocked.value = false
   editingProp.value = ''
   editorValue.value = ''
   editorOpen.value = true
@@ -187,7 +189,9 @@ function toEditable(v: any): string {
 /**
  * Values are stored as JSON. A bare word like `on` is not valid JSON, and
  * demanding quotes around it would be a poor trade for the common case, so an
- * unparseable value is stored as a string.
+ * unparseable value is stored as a string. That fallback is quiet and easy to
+ * get wrong, which is what `parsedPreview` below is for — it says out loud what
+ * will actually be written.
  */
 function parseValue(raw: string): any {
   const t = raw.trim()
@@ -198,6 +202,31 @@ function parseValue(raw: string): any {
     return raw
   }
 }
+
+const parsedPreview = computed<{ type: string; note: string }>(() => {
+  const t = editorValue.value.trim()
+  if (t === '') return { type: 'string', note: 'empty' }
+  try {
+    const v = JSON.parse(t)
+    if (v === null) return { type: 'null', note: '' }
+    if (Array.isArray(v)) return { type: 'array', note: `${v.length} items` }
+    if (typeof v === 'object') return { type: 'object', note: `${Object.keys(v).length} fields` }
+    return { type: typeof v, note: String(v) }
+  } catch {
+    return { type: 'string', note: 'not valid JSON — stored as text' }
+  }
+})
+
+/** Same quick-set affordances as the KV browser's editor, plus a few. */
+const quickSets: { label: string; apply: () => string }[] = [
+  { label: 'true', apply: () => 'true' },
+  { label: 'false', apply: () => 'false' },
+  { label: 'null', apply: () => 'null' },
+  { label: '0', apply: () => '0' },
+  { label: '""', apply: () => '""' },
+  { label: '{}', apply: () => '{\n  \n}' },
+  { label: 'now()', apply: () => JSON.stringify(new Date().toISOString()) },
+]
 
 async function save() {
   const prop = editingProp.value.trim()
@@ -248,7 +277,7 @@ watch(() => natsStore.isConnected, initAll)
   <BaseCard title="Live State" :no-padding="true" class="w-full overflow-hidden">
     <template #actions>
       <div class="flex items-center gap-3">
-        <span v-if="pendingCount" class="badge badge-warning badge-sm gap-1">
+        <span v-if="pendingCount" class="badge badge-warning badge-sm">
           {{ pendingCount }} pending
         </span>
         <span v-if="lastReported" class="text-xs text-base-content/70 hidden sm:inline">
@@ -291,44 +320,59 @@ watch(() => natsStore.isConnected, initAll)
           <span class="font-mono text-sm font-semibold text-primary break-all">{{ item.prop }}</span>
         </template>
 
-        <template #cell-reported="{ item }">
-          <TwinValue :value="item.reported?.value" :missing="!item.reported" />
-        </template>
+        <!--
+          The value cell carries the whole story. No desired value: just the
+          value. Desired that matches: a quiet marker, so Clear makes sense.
+          Desired that differs: the arrow, which is the only case worth space.
+        -->
+        <template #cell-value="{ item }">
+          <span class="inline-flex items-center gap-2 min-w-0">
+            <TwinValue v-if="item.reported" :value="item.reported.value" />
+            <span v-else class="text-xs opacity-40 italic">awaiting device</span>
 
-        <template #cell-desired="{ item }">
-          <span class="inline-flex items-center gap-2">
-            <TwinValue :value="item.desired?.value" :missing="!item.desired" />
+            <template v-if="item.differs">
+              <span class="opacity-30" aria-hidden="true">→</span>
+              <TwinValue :value="item.desired!.value" />
+              <span class="badge badge-warning badge-xs" title="Not yet reported by the device">
+                pending
+              </span>
+            </template>
             <span
-              v-if="item.differs"
-              class="badge badge-warning badge-xs"
-              title="The device has not reported this value yet"
-            >pending</span>
+              v-else-if="item.desired"
+              class="badge badge-ghost badge-xs"
+              title="Desired value set, and the device agrees"
+            >set</span>
           </span>
         </template>
 
-        <!-- Mobile card: property is the header, the two values are the grid -->
         <template #card-prop="{ item }">
           <div class="font-mono text-sm font-bold text-primary truncate">{{ item.prop }}</div>
         </template>
-        <template #card-reported="{ item }">
-          <TwinValue :value="item.reported?.value" :missing="!item.reported" />
-        </template>
-        <template #card-desired="{ item }">
-          <span class="inline-flex items-center gap-1.5">
-            <TwinValue :value="item.desired?.value" :missing="!item.desired" />
-            <span v-if="item.differs" class="badge badge-warning badge-xs">pending</span>
+        <template #card-value="{ item }">
+          <span class="inline-flex items-center gap-1.5 min-w-0">
+            <TwinValue v-if="item.reported" :value="item.reported.value" />
+            <span v-else class="text-xs opacity-40 italic">awaiting device</span>
+            <template v-if="item.differs">
+              <span class="opacity-30" aria-hidden="true">→</span>
+              <TwinValue :value="item.desired!.value" />
+              <span class="badge badge-warning badge-xs">pending</span>
+            </template>
           </span>
         </template>
 
+        <!-- Rows with a desired value always show their controls. Rows without
+             reveal Set on hover, so a list of pure telemetry stays quiet. Mobile
+             has no hover, so the lg: prefixes keep it visible there. -->
         <template #actions="{ item }">
-          <button class="btn btn-xs btn-ghost" @click="openSet(item)">
-            {{ item.desired ? 'Edit' : 'Set' }}
-          </button>
+          <template v-if="item.desired">
+            <button class="btn btn-xs btn-ghost" @click="openSet(item)">Edit</button>
+            <button class="btn btn-xs btn-ghost text-error" @click="clearDesired(item)">Clear</button>
+          </template>
           <button
-            v-if="item.desired"
-            class="btn btn-xs btn-ghost text-error"
-            @click="clearDesired(item)"
-          >Clear</button>
+            v-else
+            class="btn btn-xs btn-ghost lg:opacity-0 lg:group-hover:opacity-100 lg:focus:opacity-100 transition-opacity"
+            @click="openSet(item)"
+          >Set</button>
         </template>
 
         <template #empty>
@@ -340,73 +384,83 @@ watch(() => natsStore.isConnected, initAll)
       </ResponsiveList>
     </div>
 
-    <!-- Property detail: the full value lives here, so rows stay scannable -->
+    <!-- Property detail: one flow, not two panes. The desired block appears only
+         when there is one; otherwise a single action to add it. -->
     <dialog class="modal" :class="{ 'modal-open': !!detailProp }">
-      <div class="modal-box max-w-3xl">
+      <div class="modal-box max-w-2xl">
         <h3 class="font-bold text-lg font-mono">{{ detailProp }}</h3>
 
-        <div v-if="detailRow" class="grid gap-4 md:grid-cols-2 mt-4">
-          <div>
+        <template v-if="detailRow">
+          <section class="mt-4">
             <div class="flex items-baseline justify-between mb-1">
-              <span class="text-xs font-bold uppercase tracking-widest">Reported</span>
-              <span class="badge badge-ghost badge-xs">read-only</span>
+              <span class="text-xs font-bold uppercase tracking-widest">Value</span>
+              <span class="badge badge-ghost badge-xs">reported by the device</span>
             </div>
             <template v-if="detailRow.reported">
               <JsonViewer :data="detailRow.reported.value" />
               <p class="text-xs text-base-content/70 mt-1">
-                rev #{{ detailRow.reported.revision }} ·
-                {{ formatDate(detailRow.reported.created) }}
+                rev #{{ detailRow.reported.revision }} · {{ formatDate(detailRow.reported.created) }}
               </p>
             </template>
-            <p v-else class="text-sm text-base-content/70">Not reported.</p>
-          </div>
+            <p v-else class="text-sm text-base-content/70">
+              The device has not reported this property.
+            </p>
+          </section>
 
-          <div>
+          <section v-if="detailRow.desired" class="mt-6">
             <div class="flex items-baseline justify-between mb-1">
               <span class="text-xs font-bold uppercase tracking-widest">Desired</span>
-              <button class="btn btn-xs btn-ghost" @click="openSet(detailRow)">
-                {{ detailRow.desired ? 'Edit' : 'Set' }}
-              </button>
+              <div class="flex gap-1">
+                <button class="btn btn-xs btn-ghost" @click="openSet(detailRow)">Edit</button>
+                <button class="btn btn-xs btn-ghost text-error" @click="clearDesired(detailRow)">
+                  Clear
+                </button>
+              </div>
             </div>
-            <template v-if="detailRow.desired">
-              <JsonViewer :data="detailRow.desired.value" />
-              <p class="text-xs text-base-content/70 mt-1">
-                rev #{{ detailRow.desired.revision }} ·
-                {{ formatDate(detailRow.desired.created) }}
-              </p>
-            </template>
-            <p v-else class="text-sm text-base-content/70">No desired value set.</p>
-          </div>
-        </div>
+            <JsonViewer :data="detailRow.desired.value" />
+            <p class="text-xs text-base-content/70 mt-1">
+              rev #{{ detailRow.desired.revision }} · {{ formatDate(detailRow.desired.created) }}
+            </p>
+            <div v-if="detailRow.differs" class="alert alert-warning mt-2 py-2 text-xs">
+              Waiting for the device to apply this.
+            </div>
+          </section>
 
-        <div class="mt-6">
-          <h4 class="text-xs font-bold uppercase tracking-widest mb-2">Reported history</h4>
-          <div v-if="historyLoading" class="flex justify-center p-4">
-            <span class="loading loading-spinner loading-sm"></span>
-          </div>
-          <p v-else-if="!historyRows.length" class="text-sm text-base-content/70">
-            No revisions retained.
-          </p>
-          <div v-else class="overflow-x-auto max-h-64">
-            <table class="table table-xs table-pin-rows">
-              <thead>
-                <tr><th>Rev</th><th>Value</th><th>When</th></tr>
-              </thead>
-              <tbody>
-                <tr v-for="rev in historyRows" :key="rev.revision">
-                  <td class="font-mono">#{{ rev.revision }}</td>
-                  <td class="font-mono break-all">
-                    <template v-if="rev.operation === 'PUT'">
-                      {{ typeof rev.value === 'object' ? JSON.stringify(rev.value) : rev.value }}
-                    </template>
-                    <span v-else class="badge badge-ghost badge-xs">{{ rev.operation }}</span>
-                  </td>
-                  <td class="whitespace-nowrap text-base-content/70">{{ formatDate(rev.created) }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
+          <section v-else class="mt-6">
+            <button class="btn btn-sm btn-outline" @click="openSet(detailRow)">
+              Set a desired value
+            </button>
+          </section>
+
+          <section class="mt-6">
+            <h4 class="text-xs font-bold uppercase tracking-widest mb-2">History</h4>
+            <div v-if="historyLoading" class="flex justify-center p-4">
+              <span class="loading loading-spinner loading-sm"></span>
+            </div>
+            <p v-else-if="!historyRows.length" class="text-sm text-base-content/70">
+              No revisions retained.
+            </p>
+            <div v-else class="overflow-x-auto max-h-64">
+              <table class="table table-xs table-pin-rows">
+                <thead>
+                  <tr><th>Rev</th><th>Value</th><th>When</th></tr>
+                </thead>
+                <tbody>
+                  <tr v-for="rev in historyRows" :key="rev.revision">
+                    <td class="font-mono">#{{ rev.revision }}</td>
+                    <td class="font-mono break-all">
+                      <template v-if="rev.operation === 'PUT'">
+                        {{ typeof rev.value === 'object' ? JSON.stringify(rev.value) : rev.value }}
+                      </template>
+                      <span v-else class="badge badge-ghost badge-xs">{{ rev.operation }}</span>
+                    </td>
+                    <td class="whitespace-nowrap text-base-content/70">{{ formatDate(rev.created) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </template>
 
         <div class="modal-action">
           <button class="btn btn-ghost" @click="detailProp = null">Close</button>
@@ -419,10 +473,10 @@ watch(() => natsStore.isConnected, initAll)
     <dialog class="modal" :class="{ 'modal-open': editorOpen }">
       <div class="modal-box">
         <h3 class="font-bold text-lg">
-          {{ editingProp ? `Desired value — ${editingProp}` : 'Set desired value' }}
+          {{ editingPropLocked ? `Desired value — ${editingProp}` : 'Set desired value' }}
         </h3>
 
-        <div v-if="!editingProp || editingIsNew" class="form-control mt-4">
+        <div v-if="!editingPropLocked" class="form-control mt-4">
           <label class="label"><span class="label-text">Property</span></label>
           <input
             v-model="editingProp"
@@ -432,16 +486,34 @@ watch(() => natsStore.isConnected, initAll)
         </div>
 
         <div class="form-control mt-3">
-          <label class="label">
-            <span class="label-text">Value</span>
-            <span class="label-text-alt text-base-content/70">JSON, or plain text</span>
-          </label>
+          <div class="flex items-center justify-between mb-1">
+            <label class="label p-0"><span class="label-text">Value</span></label>
+            <div class="flex gap-1">
+              <button
+                v-for="q in quickSets"
+                :key="q.label"
+                type="button"
+                class="btn btn-ghost btn-xs h-5 min-h-0 px-1.5 font-mono text-[10px]"
+                :title="`Set to ${q.label}`"
+                @click="editorValue = q.apply()"
+              >{{ q.label }}</button>
+            </div>
+          </div>
           <textarea
             v-model="editorValue"
             class="textarea textarea-bordered w-full font-mono text-sm"
-            rows="4"
+            rows="5"
             placeholder="23"
           ></textarea>
+          <!-- The JSON-or-text fallback is quiet and easy to get wrong, so say
+               out loud what will be written. -->
+          <label class="label">
+            <span class="label-text-alt text-base-content/70">
+              stored as
+              <span class="badge badge-ghost badge-xs mx-1">{{ parsedPreview.type }}</span>
+              <span v-if="parsedPreview.note" class="opacity-70">{{ parsedPreview.note }}</span>
+            </span>
+          </label>
         </div>
 
         <div class="modal-action">
