@@ -7,9 +7,9 @@ import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { useNatsStore } from '@/stores/nats'
 import { useAuthStore } from '@/stores/auth'
-import type { Thing, NatsUser, NebulaHost, Location } from '@/types/pocketbase'
+import type { Thing, NatsUser, NebulaHost } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
-import KvDashboard from '@/components/nats/KvDashboard.vue'
+import LiveStateCard from '@/components/nats/LiveStateCard.vue'
 import JsonViewer from '@/components/common/JsonViewer.vue'
 import ExpiryBadge from '@/components/common/ExpiryBadge.vue'
 
@@ -43,11 +43,14 @@ async function copyMetadata() {
 }
 
 /**
- * Computed helpers for Digital Twin logic
+ * Live State (digital twin) keys are `thing.<code>.…` in the org-wide `twin`
+ * bucket — the Thing's location is not part of the key, so a Thing needs only a
+ * code. This used to also require a location code, a leftover from an earlier
+ * bucket-per-location design that was never built; the effect was that a coded
+ * Thing with no location rendered neither the card nor the offline hint.
  */
-const locationCode = computed(() => (thing.value?.expand?.location as Location)?.code)
 const thingCode = computed(() => thing.value?.code)
-const hasDigitalTwinConfig = computed(() => !!locationCode.value && !!thingCode.value)
+const hasTwinConfig = computed(() => !!thingCode.value)
 
 async function loadThing() {
   loading.value = true
@@ -385,13 +388,13 @@ onMounted(() => {
       </div>
 
       <div v-if="thing.code && natsStore.isConnected" class="mt-6">
-        <KvDashboard :key="thing.code" :base-key="`thing.${thing.code}`" />
+        <LiveStateCard :key="thing.code" kind="thing" :code="thing.code" />
       </div>
       <div v-else class="mt-6">
-        <div v-if="hasDigitalTwinConfig && !natsStore.isConnected" class="alert shadow-sm border border-base-300 bg-base-100">
+        <div v-if="hasTwinConfig && !natsStore.isConnected" class="alert shadow-sm border border-base-300 bg-base-100">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-info shrink-0 w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
           <div class="text-xs">
-            <div class="font-bold">Digital Twin Offline</div> 
+            <div class="font-bold">Live State Offline</div>
             <span class="opacity-70">Connect to NATS in <router-link to="/settings" class="link">Settings</router-link> to view live data.</span>
           </div>
         </div>

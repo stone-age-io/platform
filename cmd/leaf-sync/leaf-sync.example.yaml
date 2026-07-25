@@ -18,13 +18,28 @@ nats:
   local_url: nats://127.0.0.1:4222                # the local leaf this agent connects to
   creds_file: edge.creds                          # written by `config`, read by `run`
   hub_domain: hub                                 # hub's JetStream domain; enables the liveness
-                                                  # heartbeat (leaf_status KV). Empty = no heartbeat.
+                                                  # heartbeat (leaf_status KV) and the twin relay.
+                                                  # Empty = both off.
 
 output:
   dir: .            # where `config` writes nats-leaf.conf + the creds file
 
 sync:
   interval: 30s     # full-reconcile cadence
+
+# Digital-twin sync. Two buckets, one direction each, so no key ever has two
+# writers. Off by default because it moves data-plane traffic. Requires
+# nats.hub_domain.
+#
+#   twin          reported state. Written at the edge, relayed up to the hub.
+#   twin_desired  desired state. Written by operators at the hub; the edge gets
+#                 a JetStream mirror, maintained by the server (no agent in the
+#                 data path, and it keeps serving last-known values offline).
+#
+# Keys are whatever you like — `thing.<code>.<prop>` by convention. Direction is
+# the bucket, so no key needs to encode it.
+twin:
+  enabled: false
 
 # --- Reserved (not yet active in v0) ---------------------------------------
 # Optional account-JWT refresh. When enabled, leaf-sync watches the org account

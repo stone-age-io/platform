@@ -5,6 +5,7 @@ import { useNatsKv, type KvEntry } from '@/composables/useNatsKv'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { formatDate, formatRelativeTime } from '@/utils/format'
+import { TWIN_BUCKET } from '@/utils/twin'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import JsonViewer from '@/components/common/JsonViewer.vue'
 
@@ -37,7 +38,8 @@ const props = withDefaults(defineProps<{
   title: '',
 })
 
-const { entries, loading, exists, error, init, createBucket, put, del, getHistory } = useNatsKv(props.bucket || 'twin', props.baseKey)
+const effectiveBucket = computed(() => props.bucket || TWIN_BUCKET)
+const { entries, loading, exists, error, init, createBucket, put, del, getHistory } = useNatsKv(props.bucket || TWIN_BUCKET, props.baseKey)
 const toast = useToast()
 const { confirm } = useConfirm()
 
@@ -319,7 +321,13 @@ function previewValue(val: any): string {
 </script>
 
 <template>
-  <BaseCard :title="title || (baseKey ? `Digital Twin: ${baseKey}` : 'Key Browser')" :no-padding="true" class="w-full overflow-hidden">
+  <BaseCard :title="title || (baseKey ? 'Live State' : 'Key Browser')" :no-padding="true" class="w-full overflow-hidden">
+    <!-- Show the actual bucket/key prefix: the convention should be readable
+         off the screen rather than reverse-engineered from a card title. -->
+    <template v-if="baseKey" #header>
+      <code class="font-mono text-xs text-base-content/70">{{ effectiveBucket }} / {{ baseKey }}.&gt;</code>
+    </template>
+
     <div v-if="loading" class="flex justify-center p-12">
       <span class="loading loading-spinner text-primary"></span>
     </div>
@@ -329,7 +337,7 @@ function previewValue(val: any): string {
       <div class="text-5xl mb-3">🧊</div>
       <h3 class="font-bold text-lg">Bucket Not Initialized</h3>
       <p class="text-sm text-base-content/70 mt-2 mb-4">
-        The <code class="font-mono text-xs">{{ bucket || 'twin' }}</code> bucket does not exist yet.
+        The <code class="font-mono text-xs">{{ effectiveBucket }}</code> bucket does not exist yet.
       </p>
       <button @click="createBucket()" class="btn btn-primary btn-sm">Initialize Bucket</button>
     </div>

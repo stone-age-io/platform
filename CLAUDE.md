@@ -60,8 +60,8 @@ platform/
 │   │   │   ├── layout/     # AppHeader, AppSidebar, MainLayout
 │   │   │   ├── ui/         # Base UI primitives (BaseCard, ResponsiveList)
 │   │   │   ├── dashboard/  # Dashboard grid, widget containers, variables
-│   │   │   │   └── config/ # 18 widget configuration form components
-│   │   │   ├── widgets/    # 14 widget type components
+│   │   │   │   └── config/ # 23 widget configuration form components
+│   │   │   ├── widgets/    # 17 widget type components
 │   │   │   │   └── map/    # Map marker sub-components (detail, kv, publish, switch, text)
 │   │   │   ├── map/        # FloorPlanMap component
 │   │   │   ├── nats/       # NATS-specific components (KvDashboard, LiveMessageStream)
@@ -205,7 +205,7 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
 ## Key Features
 
 1. **Authentication & Multi-Tenancy** - PocketBase auth, OAuth2, organization switching, RBAC
-2. **Dashboard/Visualizer** - Grid-based dashboards, 14 widget types, variable substitution
+2. **Dashboard/Visualizer** - Grid-based dashboards, 17 widget types, variable substitution
 3. **NATS Integration** - Account/User/Role provisioning, real-time WebSocket connection
 4. **Nebula Networks** - Certificate Authority, network, and host management
 5. **Resource Inventory** - Things and Locations with type definitions and metadata
@@ -216,7 +216,38 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
 10. **Keyboard Shortcuts** - Configurable keyboard shortcuts with modal reference
 11. **Operator Org & Managed Orgs** - Bootstrap creates the platform operator's own org (`is_operator_org`) alongside the `$SYS` org (`is_system_org`); its NATS account is the hub for shared operator services (helpdesk etc.). Flagging a customer org `managed` provisions a stream export of `helpdesk.>` (configurable: `nats.managed_export_subject`) from its account plus a hub-side import remapped to `helpdesk.{orgId}.>` — the org prefix is baked into the signed account JWT, so event provenance is subject-based and unforgeable (`hooks/managed_org_exports.go`).
 12. **Edge / Leaf Nodes** - `leaf_nodes` auth collection (a "special thing" with one nats_user, server-provisioned). The `leaf-sync` agent runs on the edge, authenticates as the leaf node, and mirrors its org's config collections into a NATS leaf node's local JetStream KV. A leaf-node identity holds **no read grant on any `nats_*` or `nebula_*` collection**: `leaf-sync config` gets everything it needs from `GET /api/leaf/bootstrap`, which returns six named fields (`domain`, `code`, `creds`, `account_jwt`, `account_pub`, `operator_jwt`). `nats_system_operator` stays superuser-only; `GET /api/leaf/operator-jwt` remains as a superseded alias so upgrade order doesn't matter. `leaf-sync` writes a best-effort liveness heartbeat into the hub's `leaf_status` KV (when `nats.hub_domain` is set); the UI reads it to show online/offline status on the leaf node list + detail views. Credentials are resettable by org Admins/Owners (collection `manageRule`) — `things` now carries the same `manageRule`, so a device's PocketBase password is recoverable too.
-13. **Decommissioning a device** - `things.active` / `leaf_nodes.active`, owner/admin only. The flag is enforced in three places at once, because any one of them alone is a half-measure: the `authRule` (`active = true`) blocks new logins, `hooks/active_flag.go` refreshes `tokenKey` so tokens already issued die immediately, and the same hook sets `revoke` on the linked `nats_user` so the signed NATS credential stops working. Reactivating sets `regenerate`, issuing a fresh credential — the old `.creds` stays dead, because the account JWT's revocation cutoff is permanent. Distinct from a leaf node's heartbeat status, which reports whether the edge box *is* connected, not whether it *may* connect.
+13. **Digital Twin / Live State** - **Two** KV buckets per org, split by owner:
+    `twin` (reported — the device writes it, flows edge→hub) and `twin_desired`
+    (desired — operators write it, flows hub→edge). Keys are
+    `<kind>.<code>.<prop>` (`thing.S01.temp`); direction is the bucket, so keys
+    carry no sync bookkeeping. Defined once in `ui/src/utils/twin.ts` and
+    `internal/leafsync/twin.go` — keep the two retention configs in step, since
+    both the console and `leaf-sync` create these buckets and whoever gets there
+    first defines them. **Not** one bucket per location; the old `ui/README.md`
+    claim to that effect described a design that was never built. The platform
+    server **cannot** provision them: it holds the NATS operator (SYSTEM account
+    only) and has no reach into an org's account. Creation is the console's
+    Initialize button or `leaf-sync`.
+    - **One writer per bucket is the whole safety property.** A single bucket
+      written from both ends does not pick a loser on a conflict, it *oscillates*:
+      two concurrent values swap across the link, then swap back, forever — ~170k
+      writes to one key in 300ms, measured. Encoding the owner in the key
+      (`thing.S01.state.temp`) was tried and reverted: same safety, but it taxes
+      every key in firmware/rule-router/widgets and a mistyped segment silently
+      never syncs. Don't merge the buckets.
+    - **The UI must keep reported state read-only** (`LiveStateCard`). The edge
+      overwrites it, so an edit button is a lie — that bug shipped once already
+      via `KvDashboard`, which is now scoped to the raw NATS KV browser.
+    - **Edge sync is `internal/leafsync/twin.go`**, off by default
+      (`twin.enabled`). `twin_desired` is a native JetStream **mirror** (one
+      origin, N mirrors — no code in the data path, and it serves last-known
+      values offline because the edge never writes it). `twin` needs the relay:
+      aggregating N sites natively would need N sources all named `KV_twin`,
+      which requires the server's internal `iname` that nats.go doesn't expose,
+      so the alternative is `twin_<code>` at every edge and rule-router reading a
+      different bucket name per site. Don't "finish the job" by making reported
+      state a source without solving that.
+14. **Decommissioning a device** - `things.active` / `leaf_nodes.active`, owner/admin only. The flag is enforced in three places at once, because any one of them alone is a half-measure: the `authRule` (`active = true`) blocks new logins, `hooks/active_flag.go` refreshes `tokenKey` so tokens already issued die immediately, and the same hook sets `revoke` on the linked `nats_user` so the signed NATS credential stops working. Reactivating sets `regenerate`, issuing a fresh credential — the old `.creds` stays dead, because the account JWT's revocation cutoff is permanent. Distinct from a leaf node's heartbeat status, which reports whether the edge box *is* connected, not whether it *may* connect.
 
 ## Roles & Authorization
 

@@ -24,6 +24,12 @@ type Config struct {
 
 	SyncInterval time.Duration
 
+	// TwinEnabled turns on digital-twin sync between the local leaf domain and
+	// the hub (see twin.go): a server-maintained mirror of `twin_desired` down,
+	// and a relay of `twin` up. Off by default — it moves data plane traffic, so
+	// an upgrade must not silently start doing it. Requires HubDomain.
+	TwinEnabled bool
+
 	// Reserved (off by default): optional account-JWT refresh + portable reload.
 	ReloadHook string
 	JWTRefresh bool
@@ -54,6 +60,7 @@ func LoadConfig(path string) (*Config, error) {
 	v.SetDefault("nats.creds_file", "edge.creds")
 	v.SetDefault("output.dir", ".")
 	v.SetDefault("sync.interval", "30s")
+	v.SetDefault("twin.enabled", false)
 	v.SetDefault("jwt_refresh.enabled", false)
 
 	if err := v.ReadInConfig(); err != nil {
@@ -77,6 +84,7 @@ func LoadConfig(path string) (*Config, error) {
 		CredsFile:          v.GetString("nats.creds_file"),
 		OutputDir:          v.GetString("output.dir"),
 		SyncInterval:       interval,
+		TwinEnabled:        v.GetBool("twin.enabled"),
 		ReloadHook:         v.GetString("reload_hook"),
 		JWTRefresh:         v.GetBool("jwt_refresh.enabled"),
 	}

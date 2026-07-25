@@ -58,7 +58,7 @@ func openHeartbeat(ctx context.Context, nc *nats.Conn, hubDomain, code string) *
 		log.Printf("⚠️ leaf-sync: heartbeat disabled (JetStream on domain %q): %v", hubDomain, err)
 		return &heartbeater{}
 	}
-	kv, err := js.CreateOrUpdateKeyValue(ctx, jetstream.KeyValueConfig{
+	kv, err := openOrCreateKV(ctx, js, jetstream.KeyValueConfig{
 		Bucket:      heartbeatBucket,
 		Description: "leaf-sync liveness heartbeats, keyed by leaf node code",
 		History:     1,

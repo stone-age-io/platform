@@ -15,16 +15,18 @@ An edge is one org-scoped node made of three processes:
 |---|---|
 | stock `nats-server` (leaf node) | transport + local JetStream domain; bound to one org account |
 | [`rule-router`](https://github.com/skeeeon/rule-router) | local automation + HTTP exposure over KV |
-| **`leaf-sync`** | mirror central PocketBase config → local KV; bootstrap the leaf config |
+| **`leaf-sync`** | mirror central PocketBase config → local KV; bootstrap the leaf config; optionally wire up the twin buckets |
 
 There are two distinct sync planes:
 
 - **Config plane** — PocketBase records → `leaf-sync` (HTTPS pull) → local KV.
-  This is what `leaf-sync` does. It exists because central PocketBase is the NATS
-  *operator* (SYSTEM account only) and cannot push into org account data planes.
-- **Data plane** — data already in NATS (digital twin, telemetry) replicates via
-  cross-domain JetStream **mirror/source**, configured by the account's own users.
-  This is *not* `leaf-sync`'s job.
+  Always on. It exists because central PocketBase is the NATS *operator* (SYSTEM
+  account only) and cannot push into org account data planes.
+- **Data plane** — the digital-twin buckets (`twin` up, `twin_desired` down),
+  wired up by [twin sync](#twin-sync-data-plane). Off by default (`twin.enabled`).
+- **Telemetry** — high-volume streams are still *not* `leaf-sync`'s job. Replicate
+  those with cross-domain JetStream mirror/source, configured by the account's own
+  users.
 
 ## Identity
 
@@ -47,16 +49,17 @@ working directory or `/etc/leaf-sync/`.
 | `nats.hub_leaf_url` | for `config` | Where the leaf remote dials the hub; written into `nats-leaf.conf`. |
 | `nats.local_url` | | Local leaf the daemon connects to (default `nats://127.0.0.1:4222`). |
 | `nats.creds_file` | | Creds filename (default `edge.creds`); written by `config`, read by `run`. |
-| `nats.hub_domain` | | Hub's JetStream domain. When set, `run` writes a liveness heartbeat into the hub's `leaf_status` KV. Empty = heartbeat off. |
+| `nats.hub_domain` | | Hub's JetStream domain. When set, `run` writes a liveness heartbeat into the hub's `leaf_status` KV. Empty = heartbeat off, and the twin relay cannot run. |
 | `output.dir` | | Where `config` writes files (default `.`). |
 | `sync.interval` | | Full-reconcile cadence (default `30s`). |
+| `twin.enabled` | | Turn on [twin sync](#twin-sync-data-plane) (default `false`). Requires `nats.hub_domain`. |
 | `reload_hook`, `jwt_refresh.enabled` | | Reserved — not yet active. |
 
 ## Commands
 
 ```sh
 leaf-sync config    # one-shot: write nats-leaf.conf + edge.creds from PocketBase
-leaf-sync run       # daemon: mirror config collections into local KV
+leaf-sync run       # daemon: mirror config collections into local KV (+ twin sync)
 leaf-sync --version # print the build version
 ```
 
@@ -110,6 +113,82 @@ what the UI treats as "offline."
 Any config key can be overridden by an environment variable: upper-case the key,
 replace dots with underscores, and prefix with `LEAF_SYNC_` — e.g.
 `LEAF_SYNC_POCKETBASE_PASSWORD`, `LEAF_SYNC_SYNC_INTERVAL=15s`.
+
+## Twin sync (data plane)
+
+With `twin.enabled: true` and `nats.hub_domain` set, `run` also wires up the
+digital twin. It is **two buckets with one direction each**, so no key ever has
+two writers:
+
+| Bucket | Written by | Flows | Mechanism |
+|---|---|---|---|
+| `twin` | the device, at the edge | edge → hub | relay (below) |
+| `twin_desired` | operators, at the hub | hub → edge | JetStream **mirror** |
+
+The point is edge autonomy: a site whose uplink drops keeps writing reported
+state locally and catches the hub up when the link returns, while still reading
+the last-known desired state from its local mirror.
+
+### Why this shape
+
+**One bucket written from both ends does not work.** It does not merely pick a
+loser on a conflict — it *oscillates*: two concurrent values for one key swap
+across the link, then swap back, each write generating the next event. Measured
+at ~170,000 writes to a single key in 300 ms before the buckets were split.
+
+**Encoding the owner in the key** (`thing.S01.state.temp`) buys the same safety,
+but taxes every key in the system — firmware, rule-router configs, widgets, docs
+— and leaves a mistyped segment silently unsynced with no error anywhere. Two
+buckets makes the conflict unrepresentable and costs one noun.
+
+**Desired state is a mirror, not a relay,** because it has exactly one origin.
+Mirrors do forward writes to the origin transparently (nats.go routes `Put` via
+`External.APIPrefix`) and that write would fail during a WAN outage — but the
+edge never writes desired state, so it never comes up. Reads are served locally
+from the last-known values, which is precisely what you want when the link is
+down. The mirror is configured on the *receiving* side, so there is no hub-side
+stream to mutate and no race between sites.
+
+**Reported state can't be a source,** which would otherwise be the symmetric
+answer. Aggregating N sites at the hub means N sources all named `KV_twin`;
+same-named sources need the server's internal `iname`, which nats.go doesn't
+expose, and the documented guidance is unique stream names for centrally
+aggregated streams. That would mean `twin_<code>` at every edge, so rule-router
+would read a different bucket name at each site. Not worth it — hence the relay
+for this one direction.
+
+### Relay mechanics
+
+Boring on purpose:
+
+- **One watcher**, edge → hub. There is no reverse pump, so there is no echo.
+- **Compare before write.** A value already equal at the hub is skipped. An
+  optimisation, not the safety property — `WatchAll` replays every current value
+  on start, so without it each restart would rewrite the bucket and burn a
+  revision per key.
+- **That replay is also the resync.** Reconnecting after an outage walks every
+  current value, so there's no separate catch-up path to get wrong.
+- **Deletes are relayed explicitly.** A KV delete is a tombstone message, not an
+  absence; dropping it would leave the key live at the hub forever, since the
+  equality check only compares values that exist. (Purge is relayed as a delete —
+  the key goes away either way, but history rollup is domain-bound.)
+- **Upsert, never reconcile.** The relay only acts on what this site's bucket
+  reports, so one site can never purge another site's keys from the hub.
+- **The watcher is supervised** with 1s→30s backoff, since nats.go reconnects the
+  connection but a dead watcher stays dead.
+- **Failure is soft.** If any of it can't start — no hub domain, bucket
+  unreachable, mirror rejected — it logs why and carries on with what it can;
+  config sync runs regardless.
+
+Buckets are created if absent and otherwise left alone. Unlike the per-collection
+config mirrors, these are shared with the console and operators, so the agent does
+not reassert retention over whatever they set. A leaf whose JetStream domain *is*
+the hub's needs none of this and skips it.
+
+> **Operational note:** enabling this makes `leaf-sync` load-bearing for reported
+> state. Down, it no longer just means stale config — it means a frozen twin in
+> the console while the site itself runs fine. The `leaf_status` heartbeat is what
+> distinguishes the two, which is why the console shows it beside the data.
 
 ## Building
 

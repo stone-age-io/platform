@@ -91,14 +91,34 @@ Things aren't just inventory records — they declare a messaging contract via t
 *   **Message Schemas** (`MessageSchemaFormView` / `MessageSchemaListView`) are versioned JSON Schema documents identified by `namespace`, `name`, and semver `version` — each version is a separate record. The form offers a **SchemaBuilder** visual editor, a raw JSON view, and an **Infer from sample** action that generates a starting schema from a pasted example message.
 *   **Quick-add flow:** Related-record selects (Operations on a Thing Type; Message Schema on an Operation) expose a `+` button that opens the target form in an embedded modal, so you can author the full graph without leaving the page.
 
-### 4. Digital Twin (Real-Time State)
+### 4. Live State / Digital Twin
 We bridge the gap between **SQL Metadata** (PocketBase) and **Live State** (NATS JetStream).
 *   **Direct Connectivity:** The browser connects directly to the NATS cluster via WebSocket (`wss://`).
 *   **Hybrid Auth:** Connection URLs are stored in local storage; Credentials (`.creds`) are fetched securely from the PocketBase user record.
-*   **KV Store:**
-    *   **Locations:** Each location code (e.g., `LOC_01`) maps to a NATS KV Bucket.
-    *   **Things:** Things store their state in the bucket of their parent Location.
-    *   **Visualization:** The `KvDashboard` component provides real-time CRUD, Watch, and Revision History for these keys.
+*   **Two buckets per org**, split by who owns the data — defined once in
+    [`utils/twin.ts`](src/utils/twin.ts):
+
+    | Bucket | Written by | Flows |
+    |---|---|---|
+    | `twin` | the device | edge → hub |
+    | `twin_desired` | operators | hub → edge |
+
+    One writer per bucket, one direction per bucket. A single bucket written from
+    both ends does not merely pick a loser on a conflict — it *oscillates*, the two
+    values swapping across the link indefinitely. Encoding the owner in the key
+    instead (`thing.S01.state.temp`) buys the same safety but taxes every key in
+    the system and leaves a mistyped segment silently unsynced.
+*   **Keys** are `<kind>.<code>.<prop>` by convention (`thing.S01.temp`). Direction
+    lives in the bucket, so keys carry no sync bookkeeping.
+*   **`LiveStateCard`** is the operator-facing view on Thing and Location detail:
+    reported values **read-only** (the edge overwrites them, so an edit button
+    would be a lie) with revision history, desired values writable, and freshness
+    derived from the newest reported value. `KvDashboard` remains the raw,
+    fully general key browser under *NATS → KV Buckets*.
+*   **Edge sync:** where a site runs a NATS leaf node, [`leaf-sync`](../cmd/leaf-sync/README.md)
+    gives it a server-maintained JetStream **mirror** of `twin_desired` and relays
+    its local `twin` up to the hub — so the edge keeps writing reported state, and
+    reading the last-known desired state, straight through a WAN outage.
 *   **Live Message Stream:** The `LiveMessageStream` component tails core NATS subjects for debugging wire traffic.
 
 ### 5. Visualizer (Dashboard)
@@ -155,7 +175,7 @@ This compiles the application into `../pb_public`. The Go binary embeds this dir
 
 ## 🔌 NATS Connection Setup
 
-To enable the Digital Twin, Visualizer live widgets, and Badge live status:
+To enable Live State, Visualizer live widgets, and Badge live status:
 
 1.  **NATS Server:** Ensure your NATS server has WebSockets enabled in its config (`websocket { port: 9222 }`).
 2.  **User Settings:**
@@ -163,4 +183,4 @@ To enable the Digital Twin, Visualizer live widgets, and Badge live status:
     *   Add your NATS WebSocket URL (e.g., `ws://localhost:9222`).
     *   Select your **Operational Identity** (links your web user to a NATS User/Creds file).
     *   Enable **Auto-connect**.
-3.  **Digital Twin:** Navigate to a Location or Thing with a valid `Code` to see the live KV dashboard, or drop live widgets onto a Visualizer dashboard.
+3.  **Live State:** Navigate to a Location or Thing with a valid `Code` to see the live KV dashboard, or drop live widgets onto a Visualizer dashboard.
