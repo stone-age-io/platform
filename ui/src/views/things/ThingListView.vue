@@ -292,23 +292,37 @@ onUnmounted(() => {
         :loading="loading"
         @row-click="handleRowClick"
       >
-        <!-- Custom cell for name (with description) - no longer a link -->
+        <!--
+          Deactivated state rides along with the name rather than taking its own
+          column: the list is already five columns wide, and a deactivated Thing
+          is the exception, not a value you scan down a column for.
+        -->
         <template #cell-name="{ item }">
           <div>
-            <div class="font-medium">
-              {{ item.name || 'Unnamed' }}
+            <div class="font-medium flex items-center gap-2">
+              <span :class="{ 'text-base-content/50': item.active === false }">
+                {{ item.name || 'Unnamed' }}
+              </span>
+              <span v-if="item.active === false" class="badge badge-error badge-outline badge-sm">
+                Deactivated
+              </span>
             </div>
             <div v-if="item.description" class="text-sm text-base-content/60 line-clamp-1">
               {{ item.description }}
             </div>
           </div>
         </template>
-        
+
         <!-- Custom mobile card for name (make it prominent) - no longer a link -->
         <template #card-name="{ item }">
           <div>
-            <div class="font-semibold text-base">
-              {{ item.name || 'Unnamed' }}
+            <div class="font-semibold text-base flex items-center gap-2">
+              <span :class="{ 'text-base-content/50': item.active === false }">
+                {{ item.name || 'Unnamed' }}
+              </span>
+              <span v-if="item.active === false" class="badge badge-error badge-outline badge-sm">
+                Deactivated
+              </span>
             </div>
             <div v-if="item.description" class="text-sm text-base-content/60 mt-1">
               {{ item.description }}

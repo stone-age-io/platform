@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=84          # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=97          # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -669,6 +669,89 @@ req GET "/collections/users/records" "$TA"
 expect "owner can list org users" 200 "$RCODE" "$RBODY"
 req GET "/collections/things/records" "$TB"
 expect "member can list things" 200 "$RCODE" "$RBODY"
+
+echo ""
+echo "=== 15. deactivating a device actually takes it off the network ==="
+# Runs last on purpose: it revokes DEV_NATS, which re-signs the org account JWT,
+# and section 13 compares that account's key material.
+#
+# `active` is only worth having if it does more than turn a badge red. The
+# cautionary example is in-tree: nats_users.active is read into pb-nats's model
+# and consulted by nothing in JWT generation, so clearing it leaves the device
+# publishing. These checks assert the three effects hooks/active_flag.go must
+# have, because the authRule alone gives none of them -- PocketBase evaluates
+# authRule at the auth endpoint only, so an already-issued token (7 day lifetime)
+# would otherwise outlive the deactivation by a week.
+req POST /collections/things/auth-with-password "" \
+  '{"identity":"thing1@test.local","password":"Password123!"}'
+expect "an active thing CAN authenticate" 200 "$RCODE" "$RBODY"
+TT=$(j "$RBODY" token)
+[ -z "$TT" ] && die "thing login failed: $RBODY"
+
+# Who may flip it. Same roles as delete: taking a device out of service revokes
+# its credential, so it is a management action, not inventory editing.
+req PATCH "/collections/things/records/$THING" "$TG" '{"active":false}'
+expect "badge cannot deactivate a thing" "403|400|404" "$RCODE" "$RBODY"
+req PATCH "/collections/things/records/$THING" "$TB" '{"active":false}'
+expect "member cannot deactivate a thing" "403|400|404" "$RCODE" "$RBODY"
+req PATCH "/collections/things/records/$THING" "$TA" '{"active":false}'
+expect "owner CAN deactivate a thing (same field, so the deny was authz)" 200 "$RCODE" "$RBODY"
+sleep 1
+
+# Effect 1: no new logins. This is the authRule.
+req POST /collections/things/auth-with-password "" \
+  '{"identity":"thing1@test.local","password":"Password123!"}'
+expect "a deactivated thing cannot authenticate" "400|401|403" "$RCODE" "$RBODY"
+
+# Effect 2: the token it already held is dead. This is RefreshTokenKey(), and it
+# is the whole reason the hook exists -- without it the device keeps its API
+# access until the token expires on its own.
+req GET "/collections/things/records/$THING" "$TT"
+expect "the thing's pre-existing auth token is rejected after deactivation" "401|403|404" "$RCODE" "$RBODY"
+
+# Effect 3: the NATS credential is revoked. pb-nats sets active=false as part of
+# handling the revoke trigger, so this also proves the trigger reached it.
+req GET "/collections/nats_users/records/$DEV_NATS" "$SU"
+if [ "$(j "$RBODY" active)" = "false" ]; then
+  ok "deactivation revoked the thing's linked NATS identity"
+else
+  no "linked nats_user still active -- the NATS cascade did not fire"
+fi
+
+# Reactivation must issue a FRESH credential: the revocation cutoff in the
+# account JWT is permanent, so re-enabling without re-minting would leave a
+# device that looks enabled and cannot connect. Baseline is read on the line
+# immediately before the call that should change it.
+req GET "/collections/nats_users/records/$DEV_NATS" "$SU"
+REACT_BEFORE=$(j "$RBODY" creds_file)
+req PATCH "/collections/things/records/$THING" "$TA" '{"active":true}'
+expect "owner CAN reactivate a thing" 200 "$RCODE" "$RBODY"
+sleep 1
+req POST /collections/things/auth-with-password "" \
+  '{"identity":"thing1@test.local","password":"Password123!"}'
+expect "a reactivated thing can authenticate again" 200 "$RCODE" "$RBODY"
+req GET "/collections/nats_users/records/$DEV_NATS" "$SU"
+if [ "$(j "$RBODY" active)" = "true" ] && [ -n "$(j "$RBODY" creds_file)" ] \
+   && [ "$(j "$RBODY" creds_file)" != "$REACT_BEFORE" ]; then
+  ok "reactivation re-minted the NATS credential (old .creds stays revoked)"
+else
+  no "nats_user not re-issued on reactivation -- device would look enabled and fail to connect"
+fi
+
+# things.manageRule. Without it, `password` on update requires `oldPassword`
+# (forms/record_upsert.go), which nobody holds for a device -- so a Thing's
+# PocketBase credential was mint-once with no recovery, while leaf_nodes could be
+# reset. The member deny below is the pair that proves this is a role boundary
+# and not just PocketBase refusing every password write.
+req PATCH "/collections/things/records/$THING" "$TB" \
+  '{"password":"NewPassword456!","passwordConfirm":"NewPassword456!"}'
+expect "member cannot reset a thing's password" "403|400|404" "$RCODE" "$RBODY"
+req PATCH "/collections/things/records/$THING" "$TA" \
+  '{"password":"NewPassword456!","passwordConfirm":"NewPassword456!"}'
+expect "owner CAN reset a thing's password (same payload, so the deny was authz)" 200 "$RCODE" "$RBODY"
+req POST /collections/things/auth-with-password "" \
+  '{"identity":"thing1@test.local","password":"NewPassword456!"}'
+expect "the reset password actually works" 200 "$RCODE" "$RBODY"
 
 # ----------------------------------------------------------------------- result
 

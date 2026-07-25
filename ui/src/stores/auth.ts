@@ -75,6 +75,12 @@ export const useAuthStore = defineStore('auth', () => {
       manageMessaging: isAdmin,
       // Things and locations — the day-to-day inventory work, open to members.
       manageInventory: isAdmin || role === 'member',
+      // Taking inventory out of service: deleting a thing/location, and flipping
+      // a thing or leaf node's `active` flag. Separate from manageInventory
+      // because members create and edit but do not decommission — deactivating
+      // revokes the device's NATS identity, and deleting orphans it and
+      // propagates into every edge KV mirror.
+      decommissionInventory: isAdmin,
     }
   })
 

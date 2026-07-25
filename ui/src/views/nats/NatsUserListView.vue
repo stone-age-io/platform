@@ -10,6 +10,7 @@ import type { NatsUser } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
+import ExpiryBadge from '@/components/common/ExpiryBadge.vue'
 
 const router = useRouter()
 const toast = useToast()
@@ -266,24 +267,35 @@ onUnmounted(() => {
           </div>
         </template>
         
-        <!-- Custom cell for status (badge) -->
+        <!--
+          Status = the active badge plus, when it matters, the JWT expiry. A
+          credential three days from expiry is about to fail as completely as a
+          revoked one, and this is the only screen where an operator would notice
+          before it does.
+        -->
         <template #cell-active="{ item }">
-          <span 
-            class="badge badge-sm"
-            :class="item.active ? 'badge-success' : 'badge-error'"
-          >
-            {{ item.active ? 'Active' : 'Inactive' }}
-          </span>
+          <div class="flex flex-wrap items-center gap-1">
+            <span
+              class="badge badge-sm"
+              :class="item.active ? 'badge-success' : 'badge-error'"
+            >
+              {{ item.active ? 'Active' : 'Inactive' }}
+            </span>
+            <ExpiryBadge :value="item.jwt_expires_at" size="sm" />
+          </div>
         </template>
-        
+
         <template #card-active="{ item }">
-  	  <span 
-    	    class="badge badge-sm"
-    	    :class="item.active ? 'badge-success' : 'badge-error'"
-  	  >
-    	      {{ item.active ? 'Active' : 'Inactive' }}
-  	  </span>
-	</template>
+          <div class="flex flex-wrap items-center gap-1">
+            <span
+              class="badge badge-sm"
+              :class="item.active ? 'badge-success' : 'badge-error'"
+            >
+              {{ item.active ? 'Active' : 'Inactive' }}
+            </span>
+            <ExpiryBadge :value="item.jwt_expires_at" size="sm" />
+          </div>
+        </template>
 
         <!-- Actions -->
         <template #actions="{ item }">

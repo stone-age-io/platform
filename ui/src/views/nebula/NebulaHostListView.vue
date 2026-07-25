@@ -10,6 +10,7 @@ import type { NebulaHost } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
+import ExpiryBadge from '@/components/common/ExpiryBadge.vue'
 
 const router = useRouter()
 const toast = useToast()
@@ -267,24 +268,34 @@ onUnmounted(() => {
   	  </span>
 	</template>
 
-        <!-- Custom cell for status (badge) -->
+        <!--
+          Status = the active badge plus, when it matters, the certificate
+          expiry. Nebula host certs always carry one (validity_years), and an
+          expired cert drops the host off the overlay with no other warning.
+        -->
         <template #cell-active="{ item }">
-          <span 
-            class="badge badge-sm"
-            :class="item.active ? 'badge-success' : 'badge-error'"
-          >
-            {{ item.active ? 'Active' : 'Inactive' }}
-          </span>
+          <div class="flex flex-wrap items-center gap-1">
+            <span
+              class="badge badge-sm"
+              :class="item.active ? 'badge-success' : 'badge-error'"
+            >
+              {{ item.active ? 'Active' : 'Inactive' }}
+            </span>
+            <ExpiryBadge :value="item.expires_at" size="sm" />
+          </div>
         </template>
-        
+
         <template #card-active="{ item }">
-  	  <span 
-    	    class="badge badge-sm"
-    	    :class="item.active ? 'badge-success' : 'badge-error'"
-  	  >
-    	    {{ item.active ? 'Active' : 'Inactive' }}
-  	  </span>
-	</template>
+          <div class="flex flex-wrap items-center gap-1">
+            <span
+              class="badge badge-sm"
+              :class="item.active ? 'badge-success' : 'badge-error'"
+            >
+              {{ item.active ? 'Active' : 'Inactive' }}
+            </span>
+            <ExpiryBadge :value="item.expires_at" size="sm" />
+          </div>
+        </template>
 
         <!-- Actions -->
         <template #actions="{ item }">

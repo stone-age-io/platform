@@ -111,6 +111,9 @@ export interface Thing extends AuthRecord {
   floorplan_position?: { x: number; y: number } // Pixel coords on the location's floorplan image
   nats_user?: string
   nebula_host?: string
+  // Deactivating blocks new logins (authRule), invalidates outstanding tokens,
+  // and revokes the linked NATS identity. Owner/admin only. See hooks/active_flag.go.
+  active?: boolean
 }
 
 // Leaf Node (edge node) — a "special thing": one NATS identity, mirrors its
@@ -126,6 +129,9 @@ export interface LeafNode extends AuthRecord {
   nats_user?: string // set by the server-side provisioning hook
   nebula_host?: string
   metadata?: Record<string, any>
+  // Same semantics as Thing.active — deactivating stops leaf-sync from
+  // authenticating and revokes the node's NATS identity.
+  active?: boolean
 }
 
 // Location Type

@@ -215,7 +215,8 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
 9. **PWA** - Service worker, manifest, installable
 10. **Keyboard Shortcuts** - Configurable keyboard shortcuts with modal reference
 11. **Operator Org & Managed Orgs** - Bootstrap creates the platform operator's own org (`is_operator_org`) alongside the `$SYS` org (`is_system_org`); its NATS account is the hub for shared operator services (helpdesk etc.). Flagging a customer org `managed` provisions a stream export of `helpdesk.>` (configurable: `nats.managed_export_subject`) from its account plus a hub-side import remapped to `helpdesk.{orgId}.>` — the org prefix is baked into the signed account JWT, so event provenance is subject-based and unforgeable (`hooks/managed_org_exports.go`).
-12. **Edge / Leaf Nodes** - `leaf_nodes` auth collection (a "special thing" with one nats_user, server-provisioned). The `leaf-sync` agent runs on the edge, authenticates as the leaf node, and mirrors its org's config collections into a NATS leaf node's local JetStream KV. A leaf-node identity holds **no read grant on any `nats_*` or `nebula_*` collection**: `leaf-sync config` gets everything it needs from `GET /api/leaf/bootstrap`, which returns six named fields (`domain`, `code`, `creds`, `account_jwt`, `account_pub`, `operator_jwt`). `nats_system_operator` stays superuser-only; `GET /api/leaf/operator-jwt` remains as a superseded alias so upgrade order doesn't matter. `leaf-sync` writes a best-effort liveness heartbeat into the hub's `leaf_status` KV (when `nats.hub_domain` is set); the UI reads it to show online/offline status on the leaf node list + detail views. Credentials are resettable by org Admins/Owners (collection `manageRule`).
+12. **Edge / Leaf Nodes** - `leaf_nodes` auth collection (a "special thing" with one nats_user, server-provisioned). The `leaf-sync` agent runs on the edge, authenticates as the leaf node, and mirrors its org's config collections into a NATS leaf node's local JetStream KV. A leaf-node identity holds **no read grant on any `nats_*` or `nebula_*` collection**: `leaf-sync config` gets everything it needs from `GET /api/leaf/bootstrap`, which returns six named fields (`domain`, `code`, `creds`, `account_jwt`, `account_pub`, `operator_jwt`). `nats_system_operator` stays superuser-only; `GET /api/leaf/operator-jwt` remains as a superseded alias so upgrade order doesn't matter. `leaf-sync` writes a best-effort liveness heartbeat into the hub's `leaf_status` KV (when `nats.hub_domain` is set); the UI reads it to show online/offline status on the leaf node list + detail views. Credentials are resettable by org Admins/Owners (collection `manageRule`) — `things` now carries the same `manageRule`, so a device's PocketBase password is recoverable too.
+13. **Decommissioning a device** - `things.active` / `leaf_nodes.active`, owner/admin only. The flag is enforced in three places at once, because any one of them alone is a half-measure: the `authRule` (`active = true`) blocks new logins, `hooks/active_flag.go` refreshes `tokenKey` so tokens already issued die immediately, and the same hook sets `revoke` on the linked `nats_user` so the signed NATS credential stops working. Reactivating sets `regenerate`, issuing a fresh credential — the old `.creds` stays dead, because the account JWT's revocation cutoff is permanent. Distinct from a leaf node's heartbeat status, which reports whether the edge box *is* connected, not whether it *may* connect.
 
 ## Roles & Authorization
 
@@ -233,6 +234,7 @@ Four roles on `memberships.role` (`invites.role` offers all but `owner`):
 | Leaf nodes, JetStream streams, KV buckets | ✓ | ✓ | | |
 | Attach a NATS/Nebula identity to a Thing | ✓ | ✓ | | |
 | Delete a thing or location | ✓ | ✓ | | |
+| Deactivate a thing or leaf node; reset a thing's password | ✓ | ✓ | | |
 | Things + locations: create and edit | ✓ | ✓ | ✓ | |
 | Own NATS credential + rotation | ✓ | ✓ | ✓ | ✓ |
 | Dashboards | ✓ | ✓ | ✓ | badge routes only |
@@ -291,8 +293,36 @@ Rules to follow when touching authorization:
 - **`nats_users.publish_permissions` is copied verbatim into the signed JWT**
   (pb-nats `internal/jwt/generator.go`). Write access to that collection is
   equivalent to granting NATS permissions, so it is owner/admin only.
+- **An `authRule` is checked at the auth endpoint only, never on an existing
+  token.** PocketBase evaluates it in `apis.RecordAuthResponse`
+  (`apis/record_helpers.go`), reached from `/auth-with-password` and friends —
+  not in the middleware that loads a bearer token. `things` and `leaf_nodes` set
+  `authToken.duration` to 7 days, so `active = true` on its own would leave a
+  deactivated device with a working session for a week. `hooks/active_flag.go`
+  calls `RefreshTokenKey()` on the true→false flip, which invalidates every
+  outstanding token at once. Any future "disable this identity" feature needs
+  the same pairing; the rule alone is a latch, not a switch.
+- **A flag is not a control unless something acts on it.** `nats_users.active` is
+  read into pb-nats's model (`internal/types/converters.go`) and consulted by
+  *nothing* in JWT generation or sync — only `revoke`, which adds the public key
+  to the account's revocation list and re-signs the account JWT
+  (`internal/sync/manager.go`, `revokeUser`), actually disconnects anyone. The UI
+  used to expose `active` as an editable checkbox next to a red/green badge, so
+  an admin could "deactivate" a device that kept publishing. That checkbox is
+  gone; Revoke/Re-enable on the detail view are the real controls. `things.active`
+  and `leaf_nodes.active` exist only because `hooks/active_flag.go` gives them
+  teeth — the flag, the token kill, and the NATS revoke are one operation. Do not
+  add a status field to a device without deciding what enforces it.
+- **A device's real capability is its NATS credential, not its PocketBase
+  session.** Anything that takes a Thing or leaf node out of service has to reach
+  `nats_users`, or it has only closed the console door.
 - **Schema changes need a new `migrations/schema_update_*.go`** — editing
-  `schema.json` alone reaches fresh databases only.
+  `schema.json` alone reaches fresh databases only. **A new non-null column with
+  a live rule over it needs a backfill in the same migration**: PocketBase bools
+  have no schema default, so existing rows land as `false`, and importing
+  `authRule: "active = true"` without the `UPDATE` in
+  `schema_update_device_active_flag.go` would lock every already-provisioned
+  device out of the API on deploy.
 - **Run `./scripts/test-authz.sh` after any rule change** and add a check. Pair
   every "cannot" with a "can" on the same record, or a blanket deny passes.
 - **Capture "before" state immediately before the action it belongs to.** A check
@@ -311,7 +341,7 @@ Keep it in step with the table above.
 
 - `go test ./...` — Go unit tests (`internal/leafsync` has the bulk of them)
 - `./scripts/test-authz.sh` — **run after any API-rule change in `schema.json`.**
-  Builds the binary, stands up a throwaway DB, and asserts 84 authorization
+  Builds the binary, stands up a throwaway DB, and asserts 97 authorization
   behaviours against a live server. The rules are the only tenancy enforcement
   in the platform and nothing else type-checks them. Add a check when you add a
   rule, and bump `EXPECTED_CHECKS`. Note PocketBase answers 404 (not 403) when an

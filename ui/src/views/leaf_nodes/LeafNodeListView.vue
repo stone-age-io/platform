@@ -197,9 +197,21 @@ onUnmounted(() => {
         :loading="loading"
         @row-click="handleRowClick"
       >
+        <!--
+          Deactivated rides with the name, not the status column: that column is
+          the live heartbeat, and conflating "not permitted to connect" with "not
+          currently connected" is exactly the confusion to avoid.
+        -->
         <template #cell-name="{ item }">
           <div>
-            <div class="font-medium">{{ item.name || 'Unnamed' }}</div>
+            <div class="font-medium flex items-center gap-2">
+              <span :class="{ 'text-base-content/50': item.active === false }">
+                {{ item.name || 'Unnamed' }}
+              </span>
+              <span v-if="item.active === false" class="badge badge-error badge-outline badge-sm">
+                Deactivated
+              </span>
+            </div>
             <div v-if="item.description" class="text-sm text-base-content/60 line-clamp-1">
               {{ item.description }}
             </div>

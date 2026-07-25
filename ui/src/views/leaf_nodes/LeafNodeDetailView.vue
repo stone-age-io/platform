@@ -39,6 +39,7 @@ const savingRole = ref(false)
 const regenerating = ref(false)
 const showRegenerateModal = ref(false)
 const deleting = ref(false)
+const togglingActive = ref(false)
 
 // PocketBase credential reset (the login leaf-sync authenticates with).
 const showResetModal = ref(false)
@@ -235,6 +236,44 @@ async function copyMetadata() {
   }
 }
 
+/**
+ * Deactivate or reactivate the leaf node.
+ *
+ * Note this is a different axis from the live heartbeat status above. The
+ * heartbeat says whether leaf-sync is currently talking to us; `active` says
+ * whether it is ALLOWED to. Deactivating stops it authenticating at all --
+ * hooks/active_flag.go invalidates its tokens and revokes the NATS identity, so
+ * both the config pull and the leaf remote connection go away.
+ */
+async function toggleActive() {
+  if (!node.value) return
+  const deactivating = node.value.active !== false
+
+  const confirmed = await confirm({
+    title: deactivating ? 'Deactivate Leaf Node' : 'Reactivate Leaf Node',
+    message: deactivating
+      ? `Take "${node.value.name || node.value.code}" out of service?`
+      : `Return "${node.value.name || node.value.code}" to service?`,
+    details: deactivating
+      ? 'leaf-sync is signed out immediately and the node\'s NATS credentials are revoked. Config sync and the leaf remote connection stop.'
+      : 'A new NATS credential is issued. The previous .creds file stays revoked, so re-run leaf-sync config on the edge box.',
+    confirmText: deactivating ? 'Deactivate' : 'Reactivate',
+    variant: deactivating ? 'danger' : 'info',
+  })
+  if (!confirmed) return
+
+  togglingActive.value = true
+  try {
+    await pb.collection('leaf_nodes').update(nodeId, { active: deactivating ? false : true })
+    toast.success(deactivating ? 'Leaf node deactivated' : 'Leaf node reactivated')
+    await loadNode()
+  } catch (err: any) {
+    toast.error(err.message || 'Failed to change status')
+  } finally {
+    togglingActive.value = false
+  }
+}
+
 async function handleDelete() {
   if (!node.value) return
   const confirmed = await confirm({
@@ -286,13 +325,38 @@ onMounted(loadNode)
       <!-- Header -->
       <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 class="text-3xl font-bold">{{ node.name || 'Unnamed' }}</h1>
+          <div class="flex items-center gap-3">
+            <h1 class="text-3xl font-bold">{{ node.name || 'Unnamed' }}</h1>
+            <span v-if="node.active === false" class="badge badge-error badge-outline">Deactivated</span>
+          </div>
           <p v-if="node.description" class="text-base-content/70 mt-1">{{ node.description }}</p>
         </div>
         <div class="flex gap-2 w-full sm:w-auto">
           <router-link :to="`/leaf-nodes/${node.id}/edit`" class="btn btn-primary flex-1 sm:flex-initial">Edit</router-link>
+          <button
+            v-if="canManage"
+            @click="toggleActive"
+            class="btn flex-1 sm:flex-initial"
+            :class="node.active === false ? 'btn-outline btn-success' : 'btn-outline btn-warning'"
+            :disabled="togglingActive"
+          >
+            {{ node.active === false ? 'Reactivate' : 'Deactivate' }}
+          </button>
           <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial" :disabled="deleting">Delete</button>
         </div>
+      </div>
+
+      <!--
+        Distinct from the live heartbeat badge: that reports whether leaf-sync is
+        currently reachable, this reports whether it is permitted to connect at
+        all. An offline heartbeat on a deactivated node is the expected outcome,
+        not a fault to chase.
+      -->
+      <div v-if="node.active === false" class="alert alert-warning py-2 text-sm">
+        <span>
+          This leaf node is deactivated — leaf-sync cannot authenticate and its NATS credentials are
+          revoked. Reactivating issues a new credential; re-run <code>leaf-sync config</code> on the edge box.
+        </span>
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">

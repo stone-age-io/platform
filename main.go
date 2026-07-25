@@ -289,6 +289,15 @@ func main() {
 		NatsRoleCollection:    natsOptions.RoleCollectionName,
 	})
 
+	// Makes `active` on things/leaf_nodes mean something. The authRule only stops
+	// new logins; this invalidates outstanding tokens and revokes the device's
+	// NATS identity, which is where its real capability lives.
+	hooks.RegisterActiveFlag(app, hooks.ActiveFlagOptions{
+		ThingCollection:    "things",
+		LeafNodeCollection: "leaf_nodes",
+		NatsUserCollection: natsOptions.UserCollectionName,
+	})
+
 	// Leaf-node-authenticated bootstrap routes. These serve the operator JWT, the
 	// org account JWT, and the leaf's own creds, so a leaf-node identity needs no
 	// read grant on nats_users or nats_accounts at all.

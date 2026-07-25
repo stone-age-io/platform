@@ -48,7 +48,6 @@ const formData = ref({
 
   // Options
   bearer_token: false,
-  active: true,
 
   // Credential lifetime (optional; empty = never expires)
   jwt_expires_at: '',
@@ -148,7 +147,6 @@ async function loadUser() {
       publish_deny_permissions: formatForInput(user.publish_deny_permissions),
       subscribe_deny_permissions: formatForInput(user.subscribe_deny_permissions),
       bearer_token: user.bearer_token || false,
-      active: user.active || true,
       jwt_expires_at: pbDateToInput(user.jwt_expires_at),
     }
   } catch (err: any) {
@@ -189,7 +187,6 @@ async function handleSubmit() {
       publish_deny_permissions: formatForApi(formData.value.publish_deny_permissions),
       subscribe_deny_permissions: formatForApi(formData.value.subscribe_deny_permissions),
       bearer_token: formData.value.bearer_token,
-      active: formData.value.active,
       // Empty string clears the date in PocketBase (never expires).
       jwt_expires_at: formData.value.jwt_expires_at
         ? new Date(formData.value.jwt_expires_at).toISOString()
@@ -209,6 +206,9 @@ async function handleSubmit() {
       toast.success('NATS user updated')
     } else {
       data.organization = authStore.currentOrgId
+      // Set once, on create. `active` is not editable here on purpose -- see the
+      // note on the Security Settings card. Revoke/Re-enable own it.
+      data.active = true
       record = await pb.collection('nats_users').create<NatsUser>(data)
       toast.success('NATS user created')
     }
@@ -384,22 +384,14 @@ onMounted(() => {
           
           <BaseCard title="Security Settings">
             <div class="space-y-4">
-              <div class="form-control">
-                <label class="label cursor-pointer justify-start gap-4">
-                  <input
-                    v-model="formData.active"
-                    type="checkbox"
-                    class="toggle toggle-success"
-                  />
-                  <span class="label-text">
-                    <span class="font-medium">Active Status</span>
-                    <span class="block text-sm text-base-content/70">
-                      Allow this user to authenticate and connect
-                    </span>
-                  </span>
-                </label>
-              </div>
-
+              <!--
+                There is deliberately no "Active" toggle here. `active` is a LABEL
+                that pb-nats sets; it is not a control. Clearing it changes the
+                badge and nothing else -- the signed user JWT stays valid and the
+                device keeps connecting. Only revocation cuts NATS off, by adding
+                the public key to the account's revocation list. Use Revoke /
+                Re-enable on the user's detail page.
+              -->
               <div class="form-control">
                 <label class="label cursor-pointer justify-start gap-4">
                   <input

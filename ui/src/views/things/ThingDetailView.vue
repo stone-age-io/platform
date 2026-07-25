@@ -6,22 +6,26 @@ import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { useNatsStore } from '@/stores/nats'
+import { useAuthStore } from '@/stores/auth'
 import type { Thing, NatsUser, NebulaHost, Location } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import KvDashboard from '@/components/nats/KvDashboard.vue'
 import JsonViewer from '@/components/common/JsonViewer.vue'
+import ExpiryBadge from '@/components/common/ExpiryBadge.vue'
 
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
 const { confirm } = useConfirm()
 const natsStore = useNatsStore()
+const authStore = useAuthStore()
 
 const thing = ref<Thing | null>(null)
 const loading = ref(true)
 const regenerating = ref(false)
 const showRegenerateModal = ref(false)
 const deleting = ref(false)
+const togglingActive = ref(false)
 
 const thingId = route.params.id as string
 
@@ -112,6 +116,47 @@ function downloadNebulaConfig() {
   toast.success('Config downloaded')
 }
 
+/**
+ * Deactivate or reactivate the Thing.
+ *
+ * This is not a cosmetic flag. The server (hooks/active_flag.go) treats the flip
+ * as a real decommission: it refreshes the record's tokenKey, which invalidates
+ * every auth token the device already holds, and it revokes the linked NATS
+ * identity so the signed credential stops working. Reactivating issues a FRESH
+ * NATS credential — the old .creds file stays dead, because the revocation
+ * cutoff baked into the account JWT is permanent. Say so in the dialog; an
+ * operator who expects the old creds to resume will otherwise be surprised at
+ * the worst possible moment.
+ */
+async function toggleActive() {
+  if (!thing.value) return
+  const deactivating = thing.value.active !== false
+
+  const confirmed = await confirm({
+    title: deactivating ? 'Deactivate Thing' : 'Reactivate Thing',
+    message: deactivating
+      ? `Take "${thing.value.name}" out of service?`
+      : `Return "${thing.value.name}" to service?`,
+    details: deactivating
+      ? 'The device is signed out immediately and its NATS credentials are revoked. It stops publishing.'
+      : 'A new NATS credential is issued. The previous .creds file stays revoked and must be re-downloaded onto the device.',
+    confirmText: deactivating ? 'Deactivate' : 'Reactivate',
+    variant: deactivating ? 'danger' : 'info'
+  })
+  if (!confirmed) return
+
+  togglingActive.value = true
+  try {
+    await pb.collection('things').update(thing.value.id, { active: deactivating ? false : true })
+    toast.success(deactivating ? 'Thing deactivated' : 'Thing reactivated')
+    await loadThing()
+  } catch (err: any) {
+    toast.error(err.message || 'Failed to change status')
+  } finally {
+    togglingActive.value = false
+  }
+}
+
 async function handleDelete() {
   if (!thing.value) return
   const confirmed = await confirm({
@@ -157,16 +202,47 @@ onMounted(() => {
         <div class="flex flex-col sm:flex-row justify-between items-start gap-4">
           <div class="flex items-center gap-3">
             <h1 class="text-3xl font-bold break-words">{{ thing.name || 'Unnamed Thing' }}</h1>
+            <span v-if="thing.active === false" class="badge badge-error badge-outline gap-1">
+              Deactivated
+            </span>
           </div>
           <div class="flex gap-2 w-full sm:w-auto">
             <router-link :to="`/things/${thing.id}/edit`" class="btn btn-primary flex-1 sm:flex-initial">
               Edit
             </router-link>
-            <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial" :disabled="deleting">
+            <button
+              v-if="authStore.can.decommissionInventory"
+              @click="toggleActive"
+              class="btn flex-1 sm:flex-initial"
+              :class="thing.active === false ? 'btn-outline btn-success' : 'btn-outline btn-warning'"
+              :disabled="togglingActive"
+            >
+              {{ thing.active === false ? 'Reactivate' : 'Deactivate' }}
+            </button>
+            <button
+              v-if="authStore.can.decommissionInventory"
+              @click="handleDelete"
+              class="btn btn-error flex-1 sm:flex-initial"
+              :disabled="deleting"
+            >
               Delete
             </button>
           </div>
         </div>
+      </div>
+
+      <!--
+        A deactivated Thing is fully cut off, not merely flagged: its auth tokens
+        were invalidated and its NATS credential revoked on the flip. Spelling
+        that out here is the point of the banner -- the failure mode this feature
+        exists to avoid is an operator reading a red badge and assuming the
+        device is silent when it is not.
+      -->
+      <div v-if="thing.active === false" class="alert alert-warning py-2 text-sm">
+        <span>
+          This thing is deactivated — it cannot sign in, and its NATS credentials are revoked.
+          Reactivating issues a new <code>.creds</code> file that must be deployed to the device.
+        </span>
       </div>
       
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
@@ -248,15 +324,18 @@ onMounted(() => {
             </div>
             <div v-if="thing.expand?.nats_user" class="flex flex-col gap-3">
               <div class="bg-base-200 rounded-lg p-3 border border-base-300">
-                <div class="flex justify-between items-start mb-1">
+                <div class="flex justify-between items-start mb-1 gap-2">
                   <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Username</span>
-                  <div class="flex items-center gap-1.5" v-if="thing.expand.nats_user.active">
-                    <span class="w-2 h-2 rounded-full bg-success"></span>
-                    <span class="text-xs font-medium text-base-content/70">Active</span>
-                  </div>
-                  <div class="flex items-center gap-1.5" v-else>
-                    <span class="w-2 h-2 rounded-full bg-error"></span>
-                    <span class="text-xs font-medium text-base-content/70">Inactive</span>
+                  <div class="flex items-center gap-2">
+                    <ExpiryBadge :value="thing.expand.nats_user.jwt_expires_at" size="sm" />
+                    <div class="flex items-center gap-1.5" v-if="thing.expand.nats_user.active">
+                      <span class="w-2 h-2 rounded-full bg-success"></span>
+                      <span class="text-xs font-medium text-base-content/70">Active</span>
+                    </div>
+                    <div class="flex items-center gap-1.5" v-else>
+                      <span class="w-2 h-2 rounded-full bg-error"></span>
+                      <span class="text-xs font-medium text-base-content/70">Inactive</span>
+                    </div>
                   </div>
                 </div>
                 <div class="font-mono text-base break-all select-all">{{ thing.expand.nats_user.nats_username }}</div>
