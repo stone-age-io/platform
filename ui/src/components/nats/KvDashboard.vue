@@ -98,6 +98,11 @@ const selectedDriftPairs = computed(() =>
   selectedEntry.value ? driftPairs(selectedEntry.value.key) : [],
 )
 
+/** Current revision of the side the editor is showing, for "is this the latest". */
+const activeRevision = computed(() =>
+  editorTarget.value === 'desired' ? selectedDesired.value?.entry.revision : selectedEntry.value?.revision,
+)
+
 /**
  * When the value on the open side was last written. NATS carries it on every
  * entry; the pane was showing a revision number and no clock, which answers
@@ -538,6 +543,11 @@ async function restoreRevision(rev: KvEntryWithId) {
     toast.error('Cannot restore a deletion event')
     return
   }
+  // Restore writes back to the bucket the history came from. Once history
+  // started following the Reported/Desired toggle, an unconditional `put` here
+  // would have taken an old DESIRED revision and written it into the REPORTED
+  // bucket — the one side the twin view declares read-only.
+  if (editorReadOnly.value) return
   const confirmed = await confirm({
     title: 'Restore Revision',
     message: `Restore "${displayKey(rev.key)}" to revision #${rev.revision}?`,
@@ -546,7 +556,8 @@ async function restoreRevision(rev: KvEntryWithId) {
   })
   if (!confirmed) return
   try {
-    await put(displayKey(rev.key), rev.value)
+    const write = editorTarget.value === 'desired' ? desiredKv.put : put
+    await write(displayKey(rev.key), rev.value)
     toast.success(`Restored revision #${rev.revision}`)
     inputValue.value = valueToEditable(rev.value)
     await loadHistory(rev.key)
@@ -821,7 +832,9 @@ function previewValue(val: any): string {
         <div class="editor-content-wrapper">
           <div class="pane-header bg-base-200/50">
             <h3 class="font-bold uppercase text-[10px] tracking-widest opacity-70">
-              {{ isAddingNew ? 'New Property' : (selectedEntry ? 'Property Details' : 'Editor') }}
+              <!-- In twin mode "+ Add" can only mean a desired value; the device
+                   is the only thing that creates reported keys. Say so. -->
+              {{ isAddingNew ? (twinMode ? 'New Desired Value' : 'New Property') : (selectedEntry ? 'Property Details' : 'Editor') }}
             </h3>
             <button v-if="selectedEntry || isAddingNew" @click="closeEditor" class="btn btn-xs btn-ghost btn-circle" aria-label="Close">✕</button>
           </div>
@@ -987,14 +1000,18 @@ function previewValue(val: any): string {
                       <div class="max-h-64 overflow-auto p-2">
                         <JsonViewer :data="rev.value" />
                       </div>
-                      <div class="flex justify-end gap-2 px-2 py-1.5 border-t border-base-300 bg-base-200/60">
+                      <!-- Both actions write into the editor or the bucket, so
+                           neither is offered while the open side is read-only.
+                           "Current" is judged against the side being shown, not
+                           always the reported one. -->
+                      <div v-if="!editorReadOnly" class="flex justify-end gap-2 px-2 py-1.5 border-t border-base-300 bg-base-200/60">
                         <button
                           @click.stop="copyRevisionToEditor(rev)"
                           class="btn btn-xs btn-ghost h-6 min-h-0"
                           title="Load this value into the editor without saving"
                         >Load into editor</button>
                         <button
-                          v-if="rev.revision !== selectedEntry?.revision"
+                          v-if="rev.revision !== activeRevision"
                           @click.stop="restoreRevision(rev)"
                           class="btn btn-xs btn-primary h-6 min-h-0"
                           title="Save this value as a new revision"
