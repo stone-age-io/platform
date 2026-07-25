@@ -20,58 +20,16 @@ func Bootstrap(ctx context.Context, cfg *Config) error {
 	}
 
 	pb := pbclient.New(cfg.PocketBaseURL)
-	leaf, err := pb.AuthWithPassword(ctx, "leaf_nodes", cfg.PocketBaseEmail, cfg.PocketBasePassword)
-	if err != nil {
+	if _, err := pb.AuthWithPassword(ctx, "leaf_nodes", cfg.PocketBaseEmail, cfg.PocketBasePassword); err != nil {
 		return fmt.Errorf("authenticate to PocketBase: %w", err)
 	}
 
-	domain, _ := leaf["domain"].(string)
-	if domain == "" {
-		return fmt.Errorf("leaf node has no domain configured")
-	}
-	natsUserID, _ := leaf["nats_user"].(string)
-	if natsUserID == "" {
-		return fmt.Errorf("leaf node has no nats_user assigned yet (provisioning may have failed)")
-	}
-
-	// The leaf node's own NATS user → creds + account id.
-	natsUser, err := pb.GetOne(ctx, "nats_users", natsUserID)
+	// One call for everything the leaf server config needs. The server reads the
+	// secret-bearing collections on our behalf, so this identity holds no grant on
+	// nats_users or nats_accounts — see hooks/leaf_node_routes.go.
+	bs, err := fetchBootstrap(ctx, pb)
 	if err != nil {
-		return fmt.Errorf("fetch nats_user: %w", err)
-	}
-	creds, _ := natsUser["creds_file"].(string)
-	accountID, _ := natsUser["account_id"].(string)
-	if creds == "" {
-		return fmt.Errorf("nats_user has no creds_file (provisioning incomplete)")
-	}
-	if accountID == "" {
-		return fmt.Errorf("nats_user has no account_id")
-	}
-
-	// The org account → account JWT + public key (for resolver_preload).
-	account, err := pb.GetOne(ctx, "nats_accounts", accountID)
-	if err != nil {
-		return fmt.Errorf("fetch nats_account: %w", err)
-	}
-	accountJWT, _ := account["jwt"].(string)
-	accountPub, _ := account["public_key"].(string)
-	if accountJWT == "" || accountPub == "" {
-		return fmt.Errorf("nats_account missing jwt/public_key")
-	}
-
-	// Operator JWT via the dedicated, leaf-node-authenticated route.
-	opBytes, err := pb.GetRaw(ctx, "/api/leaf/operator-jwt")
-	if err != nil {
-		return fmt.Errorf("fetch operator jwt: %w", err)
-	}
-	var opResp struct {
-		OperatorJWT string `json:"operator_jwt"`
-	}
-	if err := json.Unmarshal(opBytes, &opResp); err != nil {
-		return fmt.Errorf("parse operator jwt: %w", err)
-	}
-	if opResp.OperatorJWT == "" {
-		return fmt.Errorf("operator jwt response was empty")
+		return err
 	}
 
 	if err := os.MkdirAll(cfg.OutputDir, 0o755); err != nil {
@@ -80,15 +38,15 @@ func Bootstrap(ctx context.Context, cfg *Config) error {
 
 	credsName := filepath.Base(cfg.CredsFile)
 	credsPath := filepath.Join(cfg.OutputDir, credsName)
-	if err := os.WriteFile(credsPath, []byte(creds), 0o600); err != nil {
+	if err := os.WriteFile(credsPath, []byte(bs.Creds), 0o600); err != nil {
 		return fmt.Errorf("write creds: %w", err)
 	}
 
 	conf := buildLeafConf(leafConfParams{
-		OperatorJWT: opResp.OperatorJWT,
-		AccountPub:  accountPub,
-		AccountJWT:  accountJWT,
-		Domain:      domain,
+		OperatorJWT: bs.OperatorJWT,
+		AccountPub:  bs.AccountPub,
+		AccountJWT:  bs.AccountJWT,
+		Domain:      bs.Domain,
 		HubLeafURL:  cfg.HubLeafURL,
 		CredsName:   credsName,
 	})
@@ -100,6 +58,46 @@ func Bootstrap(ctx context.Context, cfg *Config) error {
 	fmt.Printf("✅ Wrote %s\n✅ Wrote %s\n", confPath, credsPath)
 	fmt.Printf("\nNext: start the leaf with\n  nats-server -c %s\nthen run\n  leaf-sync run\n", confPath)
 	return nil
+}
+
+// bootstrapResponse is the payload of GET /api/leaf/bootstrap. Every value is
+// either public trust material or this leaf's own credential.
+type bootstrapResponse struct {
+	Domain      string `json:"domain"`
+	Code        string `json:"code"`
+	Creds       string `json:"creds"`
+	AccountJWT  string `json:"account_jwt"`
+	AccountPub  string `json:"account_pub"`
+	OperatorJWT string `json:"operator_jwt"`
+}
+
+// fetchBootstrap calls the leaf bootstrap route and checks that every value the
+// leaf config needs actually came back, so a partially-provisioned leaf node fails
+// here with a clear message rather than producing a nats-leaf.conf with empty
+// fields that nats-server rejects with something obscure.
+func fetchBootstrap(ctx context.Context, pb *pbclient.Client) (*bootstrapResponse, error) {
+	body, err := pb.GetRaw(ctx, "/api/leaf/bootstrap")
+	if err != nil {
+		return nil, fmt.Errorf("fetch leaf bootstrap: %w", err)
+	}
+	var bs bootstrapResponse
+	if err := json.Unmarshal(body, &bs); err != nil {
+		return nil, fmt.Errorf("parse leaf bootstrap: %w", err)
+	}
+	for _, missing := range []struct {
+		value, name string
+	}{
+		{bs.Domain, "domain"},
+		{bs.Creds, "creds"},
+		{bs.AccountJWT, "account_jwt"},
+		{bs.AccountPub, "account_pub"},
+		{bs.OperatorJWT, "operator_jwt"},
+	} {
+		if missing.value == "" {
+			return nil, fmt.Errorf("leaf bootstrap response missing %s", missing.name)
+		}
+	}
+	return &bs, nil
 }
 
 type leafConfParams struct {

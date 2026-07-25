@@ -8,38 +8,132 @@ import (
 
 // operatorCollection is the (singleton) collection holding the NATS operator.
 // It stays superuser-only at the collection level; the operator JWT is exposed
-// solely through the route below.
+// solely through the routes below.
 const operatorCollection = "nats_system_operator"
 
-// RegisterLeafNodeRoutes adds a narrow, leaf-node-authenticated route that returns
-// ONLY the operator JWT.
+// LeafNodeRoutesOptions names the collections the bootstrap route reads. They are
+// read with the app's own privileges, deliberately bypassing the API rules — see
+// RegisterLeafNodeRoutes.
+type LeafNodeRoutesOptions struct {
+	LeafNodeCollection    string
+	NatsUserCollection    string
+	NatsAccountCollection string
+}
+
+// RegisterLeafNodeRoutes adds the leaf-node-authenticated routes that hand an edge
+// box the material it needs to stand up its NATS leaf server.
 //
-// The operator JWT is a public trust anchor that a leaf node needs to bootstrap
-// its NATS server config (operator + MEMORY resolver_preload). Rather than open a
-// read rule on the crown-jewel `nats_system_operator` collection, we expose just
-// this one value through a dedicated route gated to `leaf_nodes` auth identities.
-func RegisterLeafNodeRoutes(app *pocketbase.PocketBase) {
+// WHY THESE ARE ROUTES AND NOT COLLECTION READS. An edge needs four values it
+// cannot derive locally: the operator JWT, its organization's account JWT and
+// public key, and its own user credentials. Three of those live in
+// secret-bearing collections. Serving them through a route means the leaf-node
+// identity needs no read grant on `nats_users` or `nats_accounts` at all, so the
+// blast radius of a leaked edge credential is these four values and nothing else
+// — not "every row those collections' rules happen to expose".
+//
+// It also decouples the edge agent from rule shape. `leaf-sync config` used to
+// read both collections through the CRUD API, which made a correct tightening of
+// an unrelated read rule capable of breaking every edge box's bootstrap.
+//
+// Everything served here is either public trust material (operator and account
+// JWTs are verified by every server in the network) or the leaf's own credential,
+// which it must hold to connect. Account *seeds* and signing keys are never
+// exposed: the handler reads named fields, not whole records.
+func RegisterLeafNodeRoutes(app *pocketbase.PocketBase, opts LeafNodeRoutesOptions) {
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
+		// Superseded by /api/leaf/bootstrap, which returns this value among
+		// others. Kept so an edge box running an older leaf-sync keeps working
+		// after the server is upgraded; upgrade order should not matter.
 		se.Router.GET("/api/leaf/operator-jwt", func(re *core.RequestEvent) error {
-			// Defense-in-depth: RequireAuth("leaf_nodes") already enforces this,
-			// but re-check the collection so the handler is safe regardless.
-			if re.Auth == nil || re.Auth.Collection().Name != "leaf_nodes" {
-				return re.UnauthorizedError("leaf node authentication required", nil)
+			if err := requireLeafNode(re); err != nil {
+				return err
 			}
-
-			op, err := re.App.FindFirstRecordByFilter(operatorCollection, "1=1")
+			jwt, err := operatorJWT(re)
 			if err != nil {
-				return re.NotFoundError("operator not found", nil)
+				return err
 			}
-
-			jwt := op.GetString("jwt")
-			if jwt == "" {
-				return re.NotFoundError("operator JWT not available", nil)
-			}
-
 			return re.JSON(200, map[string]string{"operator_jwt": jwt})
-		}).Bind(apis.RequireAuth("leaf_nodes"))
+		}).Bind(apis.RequireAuth(opts.LeafNodeCollection))
+
+		// Everything `leaf-sync config` needs, in one call.
+		se.Router.GET("/api/leaf/bootstrap", func(re *core.RequestEvent) error {
+			if err := requireLeafNode(re); err != nil {
+				return err
+			}
+			leaf := re.Auth // the leaf node's own record; no id parameter to aim elsewhere
+
+			domain := leaf.GetString("domain")
+			if domain == "" {
+				return re.NotFoundError("leaf node has no domain configured", nil)
+			}
+			natsUserID := leaf.GetString("nats_user")
+			if natsUserID == "" {
+				return re.NotFoundError("leaf node has no nats_user assigned yet (provisioning may have failed)", nil)
+			}
+
+			natsUser, err := re.App.FindRecordById(opts.NatsUserCollection, natsUserID)
+			if err != nil {
+				return re.NotFoundError("nats_user not found", nil)
+			}
+			creds := natsUser.GetString("creds_file")
+			if creds == "" {
+				return re.NotFoundError("nats_user has no creds_file (provisioning incomplete)", nil)
+			}
+
+			account, err := re.App.FindRecordById(opts.NatsAccountCollection, natsUser.GetString("account_id"))
+			if err != nil {
+				return re.NotFoundError("nats_account not found", nil)
+			}
+			// Defense in depth: the relation is server-provisioned, but never serve
+			// an account from outside the leaf node's own organization.
+			if account.GetString("organization") != leaf.GetString("organization") {
+				return re.NotFoundError("nats_account not found", nil)
+			}
+			accountJWT := account.GetString("jwt")
+			accountPub := account.GetString("public_key")
+			if accountJWT == "" || accountPub == "" {
+				return re.NotFoundError("nats_account missing jwt/public_key", nil)
+			}
+
+			opJWT, err := operatorJWT(re)
+			if err != nil {
+				return err
+			}
+
+			return re.JSON(200, map[string]string{
+				"domain":       domain,
+				"code":         leaf.GetString("code"),
+				"creds":        creds,
+				"account_jwt":  accountJWT,
+				"account_pub":  accountPub,
+				"operator_jwt": opJWT,
+			})
+		}).Bind(apis.RequireAuth(opts.LeafNodeCollection))
 
 		return se.Next()
 	})
+}
+
+// requireLeafNode re-checks the caller's collection. RequireAuth already enforces
+// it; this keeps each handler correct on its own terms, so a future change to the
+// route's Bind cannot silently widen who reaches the body.
+func requireLeafNode(re *core.RequestEvent) error {
+	if re.Auth == nil || re.Auth.Collection().Name != "leaf_nodes" {
+		return re.UnauthorizedError("leaf node authentication required", nil)
+	}
+	return nil
+}
+
+// operatorJWT returns the platform's operator JWT — a public trust anchor every
+// NATS server in the network validates against.
+func operatorJWT(re *core.RequestEvent) (string, error) {
+	op, err := re.App.FindFirstRecordByFilter(operatorCollection, "1=1")
+	if err != nil {
+		return "", re.NotFoundError("operator not found", nil)
+	}
+	jwt := op.GetString("jwt")
+	if jwt == "" {
+		return "", re.NotFoundError("operator JWT not available", nil)
+	}
+	return jwt, nil
 }

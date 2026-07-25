@@ -72,22 +72,35 @@ func loadConfig() {
 	}
 }
 
+// setDefaults must define a value for EVERY key the program later reads.
+// Anything read without a default silently becomes the zero value when
+// config.yaml is absent — which for an int means 0, and 0 is a legal-looking
+// but wrong limit (a Nebula CA valid for zero years, a zero-byte NATS payload
+// cap). Keep this list in sync with config.yaml.
 func setDefaults() {
 	// Tenancy
 	viper.SetDefault("tenancy.organizations_collection", "organizations")
 	viper.SetDefault("tenancy.memberships_collection", "memberships")
 	viper.SetDefault("tenancy.invites_collection", "invites")
+	viper.SetDefault("tenancy.invite_expiry_days", 7)
+	viper.SetDefault("tenancy.log_to_console", false)
 
 	// NATS
 	viper.SetDefault("nats.account_collection_name", "nats_accounts")
 	viper.SetDefault("nats.user_collection_name", "nats_users")
 	viper.SetDefault("nats.role_collection_name", "nats_roles")
 	viper.SetDefault("nats.operator_name", "stone-age.io")
-	viper.SetDefault("nats.server_url", "nats://localhost:4222")
+	viper.SetDefault("nats.server_url", "nats://localhost:4422")
+	viper.SetDefault("nats.log_to_console", false)
 	viper.SetDefault("nats.default_limits.max_connections", 10)
 	viper.SetDefault("nats.default_limits.max_subscriptions", 50)
+	viper.SetDefault("nats.default_limits.max_payload", 1048576)
 	viper.SetDefault("nats.export_collection_name", "nats_account_exports")
 	viper.SetDefault("nats.import_collection_name", "nats_account_imports")
+	// At-rest encryption is OFF by default, deliberately: an empty key means the
+	// private_key/seed columns are stored in plaintext. Set it to exactly 32
+	// characters (preferably via STONE_AGE_NATS_ENCRYPTION_KEY) to turn it on,
+	// and keep a backup — losing an enabled key loses the encrypted records.
 	viper.SetDefault("nats.encryption_key", "")
 	// Subject subtree exported from every managed org's account into the
 	// operator hub account (import remaps it to "<prefix>.{orgId}.>").
@@ -97,11 +110,14 @@ func setDefaults() {
 	viper.SetDefault("nebula.ca_collection_name", "nebula_ca")
 	viper.SetDefault("nebula.network_collection_name", "nebula_networks")
 	viper.SetDefault("nebula.host_collection_name", "nebula_hosts")
-	viper.SetDefault("nebula.log_to_console", true)
+	viper.SetDefault("nebula.log_to_console", false)
+	viper.SetDefault("nebula.default_ca_validity_years", 10)
+	// Off by default, same rationale as nats.encryption_key above.
 	viper.SetDefault("nebula.encryption_key", "")
 
 	// Audit
 	viper.SetDefault("audit.collection_name", "audit_logs")
+	viper.SetDefault("audit.log_to_console", false)
 	viper.SetDefault("audit.retention.max_age", "")
 	viper.SetDefault("audit.retention.max_records", 0)
 	viper.SetDefault("audit.retention.interval", "0 2 * * *")
@@ -109,6 +125,22 @@ func setDefaults() {
 	// Branding (operator-level overrides for logo / theme / app name).
 	// Empty disables overrides; the embedded default branding is used.
 	viper.SetDefault("branding.dir", "")
+}
+
+// validateEncryptionKey rejects a malformed at-rest encryption key at startup.
+//
+// An empty key is valid and is the default: at-rest encryption is opt-in, and
+// leaving it off stores the private_key/seed columns in plaintext. A key of any
+// other length than 32 bytes is never valid though — AES-256 needs exactly that
+// — so it is a typo or a truncated secret, and the only safe response is to
+// refuse to start rather than provision records that cannot be decrypted.
+func validateEncryptionKey(key, name string) {
+	if key == "" {
+		return // encryption disabled — the default
+	}
+	if len(key) != 32 {
+		log.Fatalf("❌ %s must be exactly 32 bytes when set (got %d). Leave it empty to disable at-rest encryption.", name, len(key))
+	}
 }
 
 func main() {
@@ -119,9 +151,15 @@ func main() {
 	// Pass embedded schema to initial migration
 	migrations.SchemaJSON = schemaJSON
 
-	// Register migrate command (auto-generates migration files in dev)
+	// Register migrate command. Automigrate writes a new migration file whenever a
+	// collection is changed through the admin UI — helpful during development,
+	// wrong in production, where the migrations directory is not part of the
+	// deployed artifact and schema drift should arrive as reviewed code. Detect
+	// `go run` the way PocketBase's own docs do: its throwaway binary lands under
+	// the OS temp dir, whereas a released build does not.
+	isGoRun := strings.HasPrefix(os.Args[0], os.TempDir())
 	migratecmd.MustRegister(app, app.RootCmd, migratecmd.Config{
-		Automigrate: true,
+		Automigrate: isGoRun,
 	})
 
 	// Register the config flag with Cobra
@@ -133,9 +171,9 @@ func main() {
 	tenancyOptions.MembershipsCollection = viper.GetString("tenancy.memberships_collection")
 	tenancyOptions.InvitesCollection = viper.GetString("tenancy.invites_collection")
 	tenancyOptions.LogToConsole = viper.GetBool("tenancy.log_to_console")
-	if viper.IsSet("tenancy.invite_expiry_days") {
-		tenancyOptions.InviteExpiryDays = viper.GetInt("tenancy.invite_expiry_days")
-	}
+	// Assigned unconditionally: setDefaults guarantees a sane value, so the old
+	// viper.IsSet guard only obscured whether the key could be missing.
+	tenancyOptions.InviteExpiryDays = viper.GetInt("tenancy.invite_expiry_days")
 
 	// --- NATS ---
 	natsOptions := pbnats.DefaultOptions()
@@ -155,15 +193,33 @@ func main() {
 	nebulaOptions.NetworkCollectionName = viper.GetString("nebula.network_collection_name")
 	nebulaOptions.HostCollectionName = viper.GetString("nebula.host_collection_name")
 	nebulaOptions.LogToConsole = viper.GetBool("nebula.log_to_console")
-	if viper.IsSet("nebula.default_ca_validity_years") {
-		nebulaOptions.DefaultCAValidityYears = viper.GetInt("nebula.default_ca_validity_years")
-	}
+	nebulaOptions.DefaultCAValidityYears = viper.GetInt("nebula.default_ca_validity_years")
 	nebulaOptions.EncryptionKey = viper.GetString("nebula.encryption_key")
+
+	// At-rest encryption is opt-in, but a key of the wrong length is always a
+	// misconfiguration. Fail at startup rather than at the first key write, which
+	// would leave an org half-provisioned.
+	validateEncryptionKey(natsOptions.EncryptionKey, "nats.encryption_key")
+	validateEncryptionKey(nebulaOptions.EncryptionKey, "nebula.encryption_key")
 
 	// --- Audit ---
 	auditOptions := pbaudit.DefaultOptions()
 	auditOptions.CollectionName = viper.GetString("audit.collection_name")
-	auditOptions.LogToConsole = viper.GetBool("audit.log_console")
+	// Canonical key is audit.log_to_console, matching the tenancy/nats/nebula
+	// sections. The legacy audit.log_console spelling is still honoured so an
+	// existing config.yaml does not silently lose the setting.
+	auditOptions.LogToConsole = viper.GetBool("audit.log_to_console") || viper.GetBool("audit.log_console")
+
+	// Never audit the NATS root operator record. pb-audit snapshots the whole
+	// record into before_changes/after_changes via PublicExport(), so anything
+	// not flagged hidden in schema.json ends up copied into audit_logs. That
+	// record holds the root of the entire NATS chain of trust — its seed signs
+	// every account and user JWT on the platform — and there is no reason to
+	// keep a second copy of it in a queryable collection. The hidden flags on
+	// those fields are the primary defence; this is belt and braces.
+	auditOptions.EventFilter = func(collectionName, eventType string) bool {
+		return collectionName != "nats_system_operator"
+	}
 
 	// Retention policy (optional)
 	maxAgeStr := viper.GetString("audit.retention.max_age")
@@ -233,9 +289,32 @@ func main() {
 		NatsRoleCollection:    natsOptions.RoleCollectionName,
 	})
 
-	// Narrow, leaf-node-authenticated route exposing only the operator JWT
-	// (nats_system_operator stays superuser-only at the collection level).
-	hooks.RegisterLeafNodeRoutes(app)
+	// Leaf-node-authenticated bootstrap routes. These serve the operator JWT, the
+	// org account JWT, and the leaf's own creds, so a leaf-node identity needs no
+	// read grant on nats_users or nats_accounts at all.
+	hooks.RegisterLeafNodeRoutes(app, hooks.LeafNodeRoutesOptions{
+		LeafNodeCollection:    "leaf_nodes",
+		NatsUserCollection:    natsOptions.UserCollectionName,
+		NatsAccountCollection: natsOptions.AccountCollectionName,
+	})
+
+	// Self-service credential rotation. Reading credentials needs no route (the
+	// nats_users rules are row-scoped to the caller's own identity); rotation does,
+	// because it must permit a write to exactly one field.
+	hooks.RegisterCredentialRoutes(app, hooks.CredentialRoutesOptions{
+		NatsUserCollection:   natsOptions.UserCollectionName,
+		MembershipCollection: tenancyOptions.MembershipsCollection,
+		ThingCollection:      "things",
+		LeafNodeCollection:   "leaf_nodes",
+	})
+
+	// Signing-key operations on an org's own NATS account. Same reason as above:
+	// the update rule cannot permit three trigger fields and forbid the limits,
+	// so nats_accounts.updateRule is operator-only and these live in a route.
+	hooks.RegisterNatsAccountRoutes(app, hooks.NatsAccountRoutesOptions{
+		NatsAccountCollection: natsOptions.AccountCollectionName,
+		MembershipCollection:  tenancyOptions.MembershipsCollection,
+	})
 
 	// 6. Serve Embedded UI with SPA Support
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {

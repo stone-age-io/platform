@@ -127,14 +127,20 @@ func resolveCollections(leaf pbclient.Record) []string {
 // synced record count plus any errors, for the heartbeat payload. Fail-soft: a
 // collection that errors is logged and recorded, local KV left as-is, and the
 // remaining collections still run.
-func syncAll(ctx context.Context, pb *pbclient.Client, kw *kvWriter, cache *syncCache, collections []string) (map[string]int, []string) {
+func syncAll(ctx context.Context, pb recordLister, kw *kvWriter, cache *syncCache, collections []string) (map[string]int, []string) {
 	synced := make(map[string]int, len(collections))
 	var errs []string
 	for _, col := range collections {
 		if ctx.Err() != nil {
 			return synced, errs // cancelled; stop promptly
 		}
-		n, err := syncCollection(ctx, pb, kw, cache, col)
+		kv, err := kw.bucket(ctx, col)
+		if err != nil {
+			log.Printf("leaf-sync: kv bucket %q failed (will retry): %v", col, err)
+			errs = append(errs, fmt.Sprintf("%s: kv bucket: %v", col, err))
+			continue
+		}
+		n, err := syncCollection(ctx, pb, kv, cache, col)
 		if err != nil {
 			// Fail-soft: keep local KV as-is and retry next interval.
 			log.Printf("leaf-sync: sync %q failed (will retry): %v", col, err)
@@ -146,13 +152,40 @@ func syncAll(ctx context.Context, pb *pbclient.Client, kw *kvWriter, cache *sync
 	return synced, errs
 }
 
+// recordLister is the slice of pbclient.Client that syncCollection needs. Kept
+// narrow so the reconcile logic can be driven by a fake in tests.
+type recordLister interface {
+	List(ctx context.Context, collection string, page, perPage int, filter string) (*pbclient.ListResult, error)
+}
+
+// kvBucket is the slice of jetstream.KeyValue that syncCollection needs. Same
+// reason as recordLister; jetstream.KeyValue satisfies it as-is.
+type kvBucket interface {
+	Put(ctx context.Context, key string, value []byte) (uint64, error)
+	Delete(ctx context.Context, key string, opts ...jetstream.KVDeleteOpt) error
+	Keys(ctx context.Context, opts ...jetstream.WatchOpt) ([]string, error)
+}
+
 // syncCollection performs a full reconcile of one collection: upsert every record
 // fetched from PocketBase, then purge any KV key whose record no longer exists.
-// It returns the number of records synced.
-func syncCollection(ctx context.Context, pb *pbclient.Client, kw *kvWriter, cache *syncCache, col string) (int, error) {
-	kv, err := kw.bucket(ctx, col)
-	if err != nil {
-		return 0, fmt.Errorf("kv bucket: %w", err)
+// It returns the number of records the collection should have in KV.
+//
+// The set of keys that SHOULD exist is derived only from what PocketBase returned
+// — never from whether a write succeeded. Those two were conflated in one map
+// before, which made a transient Put failure delete a live record from the edge:
+// the failed key was missing from the map, so the deletion pass below read it as
+// "no longer exists upstream" and purged it.
+func syncCollection(ctx context.Context, pb recordLister, kv kvBucket, cache *syncCache, col string) (int, error) {
+	// What the bucket holds right now, read BEFORE writing. It serves two
+	// purposes: the deletion pass needs it, and it tells us which cached hashes
+	// the store still corroborates (see the `present` check below).
+	existing, err := kv.Keys(ctx)
+	if err != nil && !errors.Is(err, jetstream.ErrNoKeysFound) {
+		return 0, fmt.Errorf("kv keys: %w", err)
+	}
+	present := make(map[string]bool, len(existing))
+	for _, k := range existing {
+		present[k] = true
 	}
 
 	// Fetch the whole collection before writing: KV keys prefer the record's
@@ -173,11 +206,9 @@ func syncCollection(ctx context.Context, pb *pbclient.Client, kw *kvWriter, cach
 	// Empty-fetch guard: a successful-but-empty response (e.g. a transient auth
 	// or org-scoping glitch) must never purge an existing mirror. If we fetched
 	// zero records but local KV still holds keys, leave it untouched this cycle.
-	if len(records) == 0 {
-		if keys, _ := kv.Keys(ctx); len(keys) > 0 {
-			log.Printf("⚠️ leaf-sync: %q returned 0 records but %d keys exist locally; skipping purge this cycle", col, len(keys))
-			return 0, nil
-		}
+	if len(records) == 0 && len(existing) > 0 {
+		log.Printf("⚠️ leaf-sync: %q returned 0 records but %d keys exist locally; skipping purge this cycle", col, len(existing))
+		return 0, nil
 	}
 
 	// Count candidate handles so a code shared by two records falls back to id.
@@ -188,56 +219,83 @@ func syncCollection(ctx context.Context, pb *pbclient.Client, kw *kvWriter, cach
 		}
 	}
 
-	fetched := make(map[string]bool)
-	changed := 0
+	// Pass 1: choose each record's KV key. `desired` is the authoritative answer
+	// to "which keys should this bucket hold", and nothing below removes from it.
+	desired := make(map[string]bool, len(records))
+	keyed := make([]keyedRecord, 0, len(records))
 	for _, rec := range records {
 		if id, _ := rec["id"].(string); id == "" {
-			continue
+			continue // unkeyable; PocketBase always sets id, so this is defensive
 		}
 		key := recordKey(rec, counts)
-		payload, err := json.Marshal(strip(rec))
+		desired[key] = true
+		keyed = append(keyed, keyedRecord{key: key, rec: rec})
+	}
+
+	// Pass 2: write the records whose content actually changed.
+	changed, failed := 0, 0
+	for _, kr := range keyed {
+		payload, err := json.Marshal(strip(kr.rec))
 		if err != nil {
+			log.Printf("leaf-sync: marshal %s/%s: %v", col, kr.key, err)
+			failed++
 			continue
 		}
 		// Changed-only write: skip the Put when this key's content is byte-for-byte
-		// what we last wrote. json.Marshal of a map emits sorted keys, so an
-		// unchanged record hashes identically cycle to cycle. Without this, a full
-		// reconcile re-Puts every record every interval, so each key rolls over its
-		// 5-revision KV history on churn alone. The record is still marked fetched
-		// so the deletion pass leaves it in place.
+		// what we last wrote AND the bucket still actually holds the key.
+		// json.Marshal of a map emits sorted keys, so an unchanged record hashes
+		// identically cycle to cycle. Without this, a full reconcile re-Puts every
+		// record every interval and each key rolls over its 5-revision history on
+		// churn alone.
+		//
+		// The `present` half is what keeps the cache honest. On its own the cache
+		// records only what this process last wrote, so a key that disappeared
+		// out-of-band — bucket deleted and recreated, store lost, someone ran
+		// `nats kv del` — was never re-Put, and the gap in the mirror lasted for
+		// the lifetime of the daemon.
 		sum := sha256.Sum256(payload)
-		if cache.unchanged(col, key, sum) {
-			fetched[key] = true
+		if cache.unchanged(col, kr.key, sum) && present[kr.key] {
 			continue
 		}
-		if _, err := kv.Put(ctx, key, payload); err != nil {
-			log.Printf("leaf-sync: kv put %s/%s: %v", col, key, err)
+		if _, err := kv.Put(ctx, kr.key, payload); err != nil {
+			// Leave the cache alone: it still describes what the bucket holds, and
+			// the next cycle sees this content as changed and retries the write.
+			log.Printf("leaf-sync: kv put %s/%s: %v", col, kr.key, err)
+			failed++
 			continue
 		}
-		cache.remember(col, key, sum)
-		fetched[key] = true
+		cache.remember(col, kr.key, sum)
 		changed++
 	}
 	if changed > 0 {
-		log.Printf("leaf-sync: %s: wrote %d changed of %d records", col, changed, len(fetched))
+		log.Printf("leaf-sync: %s: wrote %d changed of %d records", col, changed, len(desired))
 	}
 
-	// Reconcile deletions: remove KV keys for records that no longer exist.
-	keys, err := kv.Keys(ctx)
-	if err != nil {
-		if errors.Is(err, jetstream.ErrNoKeysFound) {
-			return len(fetched), nil
-		}
-		return len(fetched), fmt.Errorf("kv keys: %w", err)
-	}
-	for _, k := range keysToDelete(keys, fetched) {
+	// Reconcile deletions: remove KV keys whose record no longer exists upstream.
+	// Safe even when writes failed above — `desired` comes from the fetch, so a
+	// key absent from it genuinely has no record behind it any more.
+	for _, k := range keysToDelete(existing, desired) {
 		if err := kv.Delete(ctx, k); err != nil {
 			log.Printf("leaf-sync: kv delete %s/%s: %v", col, k, err)
+			failed++
 			continue
 		}
 		cache.forget(col, k) // key is gone; re-Put it if a record ever reuses it
 	}
-	return len(fetched), nil
+
+	// Surface partial failure so the heartbeat reports this collection as errored
+	// rather than silently claiming a clean cycle.
+	if failed > 0 {
+		return len(desired), fmt.Errorf("%d of %d records failed to write", failed, len(desired))
+	}
+	return len(desired), nil
+}
+
+// keyedRecord pairs a fetched record with the KV key chosen for it, so the key is
+// decided for every record before any write happens.
+type keyedRecord struct {
+	key string
+	rec pbclient.Record
 }
 
 // serverOnlyFields are written by PocketBase and carry no value to a KV consumer.
@@ -318,6 +376,11 @@ func keysToDelete(existing []string, fetched map[string]bool) []string {
 // lives for one `run` process; on restart the first cycle re-Puts everything once
 // (cold cache) and then goes quiet. This is what keeps a bucket's 5-revision
 // history from rolling over every interval when the underlying data is static.
+//
+// It records what this process wrote, which is not the same thing as what the
+// bucket holds. syncCollection therefore treats a cache hit as authoritative only
+// when the bucket's key listing still shows the key — otherwise an out-of-band
+// deletion would never be repaired.
 type syncCache struct {
 	seen map[string]map[string][32]byte // collection -> KV key -> sha256(payload)
 }

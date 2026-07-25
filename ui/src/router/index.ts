@@ -53,91 +53,93 @@ const routes: RouteRecordRaw[] = [
       },
 
       // Things
-      { path: 'things/types', name: 'ThingTypes', component: () => import('@/views/things/ThingTypeListView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
-      { path: 'things/types/new', name: 'ThingTypeNew', component: () => import('@/views/things/ThingTypeFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
-      { path: 'things/types/:id/edit', name: 'ThingTypeEdit', component: () => import('@/views/things/ThingTypeFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
-      { path: 'things/operations', name: 'ThingTypeOperations', component: () => import('@/views/things/ThingTypeOperationListView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
-      { path: 'things/operations/new', name: 'ThingTypeOperationNew', component: () => import('@/views/things/ThingTypeOperationFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
-      { path: 'things/operations/:id/edit', name: 'ThingTypeOperationEdit', component: () => import('@/views/things/ThingTypeOperationFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
-      { path: 'things/schemas', name: 'MessageSchemas', component: () => import('@/views/things/MessageSchemaListView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
-      { path: 'things/schemas/new', name: 'MessageSchemaNew', component: () => import('@/views/things/MessageSchemaFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
-      { path: 'things/schemas/:id/edit', name: 'MessageSchemaEdit', component: () => import('@/views/things/MessageSchemaFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
-      { path: 'things', name: 'Things', component: () => import('@/views/things/ThingListView.vue') },
-      { path: 'things/new', name: 'ThingNew', component: () => import('@/views/things/ThingFormView.vue') },
-      { path: 'things/:id', name: 'ThingDetail', component: () => import('@/views/things/ThingDetailView.vue') },
-      { path: 'things/:id/edit', name: 'ThingEdit', component: () => import('@/views/things/ThingFormView.vue') },
+      { path: 'things/types', name: 'ThingTypes', component: () => import('@/views/things/ThingTypeListView.vue'), meta: { requiresCapability: 'manageDefinitions' } },
+      { path: 'things/types/new', name: 'ThingTypeNew', component: () => import('@/views/things/ThingTypeFormView.vue'), meta: { requiresCapability: 'manageDefinitions' } },
+      { path: 'things/types/:id/edit', name: 'ThingTypeEdit', component: () => import('@/views/things/ThingTypeFormView.vue'), meta: { requiresCapability: 'manageDefinitions' } },
+      { path: 'things/operations', name: 'ThingTypeOperations', component: () => import('@/views/things/ThingTypeOperationListView.vue'), meta: { requiresCapability: 'manageDefinitions' } },
+      { path: 'things/operations/new', name: 'ThingTypeOperationNew', component: () => import('@/views/things/ThingTypeOperationFormView.vue'), meta: { requiresCapability: 'manageDefinitions' } },
+      { path: 'things/operations/:id/edit', name: 'ThingTypeOperationEdit', component: () => import('@/views/things/ThingTypeOperationFormView.vue'), meta: { requiresCapability: 'manageDefinitions' } },
+      { path: 'things/schemas', name: 'MessageSchemas', component: () => import('@/views/things/MessageSchemaListView.vue'), meta: { requiresCapability: 'manageDefinitions' } },
+      { path: 'things/schemas/new', name: 'MessageSchemaNew', component: () => import('@/views/things/MessageSchemaFormView.vue'), meta: { requiresCapability: 'manageDefinitions' } },
+      { path: 'things/schemas/:id/edit', name: 'MessageSchemaEdit', component: () => import('@/views/things/MessageSchemaFormView.vue'), meta: { requiresCapability: 'manageDefinitions' } },
+      { path: 'things', name: 'Things', component: () => import('@/views/things/ThingListView.vue'), meta: { requiresCapability: 'manageInventory' } },
+      { path: 'things/new', name: 'ThingNew', component: () => import('@/views/things/ThingFormView.vue'), meta: { requiresCapability: 'manageInventory' } },
+      { path: 'things/:id', name: 'ThingDetail', component: () => import('@/views/things/ThingDetailView.vue'), meta: { requiresCapability: 'manageInventory' } },
+      { path: 'things/:id/edit', name: 'ThingEdit', component: () => import('@/views/things/ThingFormView.vue'), meta: { requiresCapability: 'manageInventory' } },
 
       // Leaf Nodes (edge nodes)
-      { path: 'leaf-nodes', name: 'LeafNodes', component: () => import('@/views/leaf_nodes/LeafNodeListView.vue') },
-      { path: 'leaf-nodes/new', name: 'LeafNodeNew', component: () => import('@/views/leaf_nodes/LeafNodeFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
-      { path: 'leaf-nodes/:id', name: 'LeafNodeDetail', component: () => import('@/views/leaf_nodes/LeafNodeDetailView.vue') },
-      { path: 'leaf-nodes/:id/edit', name: 'LeafNodeEdit', component: () => import('@/views/leaf_nodes/LeafNodeFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
+      { path: 'leaf-nodes', name: 'LeafNodes', component: () => import('@/views/leaf_nodes/LeafNodeListView.vue'), meta: { requiresCapability: 'manageLeafNodes' } },
+      { path: 'leaf-nodes/new', name: 'LeafNodeNew', component: () => import('@/views/leaf_nodes/LeafNodeFormView.vue'), meta: { requiresCapability: 'manageLeafNodes' } },
+      { path: 'leaf-nodes/:id', name: 'LeafNodeDetail', component: () => import('@/views/leaf_nodes/LeafNodeDetailView.vue'), meta: { requiresCapability: 'manageLeafNodes' } },
+      { path: 'leaf-nodes/:id/edit', name: 'LeafNodeEdit', component: () => import('@/views/leaf_nodes/LeafNodeFormView.vue'), meta: { requiresCapability: 'manageLeafNodes' } },
 
       // Locations
-      { path: 'locations/types', name: 'LocationTypes', component: () => import('@/views/locations/LocationTypeListView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
-      { path: 'locations/types/new', name: 'LocationTypeNew', component: () => import('@/views/locations/LocationTypeFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
-      { path: 'locations/types/:id/edit', name: 'LocationTypeEdit', component: () => import('@/views/locations/LocationTypeFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
-      { path: 'locations', name: 'Locations', component: () => import('@/views/locations/LocationListView.vue') },
-      { path: 'locations/new', name: 'LocationNew', component: () => import('@/views/locations/LocationFormView.vue') },
-      { path: 'locations/:id', name: 'LocationDetail', component: () => import('@/views/locations/LocationDetailView.vue') },
-      { path: 'locations/:id/edit', name: 'LocationEdit', component: () => import('@/views/locations/LocationFormView.vue') },
+      { path: 'locations/types', name: 'LocationTypes', component: () => import('@/views/locations/LocationTypeListView.vue'), meta: { requiresCapability: 'manageDefinitions' } },
+      { path: 'locations/types/new', name: 'LocationTypeNew', component: () => import('@/views/locations/LocationTypeFormView.vue'), meta: { requiresCapability: 'manageDefinitions' } },
+      { path: 'locations/types/:id/edit', name: 'LocationTypeEdit', component: () => import('@/views/locations/LocationTypeFormView.vue'), meta: { requiresCapability: 'manageDefinitions' } },
+      { path: 'locations', name: 'Locations', component: () => import('@/views/locations/LocationListView.vue'), meta: { requiresCapability: 'manageInventory' } },
+      { path: 'locations/new', name: 'LocationNew', component: () => import('@/views/locations/LocationFormView.vue'), meta: { requiresCapability: 'manageInventory' } },
+      { path: 'locations/:id', name: 'LocationDetail', component: () => import('@/views/locations/LocationDetailView.vue'), meta: { requiresCapability: 'manageInventory' } },
+      { path: 'locations/:id/edit', name: 'LocationEdit', component: () => import('@/views/locations/LocationFormView.vue'), meta: { requiresCapability: 'manageInventory' } },
       
       // NATS
       { path: 'nats', redirect: '/nats/account' },
-      { path: 'nats/account', name: 'NatsAccountDetail', component: () => import('@/views/nats/NatsAccountDetailView.vue') },
-      { path: 'nats/users', name: 'NatsUsers', component: () => import('@/views/nats/NatsUserListView.vue') },
-      { path: 'nats/users/new', name: 'NatsUserNew', component: () => import('@/views/nats/NatsUserFormView.vue') },
-      { path: 'nats/users/:id', name: 'NatsUserDetail', component: () => import('@/views/nats/NatsUserDetailView.vue') },
-      { path: 'nats/users/:id/edit', name: 'NatsUserEdit', component: () => import('@/views/nats/NatsUserFormView.vue') },
-      { path: 'nats/roles', name: 'NatsRoles', component: () => import('@/views/nats/NatsRoleListView.vue') },
-      { path: 'nats/roles/new', name: 'NatsRoleNew', component: () => import('@/views/nats/NatsRoleFormView.vue') },
-      { path: 'nats/roles/:id', name: 'NatsRoleDetail', component: () => import('@/views/nats/NatsRoleDetailView.vue') },
-      { path: 'nats/roles/:id/edit', name: 'NatsRoleEdit', component: () => import('@/views/nats/NatsRoleFormView.vue') },
+      { path: 'nats/account', name: 'NatsAccountDetail', component: () => import('@/views/nats/NatsAccountDetailView.vue'), meta: { requiresCapability: 'manageInfrastructure' } },
+      { path: 'nats/users', name: 'NatsUsers', component: () => import('@/views/nats/NatsUserListView.vue'), meta: { requiresCapability: 'manageInfrastructure' } },
+      { path: 'nats/users/new', name: 'NatsUserNew', component: () => import('@/views/nats/NatsUserFormView.vue'), meta: { requiresCapability: 'manageInfrastructure' } },
+      { path: 'nats/users/:id', name: 'NatsUserDetail', component: () => import('@/views/nats/NatsUserDetailView.vue'), meta: { requiresCapability: 'manageInfrastructure' } },
+      { path: 'nats/users/:id/edit', name: 'NatsUserEdit', component: () => import('@/views/nats/NatsUserFormView.vue'), meta: { requiresCapability: 'manageInfrastructure' } },
+      { path: 'nats/roles', name: 'NatsRoles', component: () => import('@/views/nats/NatsRoleListView.vue'), meta: { requiresCapability: 'manageInfrastructure' } },
+      { path: 'nats/roles/new', name: 'NatsRoleNew', component: () => import('@/views/nats/NatsRoleFormView.vue'), meta: { requiresCapability: 'manageInfrastructure' } },
+      { path: 'nats/roles/:id', name: 'NatsRoleDetail', component: () => import('@/views/nats/NatsRoleDetailView.vue'), meta: { requiresCapability: 'manageInfrastructure' } },
+      { path: 'nats/roles/:id/edit', name: 'NatsRoleEdit', component: () => import('@/views/nats/NatsRoleFormView.vue'), meta: { requiresCapability: 'manageInfrastructure' } },
 
       // NATS Account Exports
-      { path: 'nats/exports', name: 'NatsExports', component: () => import('@/views/nats/NatsExportListView.vue') },
-      { path: 'nats/exports/new', name: 'NatsExportNew', component: () => import('@/views/nats/NatsExportFormView.vue') },
-      { path: 'nats/exports/:id', name: 'NatsExportDetail', component: () => import('@/views/nats/NatsExportDetailView.vue') },
-      { path: 'nats/exports/:id/edit', name: 'NatsExportEdit', component: () => import('@/views/nats/NatsExportFormView.vue') },
+      { path: 'nats/exports', name: 'NatsExports', component: () => import('@/views/nats/NatsExportListView.vue'), meta: { requiresCapability: 'manageInfrastructure' } },
+      { path: 'nats/exports/new', name: 'NatsExportNew', component: () => import('@/views/nats/NatsExportFormView.vue'), meta: { requiresCapability: 'manageInfrastructure' } },
+      { path: 'nats/exports/:id', name: 'NatsExportDetail', component: () => import('@/views/nats/NatsExportDetailView.vue'), meta: { requiresCapability: 'manageInfrastructure' } },
+      { path: 'nats/exports/:id/edit', name: 'NatsExportEdit', component: () => import('@/views/nats/NatsExportFormView.vue'), meta: { requiresCapability: 'manageInfrastructure' } },
 
       // NATS Account Imports
-      { path: 'nats/imports', name: 'NatsImports', component: () => import('@/views/nats/NatsImportListView.vue') },
-      { path: 'nats/imports/new', name: 'NatsImportNew', component: () => import('@/views/nats/NatsImportFormView.vue') },
-      { path: 'nats/imports/:id', name: 'NatsImportDetail', component: () => import('@/views/nats/NatsImportDetailView.vue') },
-      { path: 'nats/imports/:id/edit', name: 'NatsImportEdit', component: () => import('@/views/nats/NatsImportFormView.vue') },
+      { path: 'nats/imports', name: 'NatsImports', component: () => import('@/views/nats/NatsImportListView.vue'), meta: { requiresCapability: 'manageInfrastructure' } },
+      { path: 'nats/imports/new', name: 'NatsImportNew', component: () => import('@/views/nats/NatsImportFormView.vue'), meta: { requiresCapability: 'manageInfrastructure' } },
+      { path: 'nats/imports/:id', name: 'NatsImportDetail', component: () => import('@/views/nats/NatsImportDetailView.vue'), meta: { requiresCapability: 'manageInfrastructure' } },
+      { path: 'nats/imports/:id/edit', name: 'NatsImportEdit', component: () => import('@/views/nats/NatsImportFormView.vue'), meta: { requiresCapability: 'manageInfrastructure' } },
 
       // JetStream Streams
-      { path: 'nats/streams', name: 'JetStreamStreams', component: () => import('@/views/nats/StreamListView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
-      { path: 'nats/streams/new', name: 'JetStreamStreamNew', component: () => import('@/views/nats/StreamFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
-      { path: 'nats/streams/:name', name: 'JetStreamStreamDetail', component: () => import('@/views/nats/StreamDetailView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
-      { path: 'nats/streams/:name/edit', name: 'JetStreamStreamEdit', component: () => import('@/views/nats/StreamFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
+      { path: 'nats/streams', name: 'JetStreamStreams', component: () => import('@/views/nats/StreamListView.vue'), meta: { requiresCapability: 'manageMessaging' } },
+      { path: 'nats/streams/new', name: 'JetStreamStreamNew', component: () => import('@/views/nats/StreamFormView.vue'), meta: { requiresCapability: 'manageMessaging' } },
+      { path: 'nats/streams/:name', name: 'JetStreamStreamDetail', component: () => import('@/views/nats/StreamDetailView.vue'), meta: { requiresCapability: 'manageMessaging' } },
+      { path: 'nats/streams/:name/edit', name: 'JetStreamStreamEdit', component: () => import('@/views/nats/StreamFormView.vue'), meta: { requiresCapability: 'manageMessaging' } },
 
       // KV Buckets
-      { path: 'nats/kv', name: 'KvBuckets', component: () => import('@/views/nats/KvBucketListView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
-      { path: 'nats/kv/new', name: 'KvBucketNew', component: () => import('@/views/nats/KvBucketFormView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
-      { path: 'nats/kv/:name', name: 'KvBucketDetail', component: () => import('@/views/nats/KvBucketDetailView.vue'), meta: { requiresRole: ['owner', 'admin'] } },
+      { path: 'nats/kv', name: 'KvBuckets', component: () => import('@/views/nats/KvBucketListView.vue'), meta: { requiresCapability: 'manageMessaging' } },
+      { path: 'nats/kv/new', name: 'KvBucketNew', component: () => import('@/views/nats/KvBucketFormView.vue'), meta: { requiresCapability: 'manageMessaging' } },
+      { path: 'nats/kv/:name', name: 'KvBucketDetail', component: () => import('@/views/nats/KvBucketDetailView.vue'), meta: { requiresCapability: 'manageMessaging' } },
 
       // Nebula
       { path: 'nebula', redirect: '/nebula/ca' },
-      { path: 'nebula/ca', name: 'NebulaCADetail', component: () => import('@/views/nebula/NebulaCADetailView.vue') },
-      { path: 'nebula/networks', name: 'NebulaNetworks', component: () => import('@/views/nebula/NebulaNetworkListView.vue') },
-      { path: 'nebula/networks/new', name: 'NebulaNetworkNew', component: () => import('@/views/nebula/NebulaNetworkFormView.vue') },
-      { path: 'nebula/networks/:id', name: 'NebulaNetworkDetail', component: () => import('@/views/nebula/NebulaNetworkDetailView.vue') },
-      { path: 'nebula/networks/:id/edit', name: 'NebulaNetworkEdit', component: () => import('@/views/nebula/NebulaNetworkFormView.vue') },
-      { path: 'nebula/hosts', name: 'NebulaHosts', component: () => import('@/views/nebula/NebulaHostListView.vue') },
-      { path: 'nebula/hosts/new', name: 'NebulaHostNew', component: () => import('@/views/nebula/NebulaHostFormView.vue') },
-      { path: 'nebula/hosts/:id', name: 'NebulaHostDetail', component: () => import('@/views/nebula/NebulaHostDetailView.vue') },
-      { path: 'nebula/hosts/:id/edit', name: 'NebulaHostEdit', component: () => import('@/views/nebula/NebulaHostFormView.vue') },
+      { path: 'nebula/ca', name: 'NebulaCADetail', component: () => import('@/views/nebula/NebulaCADetailView.vue'), meta: { requiresCapability: 'manageInfrastructure' } },
+      { path: 'nebula/networks', name: 'NebulaNetworks', component: () => import('@/views/nebula/NebulaNetworkListView.vue'), meta: { requiresCapability: 'manageInfrastructure' } },
+      { path: 'nebula/networks/new', name: 'NebulaNetworkNew', component: () => import('@/views/nebula/NebulaNetworkFormView.vue'), meta: { requiresCapability: 'manageInfrastructure' } },
+      { path: 'nebula/networks/:id', name: 'NebulaNetworkDetail', component: () => import('@/views/nebula/NebulaNetworkDetailView.vue'), meta: { requiresCapability: 'manageInfrastructure' } },
+      { path: 'nebula/networks/:id/edit', name: 'NebulaNetworkEdit', component: () => import('@/views/nebula/NebulaNetworkFormView.vue'), meta: { requiresCapability: 'manageInfrastructure' } },
+      { path: 'nebula/hosts', name: 'NebulaHosts', component: () => import('@/views/nebula/NebulaHostListView.vue'), meta: { requiresCapability: 'manageInfrastructure' } },
+      { path: 'nebula/hosts/new', name: 'NebulaHostNew', component: () => import('@/views/nebula/NebulaHostFormView.vue'), meta: { requiresCapability: 'manageInfrastructure' } },
+      { path: 'nebula/hosts/:id', name: 'NebulaHostDetail', component: () => import('@/views/nebula/NebulaHostDetailView.vue'), meta: { requiresCapability: 'manageInfrastructure' } },
+      { path: 'nebula/hosts/:id/edit', name: 'NebulaHostEdit', component: () => import('@/views/nebula/NebulaHostFormView.vue'), meta: { requiresCapability: 'manageInfrastructure' } },
       
       // Audit
-      { path: 'audit', name: 'AuditLogs', component: () => import('@/views/audit/AuditLogView.vue') },
+      // audit_logs has no organization field, so its read rule is operators only.
+      // Without this gate the page loads and renders an empty list for everyone else.
+      { path: 'audit', name: 'AuditLogs', component: () => import('@/views/audit/AuditLogView.vue'), meta: { requiresOperator: true } },
       
       // Organization
       {
         path: 'organization',
         name: 'Organization',
         redirect: '/organization/members',
-        meta: { requiresRole: ['owner', 'admin'] },
+        meta: { requiresCapability: 'manageMembers' },
         children: [
           { path: 'members', name: 'OrganizationMembers', component: () => import('@/views/organization/MembersView.vue') },
           { path: 'members/:id', name: 'MemberDetail', component: () => import('@/views/organization/MemberDetailView.vue')},
@@ -194,9 +196,13 @@ router.beforeEach((to, _from, next) => {
     return
   }
 
-  if (to.meta.requiresRole && !authStore.isSuperAdmin) {
-    const allowedRoles = to.meta.requiresRole as string[]
-    if (!allowedRoles.includes(authStore.userRole)) {
+  // Capability routes. The capability -> role table lives in stores/auth.ts so
+  // the sidebar and individual views resolve access the same way this does.
+  // This is navigation convenience, not enforcement: the server's API rules are
+  // the boundary, and scripts/test-authz.sh is what proves them.
+  if (to.meta.requiresCapability && !authStore.isSuperAdmin) {
+    const capability = to.meta.requiresCapability as keyof typeof authStore.can
+    if (!authStore.can[capability]) {
       next('/')
       return
     }

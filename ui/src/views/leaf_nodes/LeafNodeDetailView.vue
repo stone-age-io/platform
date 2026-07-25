@@ -46,7 +46,7 @@ const resettingPassword = ref(false)
 const showResetResultModal = ref(false)
 const newCredentials = ref({ email: '', password: '' })
 
-const canManage = computed(() => authStore.canManageUsers)
+const canManage = computed(() => authStore.can.manageLeafNodes)
 
 const nebulaHost = computed(() => node.value?.expand?.nebula_host as NebulaHost | undefined)
 

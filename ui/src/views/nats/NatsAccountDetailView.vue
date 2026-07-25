@@ -82,17 +82,31 @@ async function copyToClipboard(text: string, label: string) {
   }
 }
 
+/**
+ * Signing-key operations go through a dedicated route, not a record update.
+ * `nats_accounts.updateRule` is operator-only, because a rule cannot permit these
+ * three trigger fields while forbidding the account limits and the signed `jwt`.
+ * The route takes no record id — it always acts on the caller's active
+ * organization's account. See hooks/nats_account_routes.go.
+ */
+type KeyAction = 'rotate' | 'add_signing' | 'remove_signing'
+
+async function applyKeyAction(action: KeyAction, publicKey?: string) {
+  await pb.send('/api/org/nats-account/keys', {
+    method: 'POST',
+    body: { action, ...(publicKey ? { public_key: publicKey } : {}) },
+  })
+  await loadAccount()
+}
+
 async function confirmRotateKeys() {
   if (!account.value) return
-  
+
   rotating.value = true
   try {
-    await pb.collection('nats_accounts').update(account.value.id, {
-      rotate_keys: true
-    })
+    await applyKeyAction('rotate')
     toast.success('Keys rotated successfully')
     showRotateModal.value = false
-    await loadAccount()
   } catch (err: any) {
     toast.error(err.message || 'Failed to rotate keys')
   } finally {
@@ -105,11 +119,8 @@ async function addSigningKey() {
 
   addingKey.value = true
   try {
-    await pb.collection('nats_accounts').update(account.value.id, {
-      add_signing_key: true
-    })
+    await applyKeyAction('add_signing')
     toast.success('Signing key added')
-    await loadAccount()
   } catch (err: any) {
     toast.error(err.message || 'Failed to add signing key')
   } finally {
@@ -127,13 +138,10 @@ async function confirmRemoveKey() {
 
   removingKey.value = keyToRemove.value
   try {
-    await pb.collection('nats_accounts').update(account.value.id, {
-      remove_signing_key: keyToRemove.value
-    })
+    await applyKeyAction('remove_signing', keyToRemove.value)
     toast.success('Signing key removed')
     showRemoveKeyModal.value = false
     keyToRemove.value = ''
-    await loadAccount()
   } catch (err: any) {
     toast.error(err.message || 'Failed to remove signing key')
   } finally {

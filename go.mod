@@ -4,9 +4,10 @@ go 1.25.0
 
 require (
 	github.com/nats-io/nats.go v1.49.0
+	github.com/pocketbase/dbx v1.12.0
 	github.com/pocketbase/pocketbase v0.38.0
 	github.com/skeeeon/pb-audit v0.0.0-20260509164131-d384bb182a41
-	github.com/skeeeon/pb-nats v0.0.0-20260701043900-c38f9be1e285
+	github.com/skeeeon/pb-nats v0.0.0-20260725052055-baab9624a29d
 	github.com/skeeeon/pb-nebula v0.0.0-20260611021205-2e1b4dfdf33f
 	github.com/skeeeon/pb-tenancy v0.0.0-20260509164438-78df1343ea65
 	github.com/spf13/cobra v1.10.2
@@ -37,7 +38,6 @@ require (
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
-	github.com/pocketbase/dbx v1.12.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/sagikazarmark/locafero v0.12.0 // indirect
 	github.com/slackhq/nebula v1.10.3 // indirect

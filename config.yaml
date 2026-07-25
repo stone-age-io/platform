@@ -1,4 +1,12 @@
 # config.yaml
+#
+# Every key here also has a hardcoded default in main.go's setDefaults(), so the
+# binary behaves identically with or without this file. If you add a key, add the
+# default too — a key that is read but not defaulted silently becomes the zero
+# value, and 0 is a legal-looking but wrong limit.
+#
+# At-rest encryption (nats.encryption_key / nebula.encryption_key) is OFF by
+# default and left empty below. That is a deliberate choice, not an oversight.
 
 tenancy:
   organizations_collection: "organizations"
@@ -42,7 +50,7 @@ nebula:
 
 audit:
   collection_name: "audit_logs"
-  log_console: false
+  log_to_console: false
   retention:
     max_age: ""              # Go duration string, e.g. "720h" for 30 days ("" = disabled)
     max_records: 0           # Max records to keep (0 = disabled)

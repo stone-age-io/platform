@@ -60,12 +60,14 @@ leaf-sync run       # daemon: mirror config collections into local KV
 leaf-sync --version # print the build version
 ```
 
-- **`config`** authenticates to PocketBase as the leaf node and fetches its own
-  record (domain, synced collections, nats_user), its NATS user's `creds_file`,
-  the org account JWT, and the operator JWT (via `GET /api/leaf/operator-jwt`).
+- **`config`** authenticates to PocketBase as the leaf node and makes a single
+  call to `GET /api/leaf/bootstrap`, which returns the six values a leaf server
+  needs: `domain`, `code`, `creds`, `account_jwt`, `account_pub`, `operator_jwt`.
   It writes `nats-leaf.conf` (operator + `MEMORY` resolver_preload + JetStream
   domain + leaf remote + localhost monitoring) and the creds file. No NATS
-  connection needed — run it before the leaf is up.
+  connection needed — run it before the leaf is up. A half-provisioned leaf node
+  fails here naming the missing field, rather than producing a `nats-leaf.conf`
+  with empty directives.
 - **`run`** connects to the local leaf and, every `sync.interval`, performs a
   full reconcile of each allowed collection: upsert every record into KV bucket
   `<collection>`, then delete KV keys for records that no longer exist. Each
@@ -76,14 +78,24 @@ leaf-sync --version # print the build version
   stored JSON, so relation fields still resolve. Server-only noise fields
   (`collectionId`, `collectionName`, `expand`) are stripped from the value.
   Writes are changed-only: a record is re-`Put` into KV only when its content
-  actually differs from what was last written, so a static collection produces
-  no KV writes and the bucket's 5-revision history does not roll over on churn.
-  Fail-soft: on any PocketBase/NATS error it keeps local KV as-is and retries —
-  it never wipes local state. A *successful but empty* fetch is also guarded: if
-  a collection returns zero records while local KV still holds keys, the purge is
-  skipped for that cycle (a transient auth/scoping glitch can't wipe the mirror).
-  It stops cleanly on `SIGINT`/`SIGTERM` (cancelling any in-flight PocketBase/NATS
-  call), so it's safe to run under systemd/Docker.
+  differs from what was last written **and** the bucket still actually holds the
+  key. That second condition is what makes the mirror self-healing — a key
+  removed out-of-band (`nats kv del`, a purged and recreated bucket, a lost file
+  store) is rewritten on the next cycle rather than staying absent for the life
+  of the process.
+
+  Deletion is driven only by what PocketBase returned, never by whether a write
+  succeeded, so a failed `Put` cannot escalate into the key being purged. Three
+  layers of purge protection, in order of how often they matter:
+
+  | Situation | Behaviour |
+  |---|---|
+  | A record's `Put` fails | Key kept; retried next cycle; collection reported as errored in the heartbeat |
+  | Fetch succeeds but returns zero records while KV holds keys | Purge skipped entirely for that cycle |
+  | Any PocketBase or NATS error (including a failed key listing) | Local KV left exactly as-is and retried |
+
+  It never wipes local state, and stops cleanly on `SIGINT`/`SIGTERM` (cancelling
+  any in-flight PocketBase/NATS call), so it's safe to run under systemd/Docker.
 
 After each cycle, if `nats.hub_domain` is set, `run` writes a small liveness
 **heartbeat** into the hub's `leaf_status` KV bucket (keyed by the leaf node's
@@ -139,11 +151,13 @@ thing's type can do — and, if it chooses, check the messages it exchanges
 against their schemas — entirely offline. leaf-sync itself never validates; see
 [Contract model](#contract-model) below.
 
-A leaf node can only read these (and only within its own organization). Secret-
-bearing collections (`nats_users`, `nats_accounts`, `nebula_*`) are never
-exposed to a leaf node identity and can never be synced. A leaf node's
-`synced_collections` field (set in the UI) selects which of the allowlist to
-mirror.
+These are the only collections a leaf node can read at all, and only within its
+own organization. Secret-bearing collections (`nats_users`, `nats_accounts`,
+`nebula_*`) are not exposed to a leaf-node identity — it holds no read grant on
+any of them, so nothing there can be synced or browsed. The four values an edge
+genuinely needs from them arrive through `GET /api/leaf/bootstrap` instead; see
+[Security model](#security-model). A leaf node's `synced_collections` field (set
+in the UI) selects which of the allowlist to mirror.
 
 ## Contract model
 
@@ -176,15 +190,32 @@ it.
   account boundary.
 - The edge only ever holds public trust material (operator JWT, account JWT) plus
   its own user's creds. It cannot mint new account users.
-- The operator JWT is exposed only through the dedicated, leaf-node-authenticated
-  route `GET /api/leaf/operator-jwt`; the `nats_system_operator` collection stays
-  superuser-only.
+- **A leaf-node identity has no read grant on any `nats_*` or `nebula_*`
+  collection.** Everything it needs from them comes from one dedicated,
+  leaf-node-authenticated route, `GET /api/leaf/bootstrap`, which reads those
+  records with the server's own privileges and returns six named fields. The
+  `nats_system_operator` collection stays superuser-only.
+
+  This is why the route exists rather than a read rule. It states the edge's
+  blast radius as a fixed list — a leaked edge credential yields those six values
+  and nothing else — instead of "whatever the rules on those collections happen
+  to match", which has to be re-derived every time an unrelated rule changes. It
+  also decouples the agent from rule shape: `config` used to read `nats_users`
+  and `nats_accounts` through the CRUD API, which made a correct tightening
+  elsewhere capable of breaking every edge box's bootstrap.
+
+  Account seeds and signing keys are never reachable: the handler returns named
+  fields, not whole records.
+- `GET /api/leaf/operator-jwt` still exists, superseded by `/api/leaf/bootstrap`.
+  It is kept so that upgrading the server before the edge boxes cannot break an
+  agent already in the field.
 
 ## Roadmap
 
 - **v0 (current):** full-collection reconcile on an interval with changed-only KV
-  writes (a static collection produces no writes), an empty-fetch purge guard, and
-  a best-effort liveness heartbeat.
+  writes (a static collection produces no writes), self-healing against
+  out-of-band KV loss, purge protection independent of write success, and a
+  best-effort liveness heartbeat.
 - **v1:** incremental *fetch* (`updated > cursor` + PocketBase `/api/realtime` SSE)
   so a full page of records no longer crosses the wire each cycle — with a periodic
   full reconcile kept as the correctness backbone, since deletions and duplicate-
@@ -194,10 +225,18 @@ it.
 ## Tests
 
 Unit tests cover the pure logic (config loading + defaults, the syncable-
-collection allowlist, the KV deletion diff, the `nats-leaf.conf` generator) and
-the PocketBase REST client (auth, transparent re-auth on 401, pagination) via an
-`httptest` server — no live NATS or PocketBase needed:
+collection allowlist, the KV deletion diff, the `nats-leaf.conf` generator), the
+PocketBase REST client (auth, transparent re-auth on 401, pagination), and the
+reconcile loop itself — `syncCollection` is driven through narrow `recordLister`
+and `kvBucket` interfaces so a fake bucket can simulate a failed `Put`, a key
+vanishing out-of-band, an empty fetch, and an unreadable bucket. No live NATS or
+PocketBase needed:
 
 ```sh
 go test ./internal/leafsync/...
 ```
+
+The two purge-protection tests are regression tests for real data-loss bugs;
+both fail if the guard they cover is removed. If you change the reconcile logic,
+check they still fail when you break it deliberately — a purge guard that no
+longer guards anything still passes a test that only asserts the happy path.
