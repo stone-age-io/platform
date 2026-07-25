@@ -53,7 +53,7 @@ function handleClick(item: T) {
             v-for="item in items"
             :key="item.id"
             :class="{ 'hover cursor-pointer': clickable }"
-            class="group border-b border-base-200/50 last:border-0"
+            class="border-b border-base-200/50 last:border-0"
             @click="handleClick(item)"
           >
             <td v-for="col in columns" :key="col.key" :class="col.class" class="py-3">

@@ -108,13 +108,26 @@ We bridge the gap between **SQL Metadata** (PocketBase) and **Live State** (NATS
     values swapping across the link indefinitely. Encoding the owner in the key
     instead (`thing.S01.state.temp`) buys the same safety but taxes every key in
     the system and leaves a mistyped segment silently unsynced.
-*   **Keys** are `<kind>.<code>.<prop>` by convention (`thing.S01.temp`). Direction
-    lives in the bucket, so keys carry no sync bookkeeping.
-*   **`LiveStateCard`** is the operator-facing view on Thing and Location detail:
-    reported values **read-only** (the edge overwrites them, so an edit button
-    would be a lie) with revision history, desired values writable, and freshness
-    derived from the newest reported value. `KvDashboard` remains the raw,
-    fully general key browser under *NATS → KV Buckets*.
+*   **Keys** are `<kind>.<code>.<prop>` by convention (`thing.S01.temp`), and the
+    two buckets pair on the same key. Direction lives in the bucket, so keys carry
+    no sync bookkeeping. Values may be primitives or whole JSON objects.
+*   **The twin view is `KvDashboard` with `desiredBucket` set** — the same browser
+    used for every other bucket, not a second one. It gains a Reported/Desired
+    toggle in the detail pane, per-row `set` / `differs` markers, and a read-only
+    reported side (the edge overwrites it, so an edit button would be a lie).
+    Tree/flat, filtering, revision history and the responsive detail drawer all
+    come from the browser itself. Omit the prop — as *NATS → KV Buckets* does —
+    and it behaves exactly as it always has.
+*   **A desired value is a partial assertion, not a replacement.** `twinDrift()`
+    checks only the keys present in the desired value, so `{arm: "armed"}` against
+    a twelve-field object asserts one field and stays quiet about the rest. Full
+    equality would flip every old assertion to "differs" the day a device reports
+    one new field. Subset semantics apply to objects only — arrays and scalars
+    compare exactly.
+*   **`differs`, never `pending`.** Nothing in the platform applies desired values
+    to devices; there is no control loop. The UI reports that two values disagree
+    and does not predict what happens next. If rule-router ever applies desired
+    state, the stronger word becomes earned.
 *   **Edge sync:** where a site runs a NATS leaf node, [`leaf-sync`](../cmd/leaf-sync/README.md)
     gives it a server-maintained JetStream **mirror** of `twin_desired` and relays
     its local `twin` up to the hub — so the edge keeps writing reported state, and

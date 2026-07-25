@@ -9,7 +9,8 @@ import { useNatsStore } from '@/stores/nats'
 import { useAuthStore } from '@/stores/auth'
 import type { Thing, NatsUser, NebulaHost } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
-import LiveStateCard from '@/components/nats/LiveStateCard.vue'
+import KvDashboard from '@/components/nats/KvDashboard.vue'
+import { TWIN_BUCKET, TWIN_DESIRED_BUCKET } from '@/utils/twin'
 import JsonViewer from '@/components/common/JsonViewer.vue'
 import ExpiryBadge from '@/components/common/ExpiryBadge.vue'
 
@@ -388,7 +389,13 @@ onMounted(() => {
       </div>
 
       <div v-if="thing.code && natsStore.isConnected" class="mt-6">
-        <LiveStateCard :key="thing.code" kind="thing" :code="thing.code" />
+        <KvDashboard
+          :key="thing.code"
+          title="Live State"
+          :bucket="TWIN_BUCKET"
+          :desired-bucket="TWIN_DESIRED_BUCKET"
+          :base-key="`thing.${thing.code}`"
+        />
       </div>
       <div v-else class="mt-6">
         <div v-if="hasTwinConfig && !natsStore.isConnected" class="alert shadow-sm border border-base-300 bg-base-100">

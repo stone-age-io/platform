@@ -235,9 +235,25 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
       (`thing.S01.state.temp`) was tried and reverted: same safety, but it taxes
       every key in firmware/rule-router/widgets and a mistyped segment silently
       never syncs. Don't merge the buckets.
-    - **The UI must keep reported state read-only** (`LiveStateCard`). The edge
-      overwrites it, so an edit button is a lie — that bug shipped once already
-      via `KvDashboard`, which is now scoped to the raw NATS KV browser.
+    - **The twin view is `KvDashboard` with its `desiredBucket` prop set**, not a
+      separate component. A bespoke card was built and deleted: it reimplemented
+      tree/flat, filtering, history, the responsive detail drawer and the JSON
+      parse hint, all worse. Adding twin behaviour to the browser costs one prop;
+      without it the browser is unchanged for `NATS → KV Buckets`.
+    - **Reported state is read-only in twin mode.** The edge overwrites it, so an
+      edit button is a lie. The Desired tab is the writable half.
+    - **A desired value is a partial assertion** (`twinDrift` in
+      `ui/src/utils/twin.ts`): only the keys present in the desired value are
+      checked, so extra fields in the reported object are ignored. Full-equality
+      comparison rots — the day a device reports one new field, every assertion
+      set months ago flips to "differs". Subset semantics are objects-only;
+      arrays and scalars compare exactly. Values may be primitives or objects.
+    - **Say `differs`, never `pending`.** Nothing in this platform applies desired
+      values to devices — no hook, no agent, no subscription. A "waiting for the
+      device" message asserts a control loop that does not exist. Both readings of
+      desired (a command to converge on, or an expected value to alarm on) are
+      legitimate and the platform cannot tell which the customer means, so state
+      the difference and predict nothing.
     - **Edge sync is `internal/leafsync/twin.go`**, off by default
       (`twin.enabled`). `twin_desired` is a native JetStream **mirror** (one
       origin, N mirrors — no code in the data path, and it serves last-known

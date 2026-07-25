@@ -19,9 +19,15 @@
  * the value comes back on the next sync. Desired state is the writable surface,
  * and it is the operator's actual control.
  *
- * Keys are `<kind>.<code>.<prop>` by convention (`thing.S01.temp`). Nothing
- * parses them except to build a watch prefix — direction lives in the bucket, so
- * keys carry no sync bookkeeping.
+ * Keys are `<kind>.<code>.<prop>` by convention (`thing.S01.temp`), and the two
+ * buckets pair on the SAME key. Nothing parses them except to build a watch
+ * prefix — direction lives in the bucket, so keys carry no sync bookkeeping.
+ *
+ * Values may be primitives or whole JSON objects; `twinDrift` below handles
+ * both with one rule. The twin view is `KvDashboard` with its `desiredBucket`
+ * prop set — deliberately the same browser used for every other bucket, rather
+ * than a second one that has to reinvent tree view, filtering, history and the
+ * responsive detail drawer.
  *
  * Keep TWIN_BUCKET_CONFIG in step with twinBucketConfig() in
  * internal/leafsync/twin.go — both the console and leaf-sync create these
@@ -45,17 +51,57 @@ export const TWIN_BUCKET_DESCRIPTIONS: Record<string, string> = {
   [TWIN_DESIRED_BUCKET]: 'Digital twin: desired state (written by operators)',
 }
 
-export type TwinKind = 'thing' | 'location'
+function isPlainObject(v: any): v is Record<string, any> {
+  return v !== null && typeof v === 'object' && !Array.isArray(v)
+}
 
-/** Key prefix for one entity, e.g. `thing.S01`. Used to scope a watch. */
-export function twinPrefix(kind: TwinKind, code: string): string {
-  return `${kind}.${code}`
+function deepEqual(a: any, b: any): boolean {
+  if (a === b) return true
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((x, i) => deepEqual(x, b[i]))
+  }
+  if (isPlainObject(a) && isPlainObject(b)) {
+    const ka = Object.keys(a)
+    return (
+      ka.length === Object.keys(b).length && ka.every((k) => k in b && deepEqual(a[k], b[k]))
+    )
+  }
+  return false
 }
 
 /**
- * Strip the entity prefix for display: `thing.S01.temp` -> `temp`. The card
- * already says which Thing it is; repeating the prefix on every row is noise.
+ * Compare a desired value against what the device reports, returning the paths
+ * that do not match. Empty result means the assertion holds.
+ *
+ * A desired value is a **partial assertion**, not a replacement. On objects,
+ * only the keys present in `desired` are checked — extra keys in `reported` are
+ * nobody's business. So `{arm: "armed"}` against a twelve-field object says "I
+ * care about `arm`" and stays quiet about the rest.
+ *
+ * The alternative, full-replacement equality, rots: the day a device starts
+ * reporting one extra field, every desired value set months ago flips to
+ * differing, and an indicator that cries wolf gets ignored within a week.
+ *
+ * Subset semantics apply to OBJECTS ONLY. Arrays and scalars compare exactly —
+ * you can omit a field you don't care about, but not an array element, because
+ * "this array contains at least these items, somewhere" is a different and much
+ * more ambiguous claim.
+ *
+ * Primitives fall out as the degenerate case: `true` vs `true` is a comparison
+ * with no keys to recurse into. One rule covers both shapes.
  */
-export function twinPropName(key: string, prefix: string): string {
-  return key.startsWith(`${prefix}.`) ? key.slice(prefix.length + 1) : key
+export function twinDrift(desired: any, reported: any, path = ''): string[] {
+  if (isPlainObject(desired) && isPlainObject(reported)) {
+    const out: string[] = []
+    for (const k of Object.keys(desired)) {
+      const p = path ? `${path}.${k}` : k
+      if (!(k in reported)) {
+        out.push(p)
+        continue
+      }
+      out.push(...twinDrift(desired[k], reported[k], p))
+    }
+    return out
+  }
+  return deepEqual(desired, reported) ? [] : [path || 'value']
 }

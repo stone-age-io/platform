@@ -5,7 +5,7 @@ import { useNatsKv, type KvEntry } from '@/composables/useNatsKv'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { formatDate, formatRelativeTime } from '@/utils/format'
-import { TWIN_BUCKET } from '@/utils/twin'
+import { TWIN_BUCKET, twinDrift } from '@/utils/twin'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import JsonViewer from '@/components/common/JsonViewer.vue'
 
@@ -33,6 +33,14 @@ const props = withDefaults(defineProps<{
   bucket?: string
   baseKey?: string
   title?: string
+  /**
+   * Companion bucket holding DESIRED values for the same keys (`twin_desired`).
+   * When set, this browser becomes the digital-twin view: each key gains a
+   * desired counterpart, the reported side goes read-only because the edge owns
+   * it, and rows are marked according to whether the assertion holds. Omit it
+   * and everything below behaves exactly as the general key browser always has.
+   */
+  desiredBucket?: string
 }>(), {
   baseKey: '',
   title: '',
@@ -40,6 +48,12 @@ const props = withDefaults(defineProps<{
 
 const effectiveBucket = computed(() => props.bucket || TWIN_BUCKET)
 const { entries, loading, exists, error, init, createBucket, put, del, getHistory } = useNatsKv(props.bucket || TWIN_BUCKET, props.baseKey)
+
+// Constructed unconditionally (composables cannot be called conditionally) but
+// only ever opened when a desiredBucket was actually given.
+const desiredKv = useNatsKv(props.desiredBucket || TWIN_BUCKET, props.baseKey)
+const twinMode = computed(() => !!props.desiredBucket)
+
 const toast = useToast()
 const { confirm } = useConfirm()
 
@@ -63,16 +77,64 @@ const inputKey = ref('')
 const inputValue = ref('')
 const valueParseError = ref('')
 
+/**
+ * Which side the editor is pointed at. Only meaningful in twin mode; the
+ * general browser stays on 'reported' forever and never renders the toggle.
+ *
+ * In twin mode the reported side is READ-ONLY — the edge owns it, so an edit
+ * would be overwritten on the next sync. Desired is the writable half.
+ */
+const editorTarget = ref<'reported' | 'desired'>('reported')
+const editorReadOnly = computed(() => twinMode.value && editorTarget.value === 'reported')
+
+/** Desired entry for whatever the editor currently has open. */
+const selectedDesired = computed(() =>
+  selectedEntry.value ? desiredState.value.get(selectedEntry.value.key) : undefined,
+)
+
 function displayKey(fullKey: string) {
   if (!props.baseKey) return fullKey
   const prefix = `${props.baseKey}.`
   return fullKey.startsWith(prefix) ? fullKey.slice(prefix.length) : fullKey
 }
 
-const allEntries = computed<KvEntryWithId[]>(() =>
-  Array.from(entries.value.values())
-    .sort((a, b) => a.key.localeCompare(b.key))
-    .map(entry => ({ ...entry, id: entry.key }))
+const allEntries = computed<KvEntryWithId[]>(() => {
+  const out = Array.from(entries.value.values()).map(entry => ({ ...entry, id: entry.key }))
+
+  // A desired value set for a property the device has never reported still has
+  // to appear, or it silently vanishes the moment you save it. Such rows carry
+  // `value: undefined`, which `isReported()` below distinguishes from a value
+  // that genuinely IS undefined-ish (null renders as null).
+  if (twinMode.value) {
+    for (const [key, d] of desiredKv.entries.value) {
+      if (entries.value.has(key)) continue
+      out.push({ key, value: undefined, revision: 0, created: d.created, operation: 'PUT', id: key })
+    }
+  }
+
+  return out.sort((a, b) => a.key.localeCompare(b.key))
+})
+
+function isReported(key: string): boolean {
+  return entries.value.has(key)
+}
+
+/** Desired entry + the paths on which the device disagrees, keyed by full key. */
+const desiredState = computed(() => {
+  const m = new Map<string, { entry: KvEntry; drift: string[] }>()
+  if (!twinMode.value) return m
+  for (const [key, d] of desiredKv.entries.value) {
+    const reported = entries.value.get(key)
+    m.set(key, {
+      entry: d,
+      drift: reported ? twinDrift(d.value, reported.value) : ['(not reported)'],
+    })
+  }
+  return m
+})
+
+const driftCount = computed(
+  () => Array.from(desiredState.value.values()).filter(d => d.drift.length > 0).length,
 )
 
 const filteredEntries = computed(() => {
@@ -144,7 +206,10 @@ watch(viewMode, () => {
   currentPage.value = 1
 })
 
-onMounted(() => init())
+onMounted(() => {
+  init()
+  if (twinMode.value) desiredKv.init()
+})
 
 function toggleNode(path: string) {
   if (expandedNodes.value.has(path)) expandedNodes.value.delete(path)
@@ -193,9 +258,20 @@ async function handleSave() {
     toast.error('Property name required')
     return
   }
+  if (editorReadOnly.value) return // guarded in the template too; belt and braces
   const parsed = parseInputValue()
   if (!parsed.ok) {
     valueParseError.value = parsed.error
+    return
+  }
+  if (editorTarget.value === 'desired') {
+    try {
+      await desiredKv.put(inputKey.value, parsed.value)
+      toast.success('Desired value saved')
+      isAddingNew.value = false
+    } catch (e: any) {
+      toast.error(e?.message || 'Save failed')
+    }
     return
   }
   try {
@@ -218,9 +294,37 @@ function openEdit(entry: KvEntryWithId) {
   isAddingNew.value = false
   selectedEntry.value = entry
   inputKey.value = displayKey(entry.key)
-  inputValue.value = valueToEditable(entry.value)
+  // A desired-only row has no reported value to show, so open straight on the
+  // side that actually has one.
+  editorTarget.value = twinMode.value && !isReported(entry.key) ? 'desired' : 'reported'
+  loadEditorValue()
   valueParseError.value = ''
   loadHistory(entry.key)
+}
+
+/** Pull the editor's text from whichever side it is pointed at. */
+function loadEditorValue() {
+  if (editorTarget.value === 'desired') {
+    const d = selectedDesired.value
+    inputValue.value = d ? valueToEditable(d.entry.value) : ''
+    return
+  }
+  const v = selectedEntry.value?.value
+  inputValue.value = v === undefined ? '' : valueToEditable(v)
+}
+
+function switchEditorTarget(target: 'reported' | 'desired') {
+  if (editorTarget.value === target) return
+  editorTarget.value = target
+  valueParseError.value = ''
+  loadEditorValue()
+}
+
+/** Seed a new desired value from what the device reports — usually a small edit. */
+function seedDesiredFromReported() {
+  editorTarget.value = 'desired'
+  const v = selectedEntry.value?.value
+  inputValue.value = v === undefined ? '' : valueToEditable(v)
 }
 
 function openAdd() {
@@ -228,6 +332,9 @@ function openAdd() {
   selectedEntry.value = null
   inputKey.value = ''
   inputValue.value = ''
+  // Adding in twin mode means asserting a desired value; the device is the only
+  // thing that creates reported keys.
+  editorTarget.value = twinMode.value ? 'desired' : 'reported'
   valueParseError.value = ''
   historyEntries.value = []
 }
@@ -240,6 +347,26 @@ function closeEditor() {
 async function handleDelete() {
   if (!selectedEntry.value) return
   const key = selectedEntry.value.key
+
+  if (editorTarget.value === 'desired') {
+    const confirmed = await confirm({
+      title: 'Clear desired value?',
+      message: `Remove the desired value for "${displayKey(key)}".`,
+      details: 'The device keeps its last received value until something sets a new one.',
+      confirmText: 'Clear',
+      variant: 'warning',
+    })
+    if (!confirmed) return
+    try {
+      await desiredKv.del(key)
+      if (!isReported(key)) closeEditor() // the row existed only for this value
+      else switchEditorTarget('reported')
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to clear desired value')
+    }
+    return
+  }
+
   const confirmed = await confirm({
     title: 'Delete Property',
     message: `Are you sure you want to delete "${displayKey(key)}"?`,
@@ -325,7 +452,10 @@ function previewValue(val: any): string {
     <!-- Show the actual bucket/key prefix: the convention should be readable
          off the screen rather than reverse-engineered from a card title. -->
     <template v-if="baseKey" #header>
-      <code class="font-mono text-xs text-base-content/70">{{ effectiveBucket }} / {{ baseKey }}.&gt;</code>
+      <div class="flex items-center gap-3">
+        <code class="font-mono text-xs text-base-content/70">{{ effectiveBucket }} / {{ baseKey }}.&gt;</code>
+        <span v-if="driftCount" class="badge badge-warning badge-sm">{{ driftCount }} differs</span>
+      </div>
     </template>
 
     <div v-if="loading" class="flex justify-center p-12">
@@ -408,13 +538,28 @@ function previewValue(val: any): string {
                   <span class="font-mono font-semibold text-primary group-hover:underline break-all">{{ displayKey(item.key) }}</span>
                 </td>
                 <td class="py-3 align-top">
-                  <span v-if="typeof item.value === 'boolean'" class="badge badge-sm" :class="item.value ? 'badge-success' : 'badge-ghost'">
-                    {{ item.value ? 'TRUE' : 'FALSE' }}
-                  </span>
-                  <span v-else-if="item.value === null" class="badge badge-sm badge-ghost">null</span>
-                  <span v-else-if="typeof item.value === 'number'" class="text-xs font-mono font-medium">{{ item.value }}</span>
-                  <span v-else-if="isObject(item.value)" class="text-[10px] font-mono opacity-70 truncate block max-w-xs">{{ JSON.stringify(item.value) }}</span>
-                  <span v-else class="text-xs font-medium truncate block max-w-xs">{{ item.value }}</span>
+                  <div class="flex items-center gap-2 min-w-0">
+                    <span v-if="!isReported(item.key)" class="text-[10px] italic opacity-40">awaiting device</span>
+                    <span v-else-if="typeof item.value === 'boolean'" class="badge badge-sm" :class="item.value ? 'badge-success' : 'badge-ghost'">
+                      {{ item.value ? 'TRUE' : 'FALSE' }}
+                    </span>
+                    <span v-else-if="item.value === null" class="badge badge-sm badge-ghost">null</span>
+                    <span v-else-if="typeof item.value === 'number'" class="text-xs font-mono font-medium">{{ item.value }}</span>
+                    <span v-else-if="isObject(item.value)" class="text-[10px] font-mono opacity-70 truncate block max-w-xs">{{ JSON.stringify(item.value) }}</span>
+                    <span v-else class="text-xs font-medium truncate block max-w-xs">{{ item.value }}</span>
+
+                    <!-- Twin marker: only rows that carry an assertion show one. -->
+                    <span
+                      v-if="desiredState.get(item.key)?.drift.length"
+                      class="badge badge-warning badge-xs shrink-0"
+                      :title="`Differs on: ${desiredState.get(item.key)!.drift.join(', ')}`"
+                    >differs</span>
+                    <span
+                      v-else-if="desiredState.has(item.key)"
+                      class="badge badge-ghost badge-xs shrink-0"
+                      title="Desired value set, and the device agrees"
+                    >set</span>
+                  </div>
                 </td>
                 <td class="py-3 text-right align-top font-mono text-[10px] opacity-40">
                   {{ item.revision }}
@@ -455,6 +600,16 @@ function previewValue(val: any): string {
                 </span>
                 <span v-else-if="row.node.entry.value === null" class="badge badge-sm badge-ghost shrink-0">null</span>
                 <span v-else class="text-xs opacity-70 truncate min-w-0 flex-1 font-mono">{{ previewValue(row.node.entry.value) }}</span>
+                <span
+                  v-if="desiredState.get(row.node.entry.key)?.drift.length"
+                  class="badge badge-warning badge-xs shrink-0"
+                  :title="`Differs on: ${desiredState.get(row.node.entry.key)!.drift.join(', ')}`"
+                >differs</span>
+                <span
+                  v-else-if="desiredState.has(row.node.entry.key)"
+                  class="badge badge-ghost badge-xs shrink-0"
+                  title="Desired value set, and the device agrees"
+                >set</span>
                 <span class="text-[10px] opacity-30 font-mono shrink-0 ml-auto">r{{ row.node.entry.revision }}</span>
               </template>
               <span v-else class="text-[10px] opacity-40 ml-auto shrink-0 font-mono">{{ row.node.children.length }}</span>
@@ -494,6 +649,40 @@ function previewValue(val: any): string {
 
           <div class="flex-1 overflow-y-auto p-5">
             <div v-if="selectedEntry || isAddingNew" class="space-y-6">
+              <!-- Twin mode: which side of the pair the editor is pointed at.
+                   Reported is read-only because the edge owns it — an edit here
+                   would be overwritten on the next sync. -->
+              <div v-if="twinMode && !isAddingNew" class="join w-full">
+                <button
+                  class="join-item btn btn-xs flex-1"
+                  :class="{ 'btn-primary': editorTarget === 'reported' }"
+                  @click="switchEditorTarget('reported')"
+                >Reported</button>
+                <button
+                  class="join-item btn btn-xs flex-1"
+                  :class="{ 'btn-primary': editorTarget === 'desired' }"
+                  @click="switchEditorTarget('desired')"
+                >
+                  Desired
+                  <span v-if="selectedDesired?.drift.length" class="badge badge-warning badge-xs ml-1">!</span>
+                </button>
+              </div>
+
+              <div
+                v-if="twinMode && editorTarget === 'desired' && selectedDesired?.drift.length"
+                class="alert py-2 text-[11px] items-start"
+              >
+                <div>
+                  <span class="font-bold">The device reports something different.</span>
+                  <div class="font-mono opacity-70 mt-0.5 break-all">
+                    {{ selectedDesired.drift.join(', ') }}
+                  </div>
+                  <!-- Deliberately not "pending": nothing in this platform
+                       applies desired values to devices, so the UI states the
+                       difference and does not predict what happens next. -->
+                </div>
+              </div>
+
               <div class="space-y-4">
                 <div class="form-control">
                   <label class="label p-0 mb-1"><span class="label-text text-[10px] font-bold opacity-50 uppercase">Key</span></label>
@@ -506,8 +695,10 @@ function previewValue(val: any): string {
 
                 <div class="form-control">
                   <div class="flex items-center justify-between mb-1">
-                    <label class="label p-0"><span class="label-text text-[10px] font-bold opacity-50 uppercase">Value (JSON)</span></label>
-                    <div class="flex gap-1">
+                    <label class="label p-0"><span class="label-text text-[10px] font-bold opacity-50 uppercase">
+                      {{ twinMode ? (editorTarget === 'desired' ? 'Desired value (JSON)' : 'Reported value (JSON)') : 'Value (JSON)' }}
+                    </span></label>
+                    <div v-if="!editorReadOnly" class="flex gap-1">
                       <button type="button" @click="quickSetValue('true')" class="btn btn-ghost btn-xs h-5 min-h-0 px-1.5 font-mono text-[10px]" title="Set to true">true</button>
                       <button type="button" @click="quickSetValue('false')" class="btn btn-ghost btn-xs h-5 min-h-0 px-1.5 font-mono text-[10px]" title="Set to false">false</button>
                       <button type="button" @click="quickSetValue('null')" class="btn btn-ghost btn-xs h-5 min-h-0 px-1.5 font-mono text-[10px]" title="Set to null">null</button>
@@ -516,18 +707,41 @@ function previewValue(val: any): string {
                   </div>
                   <textarea
                     v-model="inputValue"
+                    :readonly="editorReadOnly"
                     class="textarea textarea-bordered font-mono text-xs h-40 leading-snug"
+                    :class="{ 'opacity-70 cursor-default': editorReadOnly }"
                     placeholder='Examples: 42  ·  "hello"  ·  true  ·  {"foo":"bar"}'
                     spellcheck="false"
                   ></textarea>
-                  <p class="text-[10px] opacity-50 mt-1">
+                  <p v-if="editorReadOnly" class="text-[10px] opacity-50 mt-1">
+                    Reported by the device — read-only. The edge overwrites this on every sync.
+                  </p>
+                  <p v-else class="text-[10px] opacity-50 mt-1">
                     Parsed as JSON when valid (numbers, booleans, null, objects, arrays). Otherwise stored as a string.
                   </p>
                   <p v-if="valueParseError" class="text-[10px] text-error mt-1">{{ valueParseError }}</p>
                 </div>
 
-                <div class="flex gap-2 pt-2">
-                  <button v-if="!isAddingNew" @click="handleDelete" class="btn btn-sm btn-error btn-outline flex-1">Delete</button>
+                <!-- Reported side in twin mode has no writes; offer the one
+                     action that does apply, pre-filled from what it reports. -->
+                <div v-if="editorReadOnly" class="pt-2">
+                  <button
+                    v-if="!selectedDesired"
+                    @click="seedDesiredFromReported"
+                    class="btn btn-sm btn-outline w-full"
+                  >Set a desired value</button>
+                  <button v-else @click="switchEditorTarget('desired')" class="btn btn-sm btn-outline w-full">
+                    Edit desired value
+                  </button>
+                </div>
+
+                <div v-else class="flex gap-2 pt-2">
+                  <button
+                    v-if="!isAddingNew && (editorTarget === 'reported' || selectedDesired)"
+                    @click="handleDelete"
+                    class="btn btn-sm btn-outline flex-1"
+                    :class="editorTarget === 'desired' ? 'btn-warning' : 'btn-error'"
+                  >{{ editorTarget === 'desired' ? 'Clear' : 'Delete' }}</button>
                   <button @click="handleSave" class="btn btn-sm btn-primary flex-1">Save</button>
                 </div>
               </div>
