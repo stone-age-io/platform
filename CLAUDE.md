@@ -13,7 +13,7 @@ Stone Age IoT Platform is a single-binary IoT and Event-Driven management platfo
 ## Tech Stack
 
 ### Backend
-- **Go 1.25.0** with PocketBase 0.35.0
+- **Go 1.25.0** with PocketBase 0.38.0
 - **Cobra** for CLI commands (bootstrap, NATS management)
 - **Viper** for configuration management
 - **Key libraries**: pb-audit, pb-tenancy, pb-nats, pb-nebula, nats-io/jwt, slackhq/nebula
@@ -215,7 +215,7 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
 9. **PWA** - Service worker, manifest, installable
 10. **Keyboard Shortcuts** - Configurable keyboard shortcuts with modal reference
 11. **Operator Org & Managed Orgs** - Bootstrap creates the platform operator's own org (`is_operator_org`) alongside the `$SYS` org (`is_system_org`); its NATS account is the hub for shared operator services (helpdesk etc.). Flagging a customer org `managed` provisions a stream export of `helpdesk.>` (configurable: `nats.managed_export_subject`) from its account plus a hub-side import remapped to `helpdesk.{orgId}.>` — the org prefix is baked into the signed account JWT, so event provenance is subject-based and unforgeable (`hooks/managed_org_exports.go`).
-12. **Edge / Leaf Nodes** - `leaf_nodes` auth collection (a "special thing" with one nats_user, server-provisioned). The `leaf-sync` agent runs on the edge, authenticates as the leaf node, and mirrors its org's config collections into a NATS leaf node's local JetStream KV. Operator JWT served via the dedicated `GET /api/leaf/operator-jwt` route (nats_system_operator stays superuser-only). `leaf-sync` writes a best-effort liveness heartbeat into the hub's `leaf_status` KV (when `nats.hub_domain` is set); the UI reads it to show online/offline status on the leaf node list + detail views. Credentials are resettable by org Admins/Owners (collection `manageRule`).
+12. **Edge / Leaf Nodes** - `leaf_nodes` auth collection (a "special thing" with one nats_user, server-provisioned). The `leaf-sync` agent runs on the edge, authenticates as the leaf node, and mirrors its org's config collections into a NATS leaf node's local JetStream KV. A leaf-node identity holds **no read grant on any `nats_*` or `nebula_*` collection**: `leaf-sync config` gets everything it needs from `GET /api/leaf/bootstrap`, which returns six named fields (`domain`, `code`, `creds`, `account_jwt`, `account_pub`, `operator_jwt`). `nats_system_operator` stays superuser-only; `GET /api/leaf/operator-jwt` remains as a superseded alias so upgrade order doesn't matter. `leaf-sync` writes a best-effort liveness heartbeat into the hub's `leaf_status` KV (when `nats.hub_domain` is set); the UI reads it to show online/offline status on the leaf node list + detail views. Credentials are resettable by org Admins/Owners (collection `manageRule`).
 
 ## Roles & Authorization
 
@@ -250,16 +250,28 @@ Rules to follow when touching authorization:
   `badge` — the *most* restricted role — so badge holders passed every admin
   check. Write `(role ?= "owner" || role ?= "admin")`. Copy the canonical snippet
   verbatim from a neighbouring rule; do not hand-write a variant.
+- **Restricting fields is not restricting roles.** The same bug came back in a
+  second costume: `things` create/update admitted a member through a branch that
+  froze `nats_user`/`nebula_host` but named no role, and `locations` create/update
+  had no role check at all — so `badge` satisfied both and could write inventory.
+  A branch that constrains *what* may be written still has to say *who* may write
+  it. Every write branch names its roles.
 - **`?`-prefixed operators are row-correlated** on the same relation path, so
   `memberships_via_user.organization ?= X && memberships_via_user.role ?= "owner"`
   matches one membership row. Without `?`, the condition must hold for *all*
   related rows.
 - **Credentials are protected by row scoping, not hidden fields.**
   `nats_users.creds_file` and `nebula_hosts.config_yaml` stay readable because the
-  identity that owns them needs them (the browser's NATS connection, `leaf-sync
-  config`, the admin download button). The read rules restrict *which rows* a
-  caller sees. Do not add `hidden: true` to them — it breaks all three and buys
-  nothing.
+  identity that owns them needs them (the browser's NATS connection and the admin
+  download button). The read rules restrict *which rows* a caller sees. Do not add
+  `hidden: true` to them — it breaks both and buys nothing.
+- **A leaf node reads nothing in `nats_*` or `nebula_*`.** `leaf-sync config` gets
+  its creds, the account JWT, and the operator JWT from `GET /api/leaf/bootstrap`
+  (`hooks/leaf_node_routes.go`), which reads those records with the app's own
+  privileges and returns six named fields. Don't re-add a leaf-node read branch to
+  those collections to make some edge feature work — extend the route instead. The
+  point is that the edge's blast radius is a fixed list rather than a consequence
+  of rules that change for unrelated reasons.
 - **A rule cannot express a single-field allowlist.** That is why self-service
   rotation is `POST /api/me/nats-creds/rotate` (`hooks/credential_routes.go`)
   rather than an update-rule branch: the alternative is `:isset = false` on every
@@ -280,10 +292,12 @@ Keep it in step with the table above.
 
 - `go test ./...` — Go unit tests (`internal/leafsync` has the bulk of them)
 - `./scripts/test-authz.sh` — **run after any API-rule change in `schema.json`.**
-  Builds the binary, stands up a throwaway DB, and asserts 24 authorization
+  Builds the binary, stands up a throwaway DB, and asserts 68 authorization
   behaviours against a live server. The rules are the only tenancy enforcement
   in the platform and nothing else type-checks them. Add a check when you add a
-  rule. Note PocketBase answers 404 (not 403) when an update rule rejects.
+  rule, and bump `EXPECTED_CHECKS`. Note PocketBase answers 404 (not 403) when an
+  update rule rejects, and 400 on a denied create — which is why every "cannot"
+  is paired with a "can" on the same record.
 - Frontend has no test runner; development relies on HMR (`npm run dev`),
   browser DevTools, and the PocketBase admin panel at `/_/`
 
@@ -291,7 +305,7 @@ Keep it in step with the table above.
 
 - `main.go` - Backend entry, PocketBase setup, hooks, bootstrap command
 - `hooks/leaf_node_provisioning.go` - Mints a leaf node's NATS user on create
-- `hooks/leaf_node_routes.go` - `GET /api/leaf/operator-jwt` (leaf-node-authed)
+- `hooks/leaf_node_routes.go` - `GET /api/leaf/bootstrap` (leaf-node-authed; everything `leaf-sync config` needs), plus the superseded `GET /api/leaf/operator-jwt`
 - `cmd/leaf-sync/` + `internal/leafsync/` - Edge agent (config bootstrap + KV sync); see `cmd/leaf-sync/README.md`
 - `ui/src/stores/auth.ts` - Authentication and organization context
 - `ui/src/stores/nats.ts` - NATS WebSocket connection manager

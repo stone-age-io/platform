@@ -170,10 +170,11 @@ against a real server:
 ./scripts/test-authz.sh
 ```
 
-It builds the binary, stands up a throwaway database, runs 24 checks, and tears
+It builds the binary, stands up a throwaway database, runs 68 checks, and tears
 everything down; `pb_data/` is never touched. Run it after any change to a
 `listRule` / `viewRule` / `createRule` / `updateRule` / `deleteRule`, and add a
-check whenever you add a rule. Requires `go`, `curl`, and `node`.
+check whenever you add a rule (bump `EXPECTED_CHECKS`, which catches a suite that
+exits early). Requires `go`, `curl`, and `node`.
 
 Two things to know when reading a failure: PocketBase answers **404, not 403**,
 when an update rule rejects a request (deliberately — it avoids confirming the
