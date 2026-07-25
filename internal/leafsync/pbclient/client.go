@@ -121,19 +121,6 @@ func (c *Client) get(ctx context.Context, path string, query url.Values) ([]byte
 	return b, nil
 }
 
-// GetOne fetches a single record by id.
-func (c *Client) GetOne(ctx context.Context, collection, id string) (Record, error) {
-	b, err := c.get(ctx, "/api/collections/"+url.PathEscape(collection)+"/records/"+url.PathEscape(id), nil)
-	if err != nil {
-		return nil, err
-	}
-	var rec Record
-	if err := json.Unmarshal(b, &rec); err != nil {
-		return nil, err
-	}
-	return rec, nil
-}
-
 // ListResult mirrors PocketBase's paginated list response.
 type ListResult struct {
 	Page       int      `json:"page"`
