@@ -49,9 +49,9 @@ function handleClick(item: T) {
           </tr>
         </thead>
         <tbody>
-          <tr
-            v-for="item in items"
-            :key="item.id"
+          <tr 
+            v-for="item in items" 
+            :key="item.id" 
             :class="{ 'hover cursor-pointer': clickable }"
             class="border-b border-base-200/50 last:border-0"
             @click="handleClick(item)"
