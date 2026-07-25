@@ -113,17 +113,29 @@ We bridge the gap between **SQL Metadata** (PocketBase) and **Live State** (NATS
     no sync bookkeeping. Values may be primitives or whole JSON objects.
 *   **The twin view is `KvDashboard` with `desiredBucket` set** — the same browser
     used for every other bucket, not a second one. It gains a Reported/Desired
-    toggle in the detail pane, per-row `set` / `differs` markers, and a read-only
-    reported side (the edge overwrites it, so an edit button would be a lie).
-    Tree/flat, filtering, revision history and the responsive detail drawer all
-    come from the browser itself. Omit the prop — as *NATS → KV Buckets* does —
-    and it behaves exactly as it always has.
+    toggle in the detail pane, per-row twin markers, and a read-only reported side
+    (the edge overwrites it, so an edit button would be a lie). Tree/flat,
+    filtering, revision history and the responsive detail drawer all come from the
+    browser itself. Omit the prop — as *NATS → KV Buckets* does — and it behaves
+    exactly as it always has.
+*   **The marker shows the difference, not a word for it.** A row whose desired
+    value is a primitive renders it inline — `TRUE → false` — so the answer is on
+    the row. Object-valued rows fall back to a `differs` badge (the value will not
+    fit) and the detail pane lists each differing path as a reported/desired pair.
+    Agreement is a quiet `✓`. "Differs on: mode" was the same width and sent the
+    reader off to look both values up.
 *   **A desired value is a partial assertion, not a replacement.** `twinDrift()`
     checks only the keys present in the desired value, so `{arm: "armed"}` against
     a twelve-field object asserts one field and stays quiet about the rest. Full
     equality would flip every old assertion to "differs" the day a device reports
     one new field. Subset semantics apply to objects only — arrays and scalars
     compare exactly.
+*   **Pair desired with an echo, never with a measurement.** Desired belongs on a
+    property the device echoes back to acknowledge an instruction (`setpoint`,
+    `mode`) — those converge exactly. Desired `temp = 20` against reported
+    `temp = 20.3` compares an instruction to a continuous reading and differs
+    forever. "What if desired is a range?" is a threshold over *reported* state:
+    a rule-router rule, not a desired value. Do not add operators to `twinDrift()`.
 *   **`differs`, never `pending`.** Nothing in the platform applies desired values
     to devices; there is no control loop. The UI reports that two values disagree
     and does not predict what happens next. If rule-router ever applies desired

@@ -5,12 +5,14 @@ import { useNatsKv, type KvEntry } from '@/composables/useNatsKv'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { formatDate, formatRelativeTime } from '@/utils/format'
-import { TWIN_BUCKET, twinDrift } from '@/utils/twin'
+import { TWIN_BUCKET, twinDrift, valueAtPath } from '@/utils/twin'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import JsonViewer from '@/components/common/JsonViewer.vue'
 
 interface KvEntryWithId extends KvEntry {
   id: string
+  /** Twin annotation, resolved in `allEntries`. Absent outside twin mode. */
+  twin?: TwinMarker | null
 }
 
 interface TreeNode {
@@ -92,10 +94,102 @@ const selectedDesired = computed(() =>
   selectedEntry.value ? desiredState.value.get(selectedEntry.value.key) : undefined,
 )
 
+const selectedDriftPairs = computed(() =>
+  selectedEntry.value ? driftPairs(selectedEntry.value.key) : [],
+)
+
 function displayKey(fullKey: string) {
   if (!props.baseKey) return fullKey
   const prefix = `${props.baseKey}.`
   return fullKey.startsWith(prefix) ? fullKey.slice(prefix.length) : fullKey
+}
+
+/**
+ * Three states, not two. 'unreported' is its own case because "the device
+ * disagrees" and "the device has never said anything" want different words —
+ * folding them together produced a differs marker naming a path that existed on
+ * neither side.
+ */
+type TwinStatus = 'agrees' | 'differs' | 'unreported'
+
+/** Desired entry + the paths on which the device disagrees, keyed by full key. */
+const desiredState = computed(() => {
+  const m = new Map<string, { entry: KvEntry; drift: string[]; status: TwinStatus }>()
+  if (!twinMode.value) return m
+  for (const [key, d] of desiredKv.entries.value) {
+    const reported = entries.value.get(key)
+    if (!reported) {
+      m.set(key, { entry: d, drift: [], status: 'unreported' })
+      continue
+    }
+    const drift = twinDrift(d.value, reported.value)
+    m.set(key, { entry: d, drift, status: drift.length ? 'differs' : 'agrees' })
+  }
+  return m
+})
+
+const driftCount = computed(
+  () => Array.from(desiredState.value.values()).filter(d => d.status === 'differs').length,
+)
+
+/**
+ * Show the values, not the path names. "Differs on: mode" makes the reader go
+ * look both values up; `"auto" → "manual"` is the same width and is the answer.
+ * A top-level scalar comes back from twinDrift with an empty path, so it renders
+ * as a bare pair with nothing to label.
+ */
+function driftPairs(key: string): { path: string; reported: any; desired: any }[] {
+  const d = desiredState.value.get(key)
+  const reported = entries.value.get(key)
+  if (!d || !reported) return []
+  return d.drift.map(path => ({
+    path,
+    reported: valueAtPath(reported.value, path),
+    desired: valueAtPath(d.entry.value, path),
+  }))
+}
+
+interface TwinMarker {
+  agrees: boolean
+  /** The desired value itself, when it is a primitive short enough to sit in the row. */
+  inline: string | null
+  /** Fallback wording when the desired value is an object and cannot sit inline. */
+  badge: string
+  title: string
+}
+
+/**
+ * The row annotation, resolved once per key rather than branched in the
+ * template. Rows without a desired value get null and render nothing at all —
+ * the quiet case stays quiet.
+ */
+function twinMarker(key: string): TwinMarker | null {
+  const d = desiredState.value.get(key)
+  if (!d) return null
+
+  if (d.status === 'agrees') {
+    return { agrees: true, inline: null, badge: '', title: 'Desired value set, and the device agrees' }
+  }
+
+  const inline = isObject(d.entry.value) ? null : previewValue(d.entry.value)
+
+  if (d.status === 'unreported') {
+    return {
+      agrees: false,
+      inline,
+      badge: 'desired set',
+      title: 'Desired value set. The device has not reported this property.',
+    }
+  }
+
+  return {
+    agrees: false,
+    inline,
+    badge: 'differs',
+    title: driftPairs(key)
+      .map(p => `${p.path ? p.path + ': ' : ''}${previewValue(p.reported)} → ${previewValue(p.desired)}`)
+      .join('\n'),
+  }
 }
 
 const allEntries = computed<KvEntryWithId[]>(() => {
@@ -112,30 +206,15 @@ const allEntries = computed<KvEntryWithId[]>(() => {
     }
   }
 
-  return out.sort((a, b) => a.key.localeCompare(b.key))
+  out.sort((a, b) => a.key.localeCompare(b.key))
+  // Resolved here so both the table and the tree read one field instead of each
+  // re-deriving the same three-way branch inline.
+  return twinMode.value ? out.map(e => ({ ...e, twin: twinMarker(e.key) })) : out
 })
 
 function isReported(key: string): boolean {
   return entries.value.has(key)
 }
-
-/** Desired entry + the paths on which the device disagrees, keyed by full key. */
-const desiredState = computed(() => {
-  const m = new Map<string, { entry: KvEntry; drift: string[] }>()
-  if (!twinMode.value) return m
-  for (const [key, d] of desiredKv.entries.value) {
-    const reported = entries.value.get(key)
-    m.set(key, {
-      entry: d,
-      drift: reported ? twinDrift(d.value, reported.value) : ['(not reported)'],
-    })
-  }
-  return m
-})
-
-const driftCount = computed(
-  () => Array.from(desiredState.value.values()).filter(d => d.drift.length > 0).length,
-)
 
 const filteredEntries = computed(() => {
   const q = debouncedSearch.value
@@ -548,17 +627,21 @@ function previewValue(val: any): string {
                     <span v-else-if="isObject(item.value)" class="text-[10px] font-mono opacity-70 truncate block max-w-xs">{{ JSON.stringify(item.value) }}</span>
                     <span v-else class="text-xs font-medium truncate block max-w-xs">{{ item.value }}</span>
 
-                    <!-- Twin marker: only rows that carry an assertion show one. -->
-                    <span
-                      v-if="desiredState.get(item.key)?.drift.length"
-                      class="badge badge-warning badge-xs shrink-0"
-                      :title="`Differs on: ${desiredState.get(item.key)!.drift.join(', ')}`"
-                    >differs</span>
-                    <span
-                      v-else-if="desiredState.has(item.key)"
-                      class="badge badge-ghost badge-xs shrink-0"
-                      title="Desired value set, and the device agrees"
-                    >set</span>
+                    <!-- Twin marker: only rows that carry an assertion show one,
+                         and it shows the desired VALUE rather than a word about
+                         it wherever the value is a primitive. -->
+                    <template v-if="item.twin">
+                      <span v-if="item.twin.agrees" class="text-success shrink-0 leading-none" :title="item.twin.title">✓</span>
+                      <template v-else>
+                        <span class="opacity-30 text-xs shrink-0">→</span>
+                        <span
+                          v-if="item.twin.inline !== null"
+                          class="font-mono text-xs font-semibold text-warning shrink-0 truncate max-w-[12rem]"
+                          :title="item.twin.title"
+                        >{{ item.twin.inline }}</span>
+                        <span v-else class="badge badge-warning badge-xs shrink-0" :title="item.twin.title">{{ item.twin.badge }}</span>
+                      </template>
+                    </template>
                   </div>
                 </td>
                 <td class="py-3 text-right align-top font-mono text-[10px] opacity-40">
@@ -595,21 +678,26 @@ function previewValue(val: any): string {
               >{{ row.node.name }}</span>
               <template v-if="row.isLeaf && row.node.entry">
                 <span class="opacity-30 text-xs shrink-0">=</span>
-                <span v-if="typeof row.node.entry.value === 'boolean'" class="badge badge-sm shrink-0" :class="row.node.entry.value ? 'badge-success' : 'badge-ghost'">
+                <!-- Desired-only rows have no reported value; without this they
+                     render as a blank cell after the `=`. -->
+                <span v-if="!isReported(row.node.entry.key)" class="text-[10px] italic opacity-40 shrink-0">awaiting device</span>
+                <span v-else-if="typeof row.node.entry.value === 'boolean'" class="badge badge-sm shrink-0" :class="row.node.entry.value ? 'badge-success' : 'badge-ghost'">
                   {{ row.node.entry.value ? 'TRUE' : 'FALSE' }}
                 </span>
                 <span v-else-if="row.node.entry.value === null" class="badge badge-sm badge-ghost shrink-0">null</span>
                 <span v-else class="text-xs opacity-70 truncate min-w-0 flex-1 font-mono">{{ previewValue(row.node.entry.value) }}</span>
-                <span
-                  v-if="desiredState.get(row.node.entry.key)?.drift.length"
-                  class="badge badge-warning badge-xs shrink-0"
-                  :title="`Differs on: ${desiredState.get(row.node.entry.key)!.drift.join(', ')}`"
-                >differs</span>
-                <span
-                  v-else-if="desiredState.has(row.node.entry.key)"
-                  class="badge badge-ghost badge-xs shrink-0"
-                  title="Desired value set, and the device agrees"
-                >set</span>
+                <template v-if="row.node.entry.twin">
+                  <span v-if="row.node.entry.twin.agrees" class="text-success shrink-0 leading-none" :title="row.node.entry.twin.title">✓</span>
+                  <template v-else>
+                    <span class="opacity-30 text-xs shrink-0">→</span>
+                    <span
+                      v-if="row.node.entry.twin.inline !== null"
+                      class="font-mono text-xs font-semibold text-warning shrink-0 truncate max-w-[12rem]"
+                      :title="row.node.entry.twin.title"
+                    >{{ row.node.entry.twin.inline }}</span>
+                    <span v-else class="badge badge-warning badge-xs shrink-0" :title="row.node.entry.twin.title">{{ row.node.entry.twin.badge }}</span>
+                  </template>
+                </template>
                 <span class="text-[10px] opacity-30 font-mono shrink-0 ml-auto">r{{ row.node.entry.revision }}</span>
               </template>
               <span v-else class="text-[10px] opacity-40 ml-auto shrink-0 font-mono">{{ row.node.children.length }}</span>
@@ -664,22 +752,34 @@ function previewValue(val: any): string {
                   @click="switchEditorTarget('desired')"
                 >
                   Desired
-                  <span v-if="selectedDesired?.drift.length" class="badge badge-warning badge-xs ml-1">!</span>
+                  <span v-if="selectedDesired?.status === 'differs'" class="badge badge-warning badge-xs ml-1">!</span>
                 </button>
               </div>
 
+              <!-- The difference itself, not a sentence about it. Naming the
+                   paths ("Differs on: mode") sends the reader off to look both
+                   values up; showing `"auto" → "manual"` is the same width and
+                   is the answer. Deliberately never "pending": nothing in this
+                   platform applies desired values to devices, so state the
+                   difference and predict nothing. -->
               <div
-                v-if="twinMode && editorTarget === 'desired' && selectedDesired?.drift.length"
-                class="alert py-2 text-[11px] items-start"
+                v-if="twinMode && editorTarget === 'desired' && selectedDesired && selectedDesired.status !== 'agrees'"
+                class="rounded-lg border border-warning/40 bg-warning/5 px-3 py-2.5"
               >
-                <div>
-                  <span class="font-bold">The device reports something different.</span>
-                  <div class="font-mono opacity-70 mt-0.5 break-all">
-                    {{ selectedDesired.drift.join(', ') }}
-                  </div>
-                  <!-- Deliberately not "pending": nothing in this platform
-                       applies desired values to devices, so the UI states the
-                       difference and does not predict what happens next. -->
+                <p v-if="selectedDesired.status === 'unreported'" class="text-[11px] opacity-70">
+                  The device has not reported this property.
+                </p>
+                <div v-else class="grid grid-cols-[auto_1fr_auto_1fr] gap-x-2 gap-y-1 items-baseline">
+                  <span></span>
+                  <span class="text-[9px] uppercase tracking-widest opacity-50">Reported</span>
+                  <span></span>
+                  <span class="text-[9px] uppercase tracking-widest opacity-50">Desired</span>
+                  <template v-for="p in selectedDriftPairs" :key="p.path">
+                    <span class="font-mono text-[11px] opacity-50 break-all">{{ p.path }}</span>
+                    <span class="font-mono text-[11px] opacity-80 break-all">{{ previewValue(p.reported) }}</span>
+                    <span class="opacity-30 text-[11px]">→</span>
+                    <span class="font-mono text-[11px] font-semibold text-warning break-all">{{ previewValue(p.desired) }}</span>
+                  </template>
                 </div>
               </div>
 

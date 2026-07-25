@@ -248,12 +248,42 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
       comparison rots — the day a device reports one new field, every assertion
       set months ago flips to "differs". Subset semantics are objects-only;
       arrays and scalars compare exactly. Values may be primitives or objects.
+    - **Pair a desired key with an echo, never with a measurement.** Desired
+      belongs on a property the device *echoes back* to acknowledge an
+      instruction (`thing.S01.setpoint`, `.mode`) — those converge exactly, so
+      equality is the right question and "differs" means "the device has not
+      accepted my instruction". Desired `temp = 20` against reported
+      `temp = 20.3` compares an instruction to a continuous reading; it differs
+      forever, and no tolerance fixes it in general because the right tolerance
+      varies by property, device and season. This is the rule that dissolves
+      "what if desired is a range" — a range is a threshold over *reported*
+      state, which is a rule-router rule, not a desired value.
+    - **Do not add operators to `twinDrift`.** `{$gt: 30}`, then `{$between:
+      [18,22]}`, then tolerances, and it is a rules engine inside a KV browser —
+      and rule-router already is one, properly. If equality feels wrong for a
+      key, the key is paired with a measurement instead of an echo; fix the
+      pairing.
+    - **Four jobs, four homes.** Reported state → `twin` KV. Setpoints and
+      config → `twin_desired` KV (durable: a device booting after three days
+      offline reads the current value from its local mirror). Commands
+      ("reboot") → a NATS message on `cmd.>`, *not* a KV value, because a
+      durable "reboot now" sitting in a bucket forever is a bug. Ranges,
+      thresholds, alarms, hysteresis → a rule-router rule over `twin`. Rows
+      three and four are the ones people try to cram into `twin_desired`.
     - **Say `differs`, never `pending`.** Nothing in this platform applies desired
       values to devices — no hook, no agent, no subscription. A "waiting for the
       device" message asserts a control loop that does not exist. Both readings of
       desired (a command to converge on, or an expected value to alarm on) are
       legitimate and the platform cannot tell which the customer means, so state
       the difference and predict nothing.
+    - **Show the difference, not a word for it.** The drift indicator renders the
+      values themselves — `"auto" → "manual"` in the row, a reported/desired
+      column pair in the detail pane. "Differs on: mode" is the same width and
+      sends the reader off to look both values up. `twin_desired` is a
+      *delivery mechanism*, not a control: the platform's job ends when the
+      value is readable in the edge's local KV. What consumes it is the
+      integrator's firmware or rule-router, the same boundary as minting NATS
+      creds and not caring what publishes with them.
     - **Edge sync is `internal/leafsync/twin.go`**, off by default
       (`twin.enabled`). `twin_desired` is a native JetStream **mirror** (one
       origin, N mirrors — no code in the data path, and it serves last-known

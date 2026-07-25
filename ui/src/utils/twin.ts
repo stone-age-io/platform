@@ -23,6 +23,37 @@
  * buckets pair on the SAME key. Nothing parses them except to build a watch
  * prefix — direction lives in the bucket, so keys carry no sync bookkeeping.
  *
+ * ---------------------------------------------------------------------------
+ * WHAT BELONGS HERE, AND WHAT DOES NOT
+ *
+ *   reported state         `twin` KV, edge -> hub.
+ *   setpoints and config   `twin_desired` KV, hub -> edge. Durable: a device
+ *                          that boots after three days offline reads the
+ *                          current value out of its local mirror.
+ *   commands ("reboot")    a NATS message on `cmd.>`, NOT a KV value. A durable
+ *                          "reboot now" sitting in a bucket forever is a bug.
+ *   ranges, thresholds,    a rule-router rule reading `twin`. Not this file.
+ *   alarms, hysteresis
+ *
+ * The third and fourth rows are the ones people try to put in `twin_desired`.
+ * Both make it worse; see the note on twinDrift below.
+ *
+ * PAIR DESIRED WITH AN ECHO, NEVER WITH A MEASUREMENT.
+ *
+ * A desired key should pair with a reported key the device *echoes back* to
+ * acknowledge an instruction — `thing.S01.setpoint`, `thing.S01.mode`. Those
+ * converge exactly, so equality is the right question and "differs" means "the
+ * device has not accepted my instruction", which is actionable.
+ *
+ * A measurement is the wrong partner. Desired `temp = 20` against reported
+ * `temp = 20.3` differs, and keeps differing, because it compares an
+ * instruction to a continuous reading — two things that never converge. No
+ * tolerance fixes that in general: the right tolerance is different per
+ * property, per device, per season. If you want "alarm when temp leaves
+ * 18-22", that is a rule over `twin`, and it does not involve `twin_desired`
+ * at all.
+ * ---------------------------------------------------------------------------
+ *
  * Values may be primitives or whole JSON objects; `twinDrift` below handles
  * both with one rule. The twin view is `KvDashboard` with its `desiredBucket`
  * prop set — deliberately the same browser used for every other bucket, rather
@@ -88,7 +119,16 @@ function deepEqual(a: any, b: any): boolean {
  * more ambiguous claim.
  *
  * Primitives fall out as the degenerate case: `true` vs `true` is a comparison
- * with no keys to recurse into. One rule covers both shapes.
+ * with no keys to recurse into. One rule covers both shapes. The path for that
+ * case is the empty string — the whole value, no sub-path.
+ *
+ * DO NOT ADD OPERATORS. The next reasonable-sounding request is `{$gt: 30}`,
+ * then `{$between: [18, 22]}`, then tolerances, and at that point this function
+ * is a rules engine living inside a KV browser — and we already own a rules
+ * engine that does it properly. Every one of those asks is a threshold over
+ * REPORTED state, which is rule-router's job; none of them is a desired value.
+ * If equality feels wrong for a key, the key is paired with a measurement
+ * instead of an echo (see the header) — fix the pairing, not the comparison.
  */
 export function twinDrift(desired: any, reported: any, path = ''): string[] {
   if (isPlainObject(desired) && isPlainObject(reported)) {
@@ -103,5 +143,17 @@ export function twinDrift(desired: any, reported: any, path = ''): string[] {
     }
     return out
   }
-  return deepEqual(desired, reported) ? [] : [path || 'value']
+  return deepEqual(desired, reported) ? [] : [path]
+}
+
+/**
+ * Read the value at a dotted path produced by `twinDrift`. The empty path means
+ * the whole value, which is how the top-level-scalar case comes back.
+ *
+ * Lets a caller turn drift paths into an actual before/after — naming the paths
+ * alone just tells someone where to go looking.
+ */
+export function valueAtPath(obj: any, path: string): any {
+  if (!path) return obj
+  return path.split('.').reduce((acc, k) => (acc == null ? undefined : acc[k]), obj)
 }
