@@ -19,8 +19,10 @@ stone-age
 stone-age-authz-test
 *.exe
 
-# Claude Code local git worktrees (never commit nested working copies)
-.claude/worktrees/
+# Claude Code local state: per-machine settings, launch config, and git
+# worktrees. worktrees/ in particular holds whole nested working copies of this
+# repo -- a trap for anyone grepping the tree, and never something to commit.
+.claude/
 
 # Editor directories and files
 .vscode/*
