@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=53          # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=68          # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -479,7 +479,93 @@ req PATCH "/collections/organizations/records/$ORG" "$TO" '{"name":"Renamed By O
 expect "platform operator CAN update it (same field, so the deny was authz)" 200 "$RCODE" "$RBODY"
 
 echo ""
-echo "=== 11. regression: ordinary tenant reads still work ==="
+echo "=== 11. badge is excluded from inventory writes ==="
+# things create/update admitted a member through a branch that restricted the
+# FIELDS (nats_user/nebula_host unchanged) without naming a ROLE, and locations
+# had no role check at all -- so badge, the most restricted role, satisfied both.
+# Same failure as the `role ?!= "member"` deny-list: say which roles may act.
+req POST /collections/things/records "$TG" \
+  "{\"email\":\"badgething@test.local\",\"password\":\"Password123!\",\"passwordConfirm\":\"Password123!\",\"emailVisibility\":true,\"name\":\"Badge Thing\",\"code\":\"BT1\",\"organization\":\"$ORG\"}"
+expect "badge cannot create a thing" "403|400|404" "$RCODE" "$RBODY"
+req POST /collections/things/records "$TB" \
+  "{\"email\":\"memberthing@test.local\",\"password\":\"Password123!\",\"passwordConfirm\":\"Password123!\",\"emailVisibility\":true,\"name\":\"Member Thing\",\"code\":\"MT1\",\"organization\":\"$ORG\"}"
+expect "member CAN create a thing (same payload, so the deny was authz)" 200 "$RCODE" "$RBODY"
+
+req PATCH "/collections/things/records/$THING" "$TG" '{"name":"Renamed By Badge"}'
+expect "badge cannot edit a thing" "403|400|404" "$RCODE" "$RBODY"
+req PATCH "/collections/things/records/$THING" "$TB" '{"name":"Renamed By Member"}'
+expect "member CAN edit a thing (same field, so the deny was authz)" 200 "$RCODE" "$RBODY"
+
+req POST /collections/locations/records "$TG" \
+  "{\"name\":\"Badge Location\",\"code\":\"BL1\",\"organization\":\"$ORG\"}"
+expect "badge cannot create a location" "403|400|404" "$RCODE" "$RBODY"
+req POST /collections/locations/records "$TB" \
+  "{\"name\":\"Member Location\",\"code\":\"ML1\",\"organization\":\"$ORG\"}"
+expect "member CAN create a location (same payload, so the deny was authz)" 200 "$RCODE" "$RBODY"
+MLOC=$(j "$RBODY" id)
+req PATCH "/collections/locations/records/$MLOC" "$TG" '{"name":"Renamed By Badge"}'
+expect "badge cannot edit a location" "403|400|404" "$RCODE" "$RBODY"
+
+echo ""
+echo "=== 12. a leaf node reads no NATS collection at all ==="
+# leaf-sync config used to read nats_users + nats_accounts through the CRUD API,
+# which meant granting a leaf-node identity a read branch on each. Those branches
+# are gone: GET /api/leaf/bootstrap serves the same values with the app's own
+# privileges, so the edge's blast radius is six named fields rather than
+# "whatever those rules happen to match".
+req POST /collections/leaf_nodes/records "$SU" \
+  "{\"email\":\"leaf1@test.local\",\"password\":\"Password123!\",\"passwordConfirm\":\"Password123!\",\"emailVisibility\":true,\"name\":\"Leaf One\",\"code\":\"LEAF1\",\"domain\":\"edge-leaf1\",\"organization\":\"$ORG\",\"synced_collections\":[\"things\",\"locations\"]}"
+LEAF=$(j "$RBODY" id)
+[ -z "$LEAF" ] && die "leaf node create failed: $RBODY"
+sleep 2   # the provisioning hook mints its NATS user asynchronously
+req GET "/collections/leaf_nodes/records/$LEAF" "$SU"
+LEAF_NATS=$(j "$RBODY" nats_user)
+[ -z "$LEAF_NATS" ] && die "leaf node did not get a nats_user: $RBODY"
+
+req POST /collections/leaf_nodes/auth-with-password "" \
+  '{"identity":"leaf1@test.local","password":"Password123!"}'
+TL=$(j "$RBODY" token)
+[ -z "$TL" ] && die "leaf node login failed: $RBODY"
+
+req GET "/collections/nats_users/records" "$TL"
+LEAF_SEES=$(jn "$RBODY" 'o.items ? o.items.length : "err"')
+if [ "$LEAF_SEES" = "0" ] || [[ "$RCODE" =~ ^(403|404)$ ]]; then
+  ok "leaf node sees no nats_users rows (got ${LEAF_SEES:-$RCODE})"
+else
+  no "leaf node still reads nats_users: $LEAF_SEES row(s) -- $(head -c 200 <<<"$RBODY")"
+fi
+req GET "/collections/nats_users/records/$LEAF_NATS" "$TL"
+expect "leaf node cannot view even its own nats_user" "403|404" "$RCODE" "$RBODY"
+req GET "/collections/nats_accounts/records" "$TL"
+LEAF_ACCTS=$(jn "$RBODY" 'o.items ? o.items.length : "err"')
+if [ "$LEAF_ACCTS" = "0" ] || [[ "$RCODE" =~ ^(403|404)$ ]]; then
+  ok "leaf node sees no nats_accounts rows (got ${LEAF_ACCTS:-$RCODE})"
+else
+  no "leaf node still reads nats_accounts: $LEAF_ACCTS row(s)"
+fi
+
+# Pair every "cannot" with a "can": the bootstrap route must still hand it
+# everything `leaf-sync config` needs, or the deny above is just a broken edge.
+req GET "/leaf/bootstrap" "$TL"
+expect "leaf node CAN reach /api/leaf/bootstrap" 200 "$RCODE" "$RBODY"
+BS_MISSING=$(jn "$RBODY" \
+  '["domain","creds","account_jwt","account_pub","operator_jwt"].filter(k=>!o[k]).join(",")')
+if [ -z "$BS_MISSING" ]; then
+  ok "bootstrap response carries domain, creds, account_jwt, account_pub, operator_jwt"
+else
+  no "bootstrap response missing: $BS_MISSING"
+fi
+req GET "/collections/things/records" "$TL"
+expect "leaf node CAN still list the collections it mirrors" 200 "$RCODE" "$RBODY"
+
+# The route is leaf-only: an org owner is not an edge box.
+req GET "/leaf/bootstrap" "$TA"
+expect "org owner cannot reach the leaf bootstrap route" "401|403|404" "$RCODE" "$RBODY"
+req GET "/leaf/bootstrap" ""
+expect "anonymous cannot reach the leaf bootstrap route" "401|403|404" "$RCODE" "$RBODY"
+
+echo ""
+echo "=== 13. regression: ordinary tenant reads still work ==="
 req GET "/collections/organizations/records" "$TB"
 expect "member can list their orgs" 200 "$RCODE" "$RBODY"
 req GET "/collections/memberships/records" "$TB"

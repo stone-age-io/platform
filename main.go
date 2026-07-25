@@ -289,9 +289,14 @@ func main() {
 		NatsRoleCollection:    natsOptions.RoleCollectionName,
 	})
 
-	// Narrow, leaf-node-authenticated route exposing only the operator JWT
-	// (nats_system_operator stays superuser-only at the collection level).
-	hooks.RegisterLeafNodeRoutes(app)
+	// Leaf-node-authenticated bootstrap routes. These serve the operator JWT, the
+	// org account JWT, and the leaf's own creds, so a leaf-node identity needs no
+	// read grant on nats_users or nats_accounts at all.
+	hooks.RegisterLeafNodeRoutes(app, hooks.LeafNodeRoutesOptions{
+		LeafNodeCollection:    "leaf_nodes",
+		NatsUserCollection:    natsOptions.UserCollectionName,
+		NatsAccountCollection: natsOptions.AccountCollectionName,
+	})
 
 	// Self-service credential rotation. Reading credentials needs no route (the
 	// nats_users rules are row-scoped to the caller's own identity); rotation does,
