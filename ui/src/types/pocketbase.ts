@@ -143,6 +143,9 @@ export interface LocationType extends BaseRecord {
   name?: string
   description?: string
   code?: string
+  // Optional JSON Schema describing the inventory fields tracked for this class
+  // of place. Drives the Location form's metadata editor; not validated on write.
+  metadata_schema?: Record<string, any> | null
 }
 
 // Location

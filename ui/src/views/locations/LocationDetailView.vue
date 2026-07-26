@@ -11,9 +11,10 @@ import { useLeafletMap } from '@/composables/useLeafletMap'
 import { usePagination } from '@/composables/usePagination'
 import { useUIStore } from '@/stores/ui'
 import { useNatsStore } from '@/stores/nats'
+import { useAuthStore } from '@/stores/auth'
 import { formatDate } from '@/utils/format'
-import JsonViewer from '@/components/common/JsonViewer.vue'
-import type { Location, Thing } from '@/types/pocketbase'
+import MetadataCard from '@/components/common/MetadataCard.vue'
+import type { Location, LocationType, Thing } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
@@ -26,17 +27,9 @@ const route = useRoute()
 const toast = useToast()
 const { confirm } = useConfirm()
 
-async function copyMetadata() {
-  if (!location.value?.metadata) return
-  try {
-    await navigator.clipboard.writeText(JSON.stringify(location.value.metadata, null, 2))
-    toast.success('Metadata copied')
-  } catch {
-    toast.error('Failed to copy')
-  }
-}
 const uiStore = useUIStore()
 const natsStore = useNatsStore()
+const authStore = useAuthStore()
 const { initMap, renderMarkers, updateTheme, invalidateSize, cleanup: cleanupMap } = useLeafletMap()
 
 // --- State ---
@@ -46,6 +39,22 @@ const deleting = ref(false)
 const mapContainerId = 'mini-map-container'
 const activeTab = ref<'floorplan' | 'coordinates'>('floorplan')
 const miniMapInitialized = ref(false)
+
+// The inventory schema declared by this Location's type, if it has one. The type
+// relation is already expanded on load, so this needs no extra request.
+const typeMetadataSchema = computed(
+  () => (location.value?.expand?.type as LocationType | undefined)?.metadata_schema || null,
+)
+
+// A quick metadata edit is an inventory write, which members hold. Deleting is
+// not — that stays on decommissionInventory.
+const canEditMetadata = computed(() => authStore.can.manageInventory)
+
+// MetadataCard has already persisted by the time this fires; patch the local
+// record rather than refetching the Location with its expands.
+function onMetadataSaved(metadata: Record<string, any> | null) {
+  if (location.value) location.value.metadata = metadata || undefined
+}
 
 // --- Pagination & Search: Sub-Locations ---
 const subLocSearch = ref('')
@@ -355,23 +364,18 @@ onUnmounted(() => cleanupMap())
             </dl>
           </BaseCard>
 
-          <!-- Metadata -->
-          <BaseCard v-if="location.metadata && Object.keys(location.metadata).length > 0">
-            <template #header>
-              <div class="flex justify-between items-center mb-2">
-                <h3 class="card-title text-base">Metadata</h3>
-                <button @click="copyMetadata" class="btn btn-xs btn-ghost gap-1 opacity-70 hover:opacity-100" title="Copy raw JSON">
-                  📋 Copy
-                </button>
-              </div>
-            </template>
-
-            <div class="bg-base-200 rounded-lg p-4 border border-base-300 overflow-hidden">
-              <div class="max-h-[500px] overflow-y-auto overflow-x-auto custom-scrollbar">
-                <JsonViewer :data="location.metadata" class="text-sm leading-relaxed" />
-              </div>
-            </div>
-          </BaseCard>
+          <!-- Metadata: read-only field list / JSON, with quick edit in place.
+               Shown even when empty for a caller who may edit — that empty card
+               is how the first field gets added. -->
+          <MetadataCard
+            v-if="canEditMetadata || (location.metadata && Object.keys(location.metadata).length > 0)"
+            collection="locations"
+            :record-id="location.id"
+            :model-value="location.metadata || null"
+            :schema="typeMetadataSchema"
+            :can-edit="canEditMetadata"
+            @saved="onMetadataSaved"
+          />
 
         </div>
 

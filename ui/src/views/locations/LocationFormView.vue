@@ -61,6 +61,13 @@ const selectedTypeHint = computed(() => {
   return t?.description || ''
 })
 
+// The inventory schema declared by the selected location type, if it has one.
+// Absent means MetadataEditor shows free-form key/value rows.
+const selectedTypeMetadataSchema = computed(() => {
+  const t = locationTypes.value.find(x => x.id === formData.value.type)
+  return t?.metadata_schema || null
+})
+
 // State
 const loading = ref(false)
 const loadingOptions = ref(true)
@@ -508,7 +515,11 @@ onMounted(() => {
           </BaseCard>
           
           <BaseCard title="Metadata">
-            <MetadataEditor ref="metadataEditor" v-model="formData.metadata" />
+            <MetadataEditor
+              ref="metadataEditor"
+              v-model="formData.metadata"
+              :schema="selectedTypeMetadataSchema"
+            />
           </BaseCard>
         </div>
       </div>

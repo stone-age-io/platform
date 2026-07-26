@@ -7,11 +7,11 @@ import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { useNatsStore } from '@/stores/nats'
 import { useAuthStore } from '@/stores/auth'
-import type { Thing, NatsUser, NebulaHost } from '@/types/pocketbase'
+import type { Thing, ThingType, NatsUser, NebulaHost } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import KvDashboard from '@/components/nats/KvDashboard.vue'
 import { TWIN_BUCKET, TWIN_DESIRED_BUCKET } from '@/utils/twin'
-import JsonViewer from '@/components/common/JsonViewer.vue'
+import MetadataCard from '@/components/common/MetadataCard.vue'
 import ExpiryBadge from '@/components/common/ExpiryBadge.vue'
 
 const router = useRouter()
@@ -30,17 +30,20 @@ const togglingActive = ref(false)
 
 const thingId = route.params.id as string
 
-/**
- * Grug utility: Copy raw JSON to clipboard
- */
-async function copyMetadata() {
-  if (!thing.value?.metadata) return
-  try {
-    await navigator.clipboard.writeText(JSON.stringify(thing.value.metadata, null, 2))
-    toast.success('Metadata copied to clipboard')
-  } catch (err) {
-    toast.error('Failed to copy')
-  }
+// The inventory schema declared by this Thing's type, if it has one. The type
+// relation is expanded on load, so this needs no extra request.
+const typeMetadataSchema = computed(
+  () => (thing.value?.expand?.type as ThingType | undefined)?.metadata_schema || null,
+)
+
+// A quick metadata edit is an inventory write, which members hold. Deleting or
+// deactivating is not — those stay on decommissionInventory.
+const canEditMetadata = computed(() => authStore.can.manageInventory)
+
+// MetadataCard has already persisted by the time this fires; patch the local
+// record rather than refetching the whole Thing with its expands.
+function onMetadataSaved(metadata: Record<string, any> | null) {
+  if (thing.value) thing.value.metadata = metadata || undefined
 }
 
 /**
@@ -285,23 +288,18 @@ onMounted(() => {
             </dl>
           </BaseCard>
 
-          <!-- UPDATED: Metadata Card -->
-          <BaseCard v-if="thing.metadata && Object.keys(thing.metadata).length > 0">
-            <template #header>
-              <div class="flex justify-between items-center mb-2">
-                <h3 class="card-title text-base">Metadata</h3>
-                <button @click="copyMetadata" class="btn btn-xs btn-ghost gap-1 opacity-70 hover:opacity-100" title="Copy raw JSON">
-                  📋 Copy
-                </button>
-              </div>
-            </template>
-
-            <div class="bg-base-200 rounded-lg p-4 border border-base-300 overflow-hidden">
-              <div class="max-h-[500px] overflow-y-auto overflow-x-auto custom-scrollbar">
-                <JsonViewer :data="thing.metadata" class="text-sm leading-relaxed" />
-              </div>
-            </div>
-          </BaseCard>
+          <!-- Metadata: read-only field list / JSON, with quick edit in place.
+               Rendered unconditionally now — an empty card is how you ADD the
+               first field to a Thing that has none. -->
+          <MetadataCard
+            v-if="canEditMetadata || (thing.metadata && Object.keys(thing.metadata).length > 0)"
+            collection="things"
+            :record-id="thing.id"
+            :model-value="thing.metadata || null"
+            :schema="typeMetadataSchema"
+            :can-edit="canEditMetadata"
+            @saved="onMetadataSaved"
+          />
         </div>
         
         <div class="space-y-6">

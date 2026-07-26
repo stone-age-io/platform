@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useAuthStore } from '@/stores/auth'
@@ -7,7 +7,7 @@ import { useToast } from '@/composables/useToast'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import { DEFAULT_PREFIX } from '@/utils/subjectResolver'
 import ThingTypeOperationFormView from '@/views/things/ThingTypeOperationFormView.vue'
-import SchemaBuilder from '@/components/things/SchemaBuilder.vue'
+import MetadataSchemaCard from '@/components/common/MetadataSchemaCard.vue'
 import type { ThingTypeCapability, ThingTypeOperation } from '@/types/pocketbase'
 
 const router = useRouter()
@@ -30,65 +30,10 @@ const form = ref({
 
 const availableCapabilities: ThingTypeCapability[] = ['publish', 'subscribe', 'request', 'reply']
 
-// Inventory metadata schema. Authored here with the same Form/JSON pair the
-// message-schema editor uses, then rendered as typed inputs on the Thing form.
-// An empty document means "no schema" — the Thing form falls back to free-form
-// key/value rows, which is what every type does today.
-const metadataSchemaDoc = ref<Record<string, any>>({})
-const metadataSchemaTab = ref<'form' | 'json'>('form')
-const metadataSchemaText = ref('')
-const metadataSchemaError = ref('')
-
-const metadataFieldCount = computed(() =>
-  Object.keys(metadataSchemaDoc.value?.properties || {}).length,
-)
-
-function refreshMetadataJson() {
-  metadataSchemaText.value = metadataFieldCount.value
-    ? JSON.stringify(metadataSchemaDoc.value, null, 2)
-    : ''
-}
-
-watch(metadataSchemaDoc, () => {
-  if (metadataSchemaTab.value !== 'json') refreshMetadataJson()
-}, { deep: true })
-
-function onMetadataJsonBlur() {
-  const text = metadataSchemaText.value.trim()
-  if (!text) {
-    metadataSchemaError.value = ''
-    metadataSchemaDoc.value = {}
-    return
-  }
-  try {
-    metadataSchemaDoc.value = JSON.parse(text)
-    metadataSchemaError.value = ''
-  } catch (err: any) {
-    metadataSchemaError.value = err.message
-  }
-}
-
-function switchMetadataTab(tab: 'form' | 'json') {
-  if (tab === metadataSchemaTab.value) return
-  if (metadataSchemaTab.value === 'json') {
-    onMetadataJsonBlur()
-    if (metadataSchemaError.value) {
-      toast.error('JSON has errors — fix them before switching views')
-      return
-    }
-  } else {
-    refreshMetadataJson()
-  }
-  metadataSchemaTab.value = tab
-}
-
-// Normalise to the shape MetadataEditor/JsonSchemaForm expect. A builder with
-// no properties yet produces `{type:'object', properties:{}}`, which is not a
-// schema — store null so the Thing form takes the free-form path.
-function metadataSchemaPayload(): Record<string, any> | null {
-  if (!metadataFieldCount.value) return null
-  return { type: 'object', ...metadataSchemaDoc.value }
-}
+// Inventory metadata schema, authored by MetadataSchemaCard. Null means the type
+// declares no fields and the Thing form falls back to free-form key/value rows.
+const metadataSchema = ref<Record<string, any> | null>(null)
+const metadataSchemaCard = ref<InstanceType<typeof MetadataSchemaCard> | null>(null)
 
 const availableOperations = ref<ThingTypeOperation[]>([])
 
@@ -133,8 +78,7 @@ async function loadData() {
       operations: record.operations || [],
     }
     const raw = record.metadata_schema
-    metadataSchemaDoc.value = (typeof raw === 'string' ? JSON.parse(raw) : raw) || {}
-    refreshMetadataJson()
+    metadataSchema.value = (typeof raw === 'string' ? JSON.parse(raw) : raw) || null
   } catch (err: any) {
     toast.error('Failed to load type')
     router.push('/things/types')
@@ -144,19 +88,13 @@ async function loadData() {
 }
 
 async function submit() {
-  if (metadataSchemaTab.value === 'json') {
-    onMetadataJsonBlur()
-    if (metadataSchemaError.value) {
-      toast.error('Metadata schema is not valid JSON')
-      return
-    }
-  }
+  if (metadataSchemaCard.value && !metadataSchemaCard.value.commit()) return
 
   loading.value = true
   try {
     const data: any = {
       ...form.value,
-      metadata_schema: metadataSchemaPayload(),
+      metadata_schema: metadataSchema.value,
       organization: isEdit.value ? undefined : authStore.currentOrgId,
     }
 
@@ -280,48 +218,11 @@ onMounted(async () => {
         </div>
       </BaseCard>
 
-      <BaseCard title="Inventory Fields">
-        <p class="text-sm text-base-content/70 mb-4">
-          Describes what is tracked about each device of this type — a service date,
-          an asset tag, a warranty reference. Members filling in a Thing get these as
-          typed inputs instead of a JSON blob. Leave empty to let them add free-form
-          fields instead.
-          <span class="block mt-1 text-base-content/50">
-            Rendering only: existing Things are never invalidated by a change here,
-            and fields not listed are kept.
-          </span>
-        </p>
-
-        <div role="tablist" class="tabs tabs-bordered mb-4">
-          <a
-            role="tab"
-            class="tab"
-            :class="{ 'tab-active': metadataSchemaTab === 'form' }"
-            @click="switchMetadataTab('form')"
-          >Form</a>
-          <a
-            role="tab"
-            class="tab"
-            :class="{ 'tab-active': metadataSchemaTab === 'json' }"
-            @click="switchMetadataTab('json')"
-          >JSON</a>
-        </div>
-
-        <SchemaBuilder v-if="metadataSchemaTab === 'form'" v-model="metadataSchemaDoc" />
-
-        <div v-else class="form-control">
-          <textarea
-            v-model="metadataSchemaText"
-            class="textarea textarea-bordered font-mono text-xs"
-            rows="12"
-            placeholder='{"type":"object","properties":{"last_service":{"type":"string","format":"date"}}}'
-            @blur="onMetadataJsonBlur"
-          ></textarea>
-          <label v-if="metadataSchemaError" class="label">
-            <span class="label-text-alt text-error">{{ metadataSchemaError }}</span>
-          </label>
-        </div>
-      </BaseCard>
+      <MetadataSchemaCard
+        ref="metadataSchemaCard"
+        v-model="metadataSchema"
+        noun="device"
+      />
 
       <!-- Actions (Outside Card) -->
       <div class="flex justify-end gap-2">

@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=108         # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=112         # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -440,6 +440,17 @@ else
   no "owner expand=nats_user missing; expected $DEV_NATS"
 fi
 
+# Quick metadata edit from the detail page (MetadataCard) sends ONLY `metadata`.
+# That is load-bearing rather than economical: the member branch of
+# things.updateRule requires `nats_user:changed = false`, and a field absent from
+# the body counts as unchanged. This Thing now HAS a linked identity (attached
+# just above), which is exactly the live case -- so assert the partial update
+# still passes with the relation populated, not merely on a bare record.
+req PATCH "/collections/things/records/$THING" "$TB" '{"metadata":{"last_service":"2026-03-14"}}'
+expect "member CAN patch only metadata on a thing with a linked identity" 200 "$RCODE" "$RBODY"
+req PATCH "/collections/things/records/$THING" "$TG" '{"metadata":{"last_service":"2026-03-15"}}'
+expect "dashboard cannot patch a thing's metadata (same payload)" "403|400|404" "$RCODE" "$RBODY"
+
 # Rotation is a route, not a rule: it must permit a write to exactly one field
 # (`regenerate`), which a rule can only approximate with an :isset deny-list.
 #
@@ -512,6 +523,12 @@ expect "member CAN create a location (same payload, so the deny was authz)" 200 
 MLOC=$(j "$RBODY" id)
 req PATCH "/collections/locations/records/$MLOC" "$TG" '{"name":"Renamed By Dashboard"}'
 expect "dashboard cannot edit a location" "403|400|404" "$RCODE" "$RBODY"
+
+# Same quick metadata edit on the locations side (MetadataCard is shared).
+req PATCH "/collections/locations/records/$MLOC" "$TB" '{"metadata":{"last_inspection":"2026-03-14"}}'
+expect "member CAN patch only metadata on a location" 200 "$RCODE" "$RBODY"
+req PATCH "/collections/locations/records/$MLOC" "$TG" '{"metadata":{"last_inspection":"2026-03-15"}}'
+expect "dashboard cannot patch a location's metadata (same payload)" "403|400|404" "$RCODE" "$RBODY"
 
 echo ""
 echo "=== 12. a leaf node reads no NATS collection at all ==="
