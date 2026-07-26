@@ -65,7 +65,7 @@ async function loadData() {
   }
 }
 
-async function updateRole(newRole: 'admin' | 'member' | 'badge') {
+async function updateRole(newRole: 'admin' | 'member' | 'dashboard') {
   if (!membership.value || membership.value.role === newRole) return
   
   roleSaving.value = true
@@ -242,12 +242,12 @@ onMounted(loadData)
                   </button>
                   <button
                     class="btn join-item flex-1 border-none shadow-none"
-                    :class="membership.role === 'badge' ? 'btn-primary' : 'btn-ghost'"
-                    @click="updateRole('badge')"
+                    :class="membership.role === 'dashboard' ? 'btn-primary' : 'btn-ghost'"
+                    @click="updateRole('dashboard')"
                     :disabled="roleSaving"
                   >
-                    <span v-if="roleSaving && membership.role !== 'badge'" class="loading loading-spinner loading-xs"></span>
-                    Badge
+                    <span v-if="roleSaving && membership.role !== 'dashboard'" class="loading loading-spinner loading-xs"></span>
+                    Dashboard Only
                   </button>
                 </div>
               </div>

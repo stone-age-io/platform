@@ -44,7 +44,7 @@ npm run build
 ### 2. Build the Backend
 ```bash
 # From the root directory
-go build -o stone-age main.go
+go build -o stone-age .
 ```
 
 ### 3. Initial Setup (first deployment only)

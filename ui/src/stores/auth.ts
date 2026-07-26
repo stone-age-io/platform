@@ -84,10 +84,12 @@ export const useAuthStore = defineStore('auth', () => {
     }
   })
 
-  // Badge user: restricted to badge + dashboard views only
-  const isBadgeUser = computed(() => {
+  // Dashboard user: the Visualizer and their own settings, nothing else. This is
+  // the least privileged role -- it holds no capability in the `can` map above,
+  // which is why scripts/test-authz.sh uses it to prove the rules are allowlists.
+  const isDashboardUser = computed(() => {
     if (isSuperAdmin.value) return false
-    return currentMembership.value?.role === 'badge'
+    return currentMembership.value?.role === 'dashboard'
   })
 
   // Operator: can manage all organizations (create/edit/delete orgs, invite to any org)
@@ -274,7 +276,7 @@ export const useAuthStore = defineStore('auth', () => {
     currentNatsUser,
     userRole,
     can,
-    isBadgeUser,
+    isDashboardUser,
     isOperator,
     canManageOrganizations,
     

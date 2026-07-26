@@ -39,7 +39,7 @@ export interface Organization extends BaseRecord {
 export interface Membership extends BaseRecord {
   user: string // User ID
   organization: string // Organization ID
-  role: 'owner' | 'admin' | 'member' | 'badge'
+  role: 'owner' | 'admin' | 'member' | 'dashboard'
   invited_by?: string
   nats_user?: string
 }
@@ -51,7 +51,7 @@ export interface Invitation extends BaseRecord {
   expires_at?: string
   resend_invite?: boolean
   organization: string
-  role: 'admin' | 'member' | 'badge'
+  role: 'admin' | 'member' | 'dashboard'
   invited_by?: string
 }
 

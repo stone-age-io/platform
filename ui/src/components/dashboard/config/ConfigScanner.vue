@@ -40,11 +40,11 @@
       </div>
     </div>
 
-    <!-- KV Lookup (Badges) Section -->
+    <!-- KV Lookup Section -->
     <div class="config-section">
       <label class="toggle-label">
         <input type="checkbox" v-model="form.scannerKvEnabled" class="checkbox checkbox-sm" />
-        <span class="section-title">KV Lookup (badges)</span>
+        <span class="section-title">KV Lookup</span>
       </label>
 
       <template v-if="form.scannerKvEnabled">
@@ -54,7 +54,7 @@
             v-model="form.scannerKvBucket"
             type="text"
             class="form-input"
-            placeholder="badges"
+            placeholder="bucket name"
           />
           <span v-if="errors.scannerKvBucket" class="error-text">{{ errors.scannerKvBucket }}</span>
         </div>
@@ -68,14 +68,14 @@
             placeholder="{value}"
           />
           <div class="help-text">
-            <code>{value}</code> is the scanned string (nkey for badges).
+            <code>{value}</code> is the scanned string.
           </div>
         </div>
 
         <div class="form-group">
           <label>Validation Rules</label>
           <div class="help-text rules-help">
-            All rules must pass for GO. Empty list → any found record is GO.
+            All rules must pass for PASS. Empty list → any found record passes.
             Use dot-paths for nested fields (e.g. <code>metadata.level</code>).
           </div>
 
@@ -116,7 +116,7 @@
                 v-model="rule.reason"
                 type="text"
                 class="form-input rule-reason"
-                placeholder="NO-GO label (optional)"
+                placeholder="FAIL label (optional)"
               />
               <span v-if="errors[`scannerRules.${idx}.field`]" class="error-text">
                 {{ errors[`scannerRules.${idx}.field`] }}
@@ -134,7 +134,7 @@
       </template>
     </div>
 
-    <!-- PocketBase Lookup (Optional Fallback for Non-Badge Scans) -->
+    <!-- PocketBase Lookup (Optional) -->
     <div class="config-section">
       <label class="toggle-label">
         <input type="checkbox" v-model="form.scannerPbEnabled" class="checkbox checkbox-sm" />

@@ -151,10 +151,10 @@ mkuser() { # <email> -> id
 }
 ALICE=$(mkuser alice@test.local)
 BOB=$(mkuser bob@test.local)
-BADGE=$(mkuser badge@test.local)
+DASH=$(mkuser dashboard@test.local)
 EVE=$(mkuser eve@test.local)
 [ -z "$ALICE" ] && die "user create failed: $RBODY"
-echo "  users: alice=$ALICE bob=$BOB badge=$BADGE eve=$EVE"
+echo "  users: alice=$ALICE bob=$BOB dashboard=$DASH eve=$EVE"
 
 req POST /collections/organizations/records "$SU" \
   "{\"name\":\"TestOrg\",\"owner\":\"$ALICE\",\"active\":true}"
@@ -170,13 +170,13 @@ req POST /collections/memberships/records "$SU" \
   "{\"user\":\"$BOB\",\"organization\":\"$ORG\",\"role\":\"member\"}"
 MBOB=$(j "$RBODY" id)
 req POST /collections/memberships/records "$SU" \
-  "{\"user\":\"$BADGE\",\"organization\":\"$ORG\",\"role\":\"badge\"}"
-MBADGE=$(j "$RBODY" id)
+  "{\"user\":\"$DASH\",\"organization\":\"$ORG\",\"role\":\"dashboard\"}"
+MDASH=$(j "$RBODY" id)
 [ -z "$MBOB" ] && die "membership create failed: $RBODY"
-for u in "$ALICE" "$BOB" "$BADGE"; do
+for u in "$ALICE" "$BOB" "$DASH"; do
   req PATCH "/collections/users/records/$u" "$SU" "{\"current_organization\":\"$ORG\"}"
 done
-echo "  memberships: bob=$MBOB badge=$MBADGE"
+echo "  memberships: bob=$MBOB dashboard=$MDASH"
 
 # NATS identities. Creating the org auto-provisions its account (and a default
 # role); fall back to creating a role if this deployment does not.
@@ -220,7 +220,7 @@ login() {
 }
 TA=$(login alice@test.local)   # owner
 TB=$(login bob@test.local)     # member
-TG=$(login badge@test.local)   # badge
+TG=$(login dashboard@test.local)   # dashboard
 [ -z "$TA" ] || [ -z "$TB" ] || [ -z "$TG" ] && die "user login failed: $RBODY"
 
 # ----------------------------------------------------------------- the checks
@@ -258,18 +258,18 @@ expect "owner CAN change a member's role (admin UX intact)" 200 "$RCODE" "$RBODY
 req PATCH "/collections/memberships/records/$MBOB" "$SU" '{"role":"member"}' # reset
 
 echo ""
-echo "=== 3. 'badge' no longer passes admin checks ==="
+echo "=== 3. 'dashboard' no longer passes admin checks ==="
 # The old rules said role ?!= "member", which any role other than member
-# satisfied -- including badge, a deliberately low-trust role.
+# satisfied -- including dashboard, a deliberately low-trust role.
 req POST /collections/thing_types/records "$TG" \
-  "{\"name\":\"BadgeType\",\"code\":\"BT1\",\"organization\":\"$ORG\"}"
-expect "badge cannot create thing_types" "403|400|404" "$RCODE" "$RBODY"
+  "{\"name\":\"DashType\",\"code\":\"BT1\",\"organization\":\"$ORG\"}"
+expect "dashboard cannot create thing_types" "403|400|404" "$RCODE" "$RBODY"
 req POST /collections/invites/records "$TG" \
   "{\"email\":\"x@test.local\",\"organization\":\"$ORG\",\"role\":\"member\"}"
-expect "badge cannot invite users" "403|400|404" "$RCODE" "$RBODY"
+expect "dashboard cannot invite users" "403|400|404" "$RCODE" "$RBODY"
 req POST /collections/message_schemas/records "$TG" \
   "{\"namespace\":\"n\",\"name\":\"s\",\"version\":\"1.0.0\",\"organization\":\"$ORG\",\"schema\":{}}"
-expect "badge cannot create message_schemas" "403|400|404" "$RCODE" "$RBODY"
+expect "dashboard cannot create message_schemas" "403|400|404" "$RCODE" "$RBODY"
 req POST /collections/thing_types/records "$TA" \
   "{\"name\":\"OwnerType\",\"code\":\"OT1\",\"organization\":\"$ORG\"}"
 expect "owner CAN still create thing_types" 200 "$RCODE" "$RBODY"
@@ -380,8 +380,8 @@ req POST /collections/nats_users/records "$TB" "$(natsuser_payload member-minted
 expect "member cannot mint a NATS identity" "403|400|404" "$RCODE" "$RBODY"
 req POST /collections/nats_users/records "$TA" "$(natsuser_payload owner-minted)"
 expect "owner CAN mint a NATS identity (same payload)" 200 "$RCODE" "$RBODY"
-req POST /collections/nats_users/records "$TG" "$(natsuser_payload badge-minted)"
-expect "badge cannot mint a NATS identity" "403|400|404" "$RCODE" "$RBODY"
+req POST /collections/nats_users/records "$TG" "$(natsuser_payload dashboard-minted)"
+expect "dashboard cannot mint a NATS identity" "403|400|404" "$RCODE" "$RBODY"
 
 role_payload() { echo "{\"name\":\"$1\",\"organization\":\"$ORG\",\"publish_permissions\":[\">\"]}"; }
 req POST /collections/nats_roles/records "$TB" "$(role_payload member-role)"
@@ -486,32 +486,32 @@ req PATCH "/collections/organizations/records/$ORG" "$TO" '{"name":"Renamed By O
 expect "platform operator CAN update it (same field, so the deny was authz)" 200 "$RCODE" "$RBODY"
 
 echo ""
-echo "=== 11. badge is excluded from inventory writes ==="
+echo "=== 11. dashboard is excluded from inventory writes ==="
 # things create/update admitted a member through a branch that restricted the
 # FIELDS (nats_user/nebula_host unchanged) without naming a ROLE, and locations
-# had no role check at all -- so badge, the most restricted role, satisfied both.
+# had no role check at all -- so dashboard, the most restricted role, satisfied both.
 # Same failure as the `role ?!= "member"` deny-list: say which roles may act.
 req POST /collections/things/records "$TG" \
-  "{\"email\":\"badgething@test.local\",\"password\":\"Password123!\",\"passwordConfirm\":\"Password123!\",\"emailVisibility\":true,\"name\":\"Badge Thing\",\"code\":\"BT1\",\"organization\":\"$ORG\"}"
-expect "badge cannot create a thing" "403|400|404" "$RCODE" "$RBODY"
+  "{\"email\":\"dashthing@test.local\",\"password\":\"Password123!\",\"passwordConfirm\":\"Password123!\",\"emailVisibility\":true,\"name\":\"Dash Thing\",\"code\":\"BT1\",\"organization\":\"$ORG\"}"
+expect "dashboard cannot create a thing" "403|400|404" "$RCODE" "$RBODY"
 req POST /collections/things/records "$TB" \
   "{\"email\":\"memberthing@test.local\",\"password\":\"Password123!\",\"passwordConfirm\":\"Password123!\",\"emailVisibility\":true,\"name\":\"Member Thing\",\"code\":\"MT1\",\"organization\":\"$ORG\"}"
 expect "member CAN create a thing (same payload, so the deny was authz)" 200 "$RCODE" "$RBODY"
 
-req PATCH "/collections/things/records/$THING" "$TG" '{"name":"Renamed By Badge"}'
-expect "badge cannot edit a thing" "403|400|404" "$RCODE" "$RBODY"
+req PATCH "/collections/things/records/$THING" "$TG" '{"name":"Renamed By Dashboard"}'
+expect "dashboard cannot edit a thing" "403|400|404" "$RCODE" "$RBODY"
 req PATCH "/collections/things/records/$THING" "$TB" '{"name":"Renamed By Member"}'
 expect "member CAN edit a thing (same field, so the deny was authz)" 200 "$RCODE" "$RBODY"
 
 req POST /collections/locations/records "$TG" \
-  "{\"name\":\"Badge Location\",\"code\":\"BL1\",\"organization\":\"$ORG\"}"
-expect "badge cannot create a location" "403|400|404" "$RCODE" "$RBODY"
+  "{\"name\":\"Dashboard Location\",\"code\":\"BL1\",\"organization\":\"$ORG\"}"
+expect "dashboard cannot create a location" "403|400|404" "$RCODE" "$RBODY"
 req POST /collections/locations/records "$TB" \
   "{\"name\":\"Member Location\",\"code\":\"ML1\",\"organization\":\"$ORG\"}"
 expect "member CAN create a location (same payload, so the deny was authz)" 200 "$RCODE" "$RBODY"
 MLOC=$(j "$RBODY" id)
-req PATCH "/collections/locations/records/$MLOC" "$TG" '{"name":"Renamed By Badge"}'
-expect "badge cannot edit a location" "403|400|404" "$RCODE" "$RBODY"
+req PATCH "/collections/locations/records/$MLOC" "$TG" '{"name":"Renamed By Dashboard"}'
+expect "dashboard cannot edit a location" "403|400|404" "$RCODE" "$RBODY"
 
 echo ""
 echo "=== 12. a leaf node reads no NATS collection at all ==="
@@ -635,7 +635,7 @@ fi
 req POST "/org/nats-account/keys" "$TB" '{"action":"rotate"}'
 expect "member cannot rotate account keys" "401|403|404" "$RCODE" "$RBODY"
 req POST "/org/nats-account/keys" "$TG" '{"action":"rotate"}'
-expect "badge cannot rotate account keys" "401|403|404" "$RCODE" "$RBODY"
+expect "dashboard cannot rotate account keys" "401|403|404" "$RCODE" "$RBODY"
 req POST "/org/nats-account/keys" "" '{"action":"rotate"}'
 expect "anonymous cannot rotate account keys" "401|403|404" "$RCODE" "$RBODY"
 req POST "/org/nats-account/keys" "$TA" '{"action":"set_limits","max_payload":99999999}'
@@ -691,7 +691,7 @@ TT=$(j "$RBODY" token)
 # Who may flip it. Same roles as delete: taking a device out of service revokes
 # its credential, so it is a management action, not inventory editing.
 req PATCH "/collections/things/records/$THING" "$TG" '{"active":false}'
-expect "badge cannot deactivate a thing" "403|400|404" "$RCODE" "$RBODY"
+expect "dashboard cannot deactivate a thing" "403|400|404" "$RCODE" "$RBODY"
 req PATCH "/collections/things/records/$THING" "$TB" '{"active":false}'
 expect "member cannot deactivate a thing" "403|400|404" "$RCODE" "$RBODY"
 req PATCH "/collections/things/records/$THING" "$TA" '{"active":false}'

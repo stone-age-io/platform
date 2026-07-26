@@ -75,8 +75,6 @@ async function handleOAuthLogin(provider: string) {
 function redirectUser() {
   if (authStore.memberships.length === 0 && !authStore.isSuperAdmin) {
     router.push('/accept-invite')
-  } else if (authStore.isBadgeUser) {
-    router.push('/badge')
   } else {
     router.push('/')
   }

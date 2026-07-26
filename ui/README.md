@@ -1,6 +1,6 @@
 # Stone Age Console (UI)
 
-The official web management console for the Stone Age Platform. A "Single Pane of Glass" for IoT asset management, Edge orchestration, Real-time Digital Twins, and Operator Badging.
+The official web management console for the Stone Age Platform. A "Single Pane of Glass" for IoT asset management, Edge orchestration, and Real-time Digital Twins.
 
 ## ⚡ Tech Stack
 
@@ -11,7 +11,7 @@ The official web management console for the Stone Age Platform. A "Single Pane o
 *   **Routing**: [Vue Router](https://router.vuejs.org/)
 *   **Maps**: [Leaflet](https://leafletjs.com/) (geospatial + floor-plan overlays)
 *   **Charts**: [ECharts](https://echarts.apache.org/) via `vue-echarts` (Visualizer chart/gauge widgets)
-*   **QR / Scanning**: `qrcode` for badge rendering, camera-based scanner widget
+*   **QR / Scanning**: `html5-qrcode` camera-based scanner widget
 *   **Real-time / Messaging**: [NATS.js](https://github.com/nats-io/nats.js) (Modular: Core, KV, JetStream)
 *   **Backend SDK**: [PocketBase JS SDK](https://github.com/pocketbase/js-sdk)
 
@@ -52,8 +52,7 @@ src/
     ├── admin/         # Operator-only organization management
     ├── audit/         # Audit log viewer (pb-audit)
     ├── auth/          # Login, invitation acceptance
-    ├── badge/         # Badge identity card (QR + NKey + live status)
-    ├── dashboard/     # Visualizer (also reused as the Badge dashboard)
+    ├── dashboard/     # Visualizer (the home view; the `dashboard` role's only screen)
     ├── leaf_nodes/    # Edge nodes (leaf_nodes records) + NATS identity / Nebula linking
     ├── locations/     # Locations + LocationTypes
     ├── nats/          # Account, Users, Roles, Imports, Exports, Streams, KV Buckets
@@ -71,7 +70,7 @@ src/
 The application is fully multi-tenant.
 *   **Organization Switching:** Changing the organization in the sidebar updates the user's context in the backend.
 *   **Reactive Reloads:** A global event triggers all active views to reload data relevant to the selected organization.
-*   **Role Gates:** Route meta (`requiresAuth`, `requiresOperator`, `requiresRole`) drives navigation; super-users and operators get cross-org admin screens, owners/admins see org-scoped config, members see the Visualizer and their own Things/Locations, and badge users are boxed into the badge experience.
+*   **Role Gates:** Route meta (`requiresAuth`, `requiresOperator`, `requiresRole`) drives navigation; super-users and operators get cross-org admin screens, owners/admins see org-scoped config, members see the Visualizer and their own Things/Locations, and `dashboard`-role users are boxed into the Visualizer and their own settings.
 *   **Permissions:** The UI relies on backend API rules. We do not filter data for security in JS; we display what the API returns.
 
 ### 2. Infrastructure as Data
@@ -156,21 +155,22 @@ We bridge the gap between **SQL Metadata** (PocketBase) and **Live State** (NATS
 *   **Live Message Stream:** The `LiveMessageStream` component tails core NATS subjects for debugging wire traffic.
 
 ### 5. Visualizer (Dashboard)
-The Visualizer is the home view and is also embedded as the Badge dashboard. It is a per-user, per-org widget canvas backed by `stores/dashboard.ts`.
+The Visualizer is the home view at `/`, and the only screen the `dashboard` role can reach. It is a per-user, per-org widget canvas backed by `stores/dashboard.ts`.
 
 *   **Grid Layout:** Draggable/resizable grid with a sidebar tree of saved dashboards (`DashboardSidebar`, `DashboardTree`, `DashboardGrid`).
 *   **Widgets:** `button`, `switch`, `slider`, `publisher`, `scanner` (camera / QR), `kv`, `kvtable`, `chart`, `gauge`, `stat`, `status`, `text`, `markdown`, `console`, `map` (geospatial + floorplan with dynamic marker panels), and `pocketbase` (live PB collection views).
 *   **Configuration:** Each widget type has a dedicated config panel under `components/dashboard/config/` plus shared editors for gauge zones, thresholds, and map markers.
 *   **Variables:** Dashboards expose per-scope variables via `VariableBar` / `VariableEditorModal`, letting one layout parametrize subjects, topics, and bucket keys.
 *   **Kiosk & Shortcuts:** Full-screen kiosk mode, keyboard shortcuts (`useKeyboardShortcuts`), and a debug panel for inspecting NATS traffic and widget state.
-*   **Badge Mode:** When rendered at `/badge/dashboard`, the Visualizer strips chrome (no kiosk/debug/grid selector) and restricts the widget palette to a badge-safe set (`button`, `switch`, `slider`, `publisher`, `kv`, `kvtable`, `text`, `status`, `stat`, `scanner`).
+*   **Restricted Mode:** For the `dashboard` role the Visualizer strips chrome (no kiosk/debug/grid selector) and narrows the widget palette to `button`, `switch`, `slider`, `publisher`, `kv`, `kvtable`, `text`, `status`, `stat`, `scanner`. It keys off the **role**, not the path — there is one Visualizer route, so a path check would need hand-syncing with the router.
 
-### 6. Operator Badge
-The `/badge` experience turns a browser into a wearable-style operator identity card.
+### 6. Scanner Widget
+A camera QR/barcode reader for validation and check-in workflows, usable on a phone by the `dashboard` role.
 
-*   **Identity Card (`BadgeView`):** Shows the user's name, email, organization, role, member-since date, NATS connection status, and a QR code encoding the user's NATS NKey public key for fast pairing/scanning.
-*   **Badge Dashboard:** The Visualizer rendered in badge mode provides a touch-friendly control surface for floor operators.
-*   **Access Model:** Users with the `badge` membership role are automatically routed into `/badge` and restricted to `/badge/*` and `/settings`. Non-badge users can still preview their own card at `/my-badge`.
+*   **Lookup:** Resolves the scanned string against a NATS KV bucket (any key template, any JSON value shape) and/or a PocketBase collection filter.
+*   **Verdict:** Configurable rules over the resolved record produce PASS/FAIL with a reason (`scannerRules.ts`). Rules are dot-path field checks — `truthy`, `equals`, `in`, `future`, `exists`, and friends.
+*   **Publish:** Optionally publishes the scan on a templatable subject with a fixed payload shape (`scannerPublish.ts`).
+*   **The verdict is advisory, not an authorization decision.** It is computed in the browser from a record the browser read, and the published `passed` is self-asserted by the scanning device. Anything that must actually *authorize* — opening a door, releasing an asset — has to decide server- or edge-side from the raw scanned value. For physical access that is [`access-control`](https://github.com/stone-age-io/access-control)'s `policy.Decide` at the controller.
 
 ### 7. Responsive Design
 We prioritize simplicity and maintainability:
@@ -209,7 +209,7 @@ This compiles the application into `../pb_public`. The Go binary embeds this dir
 
 ## 🔌 NATS Connection Setup
 
-To enable Live State, Visualizer live widgets, and Badge live status:
+To enable Live State and Visualizer live widgets:
 
 1.  **NATS Server:** Ensure your NATS server has WebSockets enabled in its config (`websocket { port: 9222 }`).
 2.  **User Settings:**

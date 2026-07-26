@@ -149,14 +149,6 @@ const routes: RouteRecordRaw[] = [
       
       // Settings
       { path: 'settings', name: 'Settings', component: () => import('@/views/settings/UserSettingsView.vue') },
-
-      // Badge (for non-badge users to view their badge card)
-      { path: 'my-badge', name: 'MyBadge', component: () => import('@/views/badge/BadgeView.vue') },
-
-      // Badge routes (badge-role users, served via MainLayout with stripped sidebar)
-      { path: 'badge', name: 'Badge', component: () => import('@/views/badge/BadgeView.vue') },
-      { path: 'badge/dashboard', name: 'BadgeDashboard', component: () => import('@/views/dashboard/VisualizerView.vue') },
-      { path: 'badge/settings', name: 'BadgeSettings', component: () => import('@/views/settings/UserSettingsView.vue') },
     ],
   },
   // Catch-all: redirect unknown paths to home
@@ -176,11 +168,14 @@ router.beforeEach((to, _from, next) => {
     return
   }
 
-  // Badge users can only access /badge/* and /settings routes
-  if (authStore.isBadgeUser && to.meta.requiresAuth !== false) {
-    const allowed = ['/badge', '/settings']
-    if (!allowed.some(p => to.path === p || to.path.startsWith(p + '/'))) {
-      next('/badge')
+  // Dashboard users reach the Visualizer at '/' and their own settings, nothing
+  // else. There is no separate route tree for them: '/' is already the Visualizer,
+  // and VisualizerView strips its chrome off the ROLE rather than off the path.
+  if (authStore.isDashboardUser && to.meta.requiresAuth !== false) {
+    const allowed = ['/', '/settings']
+    const permitted = allowed.some(p => to.path === p || (p !== '/' && to.path.startsWith(p + '/')))
+    if (!permitted) {
+      next('/')
       return
     }
   }

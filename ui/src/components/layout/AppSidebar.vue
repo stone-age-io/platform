@@ -54,15 +54,13 @@ const filteredMemberships = computed(() => {
 const orgInitial = computed(() => authStore.currentOrg?.name?.[0]?.toUpperCase() || '?')
 const userInitial = computed(() => authStore.user?.name?.[0]?.toUpperCase() || 'U')
 
-// Badge users: home is /badge, others: /
-const homeRoute = computed(() => authStore.isBadgeUser ? '/badge' : '/')
+const homeRoute = computed(() => '/')
 
 const menuItems = computed(() => {
-  // Badge users: minimal nav — only badge card + dashboard
-  if (authStore.isBadgeUser) {
+  // Dashboard users: the Visualizer is their whole world.
+  if (authStore.isDashboardUser) {
     return [
-      { label: 'Badge', icon: '🪪', path: '/badge' },
-      { label: 'Dashboard', icon: '📊', path: '/badge/dashboard' },
+      { label: 'Dashboard', icon: '📊', path: '/' },
     ]
   }
 
@@ -171,7 +169,6 @@ const isUnderTypes = (p: string) =>
   p.includes('/types') || TYPES_CHILD_PATHS.some(cp => p.startsWith(cp))
 
 const isActive = (path: string) => {
-  if (path === '/badge' && route.path === '/badge') return true
   if (path === '/types') return isUnderTypes(route.path)
   if (path === '/' && route.path === '/') return true
   if (path === '/overview' && route.path === '/overview') return true
@@ -556,13 +553,8 @@ async function handleDisconnect() {
             :class="effectiveCompact ? 'fixed w-72' : 'absolute w-full mb-1 left-0 bottom-full'"
             :style="effectiveCompact ? userDropdownPos : undefined"
           >
-            <li v-if="!authStore.isBadgeUser">
-              <router-link to="/my-badge" @click="closeUserDropdown(); closeDrawer()">
-                🪪 My Badge
-              </router-link>
-            </li>
             <li>
-              <router-link :to="authStore.isBadgeUser ? '/badge/settings' : '/settings'" @click="closeUserDropdown">
+              <router-link to="/settings" @click="closeUserDropdown">
                 ⚙️ Settings
               </router-link>
             </li>

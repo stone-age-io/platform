@@ -212,16 +212,21 @@ export interface PocketBaseWidgetConfig {
 export type ScanPurpose = 'muster' | 'verify' | 'other'
 
 export interface ScannerWidgetConfig {
-  // KV lookup — primary badge path (value of key is a badge record, see below)
+  // KV lookup — resolve the scanned string against a bucket the caller's own NATS
+  // credential can read. The value may be any JSON shape; rules below read it.
   kvEnabled?: boolean
-  kvBucket?: string          // e.g. "badges"
+  kvBucket?: string
   kvKeyTemplate?: string     // e.g. "{value}" — {value} replaced with scanned content
 
-  // Validation rules applied to the KV record to decide GO/NO-GO.
-  // Empty/undefined → any found record is GO.
+  // Validation rules applied to the looked-up record to decide PASS/FAIL.
+  // Empty/undefined → any found record passes.
+  //
+  // This verdict is computed IN THE BROWSER and is advisory: it tells the operator
+  // holding the device what the record says. It is not an authorization decision
+  // and nothing downstream should treat the published `passed` as one.
   rules?: ScannerRule[]
 
-  // PocketBase lookup — optional, for non-badge (asset/thing) scan scenarios
+  // PocketBase lookup — optional, for asset/thing scan scenarios
   pbEnabled?: boolean
   pbCollection?: string
   pbFilter?: string          // e.g. 'public_key = "{value}"'
@@ -257,16 +262,7 @@ export interface ScannerRule {
   field: string           // dot-path into the record, e.g. "revoked" or "metadata.level"
   op: ScannerRuleOp
   value?: any             // used by equals/not_equals/in/not_in
-  reason?: string         // shown as NO-GO label; falls back to `${field} ${op}`
-}
-
-// --- Badge KV record (value stored in the `badges` bucket) ---
-// Interpreted by the scanner widget for GO/NO-GO decisions.
-export interface BadgeRecord {
-  issued_at?: string | null    // ISO timestamp; when the badge was issued
-  expires_at?: string | null   // ISO timestamp; null/absent = no expiry
-  revoked?: boolean            // default false
-  metadata?: Record<string, any>
+  reason?: string         // shown as the FAIL label; falls back to `${field} ${op}`
 }
 
 // --- KV Table Widget Types ---
@@ -651,7 +647,7 @@ export function createDefaultWidget(type: WidgetType, position: { x: number; y: 
       base.title = 'Scanner'
       base.scannerConfig = {
         kvEnabled: true,
-        kvBucket: 'badges',
+        kvBucket: '',
         kvKeyTemplate: '{value}',
         pbEnabled: false,
         pbCollection: '',

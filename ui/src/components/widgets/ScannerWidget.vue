@@ -40,11 +40,11 @@
     <div v-else-if="state === 'result'" class="scanner-result">
       <div
         class="result-banner"
-        :class="passed ? 'result-banner--go' : 'result-banner--nogo'"
+        :class="passed ? 'result-banner--pass' : 'result-banner--fail'"
       >
         <div class="banner-icon">{{ passed ? '✓' : '✕' }}</div>
         <div class="banner-main">
-          <div class="banner-status">{{ passed ? 'GO' : 'NO-GO' }}</div>
+          <div class="banner-status">{{ passed ? 'PASS' : 'FAIL' }}</div>
           <div v-if="!passed" class="banner-reason">{{ outcome }}</div>
         </div>
       </div>
@@ -54,7 +54,7 @@
       </div>
 
       <div class="result-data">
-        <!-- KV Record (generic — any shape, nested objects flattened to dot-paths) -->
+        <!-- KV Record (any shape, nested objects flattened to dot-paths) -->
         <div v-if="kvRecord" class="result-section">
           <div class="result-section-label">Record</div>
           <div class="result-entries">
@@ -71,7 +71,7 @@
           </div>
         </div>
 
-        <!-- PB Result (non-badge fallback) -->
+        <!-- PB Result -->
         <div v-if="pbResult !== null" class="result-section">
           <div class="result-section-label">PocketBase</div>
           <div v-for="(rows, idx) in flattenedPbItems" :key="idx" class="result-entries">
@@ -346,7 +346,7 @@ async function performLookup(value: string) {
   let kvErr: string | null = null
   let pbErr: string | null = null
 
-  // KV badge lookup
+  // KV lookup
   if (cfg.value.kvEnabled && cfg.value.kvBucket) {
     try {
       const resolvedKey = replacePlaceholder(cfg.value.kvKeyTemplate || '{value}', value)
@@ -368,7 +368,7 @@ async function performLookup(value: string) {
     }
   }
 
-  // PB lookup — optional, for non-badge asset/thing scans
+  // PB lookup — optional, for asset/thing scans
   if (cfg.value.pbEnabled && cfg.value.pbCollection) {
     try {
       const filter = replacePlaceholder(cfg.value.pbFilter || '', value)
@@ -400,9 +400,14 @@ async function performLookup(value: string) {
     }
   }
 
-  // Decide GO/NO-GO + reason
+  // Decide PASS/FAIL + reason. This is advisory — it reports what the record says
+  // to whoever is holding the device, and is not an authorization decision.
   if (cfg.value.kvEnabled) {
-    if (!kvHadHit) {
+    if (!cfg.value.kvBucket) {
+      // The default bucket is empty, so an unconfigured widget says so rather
+      // than reporting a missing record it never looked for.
+      outcome.value = 'No KV bucket configured'
+    } else if (!kvHadHit) {
       outcome.value = 'No record found'
     } else {
       const v = evaluateRules(kvRecord.value, cfg.value.rules)
@@ -643,13 +648,13 @@ onUnmounted(() => {
   border-left: 4px solid transparent;
 }
 
-.result-banner--go {
+.result-banner--pass {
   background: oklch(var(--su) / 0.18);
   border-left-color: oklch(var(--su));
   color: oklch(var(--su));
 }
 
-.result-banner--nogo {
+.result-banner--fail {
   background: oklch(var(--er) / 0.18);
   border-left-color: oklch(var(--er));
   color: oklch(var(--er));

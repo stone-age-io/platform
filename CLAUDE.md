@@ -114,7 +114,7 @@ operator status apart from the admin panel — the API cannot.
 cd ui && npm run build
 
 # Build Go binary
-go build -o stone-age main.go
+go build -o stone-age .
 
 # Build the edge agent (separate lean binary — runs on edge boxes, not the server)
 go build -o leaf-sync ./cmd/leaf-sync
@@ -301,9 +301,12 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
 and pb-nebula contain no tenancy logic — they never reference `organization`. The
 UI's capability map is navigation convenience, not a boundary.
 
-Four roles on `memberships.role` (`invites.role` offers all but `owner`):
+Four roles on `memberships.role` (`invites.role` offers all but `owner`).
+`dashboard` is a restricted console login: the Visualizer at `/` and its own
+`/settings`, nothing else. Its real capability on the bus is whatever its linked
+`nats_users` role permits — the UI restriction is not a NATS restriction.
 
-| | owner | admin | member | badge |
+| | owner | admin | member | dashboard |
 |---|:-:|:-:|:-:|:-:|
 | Members, invitations | ✓ | ✓ | | |
 | NATS + Nebula infrastructure | ✓ | ✓ | | |
@@ -314,7 +317,7 @@ Four roles on `memberships.role` (`invites.role` offers all but `owner`):
 | Deactivate a thing or leaf node; reset a thing's password | ✓ | ✓ | | |
 | Things + locations: create and edit | ✓ | ✓ | ✓ | |
 | Own NATS credential + rotation | ✓ | ✓ | ✓ | ✓ |
-| Dashboards | ✓ | ✓ | ✓ | badge routes only |
+| Dashboards | ✓ | ✓ | ✓ | ✓ (its only screen) |
 
 `owner` and `admin` are deliberately identical in the rules — the only difference
 is that an owner cannot leave their own organization (`ui/src/stores/auth.ts`).
@@ -326,15 +329,22 @@ tenant role has an update path to it.
 Rules to follow when touching authorization:
 
 - **Use an allowlist, never a deny-list.** `role ?!= "member"` was satisfied by
-  `badge` — the *most* restricted role — so badge holders passed every admin
+  `dashboard` — the *least privileged* role — so its holders passed every admin
   check. Write `(role ?= "owner" || role ?= "admin")`. Copy the canonical snippet
   verbatim from a neighbouring rule; do not hand-write a variant.
 - **Restricting fields is not restricting roles.** The same bug came back in a
   second costume: `things` create/update admitted a member through a branch that
   froze `nats_user`/`nebula_host` but named no role, and `locations` create/update
-  had no role check at all — so `badge` satisfied both and could write inventory.
-  A branch that constrains *what* may be written still has to say *who* may write
-  it. Every write branch names its roles.
+  had no role check at all — so `dashboard` satisfied both and could write
+  inventory. A branch that constrains *what* may be written still has to say *who*
+  may write it. Every write branch names its roles.
+- **Keep a zero-authority role in the test matrix.** Both bugs above were caught
+  by the same thing: a role that holds no capability at all, used as the probe in
+  `scripts/test-authz.sh`. `dashboard` is that role. Don't "simplify" the suite by
+  testing denials with `member` — a role with *some* authority cannot prove an
+  allowlist, because it passes for the wrong reason. (This role was called `badge`
+  until it was renamed in `migrations/schema_update_dashboard_role.go`; commits and
+  PRs before that date say `badge` and mean this.)
 - **`?`-prefixed operators are row-correlated** on the same relation path, so
   `memberships_via_user.organization ?= X && memberships_via_user.role ?= "owner"`
   matches one membership row. Without `?`, the condition must hold for *all*

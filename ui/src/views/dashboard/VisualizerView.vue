@@ -1,7 +1,7 @@
 <!-- ui/src/views/dashboard/VisualizerView.vue -->
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, computed, nextTick, provide } from 'vue'
-import { useRoute } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import { useNatsStore } from '@/stores/nats'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useUIStore } from '@/stores/ui'
@@ -22,18 +22,23 @@ import VariableBar from '@/components/dashboard/VariableBar.vue'
 import VariableEditorModal from '@/components/dashboard/VariableEditorModal.vue'
 import type { WidgetType } from '@/types/dashboard'
 
-const BADGE_WIDGET_TYPES: WidgetType[] = [
+// Widget types offered to the `dashboard` role. Everything here either reads a
+// bucket or publishes on a subject the caller's own NATS credential already
+// permits -- nothing that edits PocketBase inventory or infrastructure.
+const DASHBOARD_ROLE_WIDGET_TYPES: WidgetType[] = [
   'button', 'switch', 'slider', 'publisher', 'kv', 'kvtable', 'text', 'status', 'stat', 'scanner'
 ]
 
-const route = useRoute()
+const authStore = useAuthStore()
 const natsStore = useNatsStore()
 const dashboardStore = useDashboardStore()
 const uiStore = useUIStore()
 const toast = useToast()
 
-// Badge mode: restricted widget types, no kiosk/debug/shortcuts/grid selector
-const isBadgeMode = computed(() => route.path.startsWith('/badge'))
+// Restricted mode: fewer widget types, no kiosk/debug/shortcuts/grid selector.
+// Keyed on the ROLE, not on the path -- '/' is the only Visualizer route now, and
+// a path check would have to be kept in step with the router by hand.
+const isRestrictedMode = computed(() => authStore.isDashboardUser)
 
 const {
   subscribeAllWidgets,
@@ -56,8 +61,8 @@ const fullScreenWidgetId = ref<string | null>(null)
 
 const hasVariables = computed(() => (dashboardStore.activeDashboard?.variables?.length || 0) > 0)
 
-// --- Kiosk Mode (disabled in badge mode) ---
-const isKioskMode = computed(() => !isBadgeMode.value && uiStore.kioskMode)
+// --- Kiosk Mode (disabled for the dashboard role) ---
+const isKioskMode = computed(() => !isRestrictedMode.value && uiStore.kioskMode)
 const showKioskHint = ref(false)
 let kioskHintTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -313,7 +318,7 @@ watch(() => dashboardStore.currentVariableValues, () => {
             🔄
           </button>
 
-          <div v-if="!isBadgeMode && !dashboardStore.isLocked" class="hidden md:block">
+          <div v-if="!isRestrictedMode && !dashboardStore.isLocked" class="hidden md:block">
             <select :value="dashboardStore.activeDashboard?.columnCount ?? 12" @change="handleGridChange" class="select select-sm select-bordered font-mono">
               <option :value="0">Auto</option>
               <option :value="4">4 Cols</option>
@@ -328,7 +333,7 @@ watch(() => dashboardStore.currentVariableValues, () => {
           <button v-if="hasVariables || !dashboardStore.isLocked" class="btn btn-sm btn-square" :class="showVariableBar ? 'btn-active' : 'btn-ghost'" @click="showVariableBar = !showVariableBar"><span class="font-mono font-bold">{ }</span></button>
           <button class="btn btn-sm btn-square btn-ghost" @click="dashboardStore.toggleLock()">{{ dashboardStore.isLocked ? '🔒' : '🔓' }}</button>
           <button v-if="!dashboardStore.isLocked" class="btn btn-sm btn-primary" @click="showAddWidget = true">+ <span class="hidden sm:inline ml-1">Widget</span></button>
-          <button v-if="!isBadgeMode" class="btn btn-sm btn-square btn-ghost hidden sm:flex" @click="showDebugPanel = true">🐞</button>
+          <button v-if="!isRestrictedMode" class="btn btn-sm btn-square btn-ghost hidden sm:flex" @click="showDebugPanel = true">🐞</button>
         </div>
       </div>
       
@@ -350,7 +355,7 @@ watch(() => dashboardStore.currentVariableValues, () => {
     </div>
     
     <!-- Modals ... (Unchanged) -->
-    <AddWidgetModal v-model="showAddWidget" :allowed-types="isBadgeMode ? BADGE_WIDGET_TYPES : undefined" @select="handleCreateWidget" />
+    <AddWidgetModal v-model="showAddWidget" :allowed-types="isRestrictedMode ? DASHBOARD_ROLE_WIDGET_TYPES : undefined" @select="handleCreateWidget" />
     <ConfigureWidgetModal v-model="showConfigWidget" :widget-id="configWidgetId" @saved="handleWidgetConfigSaved" />
     <KeyboardShortcutsModal v-model="showShortcutsModal" :shortcuts="shortcuts" />
     <VariableEditorModal v-model="showVariableModal" />

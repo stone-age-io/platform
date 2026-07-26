@@ -677,7 +677,7 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
       if (widget.scannerConfig) {
         const c = widget.scannerConfig
         state.scannerKvEnabled = c.kvEnabled ?? true
-        state.scannerKvBucket = c.kvBucket || 'badges'
+        state.scannerKvBucket = c.kvBucket || ''
         state.scannerKvKeyTemplate = c.kvKeyTemplate || '{value}'
         // Legacy widgets predate `rules`; seed the two rules that mirror the
         // old hardcoded revoked/expires_at check so behavior is preserved.

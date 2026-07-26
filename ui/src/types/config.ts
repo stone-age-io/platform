@@ -222,12 +222,13 @@ export function createEmptyFormState(): WidgetFormState {
 
     // Scanner Defaults
     scannerKvEnabled: true,
-    scannerKvBucket: 'badges',
+    scannerKvBucket: '',
     scannerKvKeyTemplate: '{value}',
-    scannerRules: [
-      { field: 'revoked', op: 'falsy', reason: 'Revoked' },
-      { field: 'expires_at', op: 'future', reason: 'Expired' },
-    ],
+    // No default rules: the scanner doesn't know the shape of the record it will
+    // find, so a new widget passes anything it resolves and the operator adds the
+    // checks that fit their bucket. (Widgets created before `rules` existed keep
+    // the old revoked/expires_at pair via the hydrate path in useWidgetForm.)
+    scannerRules: [],
     scannerPbEnabled: false,
     scannerPbCollection: '',
     scannerPbFilter: '',
