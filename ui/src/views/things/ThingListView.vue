@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { watchDebounced } from '@vueuse/core'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
 import { useToast } from '@/composables/useToast'
@@ -32,41 +33,37 @@ const {
   prevPage,
 } = usePagination<Thing>('things', 20)
 
-// Search query (client-side filtering)
+// Search. This is a SERVER-side filter, not the client-side pass it used to be.
+//
+// The old version filtered the 20 records already on screen and admitted as much
+// in the UI ("searching current page only"). Adding metadata to that would have
+// been a false promise: the whole point of searching metadata is questions like
+// "which devices were serviced before 2025", and an answer drawn from one page of
+// results is not an answer. PocketBase filters a json column as text, so one `~`
+// covers both keys and values without knowing any type's schema.
 const searchQuery = ref('')
 
-const deleting = ref(false)
-
-/**
- * Filtered things based on client-side search
- * Searches in: name, description, code, type name, location name
- */
-const filteredThings = computed(() => {
-  const query = searchQuery.value.toLowerCase().trim()
-  
-  // No search query - return all things
-  if (!query) return things.value
-  
-  // Filter client-side
-  return things.value.filter(thing => {
-    // Search in name
-    if (thing.name?.toLowerCase().includes(query)) return true
-    
-    // Search in description
-    if (thing.description?.toLowerCase().includes(query)) return true
-    
-    // Search in code
-    if (thing.code?.toLowerCase().includes(query)) return true
-    
-    // Search in type name
-    if (thing.expand?.type?.name?.toLowerCase().includes(query)) return true
-    
-    // Search in location name
-    if (thing.expand?.location?.name?.toLowerCase().includes(query)) return true
-    
-    return false
-  })
+const searchFilter = computed(() => {
+  const q = searchQuery.value.trim()
+  if (!q) return undefined
+  // pb.filter binds and escapes the parameter — never interpolate a user string
+  // into a filter expression by hand.
+  return pb.filter(
+    'name ~ {:q} || description ~ {:q} || code ~ {:q} || metadata ~ {:q}' +
+      ' || type.name ~ {:q} || location.name ~ {:q}',
+    { q },
+  )
 })
+
+// Every call into usePagination needs the same filter and expand, including the
+// pager buttons — passing only `expand` there would silently drop the filter and
+// page 2 would show unfiltered results.
+const queryOptions = computed(() => ({
+  filter: searchFilter.value,
+  expand: 'type,location',
+}))
+
+const deleting = ref(false)
 
 // Column configuration for responsive list
 const columns: Column<Thing>[] = [
@@ -103,11 +100,20 @@ const columns: Column<Thing>[] = [
  * Backend automatically filters by current organization via API rules
  */
 async function loadThings() {
-  // Only pass expand - backend handles org filtering via API rules
-  await load({ 
-    expand: 'type,location' 
-  })
+  // Backend handles org filtering via API rules; this adds only the search.
+  await load(queryOptions.value)
 }
+
+// Typing a query re-queries the server, so debounce it and go back to page 1 —
+// staying on page 3 of the old result set would show an empty list.
+watchDebounced(
+  searchQuery,
+  () => {
+    page.value = 1
+    loadThings()
+  },
+  { debounce: 300 },
+)
 
 /**
  * Handle row/card click - navigate to detail view
@@ -224,16 +230,15 @@ onUnmounted(() => {
     
     <!-- Search -->
     <div class="form-control">
-      <input 
+      <input
         v-model="searchQuery"
         type="text"
-        placeholder="Search things by name, code, type, or location..."
+        placeholder="Search by name, code, type, location, or metadata..."
         class="input input-bordered w-full"
       />
-      <label v-if="searchQuery && viewMode === 'list' && filteredThings.length < things.length" class="label">
+      <label v-if="searchQuery && viewMode === 'list'" class="label">
         <span class="label-text-alt">
-          Showing {{ filteredThings.length }} of {{ things.length }} things
-          (searching current page only)
+          {{ totalItems }} match{{ totalItems === 1 ? '' : 'es' }} across all things
         </span>
       </label>
     </div>
@@ -256,8 +261,10 @@ onUnmounted(() => {
       </div>
     </BaseCard>
 
-    <!-- Empty State -->
-    <BaseCard v-else-if="things.length === 0">
+    <!-- Empty State. Guarded on !searchQuery: with a server-side filter an empty
+         result during a search means "no match", not "no inventory", and offering
+         "create your first thing" to someone who has 400 of them is nonsense. -->
+    <BaseCard v-else-if="things.length === 0 && !searchQuery">
       <div class="text-center py-12">
         <span class="text-6xl">📦</span>
         <h3 class="text-xl font-bold mt-4">No things found</h3>
@@ -271,7 +278,7 @@ onUnmounted(() => {
     </BaseCard>
     
     <!-- No Search Results -->
-    <BaseCard v-else-if="filteredThings.length === 0">
+    <BaseCard v-else-if="things.length === 0">
       <div class="text-center py-12">
         <span class="text-6xl">🔍</span>
         <h3 class="text-xl font-bold mt-4">No matching things</h3>
@@ -287,8 +294,8 @@ onUnmounted(() => {
     <!-- Responsive List -->
     <BaseCard v-else :no-padding="true">
       <ResponsiveList 
-        :items="filteredThings" 
-        :columns="columns" 
+        :items="things"
+        :columns="columns"
         :loading="loading"
         @row-click="handleRowClick"
       >
@@ -369,41 +376,34 @@ onUnmounted(() => {
         </template>
       </ResponsiveList>
       
-      <!-- Pagination (only show when not searching) -->
-      <div v-if="!searchQuery" class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
+      <!-- Pagination. Shown while searching too: the server paginates the matches,
+           so page 2 of a search is a real page. The pager passes queryOptions
+           rather than a bare expand — dropping the filter here is what would make
+           page 2 revert to unfiltered results. -->
+      <div class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
         <span class="text-sm text-base-content/70 text-center sm:text-left">
-          Showing {{ things.length }} of {{ totalItems }} things
+          Showing {{ things.length }} of {{ totalItems }}
+          {{ searchQuery ? 'matches' : 'things' }}
         </span>
         <div class="join">
-          <button 
+          <button
             class="join-item btn btn-sm"
             :disabled="page === 1 || loading"
-            @click="prevPage({ expand: 'type,location' })"
+            @click="prevPage(queryOptions)"
           >
             «
           </button>
           <button class="join-item btn btn-sm">
             {{ page }} / {{ totalPages }}
           </button>
-          <button 
+          <button
             class="join-item btn btn-sm"
             :disabled="page === totalPages || loading"
-            @click="nextPage({ expand: 'type,location' })"
+            @click="nextPage(queryOptions)"
           >
             »
           </button>
         </div>
-      </div>
-      
-      <!-- Search active message (when paginated) -->
-      <div v-else class="p-4 border-t border-base-300 text-center">
-        <p class="text-sm text-base-content/60">
-          Searching within current page.
-          <button @click="searchQuery = ''" class="link link-primary text-sm">
-            Clear search
-          </button>
-          to browse all pages.
-        </p>
       </div>
     </BaseCard>
 

@@ -311,12 +311,36 @@ const viewEntries = computed(() => {
     }))
 })
 
+// Booleans render as `true` / `false`, not Yes/No. These values are read back out
+// of NATS KV by firmware and rule-router, so the display should say what is
+// actually stored — a reader comparing the console against a subscriber's payload
+// should not have to translate.
 function displayValue(v: any): string {
   if (v === null || v === undefined || v === '') return '—'
-  if (typeof v === 'boolean') return v ? 'Yes' : 'No'
+  if (typeof v === 'boolean') return v ? 'true' : 'false'
   if (isContainer(v)) return JSON.stringify(v, null, 2)
   return String(v)
 }
+
+// A record with many keys would otherwise make the read-only list unusably long
+// (and, on the Thing detail page, push the Live State card below the fold — the
+// card this replaced capped itself at 500px for exactly that reason). Filtering
+// is offered above a threshold rather than always, so the common short document
+// keeps a clean header.
+const viewFilter = ref('')
+const FILTER_THRESHOLD = 10
+
+const showViewFilter = computed(() => Object.keys(doc.value).length > FILTER_THRESHOLD)
+
+const filteredViewEntries = computed(() => {
+  const q = viewFilter.value.toLowerCase().trim()
+  if (!q) return viewEntries.value
+  return viewEntries.value.filter(e =>
+    e.key.toLowerCase().includes(q) ||
+    e.label.toLowerCase().includes(q) ||
+    displayValue(e.value).toLowerCase().includes(q),
+  )
+})
 
 // The parent calls this before submitting so a JSON tab left mid-edit is
 // committed (or the save is refused) rather than silently ignored.
@@ -341,19 +365,25 @@ defineExpose({ commit })
 
 <template>
   <div>
-    <div role="tablist" class="tabs tabs-bordered mb-4">
-      <a
-        role="tab"
-        class="tab"
-        :class="{ 'tab-active': activeTab === 'form' }"
-        @click="switchTab('form')"
-      >{{ disabled ? 'Fields' : 'Form' }}</a>
-      <a
-        role="tab"
-        class="tab"
-        :class="{ 'tab-active': activeTab === 'json' }"
-        @click="switchTab('json')"
-      >JSON</a>
+    <div class="flex items-center justify-between gap-2 mb-4">
+      <div role="tablist" class="tabs tabs-bordered">
+        <a
+          role="tab"
+          class="tab"
+          :class="{ 'tab-active': activeTab === 'form' }"
+          @click="switchTab('form')"
+        >{{ disabled ? 'Fields' : 'Form' }}</a>
+        <a
+          role="tab"
+          class="tab"
+          :class="{ 'tab-active': activeTab === 'json' }"
+          @click="switchTab('json')"
+        >JSON</a>
+      </div>
+
+      <span v-if="!isEmpty" class="text-xs text-base-content/50 shrink-0">
+        {{ Object.keys(doc).length }} field{{ Object.keys(doc).length === 1 ? '' : 's' }}
+      </span>
     </div>
 
     <!-- ---------- Form / Fields tab ---------- -->
@@ -364,24 +394,44 @@ defineExpose({ commit })
         <div v-if="isEmpty" class="text-sm text-base-content/60 italic">
           No metadata recorded.
         </div>
-        <dl v-else class="divide-y divide-base-300">
+        <template v-else>
+          <input
+            v-if="showViewFilter"
+            v-model="viewFilter"
+            type="text"
+            class="input input-bordered input-sm w-full mb-2"
+            placeholder="Filter fields…"
+          />
+
           <div
-            v-for="e in viewEntries"
-            :key="e.key"
-            class="py-2 flex flex-col sm:flex-row sm:gap-4 sm:items-baseline"
+            v-if="filteredViewEntries.length === 0"
+            class="text-sm text-base-content/60 italic"
           >
-            <dt class="text-xs font-medium text-base-content/60 sm:w-1/3 shrink-0 font-mono break-all">
-              {{ e.label }}
-            </dt>
-            <dd class="text-sm min-w-0 flex-1">
-              <pre
-                v-if="typeof e.value === 'object' && e.value !== null"
-                class="font-mono text-xs bg-base-200 rounded p-2 overflow-x-auto"
-              >{{ displayValue(e.value) }}</pre>
-              <span v-else class="break-words">{{ displayValue(e.value) }}</span>
-            </dd>
+            No field matches “{{ viewFilter }}”.
           </div>
-        </dl>
+
+          <!-- Capped and scrolled. Without this a long document pushes whatever
+               follows it on the page (Live State, on the Thing detail) below the
+               fold. -->
+          <dl v-else class="divide-y divide-base-300 max-h-[500px] overflow-y-auto custom-scrollbar">
+            <div
+              v-for="e in filteredViewEntries"
+              :key="e.key"
+              class="py-2 flex flex-col sm:flex-row sm:gap-4 sm:items-baseline"
+            >
+              <dt class="text-xs font-medium text-base-content/60 sm:w-1/3 shrink-0 font-mono break-all">
+                {{ e.label }}
+              </dt>
+              <dd class="text-sm min-w-0 flex-1">
+                <pre
+                  v-if="typeof e.value === 'object' && e.value !== null"
+                  class="font-mono text-xs bg-base-200 rounded p-2 overflow-x-auto"
+                >{{ displayValue(e.value) }}</pre>
+                <span v-else class="break-words">{{ displayValue(e.value) }}</span>
+              </dd>
+            </div>
+          </dl>
+        </template>
       </template>
 
       <!-- (b) Schema-driven: typed fields defined on the type. -->
@@ -412,7 +462,10 @@ defineExpose({ commit })
           a service date, an asset tag, a warranty reference.
         </div>
 
-        <div v-else class="space-y-2 mb-3">
+        <!-- Capped and scrolled for the same reason as the read-only list: a long
+             document must not push the Save button (or the Live State card, in
+             quick-edit) off the screen. -->
+        <div v-else class="space-y-2 mb-3 max-h-[500px] overflow-y-auto custom-scrollbar pr-1">
           <div v-for="(r, i) in rows" :key="i" class="flex gap-2 items-start">
             <div class="form-control flex-1 min-w-0">
               <input
@@ -432,19 +485,23 @@ defineExpose({ commit })
             >
               <option value="text">Text</option>
               <option value="number">Number</option>
-              <option value="boolean">Yes/No</option>
+              <option value="boolean">Boolean</option>
               <option value="date">Date</option>
               <option value="json">Object</option>
             </select>
 
             <div class="form-control flex-1 min-w-0">
-              <input
-                v-if="r.type === 'boolean'"
-                type="checkbox"
-                class="toggle toggle-primary mt-1"
-                :checked="!!r.value"
-                @change="setRowValue(i, ($event.target as HTMLInputElement).checked)"
-              />
+              <!-- The literal stored value sits next to the toggle: this is what a
+                   NATS subscriber will read back, so show it rather than Yes/No. -->
+              <label v-if="r.type === 'boolean'" class="flex items-center gap-2 mt-1">
+                <input
+                  type="checkbox"
+                  class="toggle toggle-primary"
+                  :checked="!!r.value"
+                  @change="setRowValue(i, ($event.target as HTMLInputElement).checked)"
+                />
+                <code class="text-xs text-base-content/60">{{ r.value ? 'true' : 'false' }}</code>
+              </label>
               <input
                 v-else-if="r.type === 'date'"
                 type="date"

@@ -98,15 +98,19 @@ function castOnInput(f: Field, raw: string): any {
         <option v-for="opt in f.enumValues" :key="String(opt)" :value="opt">{{ opt }}</option>
       </select>
 
-      <!-- Boolean → toggle -->
-      <input
-        v-else-if="f.type === 'boolean'"
-        type="checkbox"
-        class="toggle toggle-primary"
-        :checked="!!modelValue[f.name]"
-        :disabled="disabled"
-        @change="setField(f.name, ($event.target as HTMLInputElement).checked)"
-      />
+      <!-- Boolean → toggle, with the literal value beside it. The payload this
+           builds is read by a NATS subscriber, so show `true`/`false` rather than
+           leaving the reader to infer it from a switch position. -->
+      <label v-else-if="f.type === 'boolean'" class="flex items-center gap-2">
+        <input
+          type="checkbox"
+          class="toggle toggle-primary"
+          :checked="!!modelValue[f.name]"
+          :disabled="disabled"
+          @change="setField(f.name, ($event.target as HTMLInputElement).checked)"
+        />
+        <code class="text-xs text-base-content/60">{{ modelValue[f.name] ? 'true' : 'false' }}</code>
+      </label>
 
       <!-- Primitive scalar → typed input -->
       <input
