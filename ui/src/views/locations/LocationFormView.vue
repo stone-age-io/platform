@@ -51,6 +51,12 @@ const currentFloorplan = ref<string | null>(null)
 const locationTypes = ref<LocationType[]>([])
 const parentLocations = ref<LocationOption[]>([])
 
+// Description of the selected location type, shown under the select.
+const selectedTypeHint = computed(() => {
+  const t = locationTypes.value.find(x => x.id === formData.value.type)
+  return t?.description || ''
+})
+
 // State
 const loading = ref(false)
 const loadingOptions = ref(true)
@@ -405,6 +411,11 @@ onMounted(() => {
                     {{ type.name }}
                   </option>
                 </select>
+                <!-- Same reasoning as the Thing form's type hint: anyone who can
+                     pick a type can read its description. -->
+                <label v-if="selectedTypeHint" class="label">
+                  <span class="label-text-alt text-base-content/60">{{ selectedTypeHint }}</span>
+                </label>
               </div>
               
               <!-- Parent Location -->

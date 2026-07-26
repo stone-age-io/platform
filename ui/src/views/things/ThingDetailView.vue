@@ -11,6 +11,7 @@ import type { Thing, NatsUser, NebulaHost } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import KvDashboard from '@/components/nats/KvDashboard.vue'
 import { TWIN_BUCKET, TWIN_DESIRED_BUCKET } from '@/utils/twin'
+import { join as joinSubject, resolveThing } from '@/utils/subjectResolver'
 import JsonViewer from '@/components/common/JsonViewer.vue'
 import ExpiryBadge from '@/components/common/ExpiryBadge.vue'
 
@@ -53,11 +54,66 @@ async function copyMetadata() {
 const thingCode = computed(() => thing.value?.code)
 const hasTwinConfig = computed(() => !!thingCode.value)
 
+// The Thing's messaging contract, resolved for THIS Thing. The type badge alone
+// answered "which type" but not "what does that commit the device to" — the
+// question anyone assigning a type actually has. Same resolver the Publisher
+// widget uses (utils/subjectResolver.ts, mirroring internal/subjectresolver).
+const messagingContract = computed(() => {
+  const type = thing.value?.expand?.type as any
+  if (!type) return null
+
+  const ctx = {
+    org: authStore.currentOrg?.name || '',
+    location: (thing.value?.expand?.location as any)?.code || '',
+    thing: thing.value?.code || '',
+    thingTypeCode: type.code || '',
+  }
+
+  const operations = ((type.expand?.operations || []) as any[]).map(op => ({
+    id: op.id,
+    name: op.name,
+    capability: op.capability || '',
+    description: op.description || '',
+    schemaName: op.expand?.schema?.name || '',
+    subject: resolveThing(joinSubject(type.subject_prefix, op.subject_suffix), ctx),
+  }))
+
+  return {
+    name: type.name,
+    description: type.description || '',
+    prefix: resolveThing(joinSubject(type.subject_prefix, ''), ctx),
+    operations,
+  }
+})
+
+// resolveThing leaves a variable it cannot fill as a literal `{token}`, which is
+// the honest outcome but reads like a bug unless we say why. A Thing with no
+// location or no code produces exactly that.
+const unresolvedTokens = computed(() => {
+  const c = messagingContract.value
+  if (!c) return []
+  const found = new Set<string>()
+  for (const s of [c.prefix, ...c.operations.map(o => o.subject)]) {
+    for (const m of s.matchAll(/\{(\w+)\}/g)) found.add(m[1])
+  }
+  return [...found]
+})
+
+const CAPABILITY_STYLE: Record<string, string> = {
+  publish: 'badge-success',
+  subscribe: 'badge-info',
+  request: 'badge-warning',
+  reply: 'badge-secondary',
+}
+
 async function loadThing() {
   loading.value = true
   try {
     thing.value = await pb.collection('things').getOne<Thing>(thingId, {
-      expand: 'type,location,nats_user.role_id,nebula_host',
+      // type.operations.schema drives the Messaging Contract card. Every role
+      // that can reach this view can read all three collections, so the expand
+      // resolves for members too — unlike nats_user/nebula_host below.
+      expand: 'type.operations.schema,location,nats_user.role_id,nebula_host',
     })
   } catch (err: any) {
     toast.error(err.message || 'Failed to load thing')
@@ -283,6 +339,63 @@ onMounted(() => {
                 </dd>
               </div>
             </dl>
+          </BaseCard>
+
+          <!-- Messaging Contract: what this Thing's type commits it to, with every
+               subject resolved for this Thing. Readable by every role that can
+               open this page, so it works for members. -->
+          <BaseCard v-if="messagingContract">
+            <template #header>
+              <div class="flex justify-between items-center gap-2 mb-2">
+                <h3 class="card-title text-base">Messaging Contract</h3>
+                <span class="badge badge-neutral badge-sm">{{ messagingContract.name }}</span>
+              </div>
+            </template>
+
+            <p v-if="messagingContract.description" class="text-sm text-base-content/70 mb-3">
+              {{ messagingContract.description }}
+            </p>
+
+            <div class="bg-base-200 rounded-lg p-3 border border-base-300 mb-3">
+              <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider block mb-1">
+                Subject Prefix
+              </span>
+              <code class="font-mono text-sm break-all select-all">{{ messagingContract.prefix }}</code>
+            </div>
+
+            <div v-if="messagingContract.operations.length > 0" class="space-y-2">
+              <div
+                v-for="op in messagingContract.operations"
+                :key="op.id"
+                class="bg-base-200/60 rounded-lg p-3 border border-base-300"
+              >
+                <div class="flex items-center justify-between gap-2 mb-1">
+                  <span class="text-sm font-medium">{{ op.name }}</span>
+                  <span
+                    v-if="op.capability"
+                    class="badge badge-sm"
+                    :class="CAPABILITY_STYLE[op.capability] || 'badge-ghost'"
+                  >{{ op.capability }}</span>
+                </div>
+                <code class="font-mono text-xs break-all select-all block text-base-content/80">{{ op.subject }}</code>
+                <div v-if="op.schemaName || op.description" class="mt-1.5 flex flex-wrap items-center gap-2">
+                  <span v-if="op.schemaName" class="text-xs text-base-content/60">
+                    📄 {{ op.schemaName }}
+                  </span>
+                  <span v-if="op.description" class="text-xs text-base-content/50">{{ op.description }}</span>
+                </div>
+              </div>
+            </div>
+            <p v-else class="text-sm text-base-content/50 italic">
+              This type declares no operations.
+            </p>
+
+            <div v-if="unresolvedTokens.length > 0" class="mt-3 text-xs text-base-content/60">
+              Unresolved:
+              <code v-for="t in unresolvedTokens" :key="t" class="font-mono mx-0.5">{{ '{' + t + '}' }}</code>
+              — this Thing has no value for
+              {{ unresolvedTokens.map(t => t === 'thing_type_code' ? 'type code' : t).join(', ') }} yet.
+            </div>
           </BaseCard>
 
           <!-- UPDATED: Metadata Card -->

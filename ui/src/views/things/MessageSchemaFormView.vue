@@ -248,6 +248,9 @@ onMounted(async () => {
                 pattern="[a-z0-9_]+"
                 placeholder="e.g. ip_camera or common"
               />
+              <!-- The pattern is enforced by the collection too, where a violation
+                   surfaces only as "Invalid value format." Say the rule here. -->
+              <label class="label"><span class="label-text-alt">Lowercase snake_case.</span></label>
             </div>
 
             <div class="form-control">
@@ -260,6 +263,7 @@ onMounted(async () => {
                 pattern="[a-z0-9_]+"
                 placeholder="e.g. motion or heartbeat"
               />
+              <label class="label"><span class="label-text-alt">Lowercase snake_case.</span></label>
             </div>
 
             <div class="form-control">

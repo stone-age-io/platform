@@ -70,6 +70,15 @@ const autoNatsRoleId = ref('')
 const autoNebulaNetworkId = ref('')
 const autoNebulaOverlayIp = ref('')
 
+// Description of the selected thing type, shown under the select. Falls back to
+// the subject prefix so the hint is still useful for a type with no description.
+const selectedTypeHint = computed(() => {
+  const t = thingTypes.value.find(x => x.id === formData.value.type)
+  if (!t) return ''
+  if (t.description) return t.description
+  return t.subject_prefix ? `Subject prefix: ${t.subject_prefix}` : ''
+})
+
 // Auto-slug tracking
 const codeManuallyEdited = ref(false)
 
@@ -534,6 +543,12 @@ onMounted(() => {
                       {{ t.name }}
                     </option>
                   </select>
+                  <!-- Type names are often terse codes. Anyone who can pick a type
+                       can also read its description, so show it rather than making
+                       them go and look the definition up. -->
+                  <label v-if="selectedTypeHint" class="label">
+                    <span class="label-text-alt text-base-content/60">{{ selectedTypeHint }}</span>
+                  </label>
                 </div>
               </div>
 
