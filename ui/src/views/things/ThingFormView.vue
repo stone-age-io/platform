@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import type { Thing, ThingType, Location, NatsUser, NatsAccount, NatsRole, NebulaHost, NebulaNetwork } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import MetadataEditor from '@/components/common/MetadataEditor.vue'
 import NatsUserFormView from '@/views/nats/NatsUserFormView.vue'
 import NebulaHostFormView from '@/views/nebula/NebulaHostFormView.vue'
 import LocationFormView from '@/views/locations/LocationFormView.vue'
@@ -45,8 +46,21 @@ const formData = ref({
   nats_user: '',
   nebula_host: '',
 
-  // Meta
-  metadata: '',
+  // Meta. An object (or null), not a JSON string — MetadataEditor owns the
+  // text representation and refuses to hand back anything unparseable, so the
+  // old "parse at submit and toast on failure" step is gone.
+  metadata: null as Record<string, any> | null,
+})
+
+const metadataEditor = ref<InstanceType<typeof MetadataEditor> | null>(null)
+
+// The inventory schema declared by the selected thing type, if it has one.
+// Absent (the common case today) means MetadataEditor shows free-form
+// key/value rows. Changing the type re-renders the form but never discards
+// values — extra keys are surfaced and preserved.
+const selectedTypeMetadataSchema = computed(() => {
+  const t = thingTypes.value.find(x => x.id === formData.value.type)
+  return t?.metadata_schema || null
 })
 
 // Whether this caller may attach or mint NATS/Nebula identities. Members hold
@@ -255,7 +269,7 @@ async function loadThing() {
       passwordConfirm: '',
       nats_user: thing.nats_user || '',
       nebula_host: thing.nebula_host || '',
-      metadata: thing.metadata ? JSON.stringify(thing.metadata, null, 2) : '',
+      metadata: thing.metadata && Object.keys(thing.metadata).length ? thing.metadata : null,
     }
     // Don't auto-slug in edit mode
     codeManuallyEdited.value = true
@@ -268,24 +282,12 @@ async function loadThing() {
 }
 
 /**
- * Validate metadata JSON
- */
-function validateMetadata(): boolean {
-  if (!formData.value.metadata.trim()) return true
-  try {
-    JSON.parse(formData.value.metadata)
-    return true
-  } catch {
-    toast.error('Invalid JSON in metadata field')
-    return false
-  }
-}
-
-/**
  * Handle form submission
  */
 async function handleSubmit() {
-  if (!validateMetadata()) return
+  // Commit a JSON tab left mid-edit. Returns false (and toasts) if it doesn't
+  // parse, so a bad blob blocks the save instead of being dropped from it.
+  if (metadataEditor.value && !metadataEditor.value.commit()) return
 
   if (isEdit.value) {
     await handleUpdate()
@@ -345,7 +347,7 @@ async function handleCreate() {
         code: formData.value.code,
         type: formData.value.type || '',
         location: formData.value.location || '',
-        metadata: formData.value.metadata ? JSON.parse(formData.value.metadata) : null,
+        metadata: formData.value.metadata,
         nats: {
           mode: natsMode.value,
           user_id: natsMode.value === 'link' ? formData.value.nats_user : '',
@@ -391,7 +393,7 @@ async function handleUpdate() {
       code: formData.value.code || null,
       type: formData.value.type || null,
       location: formData.value.location || null,
-      metadata: formData.value.metadata ? JSON.parse(formData.value.metadata) : null,
+      metadata: formData.value.metadata,
     }
 
     // Send the identity relations only if this caller may change them. The member
@@ -807,15 +809,12 @@ onMounted(() => {
             </div>
           </BaseCard>
 
-          <BaseCard title="Metadata (JSON)">
-            <div class="form-control">
-              <textarea
-                v-model="formData.metadata"
-                class="textarea textarea-bordered font-mono"
-                rows="8"
-                placeholder='{"key": "value"}'
-              ></textarea>
-            </div>
+          <BaseCard title="Metadata">
+            <MetadataEditor
+              ref="metadataEditor"
+              v-model="formData.metadata"
+              :schema="selectedTypeMetadataSchema"
+            />
           </BaseCard>
         </div>
       </div>

@@ -74,6 +74,9 @@ export interface ThingType extends BaseRecord {
   capabilities?: ThingTypeCapability[]
   subject_prefix?: string
   operations?: string[] // Thing Type Operation IDs
+  // Optional JSON Schema describing the inventory fields tracked for this class
+  // of device. Drives the Thing form's metadata editor; not validated on write.
+  metadata_schema?: Record<string, any> | null
 }
 
 // Thing Type Operation (shareable across Thing Types)
