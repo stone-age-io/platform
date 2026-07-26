@@ -5,6 +5,7 @@ import { pb } from '@/utils/pb'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import MetadataSchemaCard from '@/components/common/MetadataSchemaCard.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -21,6 +22,11 @@ const form = ref({
   code: '',
 })
 
+// Inventory metadata schema, authored by MetadataSchemaCard. Null means the type
+// declares no fields and the Location form falls back to free-form key/value rows.
+const metadataSchema = ref<Record<string, any> | null>(null)
+const metadataSchemaCard = ref<InstanceType<typeof MetadataSchemaCard> | null>(null)
+
 async function loadData() {
   if (!id) return
   loading.value = true
@@ -31,6 +37,8 @@ async function loadData() {
       description: record.description,
       code: record.code,
     }
+    const raw = record.metadata_schema
+    metadataSchema.value = (typeof raw === 'string' ? JSON.parse(raw) : raw) || null
   } catch (err: any) {
     toast.error('Failed to load type')
     router.push('/locations/types')
@@ -40,10 +48,13 @@ async function loadData() {
 }
 
 async function submit() {
+  if (metadataSchemaCard.value && !metadataSchemaCard.value.commit()) return
+
   loading.value = true
   try {
     const data = {
       ...form.value,
+      metadata_schema: metadataSchema.value,
       organization: isEdit.value ? undefined : authStore.currentOrgId
     }
     
@@ -107,7 +118,13 @@ onMounted(() => {
           </div>
         </BaseCard>
       </div>
-      
+
+      <MetadataSchemaCard
+        ref="metadataSchemaCard"
+        v-model="metadataSchema"
+        noun="place"
+      />
+
       <!-- Actions -->
       <div class="flex justify-end gap-2">
         <button type="button" class="btn btn-ghost" @click="router.back()">Cancel</button>

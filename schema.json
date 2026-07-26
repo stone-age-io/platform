@@ -1906,6 +1906,16 @@
       },
       {
         "hidden": false,
+        "id": "json_lt_metadata_schema",
+        "maxSize": 0,
+        "name": "metadata_schema",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
+      },
+      {
+        "hidden": false,
         "id": "autodate2990389176",
         "name": "created",
         "onCreate": true,
@@ -3548,6 +3558,16 @@
         "required": false,
         "system": false,
         "type": "relation"
+      },
+      {
+        "hidden": false,
+        "id": "json_tt_metadata_schema",
+        "maxSize": 0,
+        "name": "metadata_schema",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
       },
       {
         "hidden": false,

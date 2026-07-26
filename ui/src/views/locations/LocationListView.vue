@@ -49,8 +49,12 @@ const filteredLocations = computed(() => {
     const descMatch = l.description?.toLowerCase().includes(q)
     const typeMatch = l.expand?.type?.name?.toLowerCase().includes(q)
     const parentMatch = (l.expand?.parent as Location)?.name?.toLowerCase().includes(q)
+    // Metadata matches on keys and values alike: searching "last_inspection"
+    // finds every place that tracks one, and "2026-03" finds the ones inspected
+    // that month. Serialising is what makes both work without knowing the shape.
+    const metaMatch = l.metadata ? JSON.stringify(l.metadata).toLowerCase().includes(q) : false
 
-    return nameMatch || codeMatch || descMatch || typeMatch || parentMatch
+    return nameMatch || codeMatch || descMatch || typeMatch || parentMatch || metaMatch
   })
 })
 

@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import type { Location, LocationType } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import MetadataEditor from '@/components/common/MetadataEditor.vue'
 
 // Define a local interface for the dropdown options
 interface LocationOption extends Location {
@@ -40,8 +41,11 @@ const formData = ref({
   parent: '',
   latitude: '',
   longitude: '',
-  metadata: '',
+  // An object (or null), not a JSON string — MetadataEditor owns the text form.
+  metadata: null as Record<string, any> | null,
 })
+
+const metadataEditor = ref<InstanceType<typeof MetadataEditor> | null>(null)
 
 // File upload
 const floorplanFile = ref<File | null>(null)
@@ -55,6 +59,13 @@ const parentLocations = ref<LocationOption[]>([])
 const selectedTypeHint = computed(() => {
   const t = locationTypes.value.find(x => x.id === formData.value.type)
   return t?.description || ''
+})
+
+// The inventory schema declared by the selected location type, if it has one.
+// Absent means MetadataEditor shows free-form key/value rows.
+const selectedTypeMetadataSchema = computed(() => {
+  const t = locationTypes.value.find(x => x.id === formData.value.type)
+  return t?.metadata_schema || null
 })
 
 // State
@@ -164,7 +175,7 @@ async function loadLocation() {
       parent: location.parent || '',
       latitude: location.coordinates?.lat?.toString() || '',
       longitude: location.coordinates?.lon?.toString() || '',
-      metadata: location.metadata ? JSON.stringify(location.metadata, null, 2) : '',
+      metadata: location.metadata && Object.keys(location.metadata).length ? location.metadata : null,
     }
     
     // Store current floorplan
@@ -190,18 +201,11 @@ function handleFileChange(event: Event) {
 }
 
 /**
- * Validate metadata JSON
+ * Commit a metadata JSON tab left mid-edit. False (with a toast) if it doesn't
+ * parse, so a bad blob blocks the save rather than being dropped from it.
  */
 function validateMetadata(): boolean {
-  if (!formData.value.metadata.trim()) return true
-  
-  try {
-    JSON.parse(formData.value.metadata)
-    return true
-  } catch {
-    toast.error('Invalid JSON in metadata field')
-    return false
-  }
+  return !metadataEditor.value || metadataEditor.value.commit()
 }
 
 /**
@@ -276,9 +280,11 @@ async function handleSubmit() {
       formDataToSend.append('coordinates', '')
     }
     
-    // Metadata
-    if (formData.value.metadata.trim()) {
-      formDataToSend.append('metadata', formData.value.metadata)
+    // Metadata. FormData carries strings, so the object is serialised here —
+    // this is the one place the string representation still exists, and it is a
+    // transport detail rather than the form's model.
+    if (formData.value.metadata) {
+      formDataToSend.append('metadata', JSON.stringify(formData.value.metadata))
     } else {
       formDataToSend.append('metadata', '')
     }
@@ -508,15 +514,12 @@ onMounted(() => {
             </div>
           </BaseCard>
           
-          <BaseCard title="Metadata (JSON)">
-            <div class="form-control">
-              <textarea 
-                v-model="formData.metadata"
-                class="textarea textarea-bordered font-mono"
-                rows="6"
-                placeholder='{"key": "value"}'
-              ></textarea>
-            </div>
+          <BaseCard title="Metadata">
+            <MetadataEditor
+              ref="metadataEditor"
+              v-model="formData.metadata"
+              :schema="selectedTypeMetadataSchema"
+            />
           </BaseCard>
         </div>
       </div>

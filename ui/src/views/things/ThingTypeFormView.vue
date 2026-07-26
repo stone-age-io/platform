@@ -7,6 +7,7 @@ import { useToast } from '@/composables/useToast'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import { DEFAULT_PREFIX } from '@/utils/subjectResolver'
 import ThingTypeOperationFormView from '@/views/things/ThingTypeOperationFormView.vue'
+import MetadataSchemaCard from '@/components/common/MetadataSchemaCard.vue'
 import type { ThingTypeCapability, ThingTypeOperation } from '@/types/pocketbase'
 
 const router = useRouter()
@@ -28,6 +29,11 @@ const form = ref({
 })
 
 const availableCapabilities: ThingTypeCapability[] = ['publish', 'subscribe', 'request', 'reply']
+
+// Inventory metadata schema, authored by MetadataSchemaCard. Null means the type
+// declares no fields and the Thing form falls back to free-form key/value rows.
+const metadataSchema = ref<Record<string, any> | null>(null)
+const metadataSchemaCard = ref<InstanceType<typeof MetadataSchemaCard> | null>(null)
 
 const availableOperations = ref<ThingTypeOperation[]>([])
 
@@ -71,6 +77,8 @@ async function loadData() {
       subject_prefix: record.subject_prefix || '',
       operations: record.operations || [],
     }
+    const raw = record.metadata_schema
+    metadataSchema.value = (typeof raw === 'string' ? JSON.parse(raw) : raw) || null
   } catch (err: any) {
     toast.error('Failed to load type')
     router.push('/things/types')
@@ -80,10 +88,13 @@ async function loadData() {
 }
 
 async function submit() {
+  if (metadataSchemaCard.value && !metadataSchemaCard.value.commit()) return
+
   loading.value = true
   try {
     const data: any = {
       ...form.value,
+      metadata_schema: metadataSchema.value,
       organization: isEdit.value ? undefined : authStore.currentOrgId,
     }
 
@@ -206,6 +217,12 @@ onMounted(async () => {
           </label>
         </div>
       </BaseCard>
+
+      <MetadataSchemaCard
+        ref="metadataSchemaCard"
+        v-model="metadataSchema"
+        noun="device"
+      />
 
       <!-- Actions (Outside Card) -->
       <div class="flex justify-end gap-2">
