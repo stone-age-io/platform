@@ -325,6 +325,21 @@ func main() {
 		MembershipCollection:  tenancyOptions.MembershipsCollection,
 	})
 
+	// Thing creation with optional identity provisioning, in one transaction. The
+	// console used to do this in three unguarded calls, so a late failure orphaned
+	// a signed NATS credential; it also never set `active`, so every Thing it made
+	// was locked out of the API by things.authRule.
+	hooks.RegisterThingRoutes(app, hooks.ThingRoutesOptions{
+		ThingCollection:         "things",
+		OrgCollection:           tenancyOptions.OrganizationsCollection,
+		MembershipCollection:    tenancyOptions.MembershipsCollection,
+		NatsUserCollection:      natsOptions.UserCollectionName,
+		NatsAccountCollection:   natsOptions.AccountCollectionName,
+		NatsRoleCollection:      natsOptions.RoleCollectionName,
+		NebulaHostCollection:    nebulaOptions.HostCollectionName,
+		NebulaNetworkCollection: nebulaOptions.NetworkCollectionName,
+	})
+
 	// 6. Serve Embedded UI with SPA Support
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 		subFS, err := fs.Sub(embeddedFS, "pb_public")

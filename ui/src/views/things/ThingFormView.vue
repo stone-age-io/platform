@@ -5,7 +5,6 @@ import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
-import { generateRandomPassword } from '@/utils/password'
 import type { Thing, ThingType, Location, NatsUser, NatsAccount, NatsRole, NebulaHost, NebulaNetwork } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import NatsUserFormView from '@/views/nats/NatsUserFormView.vue'
@@ -50,8 +49,20 @@ const formData = ref({
   metadata: '',
 })
 
-// Provisioning modes (create mode only)
-const natsMode = ref<ProvisionMode>('auto')
+// Whether this caller may attach or mint NATS/Nebula identities. Members hold
+// inventory rights but not identity rights (things.createRule freezes
+// nats_user/nebula_host for them), and they cannot read nats_users or
+// nebula_hosts at all — so for them the identity UI would offer options the API
+// won't return and writes the API will refuse.
+const canManageIdentities = computed(() => authStore.can.manageInfrastructure)
+
+// Only owner/admin may set a Thing's password (things.manageRule).
+const canSetThingPassword = computed(() => authStore.can.decommissionInventory)
+
+// Provisioning modes (create mode only). The default follows the capability: a
+// member auto-provisioning would fail on the nats_users create, which is what
+// made Thing creation impossible for them in the UI even though the API allows it.
+const natsMode = ref<ProvisionMode>(canManageIdentities.value ? 'auto' : 'none')
 const nebulaMode = ref<ProvisionMode>('none')
 
 // Auto-provision config
@@ -91,19 +102,13 @@ function slugify(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
 }
 
-// Derived emails for auto-provisioning using slugified org name
+// Preview of the login the server will derive for the Thing. The route builds the
+// authoritative value the same way (hooks/thing_routes.go, orgSlugFor) — this is
+// display only, so the operator sees the shape before submitting.
 const orgSlug = computed(() => slugify(authStore.currentOrg?.name || ''))
 const thingEmail = computed(() => {
   if (!formData.value.code) return ''
   return `${formData.value.code}@${orgSlug.value}.thing.local`
-})
-const natsEmail = computed(() => {
-  if (!formData.value.code) return ''
-  return `${formData.value.code}@${orgSlug.value}.nats.local`
-})
-const nebulaEmail = computed(() => {
-  if (!formData.value.code) return ''
-  return `${formData.value.code}@${orgSlug.value}.nebula.local`
 })
 
 // Auto-slug: name → code (only in create mode, until manually edited)
@@ -171,24 +176,30 @@ async function loadOptions() {
   loadingOptions.value = true
 
   try {
-    const fetches: Promise<any>[] = [
+    // Inventory reference data every role can read.
+    const [typesRes, locsRes] = await Promise.all([
       pb.collection('thing_types').getFullList<ThingType>({ sort: 'name' }),
       pb.collection('locations').getFullList<Location>({ sort: 'name' }),
+    ])
+    thingTypes.value = typesRes
+    locations.value = sortLocationsHierarchically(locsRes)
+
+    // Identity options are owner/admin-only reads. Fetching them as a member
+    // returns their own personal NATS identity as the sole option (nats_users is
+    // row-scoped to the caller) and empty Nebula lists, so don't ask.
+    if (!canManageIdentities.value) return
+
+    const [natsRes, nebulaRes, rolesRes, networksRes] = await Promise.all([
       pb.collection('nats_users').getFullList<NatsUser>({ sort: 'nats_username' }),
       pb.collection('nebula_hosts').getFullList<NebulaHost>({ sort: 'hostname' }),
-      // Auto-provision options
       pb.collection('nats_roles').getFullList<NatsRole>({ sort: 'name' }),
       pb.collection('nebula_networks').getFullList<NebulaNetwork>({ sort: 'name', filter: 'active = true' }),
-    ]
+    ])
 
-    const [typesRes, locsRes, natsRes, nebulaRes, rolesRes, networksRes] = await Promise.all(fetches)
-
-    thingTypes.value = typesRes
     natsUsers.value = natsRes
     nebulaHosts.value = nebulaRes
     natsRoles.value = rolesRes
     nebulaNetworks.value = networksRes
-    locations.value = sortLocationsHierarchically(locsRes)
 
     // Auto-select defaults for roles
     const defaultRole = natsRoles.value.find(r => r.is_default)
@@ -262,57 +273,6 @@ function validateMetadata(): boolean {
 }
 
 /**
- * Pre-flight uniqueness checks before creating
- */
-async function runPreflightChecks(): Promise<boolean> {
-  const code = formData.value.code
-  if (!code) {
-    toast.error('Code is required')
-    return false
-  }
-
-  try {
-    // Check Thing code uniqueness
-    try {
-      await pb.collection('things').getFirstListItem(`code = "${code}"`)
-      toast.error(`A Thing with code "${code}" already exists.`)
-      return false
-    } catch (e: any) {
-      if (e.status !== 404) throw e
-    }
-
-    // Check NATS username uniqueness
-    if (natsMode.value === 'auto') {
-      try {
-        await pb.collection('nats_users').getFirstListItem(`nats_username = "${code}"`)
-        toast.error(`NATS username "${code}" is already taken.`)
-        return false
-      } catch (e: any) {
-        if (e.status !== 404) throw e
-      }
-    }
-
-    // Check Nebula hostname/IP uniqueness (scoped to the selected network)
-    if (nebulaMode.value === 'auto') {
-      try {
-        await pb.collection('nebula_hosts').getFirstListItem(
-          `network_id = "${autoNebulaNetworkId.value}" && (hostname = "${code}" || overlay_ip = "${autoNebulaOverlayIp.value}")`
-        )
-        toast.error(`Nebula hostname "${code}" or IP "${autoNebulaOverlayIp.value}" is already taken on the selected network.`)
-        return false
-      } catch (e: any) {
-        if (e.status !== 404) throw e
-      }
-    }
-
-    return true
-  } catch (err: any) {
-    toast.error(err.message || 'Pre-flight check failed')
-    return false
-  }
-}
-
-/**
  * Handle form submission
  */
 async function handleSubmit() {
@@ -326,7 +286,14 @@ async function handleSubmit() {
 }
 
 /**
- * Handle create with auto-provisioning
+ * Handle create.
+ *
+ * One call to POST /api/org/things (hooks/thing_routes.go), which creates the
+ * Thing and mints any requested identities inside a single transaction. This used
+ * to be three separate client calls with no rollback, so a failure on the last one
+ * orphaned a signed NATS credential — and it never set `active`, so the Thing it
+ * produced could not authenticate. The server also owns the account lookup, the
+ * default role, the email shape, and the Thing's password.
  */
 async function handleCreate() {
   if (!formData.value.code) {
@@ -334,7 +301,8 @@ async function handleCreate() {
     return
   }
 
-  // Validate auto-provision requirements
+  // Client-side checks for the auto paths, so the operator sees the problem
+  // before a round trip. The route re-checks all of these.
   if (natsMode.value === 'auto') {
     if (!orgNatsAccount.value) {
       toast.error('No NATS account found for this organization. Cannot auto-provision.')
@@ -360,80 +328,37 @@ async function handleCreate() {
   loading.value = true
 
   try {
-    // Pre-flight uniqueness checks
-    if (!await runPreflightChecks()) {
-      loading.value = false
-      return
-    }
+    const created = await pb.send('/api/org/things', {
+      method: 'POST',
+      body: {
+        name: formData.value.name,
+        description: formData.value.description || '',
+        code: formData.value.code,
+        type: formData.value.type || '',
+        location: formData.value.location || '',
+        metadata: formData.value.metadata ? JSON.parse(formData.value.metadata) : null,
+        nats: {
+          mode: natsMode.value,
+          user_id: natsMode.value === 'link' ? formData.value.nats_user : '',
+          role_id: natsMode.value === 'auto' ? autoNatsRoleId.value : '',
+        },
+        nebula: {
+          mode: nebulaMode.value,
+          host_id: nebulaMode.value === 'link' ? formData.value.nebula_host : '',
+          network_id: nebulaMode.value === 'auto' ? autoNebulaNetworkId.value : '',
+          overlay_ip: nebulaMode.value === 'auto' ? autoNebulaOverlayIp.value : '',
+        },
+      },
+    })
 
-    const junkPassword = generateRandomPassword(32)
-    let finalNatsId = formData.value.nats_user
-    let finalNebulaId = formData.value.nebula_host
-
-    // Step 1: Auto-create NATS user
-    if (natsMode.value === 'auto') {
-      const natsRecord = await pb.collection('nats_users').create({
-        nats_username: formData.value.code,
-        email: natsEmail.value,
-        password: junkPassword,
-        passwordConfirm: junkPassword,
-        emailVisibility: true,
-        account_id: orgNatsAccount.value!.id,
-        role_id: autoNatsRoleId.value,
-        active: true,
-        organization: authStore.currentOrgId,
-      })
-      finalNatsId = natsRecord.id
-    } else if (natsMode.value === 'none') {
-      finalNatsId = ''
-    }
-
-    // Step 2: Auto-create Nebula host
-    if (nebulaMode.value === 'auto') {
-      const nebulaRecord = await pb.collection('nebula_hosts').create({
-        hostname: formData.value.code,
-        email: nebulaEmail.value,
-        password: junkPassword,
-        passwordConfirm: junkPassword,
-        emailVisibility: true,
-        network_id: autoNebulaNetworkId.value,
-        overlay_ip: autoNebulaOverlayIp.value,
-        active: true,
-        organization: authStore.currentOrgId,
-      })
-      finalNebulaId = nebulaRecord.id
-    } else if (nebulaMode.value === 'none') {
-      finalNebulaId = ''
-    }
-
-    // Step 3: Create the Thing
-    const thingPassword = generateRandomPassword(16)
-    const thingData: any = {
-      name: formData.value.name,
-      description: formData.value.description || null,
-      code: formData.value.code,
-      type: formData.value.type || null,
-      location: formData.value.location || null,
-      email: thingEmail.value,
-      password: thingPassword,
-      passwordConfirm: thingPassword,
-      emailVisibility: true,
-      nats_user: finalNatsId || null,
-      nebula_host: finalNebulaId || null,
-      metadata: formData.value.metadata ? JSON.parse(formData.value.metadata) : null,
-      organization: authStore.currentOrgId,
-    }
-
-    await pb.collection('things').create(thingData)
-
-    // Show success modal with credentials
+    // The route returns the generated password exactly once.
     successCredentials.value = {
-      email: thingEmail.value,
-      password: thingPassword,
+      email: created.email,
+      password: created.password,
     }
     showSuccessModal.value = true
   } catch (err: any) {
-    toast.error(err.message || 'Provisioning failed')
+    toast.error(err.response?.message || err.message || 'Provisioning failed')
   } finally {
     loading.value = false
   }
@@ -457,12 +382,19 @@ async function handleUpdate() {
       code: formData.value.code || null,
       type: formData.value.type || null,
       location: formData.value.location || null,
-      nats_user: formData.value.nats_user || null,
-      nebula_host: formData.value.nebula_host || null,
       metadata: formData.value.metadata ? JSON.parse(formData.value.metadata) : null,
     }
 
-    if (formData.value.password) {
+    // Send the identity relations only if this caller may change them. The member
+    // branch of things.updateRule requires `nats_user:changed = false`, and a
+    // field absent from the body counts as unchanged — sending it is what turns a
+    // legitimate inventory edit into a 404.
+    if (canManageIdentities.value) {
+      data.nats_user = formData.value.nats_user || null
+      data.nebula_host = formData.value.nebula_host || null
+    }
+
+    if (canSetThingPassword.value && formData.value.password) {
       data.password = formData.value.password
       data.passwordConfirm = formData.value.passwordConfirm
     }
@@ -641,7 +573,8 @@ onMounted(() => {
           </BaseCard>
 
           <!-- Authentication: Edit mode only -->
-          <BaseCard v-if="isEdit" title="Authentication">
+          <!-- Setting a Thing password is owner/admin only (things.manageRule). -->
+          <BaseCard v-if="isEdit && canSetThingPassword" title="Authentication">
             <div class="space-y-4">
               <div class="form-control">
                 <label class="label">
@@ -688,7 +621,7 @@ onMounted(() => {
         <div class="space-y-6">
 
           <!-- NATS Connectivity -->
-          <BaseCard title="NATS Connectivity">
+          <BaseCard v-if="canManageIdentities" title="NATS Connectivity">
             <!-- Mode tabs (create mode only) -->
             <div v-if="!isEdit" class="tabs tabs-boxed mb-4">
               <a class="tab tab-sm sm:tab-md flex-1 min-w-0 truncate" :class="{ 'tab-active': natsMode === 'auto' }" @click="natsMode = 'auto'">
@@ -770,7 +703,7 @@ onMounted(() => {
           </BaseCard>
 
           <!-- Nebula Connectivity -->
-          <BaseCard title="Nebula Connectivity">
+          <BaseCard v-if="canManageIdentities" title="Nebula Connectivity">
             <!-- Mode tabs (create mode only) -->
             <div v-if="!isEdit" class="tabs tabs-boxed mb-4">
               <a class="tab tab-sm sm:tab-md flex-1 min-w-0 truncate" :class="{ 'tab-active': nebulaMode === 'auto' }" @click="nebulaMode = 'auto'">

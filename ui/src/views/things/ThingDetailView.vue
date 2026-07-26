@@ -356,6 +356,15 @@ onMounted(() => {
                 <span v-else class="font-mono text-sm text-base-content/60">{{ thing.expand.nats_user.role_id || '—' }}</span>
               </div>
             </div>
+            <!-- Linked, but the caller cannot read nats_users (members see only
+                 their own row). The relation ID is on the things record and IS
+                 readable, so "linked" and "not linked" stay distinguishable
+                 without it — saying "No NATS user linked" here was simply false. -->
+            <div v-else-if="thing.nats_user" class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">
+              <span class="text-2xl block mb-2">🔒</span>
+              <p class="text-sm">NATS identity linked</p>
+              <p class="text-xs opacity-70 mt-1">Details require an administrator</p>
+            </div>
             <div v-else class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">
               <span class="text-2xl block mb-2">📡</span>
               <p class="text-sm">No NATS user linked</p>
@@ -379,6 +388,12 @@ onMounted(() => {
                   <div class="font-mono text-sm">{{ thing.expand.nebula_host.overlay_ip }}</div>
                 </div>
               </div>
+            </div>
+            <!-- Same three states as NATS above. -->
+            <div v-else-if="thing.nebula_host" class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">
+              <span class="text-2xl block mb-2">🔒</span>
+              <p class="text-sm">Nebula host linked</p>
+              <p class="text-xs opacity-70 mt-1">Details require an administrator</p>
             </div>
             <div v-else class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">
               <span class="text-2xl block mb-2">🌐</span>

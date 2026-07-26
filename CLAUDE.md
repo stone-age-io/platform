@@ -369,6 +369,33 @@ Rules to follow when touching authorization:
   when a field is added. Both routes take no record id — the target is derived from
   the caller's own identity or active organization — and a `switch` maps each
   action to exactly one field, rejecting anything unrecognised.
+- **A route that writes with `app.Save()` bypasses every API rule.** So each check
+  the rules would have made has to be restated in the route. `POST /api/org/things`
+  (`hooks/thing_routes.go`) is the worked example: organization comes from the
+  caller's own record and never the body, and a `link`ed `nats_user`/`nebula_host`
+  is verified to belong to that organization — without that second check the route
+  would be a cross-tenant credential-theft path, because a Thing may read the
+  credential of its own linked identity. Rules protect the CRUD endpoints, not
+  yours.
+- **A rule cannot express two authority levels for one operation.** Creating a
+  Thing is a member action; attaching an identity to it is not. `things.createRule`
+  approximates this by freezing `nats_user`/`nebula_host` in the member branch, but
+  a *provisioning* endpoint that mints those records cannot be expressed as a
+  create rule at all — hence `POST /api/org/things`, which role-checks per section.
+  It also replaced three unguarded client calls whose partial failure orphaned a
+  signed NATS credential, and which never sent `active`, so every Thing the console
+  created was locked out by `things.authRule`. When provisioning spans collections,
+  it belongs in one transaction on the server. PocketBase defers
+  `*AfterCreateSuccess` hooks to commit (`core/db.go`, `txInfo.OnComplete`), so a
+  rollback means pb-nats never signed or published either.
+- **UI capability gates must match what the reader can READ, not just write.**
+  Members hold inventory rights but cannot read `nats_users` (beyond their own row),
+  `nebula_hosts`, `nebula_networks` or `nats_roles`. A view that expands those
+  relations gets nothing back, and a `v-else` reading "No NATS user linked" then
+  states something false about a Thing that *is* linked. The relation **id** on the
+  `things` record is readable by any org member, so "linked but not visible to you"
+  and "not linked" stay distinguishable without any rule change — three states, not
+  two. Same rule as the twin markers: show what you actually know.
 - **pb-nats trigger fields only fire from a route if pb-nats watches them on the
   MODEL hook.** `regenerate`, `revoke`, `rotate_keys`, `add_signing_key` and
   `remove_signing_key` are all handled in `pb-nats internal/sync/manager.go`. Those
@@ -442,6 +469,7 @@ Keep it in step with the table above.
 - `main.go` - Backend entry, PocketBase setup, hooks, bootstrap command
 - `hooks/leaf_node_provisioning.go` - Mints a leaf node's NATS user on create
 - `hooks/leaf_node_routes.go` - `GET /api/leaf/bootstrap` (leaf-node-authed; everything `leaf-sync config` needs), plus the superseded `GET /api/leaf/operator-jwt`
+- `hooks/thing_routes.go` - `POST /api/org/things`: Thing + optional NATS/Nebula identity in one transaction; member-level for inventory, owner/admin for the identity half
 - `cmd/leaf-sync/` + `internal/leafsync/` - Edge agent (config bootstrap + KV sync); see `cmd/leaf-sync/README.md`
 - `ui/src/stores/auth.ts` - Authentication and organization context
 - `ui/src/stores/nats.ts` - NATS WebSocket connection manager

@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=97          # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=108         # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -752,6 +752,84 @@ expect "owner CAN reset a thing's password (same payload, so the deny was authz)
 req POST /collections/things/auth-with-password "" \
   '{"identity":"thing1@test.local","password":"NewPassword456!"}'
 expect "the reset password actually works" 200 "$RCODE" "$RBODY"
+
+echo ""
+echo "=== 16. POST /api/org/things: two authority levels in one endpoint ==="
+# The console used to create the nats_users record, the nebula_hosts record, and
+# the Thing in three separate client calls. A failure on the last one orphaned a
+# signed NATS credential, and the browser never sent `active`, so every Thing it
+# made was locked out by things.authRule. The route does all of it in one
+# transaction -- and because it writes with app.Save(), it bypasses the API rules
+# entirely, so the role checks it makes are the ONLY thing standing here.
+req POST "/org/things" "" '{"name":"Anon Thing","code":"anon-1"}'
+expect "anonymous cannot create a thing through the route" 401 "$RCODE" "$RBODY"
+
+req POST "/org/things" "$TG" '{"name":"Dash Route Thing","code":"dash-route-1"}'
+expect "dashboard cannot create a thing through the route" "403|400" "$RCODE" "$RBODY"
+
+req POST "/org/things" "$TB" '{"name":"Member Route Thing","code":"member-route-1"}'
+expect "member CAN create a thing through the route (no identity)" 200 "$RCODE" "$RBODY"
+RT_EMAIL=$(j "$RBODY" email)
+RT_PASS=$(j "$RBODY" password)
+
+# The bug this route fixes: a bool column has no schema default, so the Thing the
+# old client created read active = false and could not authenticate at all.
+req POST /collections/things/auth-with-password "" \
+  "{\"identity\":\"$RT_EMAIL\",\"password\":\"$RT_PASS\"}"
+expect "a thing created through the route can authenticate (active was set)" 200 "$RCODE" "$RBODY"
+
+# The identity half is owner/admin only -- the same boundary things.createRule
+# draws by freezing nats_user/nebula_host for the member branch.
+req POST "/org/things" "$TB" \
+  "{\"name\":\"Member Auto\",\"code\":\"member-auto-1\",\"nats\":{\"mode\":\"auto\",\"role_id\":\"$NROLE\"}}"
+expect "member cannot auto-provision an identity through the route" 403 "$RCODE" "$RBODY"
+req POST "/org/things" "$TB" \
+  "{\"name\":\"Member Link\",\"code\":\"member-link-1\",\"nats\":{\"mode\":\"link\",\"user_id\":\"$DEV_NATS\"}}"
+expect "member cannot link an identity through the route" 403 "$RCODE" "$RBODY"
+
+req POST "/org/things" "$TA" \
+  "{\"name\":\"Owner Auto\",\"code\":\"owner-auto-1\",\"nats\":{\"mode\":\"auto\",\"role_id\":\"$NROLE\"}}"
+expect "owner CAN auto-provision an identity through the route (same payload)" 200 "$RCODE" "$RBODY"
+AUTO_THING=$(j "$RBODY" id)
+req GET "/collections/things/records/$AUTO_THING" "$SU"
+if [ -n "$(j "$RBODY" nats_user)" ]; then
+  ok "auto-provisioning minted the identity and linked it to the thing"
+else
+  no "auto-provisioning returned 200 but left the thing unlinked"
+fi
+
+# Cross-tenant: the route resolves the org from the caller's own record, but the
+# LINK target comes from the body, so it has to be verified separately.
+req GET "/collections/nats_accounts/records?filter=(organization='$ORG2')" "$SU"
+OTHER_ACCT=$(jn "$RBODY" 'o.items[0].id')
+req GET "/collections/nats_roles/records?filter=(organization='$ORG2')" "$SU"
+OTHER_ROLE=$(jn "$RBODY" 'o.items[0].id')
+if [ -z "$OTHER_ROLE" ]; then
+  req POST /collections/nats_roles/records "$SU" \
+    "{\"name\":\"other-test-role\",\"organization\":\"$ORG2\",\"publish_permissions\":[\"test.>\"],\"subscribe_permissions\":[\"test.>\"]}"
+  OTHER_ROLE=$(j "$RBODY" id)
+fi
+req POST /collections/nats_users/records "$SU" \
+  "{\"email\":\"other-org-id@nats.test\",\"password\":\"Password123!\",\"passwordConfirm\":\"Password123!\",\"nats_username\":\"other-org-id\",\"account_id\":\"$OTHER_ACCT\",\"role_id\":\"$OTHER_ROLE\",\"organization\":\"$ORG2\",\"active\":true}"
+OTHER_NATS=$(j "$RBODY" id)
+[ -z "$OTHER_NATS" ] && die "could not create an OtherOrg NATS identity: $RBODY"
+req POST "/org/things" "$TA" \
+  "{\"name\":\"Cross Tenant\",\"code\":\"cross-1\",\"nats\":{\"mode\":\"link\",\"user_id\":\"$OTHER_NATS\"}}"
+expect "owner cannot link another org's NATS identity" 400 "$RCODE" "$RBODY"
+
+# Atomicity. An invalid `type` relation fails the Thing save AFTER the nats_users
+# record was created inside the transaction. PocketBase defers the
+# *AfterCreateSuccess hooks to commit (core/db.go), so a rollback means pb-nats
+# never signed or published either -- but the record itself must also be gone.
+req POST "/org/things" "$TA" \
+  "{\"name\":\"Rollback Thing\",\"code\":\"rollback-1\",\"type\":\"nonexistenttype00\",\"nats\":{\"mode\":\"auto\",\"role_id\":\"$NROLE\"}}"
+expect "a thing create that fails late is rejected" "400|404" "$RCODE" "$RBODY"
+req GET "/collections/nats_users/records?filter=(nats_username='rollback-1')" "$SU"
+if [ "$(jn "$RBODY" 'o.items.length')" = "0" ]; then
+  ok "the rolled-back create left no orphaned NATS identity"
+else
+  no "rollback leaked a nats_users record -- the transaction is not covering provisioning"
+fi
 
 # ----------------------------------------------------------------------- result
 
