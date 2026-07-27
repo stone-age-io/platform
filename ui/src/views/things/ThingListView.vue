@@ -12,10 +12,19 @@ import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 import ThingMapViz from '@/components/things/ThingMapViz.vue'
+import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const toast = useToast()
 const { confirm } = useConfirm()
+const authStore = useAuthStore()
+
+// This screen is reachable by `viewer`, which writes nothing. Create/edit is
+// manageInventory; delete is decommissionInventory, which members do NOT hold
+// either -- the Delete button here was ungated and the server was rejecting it
+// for every member who clicked it.
+const canWrite = computed(() => authStore.can.manageInventory)
+const canDelete = computed(() => authStore.can.decommissionInventory)
 
 // View Mode
 const viewMode = ref<'list' | 'map'>('list')
@@ -221,7 +230,7 @@ onUnmounted(() => {
           </button>
         </div>
 
-        <router-link to="/things/new" class="btn btn-primary w-full sm:w-auto">
+        <router-link v-if="canWrite" to="/things/new" class="btn btn-primary w-full sm:w-auto">
           <span class="text-lg">+</span>
           <span>New Thing</span>
         </router-link>
@@ -269,9 +278,9 @@ onUnmounted(() => {
         <span class="text-6xl">📦</span>
         <h3 class="text-xl font-bold mt-4">No things found</h3>
         <p class="text-base-content/70 mt-2">
-          Create your first thing to get started
+          {{ canWrite ? 'Create your first thing to get started' : 'This organization has no things yet' }}
         </p>
-        <router-link to="/things/new" class="btn btn-primary mt-4">
+        <router-link v-if="canWrite" to="/things/new" class="btn btn-primary mt-4">
           Create Thing
         </router-link>
       </div>
@@ -360,19 +369,28 @@ onUnmounted(() => {
         
         <!-- Actions - @click.stop is handled in ResponsiveList -->
         <template #actions="{ item }">
-          <router-link 
-            :to="`/things/${item.id}/edit`" 
+          <router-link
+            v-if="canWrite"
+            :to="`/things/${item.id}/edit`"
             class="btn btn-xs flex-1 sm:flex-initial"
           >
             Edit
           </router-link>
           <button
+            v-if="canDelete"
             @click="handleDelete(item)"
             class="btn btn-xs text-error flex-1 sm:flex-initial"
             :disabled="deleting"
           >
             Delete
           </button>
+          <router-link
+            v-if="!canWrite && !canDelete"
+            :to="`/things/${item.id}`"
+            class="btn btn-xs flex-1 sm:flex-initial"
+          >
+            View
+          </router-link>
         </template>
       </ResponsiveList>
       

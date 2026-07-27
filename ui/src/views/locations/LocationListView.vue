@@ -10,10 +10,18 @@ import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 import LocationMapViz from '@/components/locations/LocationMapViz.vue'
+import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const toast = useToast()
 const { confirm } = useConfirm()
+const authStore = useAuthStore()
+
+// Reachable by `viewer`, which writes nothing. Delete is decommissionInventory
+// (owner/admin) -- it was ungated here, so members saw a button the server
+// refused.
+const canWrite = computed(() => authStore.can.manageInventory)
+const canDelete = computed(() => authStore.can.decommissionInventory)
 
 // View Mode
 const viewMode = ref<'list' | 'map'>('list')
@@ -199,7 +207,7 @@ onUnmounted(() => {
           </button>
         </div>
 
-        <router-link to="/locations/new" class="btn btn-primary w-full sm:w-auto">
+        <router-link v-if="canWrite" to="/locations/new" class="btn btn-primary w-full sm:w-auto">
           <span class="text-lg">+</span>
           <span>New Location</span>
         </router-link>
@@ -238,7 +246,7 @@ onUnmounted(() => {
           <span class="text-6xl">📍</span>
           <h3 class="text-xl font-bold mt-4">No locations found</h3>
           <p class="text-base-content/70 mt-2">
-            Create your first root location to get started.
+            {{ canWrite ? 'Create your first root location to get started.' : 'This organization has no locations yet.' }}
           </p>
         </div>
 
@@ -289,8 +297,9 @@ onUnmounted(() => {
             </template>
 
             <template #actions="{ item }">
-              <router-link :to="`/locations/${item.id}/edit`" class="btn btn-xs flex-1 sm:flex-initial" @click.stop>Edit</router-link>
-              <button @click.stop="handleDelete(item)" class="btn btn-xs text-error flex-1 sm:flex-initial" :disabled="deleting">Delete</button>
+              <router-link v-if="canWrite" :to="`/locations/${item.id}/edit`" class="btn btn-xs flex-1 sm:flex-initial" @click.stop>Edit</router-link>
+              <button v-if="canDelete" @click.stop="handleDelete(item)" class="btn btn-xs text-error flex-1 sm:flex-initial" :disabled="deleting">Delete</button>
+              <router-link v-if="!canWrite && !canDelete" :to="`/locations/${item.id}`" class="btn btn-xs flex-1 sm:flex-initial" @click.stop>View</router-link>
             </template>
           </ResponsiveList>
 

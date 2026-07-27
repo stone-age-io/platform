@@ -301,23 +301,29 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
 and pb-nebula contain no tenancy logic — they never reference `organization`. The
 UI's capability map is navigation convenience, not a boundary.
 
-Four roles on `memberships.role` (`invites.role` offers all but `owner`).
-`dashboard` is a restricted console login: the Visualizer at `/` and its own
-`/settings`, nothing else. Its real capability on the bus is whatever its linked
-`nats_users` role permits — the UI restriction is not a NATS restriction.
+Five roles on `memberships.role` (`invites.role` offers all but `owner`).
+`viewer` is a tenant's read-only staff: the inventory screens, no write control
+anywhere. `dashboard` is an appliance login for an unattended screen: the
+Visualizer at `/` and its own `/settings`, nothing else. Neither restriction is a
+NATS restriction — a console role's real capability on the bus is whatever its
+linked `nats_users` role permits, which is set independently.
 
-| | owner | admin | member | dashboard |
-|---|:-:|:-:|:-:|:-:|
-| Members, invitations | ✓ | ✓ | | |
-| NATS + Nebula infrastructure | ✓ | ✓ | | |
-| Thing/location types, operations, schemas | ✓ | ✓ | | |
-| Leaf nodes, JetStream streams, KV buckets | ✓ | ✓ | | |
-| Attach a NATS/Nebula identity to a Thing | ✓ | ✓ | | |
-| Delete a thing or location | ✓ | ✓ | | |
-| Deactivate a thing or leaf node; reset a thing's password | ✓ | ✓ | | |
-| Things + locations: create and edit | ✓ | ✓ | ✓ | |
-| Own NATS credential + rotation | ✓ | ✓ | ✓ | ✓ |
-| Dashboards | ✓ | ✓ | ✓ | ✓ (its only screen) |
+| | owner | admin | member | viewer | dashboard |
+|---|:-:|:-:|:-:|:-:|:-:|
+| Members, invitations | ✓ | ✓ | | | |
+| NATS + Nebula infrastructure | ✓ | ✓ | | | |
+| Thing/location types, operations, schemas | ✓ | ✓ | | | |
+| Leaf nodes, JetStream streams, KV buckets | ✓ | ✓ | | | |
+| Attach a NATS/Nebula identity to a Thing | ✓ | ✓ | | | |
+| Delete a thing or location | ✓ | ✓ | | | |
+| Deactivate a thing or leaf node; reset a thing's password | ✓ | ✓ | | | |
+| Things + locations: create and edit | ✓ | ✓ | ✓ | | |
+| Things + locations: **browse in the console** | ✓ | ✓ | ✓ | ✓ | |
+| Own NATS credential + rotation | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Dashboards | ✓ | ✓ | ✓ | ✓ | ✓ (its only screen) |
+
+The browse row is the only one in this table that the API rules do **not**
+enforce — see the read-scope note below. Every other row is a rule.
 
 `owner` and `admin` are deliberately identical in the rules — the only difference
 is that an owner cannot leave their own organization (`ui/src/stores/auth.ts`).
@@ -344,7 +350,37 @@ Rules to follow when touching authorization:
   testing denials with `member` — a role with *some* authority cannot prove an
   allowlist, because it passes for the wrong reason. (This role was called `badge`
   until it was renamed in `migrations/schema_update_dashboard_role.go`; commits and
-  PRs before that date say `badge` and mean this.)
+  PRs before that date say `badge` and mean this.) `viewer` cannot take over the
+  job either: it holds read capability, so a denial it passes proves less. Two
+  roles, two purposes — don't merge them to save an enum entry.
+- **Reads are org-scoped, not role-scoped, and that is deliberate.** Every read
+  rule on `things`, `locations`, `thing_types`, `location_types`,
+  `message_schemas` and `leaf_nodes` is `organization = current_organization`
+  with no role branch, so *every* role in an org — `dashboard` included — can
+  `curl` the whole inventory. `viewer` therefore reads exactly what `member`
+  reads; the difference between them is writes plus which screens
+  `ui/src/router/index.ts` navigates to. Do not describe the console's
+  navigation as a read boundary, and do not "tighten" a view for a role by
+  editing `can.*` — that is theatre. A read that must actually be a boundary is
+  a branch in `schema.json`, with the cost that comes with it: eight collections
+  to keep in step, and a new failure mode where a relation expansion silently
+  returns nothing.
+- **A read-only role costs one enum entry, and that is the point.** `viewer` was
+  added (`migrations/schema_update_viewer_role.go`) with **zero rule text
+  changes**: a role value naming itself in no write branch is denied everywhere
+  by construction. That is the dividend of the allowlist rule above, and it
+  doubles as a test of it — if you ever find yourself editing a rule to keep a
+  new read-only role *out*, that rule is a deny-list and it is the bug. The
+  work of such a role is all in the UI: split the capability
+  (`viewInventory` vs `manageInventory` in `ui/src/stores/auth.ts`), point
+  list/detail routes at the read one and forms at the write one, and gate every
+  create/edit/delete control in the views.
+- **Gate a write control on the capability that matches its rule, not the one
+  that matches its screen.** Adding `viewer` surfaced two buttons that had been
+  wrong since before it existed: the Delete buttons on the Things and Locations
+  lists, and on the Location detail view, were ungated, so a `member` saw a
+  Delete the server then refused (`deleteRule` is owner/admin). Any control
+  whose rule differs from its screen's entry capability needs its own `v-if`.
 - **`?`-prefixed operators are row-correlated** on the same relation path, so
   `memberships_via_user.organization ?= X && memberships_via_user.role ?= "owner"`
   matches one membership row. Without `?`, the condition must hold for *all*
@@ -455,7 +491,7 @@ Keep it in step with the table above.
 
 - `go test ./...` — Go unit tests (`internal/leafsync` has the bulk of them)
 - `./scripts/test-authz.sh` — **run after any API-rule change in `schema.json`.**
-  Builds the binary, stands up a throwaway DB, and asserts 97 authorization
+  Builds the binary, stands up a throwaway DB, and asserts 130 authorization
   behaviours against a live server. The rules are the only tenancy enforcement
   in the platform and nothing else type-checks them. Add a check when you add a
   rule, and bump `EXPECTED_CHECKS`. Note PocketBase answers 404 (not 403) when an

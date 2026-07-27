@@ -73,7 +73,9 @@ const menuItems = computed(() => {
     { label: 'Dashboard', icon: '📊', path: '/' },
   ]
 
-  if (can.manageInventory) {
+  // viewInventory, not manageInventory: a viewer navigates these screens and
+  // finds every write control gated off inside them.
+  if (can.viewInventory) {
     items.push(
       { label: 'Things', icon: '📦', path: '/things' },
       { label: 'Locations', icon: '📍', path: '/locations' },

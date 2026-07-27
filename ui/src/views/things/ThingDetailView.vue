@@ -214,7 +214,11 @@ onMounted(() => {
             </span>
           </div>
           <div class="flex gap-2 w-full sm:w-auto">
-            <router-link :to="`/things/${thing.id}/edit`" class="btn btn-primary flex-1 sm:flex-initial">
+            <router-link
+              v-if="canEditMetadata"
+              :to="`/things/${thing.id}/edit`"
+              class="btn btn-primary flex-1 sm:flex-initial"
+            >
               Edit
             </router-link>
             <button

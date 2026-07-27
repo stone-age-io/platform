@@ -62,9 +62,11 @@ const routes: RouteRecordRaw[] = [
       { path: 'things/schemas', name: 'MessageSchemas', component: () => import('@/views/things/MessageSchemaListView.vue'), meta: { requiresCapability: 'manageDefinitions' } },
       { path: 'things/schemas/new', name: 'MessageSchemaNew', component: () => import('@/views/things/MessageSchemaFormView.vue'), meta: { requiresCapability: 'manageDefinitions' } },
       { path: 'things/schemas/:id/edit', name: 'MessageSchemaEdit', component: () => import('@/views/things/MessageSchemaFormView.vue'), meta: { requiresCapability: 'manageDefinitions' } },
-      { path: 'things', name: 'Things', component: () => import('@/views/things/ThingListView.vue'), meta: { requiresCapability: 'manageInventory' } },
+      // List and detail are viewInventory (member + viewer); the forms are
+      // manageInventory. A viewer that types /things/x/edit lands back on '/'.
+      { path: 'things', name: 'Things', component: () => import('@/views/things/ThingListView.vue'), meta: { requiresCapability: 'viewInventory' } },
       { path: 'things/new', name: 'ThingNew', component: () => import('@/views/things/ThingFormView.vue'), meta: { requiresCapability: 'manageInventory' } },
-      { path: 'things/:id', name: 'ThingDetail', component: () => import('@/views/things/ThingDetailView.vue'), meta: { requiresCapability: 'manageInventory' } },
+      { path: 'things/:id', name: 'ThingDetail', component: () => import('@/views/things/ThingDetailView.vue'), meta: { requiresCapability: 'viewInventory' } },
       { path: 'things/:id/edit', name: 'ThingEdit', component: () => import('@/views/things/ThingFormView.vue'), meta: { requiresCapability: 'manageInventory' } },
 
       // Leaf Nodes (edge nodes)
@@ -77,9 +79,9 @@ const routes: RouteRecordRaw[] = [
       { path: 'locations/types', name: 'LocationTypes', component: () => import('@/views/locations/LocationTypeListView.vue'), meta: { requiresCapability: 'manageDefinitions' } },
       { path: 'locations/types/new', name: 'LocationTypeNew', component: () => import('@/views/locations/LocationTypeFormView.vue'), meta: { requiresCapability: 'manageDefinitions' } },
       { path: 'locations/types/:id/edit', name: 'LocationTypeEdit', component: () => import('@/views/locations/LocationTypeFormView.vue'), meta: { requiresCapability: 'manageDefinitions' } },
-      { path: 'locations', name: 'Locations', component: () => import('@/views/locations/LocationListView.vue'), meta: { requiresCapability: 'manageInventory' } },
+      { path: 'locations', name: 'Locations', component: () => import('@/views/locations/LocationListView.vue'), meta: { requiresCapability: 'viewInventory' } },
       { path: 'locations/new', name: 'LocationNew', component: () => import('@/views/locations/LocationFormView.vue'), meta: { requiresCapability: 'manageInventory' } },
-      { path: 'locations/:id', name: 'LocationDetail', component: () => import('@/views/locations/LocationDetailView.vue'), meta: { requiresCapability: 'manageInventory' } },
+      { path: 'locations/:id', name: 'LocationDetail', component: () => import('@/views/locations/LocationDetailView.vue'), meta: { requiresCapability: 'viewInventory' } },
       { path: 'locations/:id/edit', name: 'LocationEdit', component: () => import('@/views/locations/LocationFormView.vue'), meta: { requiresCapability: 'manageInventory' } },
       
       // NATS

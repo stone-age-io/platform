@@ -343,11 +343,12 @@ onUnmounted(() => {
           >
             <option value="member">Member</option>
             <option value="admin">Admin</option>
+            <option value="viewer">Read Only</option>
             <option value="dashboard">Dashboard Only</option>
           </select>
           <label class="label">
             <span class="label-text-alt">
-              Admins can manage members. Dashboard-only users see the Visualizer and nothing else.
+              Admins can manage members. Read-only users browse things and locations without changing them. Dashboard-only users see the Visualizer and nothing else.
             </span>
           </label>
         </div>

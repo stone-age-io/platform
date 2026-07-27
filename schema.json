@@ -1800,6 +1800,7 @@
         "values": [
           "admin",
           "member",
+          "viewer",
           "dashboard"
         ]
       },
@@ -2163,6 +2164,7 @@
           "owner",
           "admin",
           "member",
+          "viewer",
           "dashboard"
         ]
       },

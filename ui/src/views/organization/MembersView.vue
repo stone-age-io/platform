@@ -80,6 +80,7 @@ function getRoleBadgeClass(role: string): string {
     case 'owner': return 'badge-primary'
     case 'admin': return 'badge-secondary'
     case 'member': return 'badge-ghost'
+    case 'viewer': return 'badge-outline'
     default: return 'badge-ghost'
   }
 }

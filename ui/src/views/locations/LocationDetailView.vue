@@ -318,10 +318,21 @@ onUnmounted(() => cleanupMap())
             <span v-if="location.expand?.type" class="badge badge-lg badge-ghost">{{ location.expand.type.name }}</span>
           </div>
           <div class="flex gap-2 w-full sm:w-auto">
-            <router-link :to="`/locations/${location.id}/edit`" class="btn btn-primary flex-1 sm:flex-initial">
+            <router-link
+              v-if="canEditMetadata"
+              :to="`/locations/${location.id}/edit`"
+              class="btn btn-primary flex-1 sm:flex-initial"
+            >
               Edit
             </router-link>
-            <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial" :disabled="deleting">
+            <!-- decommissionInventory, matching locations.deleteRule. This was
+                 ungated, so a member got a Delete button the server refused. -->
+            <button
+              v-if="authStore.can.decommissionInventory"
+              @click="handleDelete"
+              class="btn btn-error flex-1 sm:flex-initial"
+              :disabled="deleting"
+            >
               Delete
             </button>
           </div>
@@ -443,8 +454,12 @@ onUnmounted(() => cleanupMap())
             <div v-if="!location.floorplan && !location.coordinates" class="flex-grow flex flex-col items-center justify-center p-8 text-center">
               <span class="text-6xl mb-4 opacity-30">🗺️</span>
               <h3 class="font-bold opacity-60">No Map or Floor Plan</h3>
-              <p class="text-sm opacity-50 mb-4 max-w-sm">Add geographic coordinates or upload a floor plan image to visualize this location.</p>
-              <router-link :to="`/locations/${location.id}/edit`" class="btn btn-sm btn-primary">
+              <p class="text-sm opacity-50 mb-4 max-w-sm">
+                {{ canEditMetadata
+                  ? 'Add geographic coordinates or upload a floor plan image to visualize this location.'
+                  : 'This location has no coordinates or floor plan.' }}
+              </p>
+              <router-link v-if="canEditMetadata" :to="`/locations/${location.id}/edit`" class="btn btn-sm btn-primary">
                 Edit Location
               </router-link>
             </div>

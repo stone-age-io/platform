@@ -73,7 +73,20 @@ export const useAuthStore = defineStore('auth', () => {
       manageLeafNodes: isAdmin,
       // JetStream streams and KV buckets.
       manageMessaging: isAdmin,
+      // Reading things and locations. `viewer` is a tenant's read-only staff:
+      // it sees the inventory screens and writes nothing.
+      //
+      // This is NOT a read boundary and must not be mistaken for one. The read
+      // rules on things, locations, thing_types, location_types,
+      // message_schemas and leaf_nodes are org-scoped with no role check, so
+      // every role in the org — `dashboard` included — can already read all of
+      // it over the API. What this capability decides is which screens the
+      // console navigates to. If a read ever needs to be a boundary, it has to
+      // be a branch in schema.json; adding it here would be theatre.
+      viewInventory: isAdmin || role === 'member' || role === 'viewer',
       // Things and locations — the day-to-day inventory work, open to members.
+      // Deliberately excludes `viewer`: this is the capability every create /
+      // edit control is gated on.
       manageInventory: isAdmin || role === 'member',
       // Taking inventory out of service: deleting a thing/location, and flipping
       // a thing or leaf node's `active` flag. Separate from manageInventory
@@ -87,6 +100,12 @@ export const useAuthStore = defineStore('auth', () => {
   // Dashboard user: the Visualizer and their own settings, nothing else. This is
   // the least privileged role -- it holds no capability in the `can` map above,
   // which is why scripts/test-authz.sh uses it to prove the rules are allowlists.
+  //
+  // Distinct from `viewer`, which is the read-only HUMAN: a viewer browses the
+  // whole console read surface and writes nothing. `dashboard` is an appliance
+  // login for an unattended screen, so it gets one screen. Do not collapse the
+  // two -- a kiosk in a hallway and an auditor at a desk want different things,
+  // and merging them would also cost the test suite its zero-authority probe.
   const isDashboardUser = computed(() => {
     if (isSuperAdmin.value) return false
     return currentMembership.value?.role === 'dashboard'

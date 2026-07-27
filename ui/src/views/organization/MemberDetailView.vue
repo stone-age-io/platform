@@ -33,8 +33,21 @@ const membership = ref<FullMemberMembership | null>(null)
 const natsUsers = ref<NatsUser[]>([])
 const loading = ref(true)
 
-const roleSaving = ref(false)
+// The role being applied, or null. Tracked rather than a bare boolean so the
+// spinner lands on the button that was clicked -- with four roles, "spin on
+// everything except the current one" reads as four simultaneous saves.
+const roleSavingTo = ref<AssignableRole | null>(null)
+const roleSaving = computed(() => roleSavingTo.value !== null)
 const natsSaving = ref(false)
+
+// Owner is absent on purpose: ownership transfer is not a role toggle.
+type AssignableRole = 'admin' | 'member' | 'viewer' | 'dashboard'
+const ASSIGNABLE_ROLES: { value: AssignableRole; label: string }[] = [
+  { value: 'admin', label: 'Administrator' },
+  { value: 'member', label: 'Standard Member' },
+  { value: 'viewer', label: 'Read Only' },
+  { value: 'dashboard', label: 'Dashboard Only' },
+]
 
 const memberId = route.params.id as string
 
@@ -65,10 +78,10 @@ async function loadData() {
   }
 }
 
-async function updateRole(newRole: 'admin' | 'member' | 'dashboard') {
+async function updateRole(newRole: AssignableRole) {
   if (!membership.value || membership.value.role === newRole) return
-  
-  roleSaving.value = true
+
+  roleSavingTo.value = newRole
   try {
     const updated = await pb.collection('memberships').update(membership.value.id, {
       role: newRole
@@ -81,7 +94,7 @@ async function updateRole(newRole: 'admin' | 'member' | 'dashboard') {
   } catch (err: any) {
     toast.error(err.message)
   } finally {
-    roleSaving.value = false
+    roleSavingTo.value = null
   }
 }
 
@@ -221,35 +234,25 @@ onMounted(loadData)
 
               <div v-else>
                 <label class="label pt-0"><span class="label-text font-bold text-base-content/50 uppercase text-xs">Assign Organization Role</span></label>
-                <div class="join w-full bg-base-200 p-1 rounded-xl">
-                  <button 
-                    class="btn join-item flex-1 border-none shadow-none" 
-                    :class="membership.role === 'admin' ? 'btn-primary' : 'btn-ghost'"
-                    @click="updateRole('admin')"
-                    :disabled="roleSaving" 
-                  >
-                    <span v-if="roleSaving && membership.role === 'member'" class="loading loading-spinner loading-xs"></span>
-                    Administrator
-                  </button>
+                <!-- A grid rather than a join: four roles do not fit one row on
+                     a phone, and a join wraps into misaligned segments. -->
+                <div class="grid grid-cols-2 gap-1 bg-base-200 p-1 rounded-xl">
                   <button
-                    class="btn join-item flex-1 border-none shadow-none"
-                    :class="membership.role === 'member' ? 'btn-primary' : 'btn-ghost'"
-                    @click="updateRole('member')"
+                    v-for="r in ASSIGNABLE_ROLES"
+                    :key="r.value"
+                    class="btn border-none shadow-none"
+                    :class="membership.role === r.value ? 'btn-primary' : 'btn-ghost'"
+                    @click="updateRole(r.value)"
                     :disabled="roleSaving"
                   >
-                    <span v-if="roleSaving && membership.role !== 'member'" class="loading loading-spinner loading-xs"></span>
-                    Standard Member
-                  </button>
-                  <button
-                    class="btn join-item flex-1 border-none shadow-none"
-                    :class="membership.role === 'dashboard' ? 'btn-primary' : 'btn-ghost'"
-                    @click="updateRole('dashboard')"
-                    :disabled="roleSaving"
-                  >
-                    <span v-if="roleSaving && membership.role !== 'dashboard'" class="loading loading-spinner loading-xs"></span>
-                    Dashboard Only
+                    <span v-if="roleSavingTo === r.value" class="loading loading-spinner loading-xs"></span>
+                    {{ r.label }}
                   </button>
                 </div>
+                <p class="text-xs text-base-content/60 mt-2 px-1">
+                  Read-only users browse things and locations without changing them.
+                  Dashboard-only users see the Visualizer and nothing else.
+                </p>
               </div>
             </div>
           </BaseCard>

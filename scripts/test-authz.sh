@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=112         # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=130         # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -152,9 +152,10 @@ mkuser() { # <email> -> id
 ALICE=$(mkuser alice@test.local)
 BOB=$(mkuser bob@test.local)
 DASH=$(mkuser dashboard@test.local)
+VIEW=$(mkuser viewer@test.local)
 EVE=$(mkuser eve@test.local)
 [ -z "$ALICE" ] && die "user create failed: $RBODY"
-echo "  users: alice=$ALICE bob=$BOB dashboard=$DASH eve=$EVE"
+echo "  users: alice=$ALICE bob=$BOB dashboard=$DASH viewer=$VIEW eve=$EVE"
 
 req POST /collections/organizations/records "$SU" \
   "{\"name\":\"TestOrg\",\"owner\":\"$ALICE\",\"active\":true}"
@@ -172,11 +173,15 @@ MBOB=$(j "$RBODY" id)
 req POST /collections/memberships/records "$SU" \
   "{\"user\":\"$DASH\",\"organization\":\"$ORG\",\"role\":\"dashboard\"}"
 MDASH=$(j "$RBODY" id)
+req POST /collections/memberships/records "$SU" \
+  "{\"user\":\"$VIEW\",\"organization\":\"$ORG\",\"role\":\"viewer\"}"
+MVIEW=$(j "$RBODY" id)
 [ -z "$MBOB" ] && die "membership create failed: $RBODY"
-for u in "$ALICE" "$BOB" "$DASH"; do
+[ -z "$MVIEW" ] && die "viewer membership create failed (is 'viewer' in the role select?): $RBODY"
+for u in "$ALICE" "$BOB" "$DASH" "$VIEW"; do
   req PATCH "/collections/users/records/$u" "$SU" "{\"current_organization\":\"$ORG\"}"
 done
-echo "  memberships: bob=$MBOB dashboard=$MDASH"
+echo "  memberships: bob=$MBOB dashboard=$MDASH viewer=$MVIEW"
 
 # NATS identities. Creating the org auto-provisions its account (and a default
 # role); fall back to creating a role if this deployment does not.
@@ -221,7 +226,8 @@ login() {
 TA=$(login alice@test.local)   # owner
 TB=$(login bob@test.local)     # member
 TG=$(login dashboard@test.local)   # dashboard
-[ -z "$TA" ] || [ -z "$TB" ] || [ -z "$TG" ] && die "user login failed: $RBODY"
+TV=$(login viewer@test.local)  # viewer -- read-only staff
+[ -z "$TA" ] || [ -z "$TB" ] || [ -z "$TG" ] || [ -z "$TV" ] && die "user login failed: $RBODY"
 
 # ----------------------------------------------------------------- the checks
 
@@ -529,6 +535,82 @@ req PATCH "/collections/locations/records/$MLOC" "$TB" '{"metadata":{"last_inspe
 expect "member CAN patch only metadata on a location" 200 "$RCODE" "$RBODY"
 req PATCH "/collections/locations/records/$MLOC" "$TG" '{"metadata":{"last_inspection":"2026-03-15"}}'
 expect "dashboard cannot patch a location's metadata (same payload)" "403|400|404" "$RCODE" "$RBODY"
+
+echo ""
+echo "=== 11b. viewer reads the inventory and writes none of it ==="
+# `viewer` is a tenant's read-only staff. It exists because the allowlists make it
+# nearly free: a role value that appears in no write branch is denied everywhere
+# by construction, so this section is asserting a property of the EXISTING rules
+# rather than of any rule written for viewer. If one of these denies ever starts
+# failing, some branch has grown a deny-list.
+#
+# What viewer is NOT: a read boundary. The read rules on things/locations/types
+# are org-scoped with no role check, so viewer reads exactly what member reads --
+# the first two checks pin that down deliberately, because the console hides
+# write controls from a viewer and it would be easy to later mistake that for the
+# server hiding data. It does not. UI navigation is not enforcement.
+req GET "/collections/things/records?perPage=1" "$TV"
+if [ "$RCODE" = "200" ] && [ "$(jn "$RBODY" 'o.totalItems > 0')" = "true" ]; then
+  ok "viewer CAN list things (reads are org-scoped, not role-scoped)"
+else
+  no "viewer could not list things -- HTTP $RCODE, body $(head -c 200 <<<"$RBODY")"
+fi
+req GET "/collections/locations/records/$MLOC" "$TV"
+expect "viewer CAN read a location record" 200 "$RCODE" "$RBODY"
+req GET "/collections/thing_types/records?perPage=1" "$TV"
+expect "viewer CAN read thing_types (the console needs them to render a Thing)" 200 "$RCODE" "$RBODY"
+
+# Inventory writes: the line between viewer and member. Each deny is paired with
+# the same call as member on the same record, so a blanket deny cannot pass.
+req POST /collections/things/records "$TV" \
+  "{\"email\":\"viewerthing@test.local\",\"password\":\"Password123!\",\"passwordConfirm\":\"Password123!\",\"emailVisibility\":true,\"name\":\"Viewer Thing\",\"code\":\"VT1\",\"organization\":\"$ORG\"}"
+expect "viewer cannot create a thing" "403|400|404" "$RCODE" "$RBODY"
+req POST /collections/things/records "$TB" \
+  "{\"email\":\"pairthing@test.local\",\"password\":\"Password123!\",\"passwordConfirm\":\"Password123!\",\"emailVisibility\":true,\"name\":\"Pair Thing\",\"code\":\"PT1\",\"organization\":\"$ORG\"}"
+expect "member CAN create a thing (same payload, so the deny was authz)" 200 "$RCODE" "$RBODY"
+PAIRTHING=$(j "$RBODY" id)
+
+req PATCH "/collections/things/records/$PAIRTHING" "$TV" '{"name":"Renamed By Viewer"}'
+expect "viewer cannot edit a thing" "403|400|404" "$RCODE" "$RBODY"
+req PATCH "/collections/things/records/$PAIRTHING" "$TB" '{"name":"Renamed By Member"}'
+expect "member CAN edit that thing (same field, same record)" 200 "$RCODE" "$RBODY"
+
+# MetadataCard's quick edit is the narrowest inventory write there is, so it is
+# the one most likely to be let through by a branch that only froze the
+# identity relations. It is a write, and viewer does not hold it.
+req PATCH "/collections/things/records/$PAIRTHING" "$TV" '{"metadata":{"asset_tag":"viewer"}}'
+expect "viewer cannot patch a thing's metadata" "403|400|404" "$RCODE" "$RBODY"
+req PATCH "/collections/things/records/$PAIRTHING" "$TB" '{"metadata":{"asset_tag":"member"}}'
+expect "member CAN patch that thing's metadata (same field, same record)" 200 "$RCODE" "$RBODY"
+
+req POST /collections/locations/records "$TV" \
+  "{\"name\":\"Viewer Location\",\"code\":\"VL1\",\"organization\":\"$ORG\"}"
+expect "viewer cannot create a location" "403|400|404" "$RCODE" "$RBODY"
+req PATCH "/collections/locations/records/$MLOC" "$TV" '{"name":"Renamed By Viewer"}'
+expect "viewer cannot edit a location" "403|400|404" "$RCODE" "$RBODY"
+req PATCH "/collections/locations/records/$MLOC" "$TB" '{"name":"Renamed By Member Again"}'
+expect "member CAN edit that location (same field, same record)" 200 "$RCODE" "$RBODY"
+
+req DELETE "/collections/things/records/$PAIRTHING" "$TV"
+expect "viewer cannot delete a thing" "403|400|404" "$RCODE" "$RBODY"
+req DELETE "/collections/things/records/$PAIRTHING" "$TA"
+expect "owner CAN delete that thing (same record, so the deny was authz)" "200|204" "$RCODE" "$RBODY"
+
+# The route bypasses the API rules entirely (app.Save()), so its own role check
+# is the only thing standing here -- viewer has to be denied twice over.
+req POST "/org/things" "$TV" '{"name":"Viewer Route Thing","code":"viewer-route-1"}'
+expect "viewer cannot create a thing through POST /api/org/things" "403|400" "$RCODE" "$RBODY"
+
+# And viewer holds none of the admin surface either -- it sits below member, not
+# beside it.
+req POST /collections/thing_types/records "$TV" \
+  "{\"name\":\"ViewerType\",\"code\":\"VTY1\",\"organization\":\"$ORG\"}"
+expect "viewer cannot create thing_types" "403|400|404" "$RCODE" "$RBODY"
+req POST /collections/invites/records "$TV" \
+  "{\"email\":\"v@test.local\",\"organization\":\"$ORG\",\"role\":\"member\"}"
+expect "viewer cannot invite users" "403|400|404" "$RCODE" "$RBODY"
+req PATCH "/collections/memberships/records/$MVIEW" "$TV" '{"role":"member"}'
+expect "viewer cannot promote itself to member" "403|400|404" "$RCODE" "$RBODY"
 
 echo ""
 echo "=== 12. a leaf node reads no NATS collection at all ==="
