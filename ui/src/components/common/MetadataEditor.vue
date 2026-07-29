@@ -44,9 +44,15 @@ interface Props {
   schema?: any
   /** Read-only: renders the viewer used by the detail pages. */
   disabled?: boolean
+  /**
+   * Show the field count in the toolbar. MetadataCard sets this false because
+   * its own header already carries the count — the collapsed card needs it
+   * there, and rendering it twice was visible on every detail page.
+   */
+  showCount?: boolean
 }
 
-const props = withDefaults(defineProps<Props>(), { schema: null, disabled: false })
+const props = withDefaults(defineProps<Props>(), { schema: null, disabled: false, showCount: true })
 const emit = defineEmits<{
   (e: 'update:modelValue', value: Record<string, any> | null): void
 }>()
@@ -381,7 +387,7 @@ defineExpose({ commit })
         >JSON</a>
       </div>
 
-      <span v-if="!isEmpty" class="text-xs text-base-content/50 shrink-0">
+      <span v-if="!isEmpty && showCount" class="text-xs text-base-content/50 shrink-0">
         {{ Object.keys(doc).length }} field{{ Object.keys(doc).length === 1 ? '' : 's' }}
       </span>
     </div>
@@ -410,10 +416,14 @@ defineExpose({ commit })
             No field matches “{{ viewFilter }}”.
           </div>
 
-          <!-- Capped and scrolled. Without this a long document pushes whatever
-               follows it on the page (Live State, on the Thing detail) below the
-               fold. -->
-          <dl v-else class="divide-y divide-base-300 max-h-[500px] overflow-y-auto custom-scrollbar">
+          <!-- Capped and scrolled from `sm` up, unbounded below it. The cap keeps
+               a long document from pushing whatever follows it on the page (Live
+               State, on the Thing detail) below the fold — but on touch, a
+               bounded scroller inside a scrolling page is a trap: the swipe goes
+               to whichever of the two the thumb landed on. On mobile the card's
+               collapse solves the same problem without that cost, so the cap
+               would only be buying a second copy of a fix we already have. -->
+          <dl v-else class="divide-y divide-base-300 sm:max-h-[500px] sm:overflow-y-auto custom-scrollbar">
             <div
               v-for="e in filteredViewEntries"
               :key="e.key"
@@ -462,91 +472,119 @@ defineExpose({ commit })
           a service date, an asset tag, a warranty reference.
         </div>
 
-        <!-- Capped and scrolled for the same reason as the read-only list: a long
-             document must not push the Save button (or the Live State card, in
-             quick-edit) off the screen. -->
-        <div v-else class="space-y-2 mb-3 max-h-[500px] overflow-y-auto custom-scrollbar pr-1">
-          <div v-for="(r, i) in rows" :key="i" class="flex gap-2 items-start">
-            <div class="form-control flex-1 min-w-0">
+        <!-- Capped and scrolled from `sm` up, for the same reason and with the
+             same mobile exception as the read-only list above. Unbounded here
+             means the header's Save can scroll away, which is what the mobile
+             action bar at the foot of MetadataCard is for. -->
+        <div v-else class="space-y-2 mb-3 sm:max-h-[500px] sm:overflow-y-auto custom-scrollbar sm:pr-1">
+          <!-- One field per row on a wide screen; two lines on a narrow one.
+               Four controls do not fit in ~330px: at `flex-1` each, the key and
+               the value ended up ~81px wide apiece while the type select took
+               112px — the dropdown was wider than the data. Stacked, the key gets
+               the full width it needs (they are long and mono, and they are what
+               you scan), and type sits next to the value it types.
+
+               The two wrappers are `sm:contents`, so above `sm` they dissolve and
+               the four controls are direct children of the same single flex line
+               this row has always been. One markup path, not two. The delete
+               button's DOM position is inside the first wrapper, hence
+               `sm:order-last` to put it back on the right at desktop. -->
+          <div
+            v-for="(r, i) in rows"
+            :key="i"
+            class="flex flex-col gap-2 rounded-lg bg-base-200/40 p-2
+                   sm:flex-row sm:items-start sm:rounded-none sm:bg-transparent sm:p-0"
+          >
+            <div class="flex items-center gap-2 sm:contents">
               <input
                 type="text"
-                class="input input-bordered input-sm font-mono w-full"
+                class="input input-bordered input-sm font-mono flex-1 min-w-0"
                 :class="{ 'input-error': duplicateKeys.has(r.key.trim()) }"
                 placeholder="key"
                 :value="r.key"
                 @input="setRowKey(i, ($event.target as HTMLInputElement).value)"
               />
+
+              <button
+                type="button"
+                class="btn btn-ghost btn-square btn-sm shrink-0 sm:order-last"
+                title="Remove field"
+                @click="removeRow(i)"
+              >
+                ✕
+              </button>
             </div>
 
-            <select
-              class="select select-bordered select-sm w-28 shrink-0"
-              :value="r.type"
-              @change="setRowType(i, ($event.target as HTMLSelectElement).value as RowType)"
-            >
-              <option value="text">Text</option>
-              <option value="number">Number</option>
-              <option value="boolean">Boolean</option>
-              <option value="date">Date</option>
-              <option value="json">Object</option>
-            </select>
+            <div class="flex flex-wrap items-start gap-2 sm:contents">
+              <select
+                class="select select-bordered select-sm w-24 shrink-0 sm:w-28"
+                :value="r.type"
+                @change="setRowType(i, ($event.target as HTMLSelectElement).value as RowType)"
+              >
+                <option value="text">Text</option>
+                <option value="number">Number</option>
+                <option value="boolean">Boolean</option>
+                <option value="date">Date</option>
+                <option value="json">Object</option>
+              </select>
 
-            <div class="form-control flex-1 min-w-0">
-              <!-- The literal stored value sits next to the toggle: this is what a
-                   NATS subscriber will read back, so show it rather than Yes/No. -->
-              <label v-if="r.type === 'boolean'" class="flex items-center gap-2 mt-1">
+              <!-- An Object row's textarea wraps to a line of its own on mobile:
+                   sharing with the 96px select left it 159px wide, which renders
+                   `{ "key": "value",` four characters at a time. Every other type
+                   fits beside the select. -->
+              <div
+                class="form-control flex-1 min-w-0"
+                :class="{ 'basis-full sm:basis-auto': r.type === 'json' }"
+              >
+                <!-- The literal stored value sits next to the toggle: this is what
+                     a NATS subscriber will read back, so show it rather than
+                     Yes/No. -->
+                <label v-if="r.type === 'boolean'" class="flex items-center gap-2 h-8">
+                  <input
+                    type="checkbox"
+                    class="toggle toggle-primary"
+                    :checked="!!r.value"
+                    @change="setRowValue(i, ($event.target as HTMLInputElement).checked)"
+                  />
+                  <code class="text-xs text-base-content/60">{{ r.value ? 'true' : 'false' }}</code>
+                </label>
                 <input
-                  type="checkbox"
-                  class="toggle toggle-primary"
-                  :checked="!!r.value"
-                  @change="setRowValue(i, ($event.target as HTMLInputElement).checked)"
+                  v-else-if="r.type === 'date'"
+                  type="date"
+                  class="input input-bordered input-sm w-full"
+                  :value="r.value"
+                  @input="setRowValue(i, ($event.target as HTMLInputElement).value)"
                 />
-                <code class="text-xs text-base-content/60">{{ r.value ? 'true' : 'false' }}</code>
-              </label>
-              <input
-                v-else-if="r.type === 'date'"
-                type="date"
-                class="input input-bordered input-sm w-full"
-                :value="r.value"
-                @input="setRowValue(i, ($event.target as HTMLInputElement).value)"
-              />
-              <input
-                v-else-if="r.type === 'number'"
-                type="number"
-                step="any"
-                class="input input-bordered input-sm font-mono w-full"
-                :value="r.value"
-                @input="setRowValue(i, numberOrBlank(($event.target as HTMLInputElement).valueAsNumber))"
-              />
-              <!-- Nested object / array: a JSON textarea for this key alone. -->
-              <template v-else-if="r.type === 'json'">
-                <textarea
-                  class="textarea textarea-bordered textarea-sm font-mono text-xs w-full"
-                  :class="{ 'textarea-error': !!r.error }"
-                  rows="4"
-                  placeholder='{"nested": "value"}'
-                  :value="r.text"
-                  @input="setRowJson(i, ($event.target as HTMLTextAreaElement).value)"
-                ></textarea>
-                <span v-if="r.error" class="text-[10px] text-error mt-0.5">{{ r.error }}</span>
-              </template>
-              <input
-                v-else
-                type="text"
-                class="input input-bordered input-sm w-full"
-                placeholder="value"
-                :value="r.value"
-                @input="setRowValue(i, ($event.target as HTMLInputElement).value)"
-              />
+                <input
+                  v-else-if="r.type === 'number'"
+                  type="number"
+                  step="any"
+                  class="input input-bordered input-sm font-mono w-full"
+                  :value="r.value"
+                  @input="setRowValue(i, numberOrBlank(($event.target as HTMLInputElement).valueAsNumber))"
+                />
+                <!-- Nested object / array: a JSON textarea for this key alone. -->
+                <template v-else-if="r.type === 'json'">
+                  <textarea
+                    class="textarea textarea-bordered textarea-sm font-mono text-xs w-full"
+                    :class="{ 'textarea-error': !!r.error }"
+                    rows="4"
+                    placeholder='{"nested": "value"}'
+                    :value="r.text"
+                    @input="setRowJson(i, ($event.target as HTMLTextAreaElement).value)"
+                  ></textarea>
+                  <span v-if="r.error" class="text-[10px] text-error mt-0.5">{{ r.error }}</span>
+                </template>
+                <input
+                  v-else
+                  type="text"
+                  class="input input-bordered input-sm w-full"
+                  placeholder="value"
+                  :value="r.value"
+                  @input="setRowValue(i, ($event.target as HTMLInputElement).value)"
+                />
+              </div>
             </div>
-
-            <button
-              type="button"
-              class="btn btn-sm btn-ghost btn-square shrink-0"
-              title="Remove field"
-              @click="removeRow(i)"
-            >
-              ✕
-            </button>
           </div>
         </div>
 
@@ -555,7 +593,7 @@ defineExpose({ commit })
           <code>{{ [...duplicateKeys].join(', ') }}</code> — the last row wins.
         </div>
 
-        <button type="button" class="btn btn-sm" @click="addRow">
+        <button type="button" class="btn btn-sm w-full sm:w-auto" @click="addRow">
           + Add Field
         </button>
       </template>
@@ -568,7 +606,9 @@ defineExpose({ commit })
           No metadata recorded.
         </div>
         <div v-else class="bg-base-200 rounded-lg p-4 border border-base-300 overflow-hidden">
-          <div class="max-h-[500px] overflow-y-auto overflow-x-auto custom-scrollbar">
+          <!-- Horizontal scroll stays at every width — a JSON line is as long as
+               it is. The vertical cap is desktop-only, as above. -->
+          <div class="overflow-x-auto sm:max-h-[500px] sm:overflow-y-auto custom-scrollbar">
             <JsonViewer :data="modelValue" class="text-sm leading-relaxed" />
           </div>
         </div>
