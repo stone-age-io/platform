@@ -35,18 +35,28 @@ type ActiveFlagOptions struct {
 //
 //	active = false  ->  authRule blocks new logins
 //	                ->  RefreshTokenKey() invalidates every outstanding token now
-//	                ->  revoke = true on the linked NATS identity
+//	                ->  active = false on the linked NATS identity
 //
 // and re-activation issues a fresh NATS credential, since the revocation cutoff
 // in the account JWT is permanent and the old creds file stays dead.
 //
-// This exists because the codebase already had the other kind of `active`:
-// nats_users.active is read into pb-nats's model (internal/types/converters.go)
-// and then consulted by nothing in JWT generation or sync. Only `revoke` — which
-// adds the public key to the account's revocation list and re-signs the account
-// JWT (pb-nats internal/sync/manager.go, revokeUser) — actually disconnects
-// anyone. A flag that turns a badge red while the device keeps publishing is
-// worse than no flag, because someone will trust it during an incident.
+// The NATS half is a straight mirror of the flag, because `active` on nats_users
+// is pb-nats's durable suspend switch (internal/sync/manager.go). It is
+// edge-triggered: true->false revokes the user's public key on the owning account
+// and deliberately issues nothing back, so the device holds no working credential
+// until reactivated; false->true signs a JWT whose issue time is later than the
+// revocation cutoff, which NATS accepts while the old creds file stays rejected.
+//
+// Do not reach for `revoke` here, despite the name. In pb-nats `revoke` is the
+// "these credentials leaked" button: it rotates the key pair and immediately
+// hands back a *working* replacement, leaving the user active. Using it to
+// deactivate a device would re-credential the thing you just disabled. It is also
+// checked before the active edge and returns early, so setting both flags in one
+// save silently takes the revoke path — the failure mode is a deactivated Thing
+// whose NATS identity is freshly re-issued and still publishing.
+//
+// A flag that turns a badge red while the device keeps publishing is worse than
+// no flag, because someone will trust it during an incident.
 //
 // The NATS cascade is best-effort and logged, never fatal: matching
 // RegisterLeafNodeProvisioning, a NATS hiccup must not roll back the operator's
@@ -100,18 +110,13 @@ func RegisterActiveFlag(app *pocketbase.PocketBase, opts ActiveFlagOptions) {
 			return nil
 		}
 
-		if now {
-			// Re-enable. `regenerate` mints a JWT with a later issue time, which
-			// clears the account's revocation cutoff for this key; the previously
-			// issued creds file stays rejected. Both flags are needed: pb-nats
-			// sets active=false on revoke and does not set it back.
-			natsUser.Set("active", true)
-			natsUser.Set("regenerate", true)
-		} else {
-			// pb-nats watches `revoke` on OnRecordUpdate (the model hook, not the
-			// request hook), so this app.Save is enough to trigger it.
-			natsUser.Set("revoke", true)
-		}
+		// Mirror the flag and nothing else. pb-nats watches `active` on
+		// OnRecordUpdate (the model hook, not the request hook), so this one save
+		// is what triggers the revoke or the reissue. Setting `regenerate` as well
+		// would be worse than redundant: the active edge returns before the
+		// regenerate branch runs, leaving the flag set on the row to fire on some
+		// unrelated later save.
+		natsUser.Set("active", now)
 
 		if err := e.App.Save(natsUser); err != nil {
 			log.Printf("❌ %s '%s' active=%v but the NATS cascade failed for identity %s: %v",
