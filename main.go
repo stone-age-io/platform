@@ -19,6 +19,7 @@ import (
 	pbtenancy "github.com/skeeeon/pb-tenancy"
 
 	"platform/hooks"
+	"platform/internal/natsd"
 	"platform/migrations"
 )
 
@@ -90,13 +91,21 @@ func setDefaults() {
 	viper.SetDefault("nats.user_collection_name", "nats_users")
 	viper.SetDefault("nats.role_collection_name", "nats_roles")
 	viper.SetDefault("nats.operator_name", "stone-age.io")
-	viper.SetDefault("nats.server_url", "nats://localhost:4422")
+	// 4222 is the NATS default and the port `nats export` writes into nats.conf.
+	// This default used to be 4422, which disagreed with the exported config,
+	// the README, and the docs — the symptom was a Control Plane stuck in
+	// bootstrap mode against a server that was running fine on another port.
+	viper.SetDefault("nats.server_url", "nats://localhost:4222")
 	viper.SetDefault("nats.log_to_console", false)
 	viper.SetDefault("nats.default_limits.max_connections", 10)
 	viper.SetDefault("nats.default_limits.max_subscriptions", 50)
 	viper.SetDefault("nats.default_limits.max_payload", 1048576)
 	viper.SetDefault("nats.export_collection_name", "nats_account_exports")
 	viper.SetDefault("nats.import_collection_name", "nats_account_imports")
+	// Run a NATS server inside this process instead of alongside it. Off by
+	// default: the normal topology is a separate nats-server. See --nats.
+	viper.SetDefault("nats.embedded", false)
+	viper.SetDefault("nats.embedded_config", natsd.DefaultConfigFile)
 	// At-rest encryption is OFF by default, deliberately: an empty key means the
 	// private_key/seed columns are stored in plaintext. Set it to exactly 32
 	// characters (preferably via STONE_AGE_NATS_ENCRYPTION_KEY) to turn it on,
@@ -164,6 +173,27 @@ func main() {
 
 	// Register the config flag with Cobra
 	app.RootCmd.PersistentFlags().String("config", "", "Path to config file")
+
+	// Embedded NATS server. Registered as persistent flags on the root command,
+	// the same way --config above is, because PocketBase does not add the
+	// `serve` subcommand until app.Start() — which registers and executes in one
+	// call, leaving no point where a serve-only flag could be attached.
+	//
+	// Only `serve` acts on these; the other commands open the database directly
+	// and have no bus to talk to.
+	//
+	// Bound to viper so the setting can equally come from config.yaml or
+	// STONE_AGE_NATS_EMBEDDED. An unset flag falls through to those.
+	app.RootCmd.PersistentFlags().Bool("nats", false,
+		"serve: run a NATS server in this process, using the config from `nats export`")
+	app.RootCmd.PersistentFlags().String("nats-config", natsd.DefaultConfigFile,
+		"serve: path to the nats.conf used by --nats")
+	if err := viper.BindPFlag("nats.embedded", app.RootCmd.PersistentFlags().Lookup("nats")); err != nil {
+		log.Fatalf("❌ Failed to bind --nats: %v", err)
+	}
+	if err := viper.BindPFlag("nats.embedded_config", app.RootCmd.PersistentFlags().Lookup("nats-config")); err != nil {
+		log.Fatalf("❌ Failed to bind --nats-config: %v", err)
+	}
 
 	// --- Tenancy ---
 	tenancyOptions := pbtenancy.DefaultOptions()
@@ -338,6 +368,38 @@ func main() {
 		NatsRoleCollection:      natsOptions.RoleCollectionName,
 		NebulaHostCollection:    nebulaOptions.HostCollectionName,
 		NebulaNetworkCollection: nebulaOptions.NetworkCollectionName,
+	})
+
+	// Embedded NATS server. Bound to OnServe rather than OnBootstrap on purpose:
+	// the support library calls e.Next() *before* it seeds the NATS operator, so
+	// a bootstrap handler registered after its Setup actually runs earlier, when
+	// the operator JWT does not exist yet and there is nothing to serve.
+	//
+	// A consequence is that the JWT publisher spends its first few seconds in
+	// bootstrap mode before its retry ticker finds the server. That is the
+	// normal, already-handled path — anything it queues drains on connect.
+	var embeddedNATS *natsd.Server
+	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
+		if !viper.GetBool("nats.embedded") {
+			return e.Next()
+		}
+		srv, err := natsd.Start(
+			viper.GetString("nats.embedded_config"),
+			viper.GetString("nats.server_url"),
+		)
+		if err != nil {
+			// Refuse to serve. Running on would mean issuing credentials for a
+			// bus that isn't there, which looks like it worked until a device
+			// tries to connect.
+			return err
+		}
+		embeddedNATS = srv
+		return e.Next()
+	})
+
+	app.OnTerminate().BindFunc(func(e *core.TerminateEvent) error {
+		embeddedNATS.Stop() // no-op when nil
+		return e.Next()
 	})
 
 	// 6. Serve Embedded UI with SPA Support

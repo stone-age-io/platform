@@ -20,7 +20,7 @@ nats:
   user_collection_name: "nats_users"
   role_collection_name: "nats_roles"
   operator_name: "stone-age.io"
-  server_url: "nats://localhost:4422"
+  server_url: "nats://localhost:4222"
   log_to_console: false
   # Default limits for new organizations
   default_limits:
