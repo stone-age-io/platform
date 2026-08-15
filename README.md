@@ -1,10 +1,14 @@
 # Stone Age IoT Platform
 
-A comprehensive, single-binary IoT and Event-Driven platform built on [PocketBase](https://pocketbase.io/). It integrates multi-tenancy, NATS messaging, and Nebula overlay networks into a unified management console.
+This repository is the **Control Plane** for Stone-Age.io: one HTTP API for the things and places you manage, which also mints the credentials that let them talk. It is built on [PocketBase](https://pocketbase.io/) and integrates multi-tenancy, NATS messaging, and Nebula overlay networks into a single management console.
+
+Used at its shallowest, it is a multi-tenant inventory of Things and Locations over a REST API — devices need no NATS user and no Nebula host to exist as records. Used at its fullest, it is what provisions and keeps in sync the identities that an entire event-driven fabric runs on.
 
 ## 🏗 Architecture
 
-The platform is designed as a **Single Deployment Unit**:
+**Scope note on "single binary."** *This* component is one binary — Go backend, embedded Vue frontend, SQLite, no runtime dependencies. The **platform** is not one binary: it is a small set of independent single-binary components (this Control Plane, `nats-server`, `nebula`, `rule-router`, the Agent, `leaf-sync`) that find each other over NATS. Deploy each where it belongs. See the [platform docs](https://github.com/stone-age-io) for the component topology.
+
+The Control Plane is a **Single Deployment Unit**:
 *   **Backend**: Go (1.25+) extending PocketBase.
 *   **Frontend**: Vue 3 + TypeScript (Embedded in the binary).
 *   **Database**: SQLite (managed by PocketBase).
@@ -15,7 +19,7 @@ The platform is designed as a **Single Deployment Unit**:
 2.  **Infrastructure Provisioning**:
     *   **NATS**: Automatically provisions Accounts, Users, and Roles when Organizations are created.
     *   **Nebula**: Automatically creates Certificate Authorities (CAs) and manages Host certificates/keys.
-3.  **Thing Modeling**: Declarative device contracts composed of three collections:
+3.  **The Contract Layer** (Thing Modeling): Declarative device contracts describing *where* a participant speaks and *what shape* its messages take — subject and payload together, so a consumer can resolve both from data alone. Composed of three collections:
     *   **Thing Types** (`thing_types`) define a subject prefix and a set of Operations.
     *   **Operations** (`thing_type_operations`) declare a capability (`publish` / `subscribe` / `request` / `reply`), a subject suffix, and an optional Message Schema.
     *   **Message Schemas** (`message_schemas`) are versioned JSON Schema documents (namespace / name / semver) that describe operation payloads. The console includes a visual schema builder and an "infer from sample" tool.
