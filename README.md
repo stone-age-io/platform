@@ -93,6 +93,25 @@ command or the admin panel can do it.
 Access the console at `http://localhost:8090`, and the PocketBase admin panel at
 `http://localhost:8090/_/`.
 
+The console needs a NATS server to show live data. Export a config and run one:
+
+```bash
+./stone-age nats export --output ./nats-config/
+nats-server -c ./nats-config/nats.conf
+```
+
+For small deployments the Control Plane can run that same config itself, as one
+process:
+
+```bash
+./stone-age serve --nats
+```
+
+Off by default, and single-node only. It is an ordinary `nats-server` reading an
+ordinary config file, so moving to a separate process later is a config change
+rather than a migration — but while they share a process, restarting the Control
+Plane restarts the bus. See ADR 0001 in the platform docs.
+
 ### Edge Agent (Optional)
 The edge agent is a separate, lean binary built from the same repo — it runs on edge boxes, not the central server:
 ```bash
