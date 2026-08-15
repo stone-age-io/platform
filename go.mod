@@ -8,7 +8,7 @@ require (
 	github.com/pocketbase/dbx v1.12.0
 	github.com/pocketbase/pocketbase v0.38.0
 	github.com/skeeeon/pb-audit v0.0.0-20260509164131-d384bb182a41
-	github.com/skeeeon/pb-nats v0.0.0-20260815044924-817ab8e7a156
+	github.com/skeeeon/pb-nats v0.0.0-20260815050524-ff1c9c977b28
 	github.com/skeeeon/pb-nebula v0.0.0-20260611021205-2e1b4dfdf33f
 	github.com/skeeeon/pb-tenancy v0.0.0-20260509164438-78df1343ea65
 	github.com/spf13/cobra v1.10.2

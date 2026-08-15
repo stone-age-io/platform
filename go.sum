@@ -95,6 +95,8 @@ github.com/skeeeon/pb-nats v0.0.0-20260804013721-84935ade47bc h1:+oGIMK4ShQaC1Sf
 github.com/skeeeon/pb-nats v0.0.0-20260804013721-84935ade47bc/go.mod h1:zeUvzzEfTzJrZH3ZMXO3uGKc6ABK488YXoN60Vc82qc=
 github.com/skeeeon/pb-nats v0.0.0-20260815044924-817ab8e7a156 h1:9nJGwgp6wxArClNbDMgwKUeTre1wLj9jOqDeqm35XdM=
 github.com/skeeeon/pb-nats v0.0.0-20260815044924-817ab8e7a156/go.mod h1:zeUvzzEfTzJrZH3ZMXO3uGKc6ABK488YXoN60Vc82qc=
+github.com/skeeeon/pb-nats v0.0.0-20260815050524-ff1c9c977b28 h1:lF9ZCXxzavK+iPZtlJE338PY0+oZNQTJJ3/3CEAuScE=
+github.com/skeeeon/pb-nats v0.0.0-20260815050524-ff1c9c977b28/go.mod h1:zeUvzzEfTzJrZH3ZMXO3uGKc6ABK488YXoN60Vc82qc=
 github.com/skeeeon/pb-nebula v0.0.0-20260611021205-2e1b4dfdf33f h1:dfqGUmxj3Nhn4BEpVK5c1MyoWj2at+Q0izHpm8HZrFw=
 github.com/skeeeon/pb-nebula v0.0.0-20260611021205-2e1b4dfdf33f/go.mod h1:yGocVgnRbZducO0uRHLGpIaiTo+aRT94pT+KNKI3OJw=
 github.com/skeeeon/pb-tenancy v0.0.0-20260509164438-78df1343ea65 h1:Vk5Ph9kELDgR5kXLbii3pkwGnh/fkjfMEh47MNYbSbc=
