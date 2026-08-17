@@ -7,7 +7,10 @@ export default defineConfig({
   plugins: [vue()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      // import.meta.dirname, not __dirname: this file is ESM, and Vite's
+      // native config loader (slated to become the default) does not provide
+      // the CJS globals.
+      '@': path.resolve(import.meta.dirname, './src'),
     },
   },
   server: {
