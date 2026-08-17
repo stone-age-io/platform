@@ -162,12 +162,14 @@ const router = createRouter({
   routes,
 })
 
-router.beforeEach((to, _from, next) => {
+// Vue Router 5 deprecates the next() callback (VUE_ROUTER_R0025) in favour of
+// returning the decision: a path string redirects, false aborts, and returning
+// nothing lets the navigation through.
+router.beforeEach((to) => {
   const authStore = useAuthStore()
 
   if (to.meta.requiresAuth !== false && !authStore.isAuthenticated) {
-    next('/login')
-    return
+    return '/login'
   }
 
   // Dashboard users reach the Visualizer at '/' and their own settings, nothing
@@ -177,20 +179,17 @@ router.beforeEach((to, _from, next) => {
     const allowed = ['/', '/settings']
     const permitted = allowed.some(p => to.path === p || (p !== '/' && to.path.startsWith(p + '/')))
     if (!permitted) {
-      next('/')
-      return
+      return '/'
     }
   }
 
   if (to.meta.requiresSuperUser && !authStore.isSuperAdmin) {
-    next('/')
-    return
+    return '/'
   }
 
   // Operator routes: accessible to operators and super users
   if (to.meta.requiresOperator && !authStore.canManageOrganizations) {
-    next('/')
-    return
+    return '/'
   }
 
   // Capability routes. The capability -> role table lives in stores/auth.ts so
@@ -200,12 +199,9 @@ router.beforeEach((to, _from, next) => {
   if (to.meta.requiresCapability && !authStore.isSuperAdmin) {
     const capability = to.meta.requiresCapability as keyof typeof authStore.can
     if (!authStore.can[capability]) {
-      next('/')
-      return
+      return '/'
     }
   }
-
-  next()
 })
 
 export default router

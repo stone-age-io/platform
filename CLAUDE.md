@@ -20,11 +20,11 @@ Stone Age IoT Platform is a single-binary IoT and Event-Driven management platfo
 
 ### Frontend
 - **Vue 3** (Composition API + `<script setup>`)
-- **Vite 6.0** build tool
-- **Pinia 2.3** state management
-- **Vue Router 4.2** routing
-- **Tailwind CSS 3.4 + DaisyUI 4.4** styling (light/dark themes)
-- **TypeScript 5.9**
+- **Vite 8** build tool (bundles with Rolldown, not Rollup)
+- **Pinia 4** state management
+- **Vue Router 5** routing
+- **Tailwind CSS 3.4 + DaisyUI 4.12** styling (light/dark themes) — **pinned, see below**
+- **TypeScript 6** (7 is out but unusable here, see below)
 - **NATS WebSocket** (@nats-io/nats-core, jetstream, kv)
 - **Leaflet 1.9** for maps
 - **ECharts 6.1 + vue-echarts** for charts
@@ -34,6 +34,32 @@ Stone Age IoT Platform is a single-binary IoT and Event-Driven management platfo
 - **jsonpath-plus** for JSON path extraction in widget data
 - **marked** for Markdown rendering
 - **PocketBase JS SDK** for API client
+
+### Two dependencies are deliberately held back
+
+Everything else in `ui/package.json` tracks latest. These two do not, and a
+routine "bump everything" pass must not drag them along:
+
+- **Tailwind 3.x + daisyUI 4.x.** Upgrading is a design-system migration, not a
+  version bump: 376 references across 27 files use the daisyUI v4 form
+  `oklch(var(--b1))`, and v5 both renames those vars and changes them from bare
+  OKLCH components to complete color values, so every one becomes
+  `oklch(oklch(...))` — invalid, and silently falls back. The alpha form
+  `oklch(var(--bc) / 0.7)` needs `color-mix()` or relative color syntax, both of
+  which `assets/dashboard-compat.css` already rejected for failing silently on
+  older engines. The theme block is also copied **verbatim** into the
+  access-control console, which is on tailwind ^3.4 / daisyui ^4.4, so migrating
+  one repo alone breaks that contract. The full reasoning lives at the top of
+  `ui/tailwind.config.js`; do it as scheduled work across both repos, with a
+  human clicking through dashboards, widgets and both themes.
+- **TypeScript 6, not 7.** TS 7 is the native port and no longer exposes the
+  `./lib/tsc` subpath that `vue-tsc` resolves at startup, so `npm run build`
+  dies before type checking. `vue-tsc` 3.3.10 is the newest there is; 6.0 is the
+  ceiling until the Vue tooling catches up.
+
+Neither has an automated guard — there is no frontend test runner, so
+`vue-tsc && vite build` stays green while the UI renders wrong. That is exactly
+why these are written down rather than left to be rediscovered.
 
 ### Database
 - SQLite (managed by PocketBase, stored in `pb_data/`)

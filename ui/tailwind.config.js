@@ -1,5 +1,40 @@
 /** @type {import('tailwindcss').Config} */
 
+// TAILWIND IS PINNED TO 3.x AND DAISYUI TO 4.x, DELIBERATELY.
+//
+// Tailwind 4 and daisyUI 5 are both out, and everything else in package.json
+// tracks latest. These two do not, because upgrading them is a design-system
+// migration rather than a version bump, and nothing in this repo would catch a
+// mistake -- there is no frontend test runner, so `vue-tsc && vite build` stays
+// green while the UI renders wrong.
+//
+// What the migration actually costs, measured rather than estimated:
+//
+//   - 376 references across 27 files (23 .vue, 3 .css, 1 .ts) are the v4 form
+//     `oklch(var(--b1))`. daisyUI 5 renames those vars (--b1 -> --color-base-100)
+//     AND changes their contents from bare OKLCH components to complete color
+//     values, so every one of the 376 becomes `oklch(oklch(...))`, which is
+//     invalid and silently falls back. Every site has to change, not just be
+//     renamed.
+//   - The alpha form `oklch(var(--bc) / 0.7)` has no direct v5 equivalent; it
+//     needs color-mix() or relative color syntax. See the note in
+//     assets/dashboard-compat.css: both were rejected once already because they
+//     fail on older engines in the same silent way that bit us with --pf.
+//   - The theme block below is copied verbatim into the access-control console
+//     (see the next paragraph). daisyUI 5 moves theme definitions out of JS into
+//     CSS `@plugin` syntax and renames the radius vars (--rounded-box ->
+//     --radius-box, --rounded-btn -> --radius-field, --rounded-badge ->
+//     --radius-selector, --tab-radius dropped). Migrating platform alone breaks
+//     the "copied verbatim" contract; access-control is on tailwind ^3.4 /
+//     daisyui ^4.4.
+//   - 133 distinct daisyUI utility-class variants are used in templates, on top
+//     of Tailwind 4's own utility renames.
+//
+// So: bump these two only as a deliberate, scheduled piece of work covering both
+// repos, with a human clicking through the dashboards, widgets and both themes
+// afterwards. Do not let a routine `npm update` or a "bump everything" pass drag
+// them along. Verified working on Vite 8 at 3.4.19 / 4.12.24.
+//
 // Two custom daisyUI themes named `light` / `dark` (overriding the stock pair of
 // the same name, so the data-theme toggle in the ui store keeps working). Cool
 // neutrals with a faint indigo bias, a single indigo primary, and semantic colors
