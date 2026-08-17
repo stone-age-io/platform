@@ -42,6 +42,56 @@ nats:
 	if cfg.SyncInterval != 30*time.Second {
 		t.Errorf("default sync.interval not applied: %v", cfg.SyncInterval)
 	}
+	if cfg.EmbedNATS {
+		t.Error("nats.embedded should default to false — running the bus in-process is opt-in")
+	}
+	// `config` writes into output.dir, so `run --nats` must look there without
+	// being told a second path.
+	if want := filepath.Join(".", LeafConfName); cfg.EmbeddedConfig != want {
+		t.Errorf("embedded_config should default to %q, got %q", want, cfg.EmbeddedConfig)
+	}
+}
+
+func TestLoadConfigEmbeddedConfigFollowsOutputDir(t *testing.T) {
+	path := writeConfig(t, `
+pocketbase:
+  url: https://pb.example.com
+  email: e
+  password: p
+output:
+  dir: /etc/leaf-sync
+`)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if want := filepath.Join("/etc/leaf-sync", LeafConfName); cfg.EmbeddedConfig != want {
+		t.Errorf("embedded_config should track output.dir: want %q, got %q", want, cfg.EmbeddedConfig)
+	}
+}
+
+func TestLoadConfigExplicitEmbeddedConfigWins(t *testing.T) {
+	path := writeConfig(t, `
+pocketbase:
+  url: https://pb.example.com
+  email: e
+  password: p
+output:
+  dir: /etc/leaf-sync
+nats:
+  embedded: true
+  embedded_config: /opt/custom.conf
+`)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if !cfg.EmbedNATS {
+		t.Error("nats.embedded: true was not read")
+	}
+	if cfg.EmbeddedConfig != "/opt/custom.conf" {
+		t.Errorf("explicit embedded_config was overwritten by the output.dir default: %q", cfg.EmbeddedConfig)
+	}
 }
 
 func TestLoadConfigRequiresPocketBaseFields(t *testing.T) {

@@ -2,6 +2,7 @@ package leafsync
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -21,6 +22,17 @@ type Config struct {
 	LocalNatsURL string // the local leaf this agent connects to at run time
 	CredsFile    string // path to the creds file (written by `config`, read by `run`)
 	OutputDir    string // where `config` writes nats-leaf.conf + creds
+
+	// EmbedNATS runs the leaf's nats-server inside this process rather than
+	// alongside it, from the same nats-leaf.conf `config` writes. Off by default:
+	// a separately supervised nats-server is still right wherever an init system
+	// is already managing services, and it keeps the bus up across a leaf-sync
+	// restart. See embedded.go and --nats.
+	EmbedNATS bool
+
+	// EmbeddedConfig is the nats-leaf.conf EmbedNATS loads. Empty means
+	// <OutputDir>/nats-leaf.conf, which is where `config` put it.
+	EmbeddedConfig string
 
 	SyncInterval time.Duration
 
@@ -58,6 +70,10 @@ func LoadConfig(path string) (*Config, error) {
 
 	v.SetDefault("nats.local_url", "nats://127.0.0.1:4222")
 	v.SetDefault("nats.creds_file", "edge.creds")
+	v.SetDefault("nats.embedded", false)
+	// Empty, not a path: the real default depends on output.dir, which isn't
+	// resolved yet. Filled in below.
+	v.SetDefault("nats.embedded_config", "")
 	v.SetDefault("output.dir", ".")
 	v.SetDefault("sync.interval", "30s")
 	v.SetDefault("twin.enabled", false)
@@ -83,10 +99,19 @@ func LoadConfig(path string) (*Config, error) {
 		LocalNatsURL:       v.GetString("nats.local_url"),
 		CredsFile:          v.GetString("nats.creds_file"),
 		OutputDir:          v.GetString("output.dir"),
+		EmbedNATS:          v.GetBool("nats.embedded"),
+		EmbeddedConfig:     v.GetString("nats.embedded_config"),
 		SyncInterval:       interval,
 		TwinEnabled:        v.GetBool("twin.enabled"),
 		ReloadHook:         v.GetString("reload_hook"),
 		JWTRefresh:         v.GetBool("jwt_refresh.enabled"),
+	}
+
+	// Point --nats at whatever `config` wrote, so the common case needs no second
+	// path in the file. Resolved here rather than at use so that everything
+	// downstream sees one, already-decided value.
+	if cfg.EmbeddedConfig == "" {
+		cfg.EmbeddedConfig = filepath.Join(cfg.OutputDir, LeafConfName)
 	}
 
 	if cfg.PocketBaseURL == "" || cfg.PocketBaseEmail == "" || cfg.PocketBasePassword == "" {

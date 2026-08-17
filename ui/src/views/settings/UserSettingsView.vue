@@ -30,6 +30,15 @@ const newUrl = ref('')
 const availableIdentities = ref<NatsUser[]>([])
 const loadingIdentities = ref(false)
 
+// Where the URLs on screen actually came from. Three states, not two: with no
+// override AND nothing configured server-side, what is listed is the compiled-in
+// development fallback, and labelling that "From server" would be a lie about a
+// deployment that never set the key.
+const urlSource = computed<'override' | 'server' | 'fallback'>(() => {
+  if (natsStore.usingOverride) return 'override'
+  return natsStore.defaultUrls.length ? 'server' : 'fallback'
+})
+
 // Helper to check if we are in "God Mode" (Fake membership)
 const isFakeMembership = computed(() => {
   return authStore.currentMembership?.id.startsWith('super_')
@@ -181,9 +190,21 @@ function handleAddUrl() {
       toast.error('URL must start with ws:// or wss://')
       return
     }
+    // A secure page cannot open an insecure socket — browsers block it outright,
+    // with no user override. Rejecting here beats saving a URL that can never
+    // connect and reports only a generic failure later.
+    if (window.location.protocol === 'https:' && url.startsWith('ws://')) {
+      toast.error('This console is served over HTTPS, so it can only connect to wss:// URLs')
+      return
+    }
     natsStore.addUrl(url)
     newUrl.value = ''
   }
+}
+
+function handleResetUrls() {
+  natsStore.resetToDefaults()
+  toast.success('Reverted to the server-configured URLs')
 }
 
 onMounted(() => {
@@ -307,21 +328,42 @@ watch(() => authStore.currentOrgId, loadIdentities)
           <div class="divider text-xs opacity-50 font-bold">NATS Connection</div>
 
           <!-- Connection URLs -->
+          <!--
+            Two tiers, never merged: the deployment's URLs (config.yaml, served
+            by /api/client-config) are read-only here, and adding one of your
+            own replaces them ON THIS DEVICE ONLY. The override exists so a box
+            at an edge site can talk to its local leaf node instead of the hub.
+          -->
           <div class="form-control">
-            <label class="label"><span class="label-text">Server URLs</span></label>
+            <label class="label">
+              <span class="label-text">Server URLs</span>
+              <span v-if="natsStore.usingOverride" class="label-text-alt text-warning font-medium">Device override</span>
+            </label>
             <div class="space-y-2 mb-2">
               <div v-for="url in natsStore.serverUrls" :key="url" class="flex gap-2 items-center bg-base-200 p-2 rounded border border-base-300">
                 <span class="font-mono text-xs flex-1 truncate">{{ url }}</span>
-                <button @click="natsStore.removeUrl(url)" class="btn btn-xs btn-ghost text-error">✕</button>
-              </div>
-              <div v-if="natsStore.serverUrls.length === 0" class="text-xs text-base-content/50 italic p-3 text-center bg-base-200 rounded border border-dashed border-base-300">
-                No URLs configured.
+                <button v-if="urlSource === 'override'" @click="natsStore.removeUrl(url)" class="btn btn-xs btn-ghost text-error">✕</button>
+                <span v-else class="badge badge-ghost badge-sm shrink-0">
+                  {{ urlSource === 'server' ? 'From server' : 'Built-in default' }}
+                </span>
               </div>
             </div>
             <div class="join w-full">
               <input v-model="newUrl" type="text" placeholder="wss://nats.example.com" class="input input-bordered input-sm join-item flex-1 font-mono" @keyup.enter="handleAddUrl" />
               <button @click="handleAddUrl" class="btn btn-sm btn-primary join-item">Add</button>
             </div>
+            <label class="label">
+              <span v-if="urlSource === 'override'" class="label-text-alt text-base-content/70">
+                Only this browser uses these.
+                <button @click="handleResetUrls" class="link link-primary">Reset to defaults</button>
+              </span>
+              <span v-else-if="urlSource === 'server'" class="label-text-alt text-base-content/70">
+                Adding a URL overrides the server defaults on this device.
+              </span>
+              <span v-else class="label-text-alt text-base-content/70">
+                No <code class="text-[10px]">nats.websocket_urls</code> configured on the server.
+              </span>
+            </label>
           </div>
 
           <!-- Connection Controls -->

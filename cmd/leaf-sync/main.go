@@ -2,8 +2,9 @@
 // stock NATS leaf node on an edge box and mirrors its organization's PocketBase
 // config into the leaf's local JetStream KV.
 //
-//	leaf-sync config   # bootstrap nats-leaf.conf + creds from PocketBase
-//	leaf-sync run      # daemon: mirror config collections into local KV
+//	leaf-sync config       # bootstrap nats-leaf.conf + creds from PocketBase
+//	leaf-sync run          # daemon: mirror config collections into local KV
+//	leaf-sync run --nats   # ...and run the leaf node itself, in this process
 package main
 
 import (
@@ -45,7 +46,7 @@ func main() {
 		},
 	})
 
-	root.AddCommand(&cobra.Command{
+	runCmd := &cobra.Command{
 		Use:   "run",
 		Short: "Run the sync daemon (PocketBase -> local NATS KV)",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -53,9 +54,26 @@ func main() {
 			if err != nil {
 				return err
 			}
+			// Flags beat the file and the environment, so only apply the ones
+			// actually given — an unset bool flag is false and would otherwise
+			// silently turn off nats.embedded: true from leaf-sync.yaml.
+			if cmd.Flags().Changed("nats") {
+				cfg.EmbedNATS, _ = cmd.Flags().GetBool("nats")
+			}
+			if cmd.Flags().Changed("nats-config") {
+				cfg.EmbeddedConfig, _ = cmd.Flags().GetString("nats-config")
+			}
 			return leafsync.Run(cmd.Context(), cfg)
 		},
-	})
+	}
+	// Same names as the Control Plane's `serve --nats` / `--nats-config`, doing
+	// the same job one tier down. Equivalent to nats.embedded / nats.embedded_config
+	// in leaf-sync.yaml (or LEAF_SYNC_NATS_EMBEDDED).
+	runCmd.Flags().Bool("nats", false,
+		"run the NATS leaf node in this process, from the nats-leaf.conf written by `leaf-sync config`")
+	runCmd.Flags().String("nats-config", "",
+		"path to the nats-leaf.conf used by --nats (default: <output.dir>/"+leafsync.LeafConfName+")")
+	root.AddCommand(runCmd)
 
 	// Cancel the command context on SIGINT/SIGTERM so `run` shuts down cleanly
 	// and any in-flight PocketBase/NATS calls are cancelled.

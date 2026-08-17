@@ -11,6 +11,16 @@ import { useToast } from '@/composables/useToast'
 import { pb } from '@/utils/pb'
 import type { NatsUser } from '@/types/pocketbase'
 
+const STORAGE_URLS = 'stone_age_nats_urls'
+const STORAGE_AUTOCONNECT = 'stone_age_nats_autoconnect'
+
+// Last resort, used only when the deployment configured nothing. ws:// rather
+// than wss:// because it matches the listener `nats export` actually generates
+// (websocket { port: 9222, no_tls: true }), and because this default only ever
+// applies to local development, which is served over http where a browser
+// permits ws://. Production sets nats.websocket_urls in config.yaml.
+const FALLBACK_URL = 'ws://localhost:9222'
+
 export const useNatsStore = defineStore('nats', () => {
   const authStore = useAuthStore()
   const toast = useToast()
@@ -19,8 +29,33 @@ export const useNatsStore = defineStore('nats', () => {
   const nc = ref<NatsConnection | null>(null)
   const status = ref<'disconnected' | 'connecting' | 'connected' | 'reconnecting'>('disconnected')
   const lastError = ref<string | null>(null)
-  const serverUrls = ref<string[]>([])
   const autoConnect = ref(false)
+
+  // Server URLs come from three tiers, in strict priority:
+  //
+  //   1. userUrls    — this device's override (localStorage)
+  //   2. defaultUrls — the deployment's setting (config.yaml, via /api/client-config)
+  //   3. FALLBACK_URL — compiled in, development only
+  //
+  // The override REPLACES the defaults; the two are never merged. Two reasons,
+  // both load-bearing. First, nats-core shuffles the server list by default
+  // (noRandomize is false), so a merged list is a pool picked from at random,
+  // not a priority order. Second, the reason a device overrides at all is to
+  // talk to its local leaf node instead of the hub — and those are different
+  // JetStream domains holding different data under the same bucket names. A
+  // merged list would make *which dataset you are looking at* a coin flip per
+  // connect and per reconnect.
+  const defaultUrls = ref<string[]>([])
+  const userUrls = ref<string[]>([])
+  let defaultsLoaded = false
+
+  const serverUrls = computed<string[]>(() => {
+    if (userUrls.value.length) return userUrls.value
+    if (defaultUrls.value.length) return defaultUrls.value
+    return [FALLBACK_URL]
+  })
+
+  const usingOverride = computed(() => userUrls.value.length > 0)
 
   // Stats
   const rtt = ref<number | null>(null)
@@ -35,37 +70,81 @@ export const useNatsStore = defineStore('nats', () => {
 
   const isConnected = computed(() => status.value === 'connected')
 
-  function loadSettings() {
-    const savedUrls = localStorage.getItem('stone_age_nats_urls')
+  // Fetch the deployment's URLs once per session. Authenticated (the route is
+  // bound to RequireAuth), so it is called from loadSettings rather than at app
+  // boot — by the time anything connects, auth is hydrated.
+  //
+  // A failure is not fatal and deliberately does NOT mark the defaults as
+  // loaded: an unreachable route at login should not leave the session stuck on
+  // the fallback when opening Settings would have retried successfully.
+  async function loadDefaults() {
+    if (defaultsLoaded) return
+    try {
+      const res = await pb.send<{ natsWebsocketUrls?: string[] }>('/api/client-config', { method: 'GET' })
+      defaultUrls.value = Array.isArray(res?.natsWebsocketUrls)
+        ? res.natsWebsocketUrls.filter(u => typeof u === 'string' && u)
+        : []
+      defaultsLoaded = true
+    } catch (err) {
+      console.debug('Client config unavailable; using device/fallback NATS URLs.', err)
+    }
+  }
+
+  async function loadSettings() {
+    // An absent key means "no override" — the deployment default applies. Note
+    // that an existing key from before this setting existed is read as an
+    // override, which is the correct reading: somebody typed it deliberately.
+    const savedUrls = localStorage.getItem(STORAGE_URLS)
+    let parsed: unknown = null
     if (savedUrls) {
       try {
-        serverUrls.value = JSON.parse(savedUrls)
+        parsed = JSON.parse(savedUrls)
       } catch {
-        serverUrls.value = ['wss://localhost:9222']
+        parsed = null
       }
-    } else {
-      serverUrls.value = ['wss://localhost:9222']
     }
+    userUrls.value = Array.isArray(parsed)
+      ? parsed.filter((u): u is string => typeof u === 'string' && !!u)
+      : []
 
-    const savedAuto = localStorage.getItem('stone_age_nats_autoconnect')
+    const savedAuto = localStorage.getItem(STORAGE_AUTOCONNECT)
     autoConnect.value = savedAuto === 'true'
+
+    await loadDefaults()
   }
 
   function saveSettings() {
-    localStorage.setItem('stone_age_nats_urls', JSON.stringify(serverUrls.value))
-    localStorage.setItem('stone_age_nats_autoconnect', String(autoConnect.value))
+    // No override is stored as an ABSENT key rather than an empty array, so
+    // "has this device been overridden?" stays a single unambiguous check.
+    if (userUrls.value.length) {
+      localStorage.setItem(STORAGE_URLS, JSON.stringify(userUrls.value))
+    } else {
+      localStorage.removeItem(STORAGE_URLS)
+    }
+    localStorage.setItem(STORAGE_AUTOCONNECT, String(autoConnect.value))
   }
 
+  // Adding a URL starts (or extends) this device's override. It never appends
+  // to the deployment defaults — see the comment on defaultUrls for why the two
+  // must not be merged. Multiple entries here mean "peers of one cluster".
   function addUrl(url: string) {
     if (!url) return
-    if (!serverUrls.value.includes(url)) {
-      serverUrls.value.push(url)
+    if (!userUrls.value.includes(url)) {
+      userUrls.value.push(url)
       saveSettings()
     }
   }
 
+  // Only ever removes a device URL; the deployment defaults are read-only in
+  // the UI. Removing the last one drops the override and the defaults apply
+  // again, which is the same end state as resetToDefaults().
   function removeUrl(url: string) {
-    serverUrls.value = serverUrls.value.filter(u => u !== url)
+    userUrls.value = userUrls.value.filter(u => u !== url)
+    saveSettings()
+  }
+
+  function resetToDefaults() {
+    userUrls.value = []
     saveSettings()
   }
 
@@ -95,6 +174,10 @@ export const useNatsStore = defineStore('nats', () => {
     await teardownExisting()
     if (myGen !== opGen) return  // superseded during teardown
 
+    // serverUrls always yields at least the compiled-in fallback, so this guard
+    // is a backstop rather than a normal path. Kept because wsconnect() with an
+    // empty list silently dials its own localhost default instead of failing,
+    // which is a far worse thing to debug than an explicit toast.
     const servers = specificUrl ? [specificUrl] : serverUrls.value
     if (!servers.length) {
       if (myGen === opGen) {
@@ -216,14 +299,16 @@ export const useNatsStore = defineStore('nats', () => {
   }
 
   async function tryAutoConnect() {
-    loadSettings()
+    await loadSettings()
     if (autoConnect.value && authStore.currentMembership?.nats_user) {
       await connect()
     }
   }
 
   return {
-    nc, status, lastError, serverUrls, autoConnect, rtt, isConnected, reconnectCount,
-    loadSettings, saveSettings, addUrl, removeUrl, connect, disconnect, tryAutoConnect
+    nc, status, lastError, serverUrls, defaultUrls, userUrls, usingOverride,
+    autoConnect, rtt, isConnected, reconnectCount,
+    loadSettings, saveSettings, addUrl, removeUrl, resetToDefaults,
+    connect, disconnect, tryAutoConnect
   }
 })

@@ -96,6 +96,12 @@ func setDefaults() {
 	// the README, and the docs — the symptom was a Control Plane stuck in
 	// bootstrap mode against a server that was running fine on another port.
 	viper.SetDefault("nats.server_url", "nats://localhost:4222")
+	// WebSocket listeners for the browser console, served at runtime by
+	// GET /api/client-config. Empty by default: the UI then falls back to its
+	// compiled-in ws://localhost:9222, which is the listener `nats export`
+	// generates. Not derived from server_url — that is a TCP address for this
+	// process, on a different port and often a different hostname.
+	viper.SetDefault("nats.websocket_urls", []string{})
 	viper.SetDefault("nats.log_to_console", false)
 	viper.SetDefault("nats.default_limits.max_connections", 10)
 	viper.SetDefault("nats.default_limits.max_subscriptions", 50)
@@ -370,6 +376,34 @@ func main() {
 		NebulaNetworkCollection: nebulaOptions.NetworkCollectionName,
 	})
 
+	// Deployment facts the SPA needs at runtime but cannot be compiled with —
+	// currently just the browser-facing NATS WebSocket URLs. A build-time
+	// constant would mean a frontend rebuild per operator, which is the same
+	// problem the branding overlay avoids.
+	//
+	// Validated at startup rather than shipped to the browser to fail there.
+	// The env-var override is the reason this is worth a check: viper splits a
+	// string env value on WHITESPACE, so STONE_AGE_NATS_WEBSOCKET_URLS with
+	// comma-separated URLs yields one entry containing both, and the only
+	// symptom would be a console that cannot connect for no stated reason.
+	natsWebsocketURLs := viper.GetStringSlice("nats.websocket_urls")
+	for _, u := range natsWebsocketURLs {
+		// Checked before the scheme, because a comma-joined list still starts
+		// with a valid scheme and would otherwise sail through as one URL.
+		if strings.Contains(u, ",") {
+			log.Fatalf("❌ nats.websocket_urls entry %q contains a comma, so it is one malformed URL rather than a list.\n"+
+				"       In config.yaml write a YAML list: websocket_urls: [\"wss://a:9222\", \"wss://b:9222\"]\n"+
+				"       In STONE_AGE_NATS_WEBSOCKET_URLS separate them with SPACES — viper splits that value on whitespace.", u)
+		}
+		if !strings.HasPrefix(u, "ws://") && !strings.HasPrefix(u, "wss://") {
+			log.Fatalf("❌ nats.websocket_urls entries must start with ws:// or wss:// (got %q).\n"+
+				"       These are browser WebSocket URLs, not the nats:// address in nats.server_url.", u)
+		}
+	}
+	hooks.RegisterClientConfigRoutes(app, hooks.ClientConfigRoutesOptions{
+		NatsWebsocketURLs: natsWebsocketURLs,
+	})
+
 	// Embedded NATS server. Bound to OnServe rather than OnBootstrap on purpose:
 	// the support library calls e.Next() *before* it seeds the NATS operator, so
 	// a bootstrap handler registered after its Setup actually runs earlier, when
@@ -386,6 +420,7 @@ func main() {
 		srv, err := natsd.Start(
 			viper.GetString("nats.embedded_config"),
 			viper.GetString("nats.server_url"),
+			"nats.server_url",
 		)
 		if err != nil {
 			// Refuse to serve. Running on would mean issuing credentials for a

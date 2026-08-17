@@ -50,6 +50,8 @@ working directory or `/etc/leaf-sync/`.
 | `nats.local_url` | | Local leaf the daemon connects to (default `nats://127.0.0.1:4222`). |
 | `nats.creds_file` | | Creds filename (default `edge.creds`); written by `config`, read by `run`. |
 | `nats.hub_domain` | | Hub's JetStream domain. When set, `run` writes a liveness heartbeat into the hub's `leaf_status` KV. Empty = heartbeat off, and the twin relay cannot run. |
+| `nats.embedded` | | Run the leaf node inside this process — see [Running the leaf node in-process](#running-the-leaf-node-in-process). Same as `--nats` (default `false`). |
+| `nats.embedded_config` | | The `nats-leaf.conf` `--nats` loads (default `<output.dir>/nats-leaf.conf`). |
 | `output.dir` | | Where `config` writes files (default `.`). |
 | `sync.interval` | | Full-reconcile cadence (default `30s`). |
 | `twin.enabled` | | Turn on [twin sync](#twin-sync-data-plane) (default `false`). Requires `nats.hub_domain`. |
@@ -58,19 +60,28 @@ working directory or `/etc/leaf-sync/`.
 ## Commands
 
 ```sh
-leaf-sync config    # one-shot: write nats-leaf.conf + edge.creds from PocketBase
-leaf-sync run       # daemon: mirror config collections into local KV (+ twin sync)
-leaf-sync --version # print the build version
+leaf-sync config     # one-shot: write nats-leaf.conf + edge.creds from PocketBase
+leaf-sync run        # daemon: mirror config collections into local KV (+ twin sync)
+leaf-sync run --nats # ...and run the leaf node itself, in this process
+leaf-sync --version  # print the build version
 ```
 
 - **`config`** authenticates to PocketBase as the leaf node and makes a single
-  call to `GET /api/leaf/bootstrap`, which returns the six values a leaf server
-  needs: `domain`, `code`, `creds`, `account_jwt`, `account_pub`, `operator_jwt`.
-  It writes `nats-leaf.conf` (operator + `MEMORY` resolver_preload + JetStream
-  domain + leaf remote + localhost monitoring) and the creds file. No NATS
-  connection needed — run it before the leaf is up. A half-provisioned leaf node
-  fails here naming the missing field, rather than producing a `nats-leaf.conf`
-  with empty directives.
+  call to `GET /api/leaf/bootstrap`, which returns the values a leaf server
+  needs: `domain`, `code`, `creds`, `account_jwt`, `account_pub`, `operator_jwt`,
+  `sys_account_jwt`, `sys_account_pub`. It writes `nats-leaf.conf` (operator +
+  `MEMORY` resolver_preload + JetStream domain + leaf remote + localhost
+  monitoring) and the creds file. No NATS connection needed — run it before the
+  leaf is up. A half-provisioned leaf node fails here naming the missing field,
+  rather than producing a `nats-leaf.conf` with empty directives.
+
+  The `$SYS` pair is not optional and is not a `$SYS` identity. The operator JWT
+  names a system account, and a server running `resolver: MEMORY` has nowhere to
+  fetch it from — without it preloaded, `nats-server` refuses to start at all
+  ("error resolving system account: account missing"). Preloading an account JWT
+  grants nothing on its own: connecting as `$SYS` needs a `$SYS` *user*
+  credential, which is never served to a leaf node. Likewise the leaf remote
+  carries an `account` key, which operator mode requires on every remote.
 - **`run`** connects to the local leaf and, every `sync.interval`, performs a
   full reconcile of each allowed collection: upsert every record into KV bucket
   `<collection>`, then delete KV keys for records that no longer exist. Each
@@ -99,6 +110,39 @@ leaf-sync --version # print the build version
 
   It never wipes local state, and stops cleanly on `SIGINT`/`SIGTERM` (cancelling
   any in-flight PocketBase/NATS call), so it's safe to run under systemd/Docker.
+
+## Running the leaf node in-process
+
+`leaf-sync run --nats` (or `nats.embedded: true`) starts the leaf's `nats-server`
+inside the agent, from the same `nats-leaf.conf` that `config` writes. The edge
+becomes two processes instead of three, and the "regenerated the config, forgot
+to restart the server" failure stops being possible.
+
+It is an ordinary `nats-server` reading an ordinary config file — the same
+arrangement as the Control Plane's `serve --nats` — so turning it back off is a
+flag, not a migration.
+
+Two things to know:
+
+- **`nats.local_url` must name the port the config listens on.** Startup refuses
+  the pair when they disagree, because nothing in the process would ever reach
+  the server and the symptom otherwise is a silent retry loop.
+- **A PocketBase outage no longer exits the agent.** Without `--nats`, a failed
+  login exits and the supervisor restarts — the bus is someone else's process, so
+  that costs nothing. With `--nats`, exiting would take the leaf down too, and a
+  supervisor cycling the pair through a WAN outage means devices reconnecting and
+  JetStream recovering its store on a loop. So it retries with a 2s→60s backoff
+  instead, serving the config it already has. Watch for `PocketBase auth failed
+  (...); local NATS is up, retrying in ...` in the log.
+
+**Off by default, and staying that way.** Where systemd or Docker is already
+supervising services, a separate `nats-server` is the better shape: the bus
+survives a leaf-sync restart, which is what you want when upgrading the agent on
+a live site.
+
+The convenience costs binary size — `leaf-sync` goes from ~12 MB to ~26 MB,
+because `nats-server` is linked in whether or not `--nats` is used. Against a
+separately installed `nats-server` binary, total edge footprint is roughly flat.
 
 After each cycle, if `nats.hub_domain` is set, `run` writes a small liveness
 **heartbeat** into the hub's `leaf_status` KV bucket (keyed by the leaf node's
@@ -212,6 +256,11 @@ go build -ldflags "-X platform/internal/leafsync.Version=$(git describe --tags -
 5. `leaf-sync run` (under your init system of choice).
 6. Point `rule-router` at `edge.creds` for local automation.
 
+Steps 2, 4 and 5 collapse if you use the in-process server: install `leaf-sync`
+alone, and run `leaf-sync run --nats` as the single service. See
+[Running the leaf node in-process](#running-the-leaf-node-in-process) for what
+you give up.
+
 `leaf-sync` does not supervise the other processes — use systemd, Docker, or
 whatever your platform provides.
 
@@ -272,12 +321,12 @@ it.
 - **A leaf-node identity has no read grant on any `nats_*` or `nebula_*`
   collection.** Everything it needs from them comes from one dedicated,
   leaf-node-authenticated route, `GET /api/leaf/bootstrap`, which reads those
-  records with the server's own privileges and returns six named fields. The
-  `nats_system_operator` collection stays superuser-only.
+  records with the server's own privileges and returns a fixed list of named
+  fields. The `nats_system_operator` collection stays superuser-only.
 
   This is why the route exists rather than a read rule. It states the edge's
-  blast radius as a fixed list — a leaked edge credential yields those six values
-  and nothing else — instead of "whatever the rules on those collections happen
+  blast radius as a fixed list — a leaked edge credential yields those values and
+  nothing else — instead of "whatever the rules on those collections happen
   to match", which has to be re-derived every time an unrelated rule changes. It
   also decouples the agent from rule shape: `config` used to read `nats_users`
   and `nats_accounts` through the CRUD API, which made a correct tightening
@@ -302,6 +351,16 @@ it.
   `reload_hook`.
 
 ## Tests
+
+One test is not a unit test and earns its place: `TestBuildLeafConfIsAcceptedBy
+NATSServer` mints a real operator/`$SYS`/account set, runs the real generator,
+and hands the output to `nats-server`'s own config loader and `NewServer`. No
+ports, no network — operator-mode validation all happens while the server is
+being constructed. It exists because the generator shipped for months producing
+a config `nats-server` rejected outright (no `account` on the leaf remote, no
+`$SYS` preload), and every string assertion around it passed the whole time.
+Breaking either directive fails it with the exact message the edge would have
+seen.
 
 Unit tests cover the pure logic (config loading + defaults, the syncable-
 collection allowlist, the KV deletion diff, the `nats-leaf.conf` generator), the

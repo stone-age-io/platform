@@ -21,6 +21,20 @@ nats:
                                                   # heartbeat (leaf_status KV) and the twin relay.
                                                   # Empty = both off.
 
+  # Run the leaf node inside this process instead of alongside it, from the
+  # nats-leaf.conf `config` writes. Equivalent to `leaf-sync run --nats`; two
+  # processes on the edge become one, and regenerating the config can no longer
+  # leave a stale server running behind it.
+  #
+  # Off by default. Where systemd/Docker is already supervising services, a
+  # separate nats-server is still the better shape: the bus then survives a
+  # leaf-sync restart, which matters when upgrading the agent on a live site.
+  #
+  # local_url must name the port the config listens on — startup refuses the
+  # pair if they disagree, since nothing would ever reach the server.
+  embedded: false
+  # embedded_config: /etc/leaf-sync/nats-leaf.conf   # default: <output.dir>/nats-leaf.conf
+
 output:
   dir: .            # where `config` writes nats-leaf.conf + the creds file
 

@@ -100,6 +100,22 @@ The console needs a NATS server to show live data. Export a config and run one:
 nats-server -c ./nats-config/nats.conf
 ```
 
+That config includes the WebSocket listener the browser needs
+(`websocket { port: 9222, no_tls: true }`). Tell the console where to find it in
+`config.yaml`, so nobody has to type it in:
+
+```yaml
+nats:
+  websocket_urls: ["ws://localhost:9222"]
+```
+
+It is served to the console at runtime, so changing it needs no frontend
+rebuild. Leave it empty and the console falls back to `ws://localhost:9222`.
+Behind HTTPS, use `wss://` — browsers refuse a plaintext socket from a secure
+page. Multiple entries are peers of one cluster, not a fallback order; a single
+box that should talk to a local leaf node instead is a per-device override in
+the console's settings.
+
 For small deployments the Control Plane can run that same config itself, as one
 process:
 
@@ -113,11 +129,15 @@ rather than a migration — but while they share a process, restarting the Contr
 Plane restarts the bus. See ADR 0001 in the platform docs.
 
 ### Edge Agent (Optional)
-The edge agent is a separate, lean binary built from the same repo — it runs on edge boxes, not the central server:
+The edge agent is a separate binary built from the same repo — it runs on edge boxes, not the central server:
 ```bash
 go build -o leaf-sync ./cmd/leaf-sync
 ```
-See [`cmd/leaf-sync/README.md`](./cmd/leaf-sync/README.md) for the full edge deployment flow.
+It can host the edge's NATS leaf node itself, the same way `serve --nats` does here, so an edge site is one service rather than two:
+```bash
+leaf-sync run --nats
+```
+See [`cmd/leaf-sync/README.md`](./cmd/leaf-sync/README.md) for the full edge deployment flow and what running in-process gives up.
 
 ---
 

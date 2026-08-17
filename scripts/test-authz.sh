@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=130         # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=135         # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -617,8 +617,8 @@ echo "=== 12. a leaf node reads no NATS collection at all ==="
 # leaf-sync config used to read nats_users + nats_accounts through the CRUD API,
 # which meant granting a leaf-node identity a read branch on each. Those branches
 # are gone: GET /api/leaf/bootstrap serves the same values with the app's own
-# privileges, so the edge's blast radius is six named fields rather than
-# "whatever those rules happen to match".
+# privileges, so the edge's blast radius is a fixed list of named fields rather
+# than "whatever those rules happen to match".
 req POST /collections/leaf_nodes/records "$SU" \
   "{\"email\":\"leaf1@test.local\",\"password\":\"Password123!\",\"passwordConfirm\":\"Password123!\",\"emailVisibility\":true,\"name\":\"Leaf One\",\"code\":\"LEAF1\",\"domain\":\"edge-leaf1\",\"organization\":\"$ORG\",\"synced_collections\":[\"things\",\"locations\"]}"
 LEAF=$(j "$RBODY" id)
@@ -655,11 +655,21 @@ fi
 req GET "/leaf/bootstrap" "$TL"
 expect "leaf node CAN reach /api/leaf/bootstrap" 200 "$RCODE" "$RBODY"
 BS_MISSING=$(jn "$RBODY" \
-  '["domain","creds","account_jwt","account_pub","operator_jwt"].filter(k=>!o[k]).join(",")')
+  '["domain","creds","account_jwt","account_pub","operator_jwt","sys_account_jwt","sys_account_pub"].filter(k=>!o[k]).join(",")')
 if [ -z "$BS_MISSING" ]; then
-  ok "bootstrap response carries domain, creds, account_jwt, account_pub, operator_jwt"
+  ok "bootstrap response carries domain, creds, account/operator/sys JWTs and pubkeys"
 else
   no "bootstrap response missing: $BS_MISSING"
+fi
+# The $SYS pair must be the actual system account, not a second copy of the org's.
+# Without it the generated nats-leaf.conf cannot resolve the system account the
+# operator JWT names, and nats-server refuses to start -- which is exactly the bug
+# this check exists to prevent coming back.
+BS_SYS_DISTINCT=$(jn "$RBODY" 'o.sys_account_pub !== o.account_pub ? "yes" : "no"')
+if [ "$BS_SYS_DISTINCT" = "yes" ]; then
+  ok "bootstrap sys_account_pub is the system account, not a copy of the org account"
+else
+  no "bootstrap sys_account_pub equals account_pub -- the system account lookup is wrong"
 fi
 req GET "/collections/things/records" "$TL"
 expect "leaf node CAN still list the collections it mirrors" 200 "$RCODE" "$RBODY"
@@ -669,6 +679,32 @@ req GET "/leaf/bootstrap" "$TA"
 expect "org owner cannot reach the leaf bootstrap route" "401|403|404" "$RCODE" "$RBODY"
 req GET "/leaf/bootstrap" ""
 expect "anonymous cannot reach the leaf bootstrap route" "401|403|404" "$RCODE" "$RBODY"
+
+echo ""
+echo "=== 12b. /api/client-config is console-only, and every console role gets it ==="
+# The deployment's browser-facing NATS WebSocket URLs. Not secret -- the
+# credential is, and that is row-scoped in nats_users -- but there is no
+# pre-login need for it either, since connect() already requires a session and a
+# linked nats_user. So it is bound to RequireAuth("users"): no reason to hand an
+# unauthenticated scanner the address of the bus.
+#
+# `dashboard` is the probe on the allow side deliberately. It is the
+# zero-authority role AND the appliance login that most needs this value, so an
+# over-tight guard here would strand exactly the deployment the setting exists
+# for. Device identities are on the deny side: a Thing or leaf node gets its bus
+# address from its own config file, not from the console's.
+req GET "/client-config" ""
+expect "anonymous cannot read the client config" "401|403|404" "$RCODE" "$RBODY"
+req GET "/client-config" "$TL"
+expect "a leaf node cannot read the console's client config" "401|403|404" "$RCODE" "$RBODY"
+req GET "/client-config" "$TG"
+expect "dashboard CAN read the client config" 200 "$RCODE" "$RBODY"
+CC_URLS=$(jn "$RBODY" 'Array.isArray(o.natsWebsocketUrls)?"array":typeof o.natsWebsocketUrls')
+if [ "$CC_URLS" = "array" ]; then
+  ok "client config returns natsWebsocketUrls as an array when unset (not null)"
+else
+  no "client config natsWebsocketUrls should be an array, got: $CC_URLS"
+fi
 
 echo ""
 echo "=== 13. account + CA writes are operator-only; key ops are a route ==="

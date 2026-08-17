@@ -40,10 +40,26 @@ const listPageSize = 500 // PocketBase per-page maximum
 // and reconciles the configured collections into local KV on an interval until
 // ctx is cancelled (e.g. on SIGINT/SIGTERM).
 func Run(ctx context.Context, cfg *Config) error {
+	// Start the bus first, before PocketBase is involved at all. A site whose
+	// uplink is down must still come up with a working local NATS — that
+	// autonomy is the point of a leaf node, and the separate-process topology
+	// gets it for free by not sequencing the two.
+	if cfg.EmbedNATS {
+		srv, err := startEmbeddedNATS(cfg)
+		if err != nil {
+			return err
+		}
+		defer srv.Stop()
+	}
+
 	pb := pbclient.New(cfg.PocketBaseURL)
-	leaf, err := pb.AuthWithPassword(ctx, "leaf_nodes", cfg.PocketBaseEmail, cfg.PocketBasePassword)
+	leaf, err := authenticate(ctx, pb, cfg)
 	if err != nil {
-		return fmt.Errorf("authenticate to PocketBase: %w", err)
+		if ctx.Err() != nil {
+			log.Printf("leaf-sync: shutdown signal received, stopping")
+			return nil
+		}
+		return err
 	}
 
 	collections := resolveCollections(leaf)
@@ -102,6 +118,50 @@ func Run(ctx context.Context, cfg *Config) error {
 		case <-ticker.C:
 			cycle()
 		}
+	}
+}
+
+// Backoff bounds for the PocketBase login retry below. Variables rather than
+// constants only so the tests can shrink them; nothing in production reassigns
+// them.
+var (
+	authRetryMin = 2 * time.Second
+	authRetryMax = 60 * time.Second
+)
+
+// authenticate logs in to PocketBase as the leaf node.
+//
+// Without --nats it fails on the first error, which is the long-standing
+// behaviour: the bus is another process, so exiting and letting a supervisor
+// restart us costs nothing.
+//
+// With --nats it retries instead, because exiting would stop the leaf server
+// too. A supervisor restarting the pair every few seconds through a WAN outage
+// means devices reconnecting and JetStream recovering its store on a loop — the
+// site's local messaging broken by the central platform being unreachable,
+// which is precisely the coupling a leaf node exists to avoid. Stale config is
+// the correct thing to serve meanwhile; that is what the config mirror is for.
+//
+// It retries on any failure, a rejected password included, rather than trying to
+// classify which errors are transient. A typo in the config should not take a
+// working bus offline either, and the log names the cause on every attempt.
+func authenticate(ctx context.Context, pb *pbclient.Client, cfg *Config) (pbclient.Record, error) {
+	backoff := authRetryMin
+	for {
+		leaf, err := pb.AuthWithPassword(ctx, "leaf_nodes", cfg.PocketBaseEmail, cfg.PocketBasePassword)
+		if err == nil {
+			return leaf, nil
+		}
+		if !cfg.EmbedNATS {
+			return nil, fmt.Errorf("authenticate to PocketBase: %w", err)
+		}
+		log.Printf("⚠️ leaf-sync: PocketBase auth failed (%v); local NATS is up, retrying in %s", err, backoff)
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("authenticate to PocketBase: %w", err)
+		case <-time.After(backoff):
+		}
+		backoff = min(backoff*2, authRetryMax)
 	}
 }
 

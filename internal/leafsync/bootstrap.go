@@ -11,6 +11,11 @@ import (
 	"platform/internal/leafsync/pbclient"
 )
 
+// LeafConfName is the file `config` writes the leaf server config to. It is also
+// what `run --nats` loads by default, so the two commands agree without the
+// operator naming the path twice.
+const LeafConfName = "nats-leaf.conf"
+
 // Bootstrap authenticates to PocketBase as the leaf node and writes the local
 // NATS leaf server config (nats-leaf.conf) plus its credentials file, so the
 // edge operator can start a stock nats-server with no other inputs.
@@ -43,32 +48,37 @@ func Bootstrap(ctx context.Context, cfg *Config) error {
 	}
 
 	conf := buildLeafConf(leafConfParams{
-		OperatorJWT: bs.OperatorJWT,
-		AccountPub:  bs.AccountPub,
-		AccountJWT:  bs.AccountJWT,
-		Domain:      bs.Domain,
-		HubLeafURL:  cfg.HubLeafURL,
-		CredsName:   credsName,
+		OperatorJWT:   bs.OperatorJWT,
+		AccountPub:    bs.AccountPub,
+		AccountJWT:    bs.AccountJWT,
+		SysAccountPub: bs.SysAccountPub,
+		SysAccountJWT: bs.SysAccountJWT,
+		Domain:        bs.Domain,
+		HubLeafURL:    cfg.HubLeafURL,
+		CredsName:     credsName,
 	})
-	confPath := filepath.Join(cfg.OutputDir, "nats-leaf.conf")
+	confPath := filepath.Join(cfg.OutputDir, LeafConfName)
 	if err := os.WriteFile(confPath, []byte(conf), 0o644); err != nil {
 		return fmt.Errorf("write nats-leaf.conf: %w", err)
 	}
 
 	fmt.Printf("✅ Wrote %s\n✅ Wrote %s\n", confPath, credsPath)
 	fmt.Printf("\nNext: start the leaf with\n  nats-server -c %s\nthen run\n  leaf-sync run\n", confPath)
+	fmt.Printf("\nOr run both in this one process:\n  leaf-sync run --nats\n")
 	return nil
 }
 
 // bootstrapResponse is the payload of GET /api/leaf/bootstrap. Every value is
 // either public trust material or this leaf's own credential.
 type bootstrapResponse struct {
-	Domain      string `json:"domain"`
-	Code        string `json:"code"`
-	Creds       string `json:"creds"`
-	AccountJWT  string `json:"account_jwt"`
-	AccountPub  string `json:"account_pub"`
-	OperatorJWT string `json:"operator_jwt"`
+	Domain        string `json:"domain"`
+	Code          string `json:"code"`
+	Creds         string `json:"creds"`
+	AccountJWT    string `json:"account_jwt"`
+	AccountPub    string `json:"account_pub"`
+	OperatorJWT   string `json:"operator_jwt"`
+	SysAccountJWT string `json:"sys_account_jwt"`
+	SysAccountPub string `json:"sys_account_pub"`
 }
 
 // fetchBootstrap calls the leaf bootstrap route and checks that every value the
@@ -92,6 +102,11 @@ func fetchBootstrap(ctx context.Context, pb *pbclient.Client) (*bootstrapRespons
 		{bs.AccountJWT, "account_jwt"},
 		{bs.AccountPub, "account_pub"},
 		{bs.OperatorJWT, "operator_jwt"},
+		// Added after `sys_account_*`: a server old enough not to send these
+		// produces a config nats-server refuses to load, so failing here with
+		// the field name beats failing later with "account missing".
+		{bs.SysAccountJWT, "sys_account_jwt"},
+		{bs.SysAccountPub, "sys_account_pub"},
 	} {
 		if missing.value == "" {
 			return nil, fmt.Errorf("leaf bootstrap response missing %s", missing.name)
@@ -101,12 +116,14 @@ func fetchBootstrap(ctx context.Context, pb *pbclient.Client) (*bootstrapRespons
 }
 
 type leafConfParams struct {
-	OperatorJWT string
-	AccountPub  string
-	AccountJWT  string
-	Domain      string
-	HubLeafURL  string
-	CredsName   string
+	OperatorJWT   string
+	AccountPub    string
+	AccountJWT    string
+	SysAccountPub string
+	SysAccountJWT string
+	Domain        string
+	HubLeafURL    string
+	CredsName     string
 }
 
 func buildLeafConf(p leafConfParams) string {
@@ -117,9 +134,35 @@ func buildLeafConf(p leafConfParams) string {
 	fmt.Fprintf(&b, "jetstream {\n  domain: %q\n  store_dir: \"./jetstream\"\n}\n\n", p.Domain)
 	fmt.Fprintf(&b, "operator: %q\n\n", p.OperatorJWT)
 	b.WriteString("resolver: MEMORY\n")
-	fmt.Fprintf(&b, "resolver_preload: {\n  %s: %q\n}\n\n", p.AccountPub, p.AccountJWT)
-	fmt.Fprintf(&b, "leafnodes {\n  remotes: [\n    { url: %q, credentials: %q }\n  ]\n}\n\n", p.HubLeafURL, p.CredsName)
-	b.WriteString("# Local monitoring only (no $SYS account); keep bound to localhost.\n")
+
+	// Two entries, both mandatory.
+	//
+	// The org account is what this edge actually uses. The system account is
+	// named inside the operator JWT, and nats-server resolves it while
+	// constructing the server — with resolver: MEMORY there is nowhere else to
+	// fetch it from, so preloading only the org account fails outright with
+	// "error resolving system account: account missing", before JetStream is
+	// even reached. pb-nats preloads it into the hub's config for the same
+	// reason (see its generateOperatorConf).
+	//
+	// This preloads the system account's JWT, which is public trust material
+	// like the operator and org account JWTs already here. It does NOT give the
+	// edge a $SYS identity: connecting as the system account needs a $SYS *user*
+	// credential, which is never served to a leaf node. "No local $SYS" still
+	// holds — monitoring is the localhost HTTP port below, not a $SYS user.
+	b.WriteString("resolver_preload: {\n")
+	fmt.Fprintf(&b, "  %s: %q\n", p.AccountPub, p.AccountJWT)
+	fmt.Fprintf(&b, "  %s: %q\n", p.SysAccountPub, p.SysAccountJWT)
+	b.WriteString("}\n\n")
+
+	// `account` is required on every remote in operator mode — nats-server
+	// rejects the config without it ("operator mode requires account nkeys in
+	// remotes"). It names which local account the leaf connection binds to,
+	// which for a one-account edge is the org account.
+	fmt.Fprintf(&b, "leafnodes {\n  remotes: [\n    { url: %q, account: %q, credentials: %q }\n  ]\n}\n\n",
+		p.HubLeafURL, p.AccountPub, p.CredsName)
+
+	b.WriteString("# Local monitoring only (no $SYS user); keep bound to localhost.\n")
 	b.WriteString("http: \"127.0.0.1:8222\"\n")
 	return b.String()
 }

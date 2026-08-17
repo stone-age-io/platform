@@ -141,6 +141,40 @@ Located at project root. Key sections:
 - `nebula` - Nebula CA/network/host settings
 - `audit` - Audit logging configuration
 
+**`nats.server_url` and `nats.websocket_urls` are not the same address.** The
+first is the TCP address *this process* dials to publish account claims; the
+second is the WebSocket listener a *browser* dials, on a different port and
+often a different host. Never derive one from the other — a Control Plane
+publishing to `nats://nats:4222` inside a container says nothing about what a
+browser can reach. `websocket_urls` is served to the SPA at runtime by
+`GET /api/client-config` (`hooks/client_config_routes.go`), deliberately not
+baked in at build time: the UI is embedded in the binary, so a build-time
+constant would mean a frontend rebuild per operator — the same problem
+`branding.dir` exists to avoid.
+
+The console resolves URLs in three tiers: device override (localStorage) →
+deployment default (this key) → compiled-in `ws://localhost:9222`. Rules:
+
+- **The override replaces the defaults; the two are never merged.** nats-core
+  shuffles the server list by default (`noRandomize: false`), so a merged list
+  is a pool picked at random, not a priority order — and the reason a device
+  overrides is to reach its local leaf node instead of the hub, which are
+  different JetStream domains holding different data under the same bucket
+  names. Merging would make *which dataset you are looking at* a coin flip per
+  reconnect.
+- **Multiple entries mean one cluster.** Peers, not failover order. Do not list
+  a hub URL and a leaf URL together.
+- **No JetStream domain setting, deliberately.** The UI passes no domain, so
+  plain `$JS.API` resolves to the JetStream of whichever server was dialed —
+  hub URL → hub, leaf URL → that leaf's `edge-<code>`. The URL already selects
+  the domain. A separate domain knob would be a second control that can
+  disagree with the first, failing as an empty bucket list with no diagnosis.
+  Cross-domain browsing ("read site S01's KV from the hub") is a per-view
+  choice next to the bucket name, not a connection setting — and it needs
+  publish rights on `$JS.<domain>.API.>`, which vary by `nats_roles`.
+- **HTTPS pages cannot open `ws://`.** Browsers block it outright, so the
+  settings form rejects it rather than saving a URL that can never connect.
+
 ### Environment Variables
 Prefix: `STONE_AGE_`
 ```bash
@@ -215,7 +249,9 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
 9. **PWA** - Service worker, manifest, installable
 10. **Keyboard Shortcuts** - Configurable keyboard shortcuts with modal reference
 11. **Operator Org & Managed Orgs** - Bootstrap creates the platform operator's own org (`is_operator_org`) alongside the `$SYS` org (`is_system_org`); its NATS account is the hub for shared operator services (helpdesk etc.). Flagging a customer org `managed` provisions a stream export of `helpdesk.>` (configurable: `nats.managed_export_subject`) from its account plus a hub-side import remapped to `helpdesk.{orgId}.>` — the org prefix is baked into the signed account JWT, so event provenance is subject-based and unforgeable (`hooks/managed_org_exports.go`).
-12. **Edge / Leaf Nodes** - `leaf_nodes` auth collection (a "special thing" with one nats_user, server-provisioned). The `leaf-sync` agent runs on the edge, authenticates as the leaf node, and mirrors its org's config collections into a NATS leaf node's local JetStream KV. A leaf-node identity holds **no read grant on any `nats_*` or `nebula_*` collection**: `leaf-sync config` gets everything it needs from `GET /api/leaf/bootstrap`, which returns six named fields (`domain`, `code`, `creds`, `account_jwt`, `account_pub`, `operator_jwt`). `nats_system_operator` stays superuser-only; `GET /api/leaf/operator-jwt` remains as a superseded alias so upgrade order doesn't matter. `leaf-sync` writes a best-effort liveness heartbeat into the hub's `leaf_status` KV (when `nats.hub_domain` is set); the UI reads it to show online/offline status on the leaf node list + detail views. Credentials are resettable by org Admins/Owners (collection `manageRule`) — `things` now carries the same `manageRule`, so a device's PocketBase password is recoverable too.
+12. **Edge / Leaf Nodes** - `leaf_nodes` auth collection (a "special thing" with one nats_user, server-provisioned). The `leaf-sync` agent runs on the edge, authenticates as the leaf node, and mirrors its org's config collections into a NATS leaf node's local JetStream KV. A leaf-node identity holds **no read grant on any `nats_*` or `nebula_*` collection**: `leaf-sync config` gets everything it needs from `GET /api/leaf/bootstrap`, which returns eight named fields (`domain`, `code`, `creds`, `account_jwt`, `account_pub`, `operator_jwt`, `sys_account_jwt`, `sys_account_pub`). `nats_system_operator` stays superuser-only; `GET /api/leaf/operator-jwt` remains as a superseded alias so upgrade order doesn't matter.
+    - **A generated `nats-leaf.conf` must satisfy operator-mode validation, which no string assertion can check.** Two directives are mandatory and were both missing for months, so `leaf-sync config` produced a file `nats-server` refused to load — the failure was invisible because the only tests were `strings.Contains` over the output. (1) Every leaf remote needs an `account` key naming the local account; (2) `resolver_preload` needs the **`$SYS` account JWT** as well as the org's, because the operator JWT names a system account and `resolver: MEMORY` has nowhere to fetch it — without it the server dies with `error resolving system account: account missing` before JetStream starts. Preloading `$SYS`'s *account* JWT is public trust material and grants nothing; connecting as `$SYS` needs a `$SYS` **user** credential, which is never served. `TestBuildLeafConfIsAcceptedByNATSServer` now runs the real generator's output through `nats-server`'s own `ProcessConfigFile` + `NewServer` (no ports, no network) — keep it, and don't replace it with more `Contains` checks.
+    - **`leaf-sync run --nats` runs the leaf node in-process** (`internal/leafsync/embedded.go`, reusing `internal/natsd`), off by default. Two consequences worth keeping: the server starts **before** PocketBase is touched, and a failed login then **retries** instead of exiting — exiting would take the bus down, and a supervisor cycling the pair through a WAN outage means devices reconnecting and JetStream recovering its store on a loop. Without `--nats` the old fail-fast behaviour stands, because the bus is another process. Cost: the binary goes ~12 MB → ~26 MB, since `nats-server` links in either way. `leaf-sync` writes a best-effort liveness heartbeat into the hub's `leaf_status` KV (when `nats.hub_domain` is set); the UI reads it to show online/offline status on the leaf node list + detail views. Credentials are resettable by org Admins/Owners (collection `manageRule`) — `things` now carries the same `manageRule`, so a device's PocketBase password is recoverable too.
 13. **Digital Twin / Live State** - **Two** KV buckets per org, split by owner:
     `twin` (reported — the device writes it, flows edge→hub) and `twin_desired`
     (desired — operators write it, flows hub→edge). Keys are
@@ -504,8 +540,10 @@ Keep it in step with the table above.
 
 - `main.go` - Backend entry, PocketBase setup, hooks, bootstrap command
 - `hooks/leaf_node_provisioning.go` - Mints a leaf node's NATS user on create
-- `hooks/leaf_node_routes.go` - `GET /api/leaf/bootstrap` (leaf-node-authed; everything `leaf-sync config` needs), plus the superseded `GET /api/leaf/operator-jwt`
+- `hooks/leaf_node_routes.go` - `GET /api/leaf/bootstrap` (leaf-node-authed; everything `leaf-sync config` needs, including the `$SYS` account JWT the leaf's MEMORY resolver cannot fetch), plus the superseded `GET /api/leaf/operator-jwt`
+- `internal/leafsync/embedded.go` - `leaf-sync run --nats`: the edge's leaf node inside the agent process, via `internal/natsd`
 - `hooks/thing_routes.go` - `POST /api/org/things`: Thing + optional NATS/Nebula identity in one transaction; member-level for inventory, owner/admin for the identity half
+- `hooks/client_config_routes.go` - `GET /api/client-config`: deployment facts the SPA cannot be compiled with (browser-facing NATS WebSocket URLs). Authed (`users`) — there is no pre-login need, so no reason to publish the bus address
 - `cmd/leaf-sync/` + `internal/leafsync/` - Edge agent (config bootstrap + KV sync); see `cmd/leaf-sync/README.md`
 - `ui/src/stores/auth.ts` - Authentication and organization context
 - `ui/src/stores/nats.ts` - NATS WebSocket connection manager

@@ -49,15 +49,17 @@ type Server struct {
 // Start loads confPath, starts a NATS server from it, and waits for it to
 // accept connections.
 //
-// clientURL is the address this Control Plane is configured to dial
-// (nats.server_url). It is not used to connect — it is checked against the port
-// the server actually listens on, because the two disagreeing is the one
-// misconfiguration that leaves a process talking to itself and failing.
+// clientURL is the address the calling process is configured to dial. It is not
+// used to connect — it is checked against the port the server actually listens
+// on, because the two disagreeing is the one misconfiguration that leaves a
+// process talking to itself and failing. clientURLSetting names the config key
+// clientURL came from (`nats.server_url` in the Control Plane, `nats.local_url`
+// on an edge), so the error can tell the reader which knob to turn.
 //
-// The returned error is intended to be fatal to startup. A Control Plane asked
-// for an embedded server that cannot start should say so and stop, not run on
-// in a state where every credential it issues points at nothing.
-func Start(confPath, clientURL string) (*Server, error) {
+// The returned error is intended to be fatal to startup. A process asked for an
+// embedded server that cannot start should say so and stop, not run on in a
+// state where every credential it issues points at nothing.
+func Start(confPath, clientURL, clientURLSetting string) (*Server, error) {
 	if _, err := os.Stat(confPath); err != nil {
 		if os.IsNotExist(err) {
 			return nil, fmt.Errorf(
@@ -99,7 +101,7 @@ func Start(confPath, clientURL string) (*Server, error) {
 		return nil, err
 	}
 
-	if err := checkPortsAgree(ns.ClientURL(), clientURL); err != nil {
+	if err := checkPortsAgree(ns.ClientURL(), clientURL, clientURLSetting, confPath); err != nil {
 		ns.Shutdown()
 		ns.WaitForShutdown()
 		return nil, err
@@ -139,31 +141,31 @@ func waitReady(ns *natsserver.Server, logger *logger) error {
 }
 
 // checkPortsAgree fails when the embedded server listens on a different port
-// from the one this Control Plane dials.
+// from the one the calling process dials.
 //
 // Only the port is compared. Hosts differ legitimately all the time — the
 // server binds 0.0.0.0 while the configured URL names a hostname — but a port
 // mismatch cannot be anything except a mistake, and the symptom is miserable to
-// diagnose: the publisher sits in bootstrap mode forever, queueing account
-// claims for a server running in its own process.
-func checkPortsAgree(listenURL, configuredURL string) error {
+// diagnose: the caller sits retrying forever against a server running in its
+// own process.
+func checkPortsAgree(listenURL, configuredURL, setting, confPath string) error {
 	listenPort, err := portOf(listenURL)
 	if err != nil {
 		return fmt.Errorf("cannot parse embedded server address %q: %w", listenURL, err)
 	}
 	configuredPort, err := portOf(configuredURL)
 	if err != nil {
-		// Not our business to validate nats.server_url beyond this check.
+		// Not our business to validate the caller's URL beyond this check.
 		return nil
 	}
 	if listenPort == configuredPort {
 		return nil
 	}
 	return fmt.Errorf(
-		"embedded NATS server listens on port %s but nats.server_url is %s\n"+
+		"embedded NATS server listens on port %s but %s is %s\n"+
 			"       Nothing in this process would ever reach it. Make them agree:\n"+
-			"       set nats.server_url to port %s, or re-export with --port %s",
-		listenPort, configuredURL, listenPort, configuredPort)
+			"       set %s to port %s, or set `port: %s` in %s",
+		listenPort, setting, configuredURL, setting, listenPort, configuredPort, confPath)
 }
 
 func portOf(rawURL string) (string, error) {

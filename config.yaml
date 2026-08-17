@@ -21,6 +21,28 @@ nats:
   role_collection_name: "nats_roles"
   operator_name: "stone-age.io"
   server_url: "nats://localhost:4222"
+  # WebSocket listeners the CONSOLE (a browser) should dial. Distinct from
+  # server_url above, which is the TCP address this process dials to publish
+  # account claims — different port, and behind a proxy or in a container a
+  # different hostname too.
+  #
+  # Served to the SPA at runtime by GET /api/client-config, so changing it needs
+  # no frontend rebuild. Empty = the console falls back to ws://localhost:9222,
+  # which is what `nats export` generates (websocket { port: 9222, no_tls: true }).
+  #
+  # Multiple entries are treated by the NATS client as ONE CLUSTER and are
+  # shuffled, not tried in order. List peers of the same cluster here; do NOT mix
+  # a hub URL with an edge leaf node's URL, since those are different JetStream
+  # domains holding different data. Pointing a specific box at a leaf is a
+  # per-device override in the console's settings, not a second entry here.
+  #
+  # A console served over https can only dial wss:// — browsers block ws:// from
+  # a secure page outright.
+  #
+  # Overriding via STONE_AGE_NATS_WEBSOCKET_URLS: separate multiple URLs with
+  # SPACES. Viper splits a string env value on whitespace, so commas produce one
+  # malformed entry. Startup rejects anything not beginning ws:// or wss://.
+  websocket_urls: []
   log_to_console: false
   # Default limits for new organizations
   default_limits:

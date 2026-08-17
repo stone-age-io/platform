@@ -1,6 +1,7 @@
 package hooks
 
 import (
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
@@ -23,13 +24,15 @@ type LeafNodeRoutesOptions struct {
 // RegisterLeafNodeRoutes adds the leaf-node-authenticated routes that hand an edge
 // box the material it needs to stand up its NATS leaf server.
 //
-// WHY THESE ARE ROUTES AND NOT COLLECTION READS. An edge needs four values it
-// cannot derive locally: the operator JWT, its organization's account JWT and
-// public key, and its own user credentials. Three of those live in
-// secret-bearing collections. Serving them through a route means the leaf-node
-// identity needs no read grant on `nats_users` or `nats_accounts` at all, so the
-// blast radius of a leaked edge credential is these four values and nothing else
-// — not "every row those collections' rules happen to expose".
+// WHY THESE ARE ROUTES AND NOT COLLECTION READS. An edge needs a handful of
+// values it cannot derive locally: the operator JWT, its organization's account
+// JWT and public key, the $SYS account's JWT and public key (which the operator
+// JWT names and a MEMORY resolver cannot fetch), and its own user credentials.
+// Most of those live in secret-bearing collections. Serving them through a route
+// means the leaf-node identity needs no read grant on `nats_users` or
+// `nats_accounts` at all, so the blast radius of a leaked edge credential is
+// this fixed list and nothing else — not "every row those collections' rules
+// happen to expose".
 //
 // It also decouples the edge agent from rule shape. `leaf-sync config` used to
 // read both collections through the CRUD API, which made a correct tightening of
@@ -100,13 +103,20 @@ func RegisterLeafNodeRoutes(app *pocketbase.PocketBase, opts LeafNodeRoutesOptio
 				return err
 			}
 
+			sysJWT, sysPub, err := systemAccount(re, opts.NatsAccountCollection)
+			if err != nil {
+				return err
+			}
+
 			return re.JSON(200, map[string]string{
-				"domain":       domain,
-				"code":         leaf.GetString("code"),
-				"creds":        creds,
-				"account_jwt":  accountJWT,
-				"account_pub":  accountPub,
-				"operator_jwt": opJWT,
+				"domain":          domain,
+				"code":            leaf.GetString("code"),
+				"creds":           creds,
+				"account_jwt":     accountJWT,
+				"account_pub":     accountPub,
+				"operator_jwt":    opJWT,
+				"sys_account_jwt": sysJWT,
+				"sys_account_pub": sysPub,
 			})
 		}).Bind(apis.RequireAuth(opts.LeafNodeCollection))
 
@@ -122,6 +132,41 @@ func requireLeafNode(re *core.RequestEvent) error {
 		return re.UnauthorizedError("leaf node authentication required", nil)
 	}
 	return nil
+}
+
+// systemAccountName is how pb-nats names the $SYS account record when it seeds
+// the operator. Matching on the name is how pb-nats finds it too (its
+// getOperatorAndSystemAccount), so the two stay in step by using the same key.
+const systemAccountName = "System Account"
+
+// systemAccount returns the $SYS account's JWT and public key.
+//
+// An edge needs these even though it gets no $SYS identity. The operator JWT
+// names a system account, and a leaf running `resolver: MEMORY` has nowhere to
+// fetch that account from — so without it preloaded, nats-server fails while
+// building the server with "error resolving system account: account missing"
+// and the edge never starts. Returning it here is what makes the generated
+// nats-leaf.conf loadable at all.
+//
+// It is an account JWT: public trust material, the same class as the operator
+// and org account JWTs already returned. It confers nothing on its own —
+// connecting to $SYS requires a $SYS *user* credential, which is never served
+// to a leaf node. Seeds and signing keys remain unreachable.
+func systemAccount(re *core.RequestEvent, accountCollection string) (jwt string, pub string, err error) {
+	rec, err := re.App.FindFirstRecordByFilter(
+		accountCollection,
+		"name = {:name}",
+		dbx.Params{"name": systemAccountName},
+	)
+	if err != nil {
+		return "", "", re.NotFoundError("system account not found", nil)
+	}
+	jwt = rec.GetString("jwt")
+	pub = rec.GetString("public_key")
+	if jwt == "" || pub == "" {
+		return "", "", re.NotFoundError("system account missing jwt/public_key", nil)
+	}
+	return jwt, pub, nil
 }
 
 // operatorJWT returns the platform's operator JWT — a public trust anchor every
