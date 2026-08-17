@@ -13,7 +13,7 @@ Stone Age IoT Platform is a single-binary IoT and Event-Driven management platfo
 ## Tech Stack
 
 ### Backend
-- **Go 1.25.0** with PocketBase 0.38.0
+- **Go 1.26.0** with PocketBase 0.39.11
 - **Cobra** for CLI commands (bootstrap, NATS management)
 - **Viper** for configuration management
 - **Key libraries**: pb-audit, pb-tenancy, pb-nats, pb-nebula, nats-io/jwt, slackhq/nebula
@@ -21,13 +21,13 @@ Stone Age IoT Platform is a single-binary IoT and Event-Driven management platfo
 ### Frontend
 - **Vue 3** (Composition API + `<script setup>`)
 - **Vite 6.0** build tool
-- **Pinia 2.1** state management
+- **Pinia 2.3** state management
 - **Vue Router 4.2** routing
 - **Tailwind CSS 3.4 + DaisyUI 4.4** styling (light/dark themes)
-- **TypeScript 5.3**
+- **TypeScript 5.9**
 - **NATS WebSocket** (@nats-io/nats-core, jetstream, kv)
 - **Leaflet 1.9** for maps
-- **ECharts 5.5 + vue-echarts** for charts
+- **ECharts 6.1 + vue-echarts** for charts
 - **grid-layout-plus** for dashboard grid layout
 - **@vueuse/core** for reactive utilities
 - **date-fns** for date formatting

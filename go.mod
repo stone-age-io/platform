@@ -1,6 +1,6 @@
 module platform
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/nats-io/jwt/v2 v2.8.2
@@ -9,10 +9,10 @@ require (
 	github.com/nats-io/nkeys v0.4.16
 	github.com/pocketbase/dbx v1.12.0
 	github.com/pocketbase/pocketbase v0.39.11
-	github.com/skeeeon/pb-audit v0.0.0-20260509164131-d384bb182a41
-	github.com/skeeeon/pb-nats v0.0.0-20260815050524-ff1c9c977b28
-	github.com/skeeeon/pb-nebula v0.0.0-20260710230508-097cae147cce
-	github.com/skeeeon/pb-tenancy v0.0.0-20260509164438-78df1343ea65
+	github.com/skeeeon/pb-audit v0.0.0-20260817024032-465574cebbfa
+	github.com/skeeeon/pb-nats v0.0.0-20260817024032-e6732b36e43c
+	github.com/skeeeon/pb-nebula v0.0.0-20260817024033-d6b174271cc2
+	github.com/skeeeon/pb-tenancy v0.0.0-20260817024033-9de98681419a
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	golang.org/x/term v0.45.0
@@ -44,8 +44,7 @@ require (
 	github.com/pocketbase/ozzo-validation/v4 v4.3.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/sagikazarmark/locafero v0.12.0 // indirect
-	github.com/sirupsen/logrus v1.10.0 // indirect
-	github.com/slackhq/nebula v1.10.3 // indirect
+	github.com/slackhq/nebula v1.11.0 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
