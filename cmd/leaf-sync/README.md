@@ -241,7 +241,7 @@ the hub's needs none of this and skips it.
 go build -o leaf-sync ./cmd/leaf-sync
 
 # Release build (stamp the version, surfaced by --version and in each heartbeat):
-go build -ldflags "-X platform/internal/leafsync.Version=$(git describe --tags --always --dirty)" \
+go build -ldflags "-X platform/internal/version.Version=$(git describe --tags --always --dirty)" \
   -o leaf-sync ./cmd/leaf-sync
 ```
 

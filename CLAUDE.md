@@ -145,7 +145,7 @@ go build -o stone-age .
 # Build the edge agent (separate lean binary — runs on edge boxes, not the server)
 go build -o leaf-sync ./cmd/leaf-sync
 # Release build with the version stamped in (surfaced by `leaf-sync --version` and in heartbeats):
-go build -ldflags "-X platform/internal/leafsync.Version=$(git describe --tags --always --dirty)" -o leaf-sync ./cmd/leaf-sync
+go build -ldflags "-X platform/internal/version.Version=$(git describe --tags --always --dirty)" -o leaf-sync ./cmd/leaf-sync
 
 # Run
 ./stone-age serve

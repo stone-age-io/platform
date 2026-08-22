@@ -8,6 +8,8 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+
+	"platform/internal/version"
 )
 
 // heartbeatBucket is the account KV bucket leaf-sync writes liveness into, keyed
@@ -84,7 +86,7 @@ func (h *heartbeater) publish(ctx context.Context, synced map[string]int, errs [
 	}
 	payload, err := json.Marshal(heartbeat{
 		Code:     h.code,
-		Version:  Version,
+		Version:  version.Version,
 		TS:       time.Now().UTC().Format(time.RFC3339),
 		Interval: interval.String(),
 		Synced:   synced,

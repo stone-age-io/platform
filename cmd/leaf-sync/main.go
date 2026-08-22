@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"platform/internal/leafsync"
+	"platform/internal/version"
 )
 
 func main() {
@@ -26,7 +27,7 @@ func main() {
 		Use:   "leaf-sync",
 		Short: "Edge agent: mirror central PocketBase config into local NATS KV",
 		// Cobra wires up `--version` automatically when this is set.
-		Version: leafsync.Version,
+		Version: version.Version,
 		// We print errors ourselves below; don't let cobra dump usage on a
 		// runtime (non-flag) failure or duplicate the error message.
 		SilenceUsage:  true,

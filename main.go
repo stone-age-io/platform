@@ -20,6 +20,7 @@ import (
 
 	"platform/hooks"
 	"platform/internal/natsd"
+	"platform/internal/version"
 	"platform/migrations"
 )
 
@@ -179,6 +180,14 @@ func main() {
 
 	// Register the config flag with Cobra
 	app.RootCmd.PersistentFlags().String("config", "", "Path to config file")
+
+	// `--version` on the root command. PocketBase sets this to its OWN version,
+	// which is "(untracked)" in a module build -- so before this the platform
+	// binary answered `--version` with a string that named neither the platform
+	// nor PocketBase usefully. A bug report needs both: the API rules are the
+	// entire authorization layer here, and their semantics are PocketBase's.
+	app.RootCmd.Version = version.Version + " (PocketBase " +
+		version.Dependency("github.com/pocketbase/pocketbase") + ")"
 
 	// Embedded NATS server. Registered as persistent flags on the root command,
 	// the same way --config above is, because PocketBase does not add the
