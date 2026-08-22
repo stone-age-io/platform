@@ -1,284 +1,310 @@
-# Stone Age IoT Platform
+# Stone Age Platform
 
-This repository is the **Control Plane** for Stone-Age.io: one HTTP API for the things and places you manage, which also mints the credentials that let them talk. It is built on [PocketBase](https://pocketbase.io/) and integrates multi-tenancy, NATS messaging, and Nebula overlay networks into a single management console.
+The **Control Plane** for Stone-Age.io: one HTTP API for the things and places
+you manage, which also mints the credentials that let them talk. Multi-tenant
+inventory, NATS account and credential management, and Nebula overlay networks,
+in one Go binary with the console compiled into it.
 
-Used at its shallowest, it is a multi-tenant inventory of Things and Locations over a REST API — devices need no NATS user and no Nebula host to exist as records. Used at its fullest, it is what provisions and keeps in sync the identities that an entire event-driven fabric runs on.
-
-## 🏗 Architecture
-
-**Scope note on "single binary."** *This* component is one binary — Go backend, embedded Vue frontend, SQLite, no runtime dependencies. The **platform** is not one binary: it is a small set of independent single-binary components (this Control Plane, `nats-server`, `nebula`, `rule-router`, the Agent, `leaf-sync`) that find each other over NATS. Deploy each where it belongs. See the [platform docs](https://github.com/stone-age-io) for the component topology.
-
-The Control Plane is a **Single Deployment Unit**:
-*   **Backend**: Go (1.25+) extending PocketBase.
-*   **Frontend**: Vue 3 + TypeScript (Embedded in the binary).
-*   **Database**: SQLite (managed by PocketBase).
-
-### Core Components
-
-1.  **Multi-Tenancy**: Built-in organization switching. Data isolation is enforced via PocketBase API Rules.
-2.  **Infrastructure Provisioning**:
-    *   **NATS**: Automatically provisions Accounts, Users, and Roles when Organizations are created.
-    *   **Nebula**: Automatically creates Certificate Authorities (CAs) and manages Host certificates/keys.
-3.  **The Contract Layer** (Thing Modeling): Declarative device contracts describing *where* a participant speaks and *what shape* its messages take — subject and payload together, so a consumer can resolve both from data alone. Composed of three collections:
-    *   **Thing Types** (`thing_types`) define a subject prefix and a set of Operations.
-    *   **Operations** (`thing_type_operations`) declare a capability (`publish` / `subscribe` / `request` / `reply`), a subject suffix, and an optional Message Schema.
-    *   **Message Schemas** (`message_schemas`) are versioned JSON Schema documents (namespace / name / semver) that describe operation payloads. The console includes a visual schema builder and an "infer from sample" tool.
-4.  **Edge / Leaf Nodes**: Each edge site is a `leaf_nodes` record ("a special thing" with one server-provisioned NATS user). The separate **`leaf-sync`** agent runs on the edge, authenticates as the leaf node, and mirrors its organization's config collections into a local NATS leaf node's JetStream KV. See [`cmd/leaf-sync/README.md`](./cmd/leaf-sync/README.md).
-5.  **Audit Logging**: comprehensive tracking of all create/update/delete/auth events.
-6.  **Embedded UI**: The frontend is compiled and embedded directly into the Go binary using `embed.FS`, served via a custom SPA fallback handler.
+Used at its shallowest it is a REST inventory of Things and Locations — a device
+needs no NATS user and no Nebula host to exist as a record. Used at its fullest
+it provisions and keeps in sync the identities an entire event-driven fabric runs
+on.
 
 ---
 
-## 🚀 Getting Started
+## Run it
 
-### Prerequisites
-*   Go 1.25+
-*   Node.js 20+ (for building the UI)
-
-### 1. Build the Frontend
-Before building the Go binary, you must generate the frontend assets.
+### Container — nothing to install
 
 ```bash
-cd ui
-npm install
-npm run build
+docker run -d --name stone-age \
+  -p 8090:8090 -p 4222:4222 -p 9222:9222 \
+  -v stone-age-data:/data \
+  -e STONE_AGE_BOOTSTRAP_PASSWORD='change-me-8-chars-min' \
+  -e STONE_AGE_NATS_WEBSOCKET_URLS='ws://localhost:9222' \
+  ghcr.io/stone-age-io/platform:latest
 ```
-*This compiles the Vue application into the `pb_public/` directory at the project root.*
 
-### 2. Build the Backend
+Console at <http://localhost:8090>, admin panel at <http://localhost:8090/_/>,
+log in as `admin@example.com` with the password you set. One container: the same
+process serves the API, the console, and the NATS server the console talks to.
+
+`STONE_AGE_NATS_WEBSOCKET_URLS` is the address a **browser** dials, which the
+container cannot work out for itself — put the host's real name there rather than
+`localhost` if anyone else will use it.
+
+### From source — five commands
+
+Needs Go 1.26+ and Node 20.19+ (or 22.12+, whichever your distribution has).
+
 ```bash
-# From the root directory
+cd ui && npm install && npm run build && cd ..
 go build -o stone-age .
-```
-
-### 3. Initial Setup (first deployment only)
-
-Run these three in order — **the order matters**:
-
-```bash
-./stone-age superuser upsert admin@example.com 'your-password'
-```
-```bash
+./stone-age superuser upsert admin@example.com 'change-me-8-chars-min'
 ./stone-age migrate up
-```
-```bash
 ./stone-age bootstrap --email admin@example.com --org "System" --operator-org "your-company"
+./stone-age nats export --output ./nats-config/
+./stone-age serve --nats
 ```
 
-1.  **`superuser upsert`** creates the PocketBase superuser that owns the admin
-    panel at `/_/`. This is also what seeds the NATS operator and `$SYS` records.
-2.  **`migrate up`** imports `schema.json`, creating the platform's own
-    collections and fields. (Starting the server once with `serve` applies them
-    too, but the explicit command is better in a deploy script.)
-3.  **`bootstrap`** provisions the System organization, the platform operator
-    user, and the operator organization, and links the `$SYS` NATS records to the
-    System org. It prompts for anything not passed as a flag; prefer the prompt
-    over `--password`, which is visible in shell history and the process list
-    (`STONE_AGE_BOOTSTRAP_PASSWORD` also works for automation).
+The first line builds the console into `pb_public/`; the second embeds it.
 
-**Why the order matters:** `bootstrap` writes platform flags — `is_operator`,
-`is_system_org`, `is_operator_org` — that exist only after `schema.json` has been
-imported. PocketBase silently discards a write to a field that does not exist, so
-running `bootstrap` before `migrate up` would print "Bootstrap complete!" while
-leaving you with **no platform operator at all**. `bootstrap` now refuses to run
-in that state and tells you what to do.
+**The order of the middle three is load-bearing.** `bootstrap` writes
+`is_operator`, `is_system_org` and `is_operator_org`, which only exist after
+`schema.json` has been imported by `migrate up`. PocketBase silently discards a
+write to a field that does not exist, so running `bootstrap` first would print
+success while leaving you with no platform operator at all. It now refuses to run
+in that state and says so. `superuser upsert` has to come first as well: it seeds
+the NATS operator and `$SYS` records the other two link up.
 
-Granting operator status is deliberately not possible through the API — only this
-command or the admin panel can do it.
+Everything except the last line is once per deployment. After the first run,
+`./stone-age serve --nats` is the whole thing.
 
-### 4. Run the Platform
-```bash
-./stone-age serve
+Measured on a clean clone: about two minutes of machine time from `git clone` to
+a console serving with the bus up, of which roughly ninety seconds is `npm
+install` and the Vite build. The Go build is nine seconds and the four seeding
+commands are eleven.
+
+Granting operator status is deliberately impossible through the API. This command
+or the admin panel, nothing else.
+
+---
+
+## What it does
+
+**Multi-tenancy.** Organizations, memberships, invitations, and five roles.
+Isolation is enforced *entirely* by the PocketBase API rules in `schema.json` —
+the NATS and Nebula libraries contain no tenancy logic and never reference
+`organization`. The console's capability map is navigation convenience, not a
+boundary.
+
+**NATS in operator mode.** Creating an organization provisions its account.
+Roles are permission templates; a user JWT is signed from one. Credentials
+rotate, revocation actually disconnects, and account signing keys are manageable.
+Nothing about a device's *console* session gives it bus access — the signed
+credential is the capability.
+
+**Nebula overlay networks.** A certificate authority per organization, plus
+networks, lighthouses and host certificates. This is the out-of-band path: SSH
+and management traffic that has to work when NATS does not.
+
+**Inventory as identity.** A Thing is one record that is simultaneously an
+inventory entry, a login, a NATS identity and a mesh node. Deactivating it takes
+all four away in one operation — the API rule blocks new logins, outstanding
+tokens are invalidated immediately, and the NATS credential is revoked.
+
+**The contract layer.** Declarative device contracts describing *where* a
+participant speaks and *what shape* its messages take, so a consumer can resolve
+both from data alone:
+
+- **Thing Types** (`thing_types`) define a subject prefix and a set of operations.
+- **Operations** (`thing_type_operations`) declare a capability (`publish` /
+  `subscribe` / `request` / `reply`), a subject suffix, and an optional schema.
+- **Message Schemas** (`message_schemas`) are versioned JSON Schema documents.
+  The console has a visual builder and an infer-from-sample tool.
+
+**Edge sites.** Each is a `leaf_nodes` record — a special kind of thing, with one
+server-provisioned NATS user. The separate [`leaf-sync`](./cmd/leaf-sync/README.md)
+agent runs on the edge, authenticates as the leaf node, and mirrors its
+organization's configuration into a NATS leaf node's local JetStream KV. It can
+host that leaf node itself (`leaf-sync run --nats`), so an edge site is one
+service rather than two.
+
+**Digital twin.** Two KV buckets per organization with one writer each: `twin`
+for reported state flowing edge-to-hub, `twin_desired` for desired state flowing
+hub-to-edge. Drift is shown as the values themselves, not a status word.
+
+**Dashboards.** Grid layout, 17 widget types, three data-source kinds
+(subscription, consumer, KV), variable substitution, and a live NATS WebSocket
+connection straight from the browser.
+
+**Audit logging** across every create, update, delete and auth event, with a
+searchable viewer.
+
+### Scope note on "single binary"
+
+*This component* is one binary — Go backend, embedded Vue console, SQLite, no
+runtime dependencies, and with `--nats` the message bus too. The **platform** is
+not one binary: it is a small set of independent single-binary components (this
+Control Plane, `nebula`, `rule-router`, the Agent, `leaf-sync`) that find each
+other over NATS. Deploy each where it belongs.
+
+---
+
+## Configuration
+
+A `config.yaml` in the working directory or `/etc/stone-age/`, or environment
+variables prefixed `STONE_AGE_` (`STONE_AGE_NATS_SERVER_URL`,
+`STONE_AGE_TENANCY_LOG_TO_CONSOLE`). Environment variables win. Every key has a
+default, so the file is optional.
+
+Two keys are worth understanding before a production deployment.
+
+**`nats.encryption_key` and `nebula.encryption_key`** encrypt the secret columns
+at rest — NATS account and user seeds, Nebula CA and host private keys. They are
+empty by default, which means plaintext in SQLite. Set them before creating
+anything real: a row cannot be read back without the key it was written with, so
+losing the key loses the material.
+
+**`nats.server_url` and `nats.websocket_urls` are not the same address.** The
+first is what *this process* dials to publish account claims. The second is what
+a *browser* dials — a different port, often a different host — and it is served
+to the console at runtime by `GET /api/client-config`, so changing it needs no
+frontend rebuild:
+
+```yaml
+nats:
+  server_url: "nats://localhost:4222"
+  websocket_urls: ["ws://localhost:9222"]
 ```
-Access the console at `http://localhost:8090`, and the PocketBase admin panel at
-`http://localhost:8090/_/`.
 
-The console needs a NATS server to show live data. Export a config and run one:
+Behind HTTPS use `wss://`; browsers refuse a plaintext socket from a secure page.
+Multiple entries are peers of one cluster, not a fallback order. A device that
+should talk to a local leaf node instead sets a per-device override in the
+console's settings, which *replaces* this list rather than adding to it.
+
+Full reference: the [platform docs](https://github.com/stone-age-io/platform-docs).
+
+### Running the bus separately
+
+`serve --nats` is single-node and off by default. It is an ordinary
+`nats-server` reading the ordinary config file `nats export` writes, so moving to
+a separate process is a config change rather than a migration:
 
 ```bash
 ./stone-age nats export --output ./nats-config/
 nats-server -c ./nats-config/nats.conf
+./stone-age serve
 ```
 
-That config includes the WebSocket listener the browser needs
-(`websocket { port: 9222, no_tls: true }`). Tell the console where to find it in
-`config.yaml`, so nobody has to type it in:
+While they share a process, restarting the Control Plane restarts the bus. See
+ADR 0001 in the platform docs.
 
-```yaml
-nats:
-  websocket_urls: ["ws://localhost:9222"]
-```
+### Branding overlay
 
-It is served to the console at runtime, so changing it needs no frontend
-rebuild. Leave it empty and the console falls back to `ws://localhost:9222`.
-Behind HTTPS, use `wss://` — browsers refuse a plaintext socket from a secure
-page. Multiple entries are peers of one cluster, not a fallback order; a single
-box that should talk to a local leaf node instead is a per-device override in
-the console's settings.
+Operators can re-skin the console without rebuilding the binary. Point
+`branding.dir` at a host directory containing any of:
 
-For small deployments the Control Plane can run that same config itself, as one
-process:
-
-```bash
-./stone-age serve --nats
-```
-
-Off by default, and single-node only. It is an ordinary `nats-server` reading an
-ordinary config file, so moving to a separate process later is a config change
-rather than a migration — but while they share a process, restarting the Control
-Plane restarts the bus. See ADR 0001 in the platform docs.
-
-### Edge Agent (Optional)
-The edge agent is a separate binary built from the same repo — it runs on edge boxes, not the central server:
-```bash
-go build -o leaf-sync ./cmd/leaf-sync
-```
-It can host the edge's NATS leaf node itself, the same way `serve --nats` does here, so an edge site is one service rather than two:
-```bash
-leaf-sync run --nats
-```
-See [`cmd/leaf-sync/README.md`](./cmd/leaf-sync/README.md) for the full edge deployment flow and what running in-process gives up.
-
----
-
-## ⚙️ Configuration
-
-The application looks for a `config.yaml` in the current directory or `/etc/stone-age/`.
-
-**Default Configuration (`config.yaml`):**
-```yaml
-tenancy:
-  organizations_collection: "organizations"
-  memberships_collection: "memberships"
-  invites_collection: "invites"
-  invite_expiry_days: 7
-
-nats:
-  server_url: "nats://localhost:4222"
-  operator_name: "stone-age.io"
-  default_limits:
-    max_connections: 10
-    max_subscriptions: 50
-    max_payload: 1048576 # 1MB
-
-nebula:
-  default_ca_validity_years: 10
-
-audit:
-  log_console: false
-
-branding:
-  dir: ""   # set to a host directory to enable the operator branding overlay
-```
-
-You can also use Environment Variables with the prefix `STONE_AGE_`:
-*   `STONE_AGE_NATS_SERVER_URL="nats://10.0.0.1:4222"`
-*   `STONE_AGE_TENANCY_LOG_TO_CONSOLE=true`
-
-### Branding Overlay (Optional)
-
-Operators can re-skin the console without rebuilding the binary. Point `branding.dir` at a directory on the host containing any of:
-
-| File              | Purpose                                                                 |
-| ----------------- | ----------------------------------------------------------------------- |
-| `branding.json`   | `{ "appName": "...", "logo": "logo.svg" }` — overrides shown in the UI |
-| `logo.svg`        | Brand mark used on login, sidebar, and mobile header                    |
-| `theme.css`       | Override DaisyUI v4 CSS custom properties for `[data-theme=light/dark]` |
-
-The platform serves the directory at `/branding/*` and the frontend picks up overrides on boot. Missing files fall back to embedded defaults.
-
-A starting template lives at [`branding.example/`](./branding.example/) — copy it somewhere on the host, edit, and point `branding.dir` at the result:
+| File            | Purpose                                                         |
+| --------------- | --------------------------------------------------------------- |
+| `branding.json` | `{ "appName": "...", "logo": "logo.svg" }`                       |
+| `logo.svg`      | Brand mark on login, sidebar and mobile header                   |
+| `theme.css`     | Override the daisyUI v4 custom properties for light and dark     |
 
 ```bash
 cp -r branding.example /etc/stone-age/branding
-# edit /etc/stone-age/branding/{branding.json,theme.css,logo.svg}
-# then in config.yaml:
+# edit the three files, then in config.yaml:
 #   branding:
 #     dir: /etc/stone-age/branding
 ```
 
-For per-theme logo art (different SVG for light vs. dark), the example `theme.css` documents a CSS-only swap pattern using the `.brand-logo-img` class hook.
+Missing files fall back to the embedded defaults. For a different logo per theme,
+the example `theme.css` documents a CSS-only swap using the `.brand-logo-img`
+class hook.
 
 ---
 
-## 🔐 Authorization Tests
+## Development
 
-Tenant isolation and privilege boundaries are enforced **entirely** by the
-PocketBase API rules in `schema.json` — the NATS and Nebula packages contain no
-tenancy logic. Those rules are plain strings with no compiler and no type
-checker behind them, so there is one script that exercises the ones that matter
-against a real server:
+Backend and frontend separately, for hot module replacement:
+
+```bash
+go run main.go serve
+```
+
+```bash
+cd ui && npm run dev
+```
+
+Frontend on `:5173`, proxying `/api` to the backend on `:8090`.
+
+Two frontend dependencies are **deliberately held back**, and a routine "bump
+everything" pass must not drag them along: Tailwind 3 / daisyUI 4, because
+upgrading is a design-system migration rather than a version bump — 376
+references use the v4 `oklch(var(--b1))` form, which v5 breaks silently — and
+TypeScript 6, because TS 7 drops the `./lib/tsc` subpath `vue-tsc` resolves at
+startup, so the build dies before it type-checks anything. The full reasoning is
+at the top of `ui/tailwind.config.js`. CI asserts both majors.
+
+### Authorization tests
+
+Tenant isolation and privilege boundaries are enforced *entirely* by the API
+rules in `schema.json`, which are plain strings in a JSON file with no compiler
+behind them. One script exercises them against a real server:
 
 ```bash
 ./scripts/test-authz.sh
 ```
 
-It builds the binary, stands up a throwaway database, runs 84 checks, and tears
-everything down; `pb_data/` is never touched. Run it after any change to a
-`listRule` / `viewRule` / `createRule` / `updateRule` / `deleteRule`, and add a
-check whenever you add a rule (bump `EXPECTED_CHECKS`, which catches a suite that
-exits early). Requires `go`, `curl`, and `node`.
+It builds the binary, stands up a throwaway database, runs the checks and tears
+everything down; `pb_data/` is never touched. The check count lives in
+`EXPECTED_CHECKS` at the top of the script, where it guards against a suite that
+exits early — bump it when you add a check. Requires `go`, `curl` and `node`. CI
+runs it on every pull request.
 
-Two things to know when reading a failure: PocketBase answers **404, not 403**,
-when an update rule rejects a request (deliberately — it avoids confirming the
-record exists), and every "cannot do X" check is paired with a "can still do Y"
-check on the same record, so a rule that simply denies everything fails the
-suite rather than passing it.
+Two things to know when reading a failure. PocketBase answers **404, not 403**,
+when an update rule rejects a request — deliberately, so it does not confirm the
+record exists. And every "cannot do X" check is paired with a "can still do Y"
+check on the same record, so a rule that denies everything fails the suite rather
+than passing it.
+
+### Schema management
+
+`schema.json` is the single source of truth for every collection, embedded in the
+binary. It is applied by the files in `migrations/`, each of which calls
+`ImportCollectionsByMarshaledJSON(SchemaJSON, false)` and runs exactly once per
+database. The import is additive (`deleteMissing=false`), so collections created
+by the libraries survive.
+
+To change it:
+
+1. Make the change in the admin panel at `/_/`.
+2. **Settings → Export collections**, and replace `schema.json`.
+3. **Add a new file to `migrations/`** that re-imports the schema — copy an
+   existing `schema_update_*.go`, rename it, and describe the change in its doc
+   comment.
+4. Commit both, and run `./scripts/test-authz.sh` if you touched a rule.
+
+> Step 3 is not optional. Every existing deployment has already run the existing
+> migrations, so editing `schema.json` alone reaches *fresh* databases only and is
+> a silent no-op everywhere else. A new non-null column with a live rule over it
+> also needs its backfill in the same migration.
+
+### Hooks
+
+`main.go` registers the platform's own hooks and routes. The ones worth knowing:
+
+- **Organization created** → provisions that organization's NATS account and
+  Nebula CA.
+- **Leaf node created** → mints the edge node's NATS user, so `leaf-sync` can
+  authenticate as the leaf node (`hooks/leaf_node_provisioning.go`).
+- **Membership deleted** → clears the departing member's organization context,
+  which is what the inventory read rules are scoped by
+  (`hooks/membership_lifecycle.go`).
+- **`active` flipped on a thing or leaf node** → invalidates outstanding tokens
+  and revokes the linked NATS identity (`hooks/active_flag.go`).
+- **`GET /api/leaf/bootstrap`** → everything `leaf-sync config` needs, in eight
+  named fields, so a leaf-node identity needs no read grant on any `nats_*` or
+  `nebula_*` collection (`hooks/leaf_node_routes.go`).
+  `GET /api/leaf/operator-jwt` remains as a superseded alias.
+- **`POST /api/org/things`** → a Thing plus an optional NATS or Nebula identity in
+  one transaction: member-level for the inventory half, owner/admin for the
+  identity half (`hooks/thing_routes.go`).
+- **`GET /api/client-config`** → the deployment facts the console cannot be
+  compiled with, chiefly the browser-facing WebSocket URLs
+  (`hooks/client_config_routes.go`).
+- **`OnServe`** → serves the embedded `pb_public` filesystem with SPA history
+  fallback, plus the branding overlay.
 
 ---
 
-## 🛠 Development Workflow
+## Related
 
-For active development, run the backend and frontend separately to enable Hot Module Replacement (HMR).
+| | |
+|---|---|
+| [`cmd/leaf-sync/`](./cmd/leaf-sync/README.md) | The edge agent, and the edge deployment flow |
+| [platform-docs](https://github.com/stone-age-io/platform-docs) | Configuration reference, operations, architecture decisions |
+| [`CHANGELOG.md`](./CHANGELOG.md) | Releases |
+| [`SECURITY.md`](./SECURITY.md) | Reporting a vulnerability, and what counts as one |
 
-**Terminal 1 (Backend):**
-```bash
-go run main.go serve
-```
-
-**Terminal 2 (Frontend):**
-```bash
-cd ui
-npm run dev
-```
-*   Frontend: `http://localhost:5173` (Proxies API requests to backend)
-*   Backend Admin: `http://localhost:8090/_/`
-
----
-
-## 📦 Schema Management
-
-The platform uses a simple, declarative approach to schema management:
-
-*   **`schema.json`**: The single source of truth for all PocketBase collections, embedded in the binary.
-*   **Applied by migrations — not on every startup.** Each file in `migrations/` calls `ImportCollectionsByMarshaledJSON(SchemaJSON, false)`, and PocketBase runs each migration exactly once per database. On a fresh database the first migration imports everything; on an existing database, only *new* migration files run.
-*   **Extend Mode**: The import uses `deleteMissing=false`, meaning it adds/updates collections from the schema but preserves any collections created by packages that aren't in the file.
-
-### Updating the Schema
-
-1.  Make changes in the PocketBase Admin UI (`http://localhost:8090/_/`)
-2.  Export collections from **Settings → Export collections**
-3.  Replace `schema.json` with the exported file
-4.  **Add a new file to `migrations/`** that re-imports the schema — copy an existing `schema_update_*.go`, rename it, and describe the change in its doc comment
-5.  Commit both the updated `schema.json` and the new migration
-6.  Rebuild the binary - the new schema is embedded automatically
-
-> ⚠️ Step 4 is not optional. Every existing deployment has already run the
-> existing migrations, so editing `schema.json` alone changes *fresh* databases
-> only and is a silent no-op everywhere else. Skipping it is the easiest way to
-> ship a schema change that works on your laptop and does nothing in production.
-
----
-
-## 🧠 Hooks & Glue Logic
-
-The `main.go` file contains critical business logic hooks:
-
-*   **Migrations** (`migrations/`): Import `schema.json` to bring collections and fields up to date. Each runs once per database — see [Schema Management](#-schema-management).
-*   **`OnRecordAfterCreateSuccess` (Organizations)**:
-    1.  Creates a **NATS Account** specifically for that organization.
-    2.  Creates a **Nebula CA** specifically for that organization.
-*   **`OnRecordAfterCreateSuccess` (Leaf Nodes)**: Mints the edge node's **NATS user** so the `leaf-sync` agent can authenticate as the leaf node (`hooks/leaf_node_provisioning.go`).
-*   **Leaf operator-JWT route**: `GET /api/leaf/operator-jwt` serves the operator JWT to leaf-node-authenticated callers, so the `nats_system_operator` collection can stay superuser-only (`hooks/leaf_node_routes.go`).
-*   **`OnServe`**: Registers the custom router handler that serves the embedded `pb_public` filesystem, handling SPA history mode (redirecting unknown routes to `index.html`).
-
+Apache 2.0 — see [`LICENSE`](./LICENSE).
