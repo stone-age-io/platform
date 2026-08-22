@@ -186,8 +186,20 @@ func main() {
 	// binary answered `--version` with a string that named neither the platform
 	// nor PocketBase usefully. A bug report needs both: the API rules are the
 	// entire authorization layer here, and their semantics are PocketBase's.
-	app.RootCmd.Version = version.Version + " (PocketBase " +
-		version.Dependency("github.com/pocketbase/pocketbase") + ")"
+	// The pb-* libraries are listed alongside PocketBase for the same reason:
+	// that is where NATS credential minting, Nebula CA issuance, the tenancy
+	// collections and the audit trail actually live, so "which pb-nats is this"
+	// is the second fact any credential or authorization bug report needs. They
+	// are read from the build info, not stamped -- a library has no ldflags
+	// equivalent -- which is precisely why those repos carry tags: an untagged
+	// module reads back here as a pseudo-version naming a commit.
+	app.RootCmd.Version = version.Version + "\n" + version.DependencyLines(
+		"github.com/pocketbase/pocketbase",
+		"github.com/skeeeon/pb-nats",
+		"github.com/skeeeon/pb-nebula",
+		"github.com/skeeeon/pb-tenancy",
+		"github.com/skeeeon/pb-audit",
+	)
 
 	// Embedded NATS server. Registered as persistent flags on the root command,
 	// the same way --config above is, because PocketBase does not add the

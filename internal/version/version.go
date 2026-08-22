@@ -1,7 +1,11 @@
 // Package version holds the build version shared by both binaries.
 package version
 
-import "runtime/debug"
+import (
+	"fmt"
+	"runtime/debug"
+	"strings"
+)
 
 // Version is stamped at build time via
 //
@@ -38,4 +42,37 @@ func Dependency(path string) string {
 		}
 	}
 	return "unknown"
+}
+
+// DependencyLines renders one indented "name version" line per module path, for
+// use in a multi-line `--version` string. Names are the last path segment, and
+// the version column is aligned.
+//
+// It exists because the module version is the only "stamp" a Go library can
+// carry: there is no ldflags equivalent for a dependency, so the build info is
+// the single source of truth for which pb-nats a given binary was compiled
+// against. That is also the argument for tagging those repos -- an untagged
+// module reads back as v0.0.0-20260822174619-50fca4306606, which names a commit
+// nobody can map to a release, while a tagged one reads v0.1.0.
+func DependencyLines(paths ...string) string {
+	width := 0
+	for _, p := range paths {
+		if n := len(shortName(p)); n > width {
+			width = n
+		}
+	}
+
+	var b strings.Builder
+	for _, p := range paths {
+		fmt.Fprintf(&b, "  %-*s  %s\n", width, shortName(p), Dependency(p))
+	}
+	return b.String()
+}
+
+// shortName is the last segment of a module path: the name a human uses.
+func shortName(path string) string {
+	if i := strings.LastIndex(path, "/"); i >= 0 {
+		return path[i+1:]
+	}
+	return path
 }
