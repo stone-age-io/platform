@@ -13,6 +13,70 @@ and this file starts where the versioned releases do.
 
 _Nothing yet._
 
+## [0.2.0] - 2026-08-22
+
+Two fixes for installs that had not gone wrong yet, and real versions for the
+four pb-* libraries this binary is built from.
+
+### Fixed
+
+- **A fresh install could not repair itself.**
+  `nats_system_operator.signing_public_key`, `signing_private_key` and
+  `signing_seed` were declared required but are never written. pb-nats moved to
+  a list in `signing_keys` / `signing_keys_private` and stopped declaring the
+  scalars; they survived here only because `schema.json` is a dump taken while it
+  still did. pb-nats creates the operator record *before* this schema is
+  imported, so on a fresh install the three columns arrive empty and required,
+  and the next save of that record fails with `signing_private_key: cannot be
+  blank`. Nothing re-saves the operator in normal operation — every path that
+  does is a repair (resolving the system account, regenerating the operator JWT)
+  — so the trap was armed for the moment something had already gone wrong. It was
+  also unrecoverable in place: pb-nats initializes from `OnBootstrap`, which
+  fires for *every* command, so an operator save it cannot complete takes down
+  `migrate up` as well as `serve`, leaving the binary unable to reach the
+  migration that would relax the flag.
+  `migrations/schema_update_operator_legacy_signing_optional.go` makes the three
+  optional. This protects installs going forward; a database already in that
+  state stays stuck.
+- **A Control Plane that never left bootstrap mode.** An operator collection
+  created before `system_account_id` existed never acquired the field, and
+  PocketBase discards writes to undeclared fields silently — so pb-nats's own
+  repair path saved the id on every boot while persisting nothing. The symptom is
+  a process that logs queued publish operations every 30s while making zero
+  connection attempts. Nothing looks wrong until the NATS resolver directory is
+  empty — a rebuilt server, or a restore onto a new host — at which point no
+  account JWT is ever published and every client fails with `fetching jwt timed
+  out`, because `ReconcileAccounts` is what repopulates the resolver on boot and
+  is exactly what cannot run. Fixed by the pb-nats migration that adds the field.
+
+### Added
+
+- `--version` now names the pb-* libraries as well as PocketBase. That is where
+  NATS credential minting, Nebula CA issuance, the tenancy collections and the
+  audit trail actually live, so "which pb-nats is this" is the second fact any
+  credential or authorization bug report needs. A Go library cannot be stamped
+  with ldflags, so these are read from the build info — which is why the tags
+  below matter:
+
+  ```
+  stone-age version v0.2.0
+    pocketbase  v0.39.11
+    pb-nats     v0.1.0
+    pb-nebula   v0.1.0
+    pb-tenancy  v0.1.0
+    pb-audit    v0.1.0
+  ```
+
+### Changed
+
+- **The pb-* libraries are pinned to `v0.1.0` instead of pseudo-versions.** All
+  four are now tagged and released, so `go.mod` names releases rather than
+  commits and this binary can be upgraded deliberately. No behaviour comes with
+  the change: diffing each tag against the pseudo-version it replaced, the only
+  non-tooling commits are two `gofmt` passes.
+- Each of the four libraries also gained a release pipeline and, where it was
+  missing, CI — so a future bump refers to something a reader can find.
+
 ## [0.1.0] - 2026-08-21
 
 First tagged release. The platform has been in development and in use for
@@ -128,5 +192,6 @@ repository public. Each of these was reproduced before being fixed.
 - `scripts/test-authz.sh` grew from 135 to 147 checks, covering the membership
   lifecycle, the code uniqueness constraint, and the frozen leaf-node code.
 
-[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/stone-age-io/platform/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/stone-age-io/platform/releases/tag/v0.1.0
