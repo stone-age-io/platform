@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router' // Added
+import { computed, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
+import { useServerSearch } from '@/composables/useServerSearch'
 import { useAuthStore } from '@/stores/auth'
 import type { Membership } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
@@ -25,20 +26,32 @@ const {
 } = usePagination<Membership>('memberships', 20)
 
 // Search
-const searchQuery = ref('')
+// Search runs on the SERVER. The client-side pass this replaces filtered the
+// twenty records already on screen, so a match on page three answered "No
+// results found" -- which is not the same claim at all.
+const { searchQuery, filter: searchFilter } = useServerSearch(
+  ['user.name', 'user.email', 'organization.name', 'role'],
+  () => {
+    page.value = 1
+    loadMembers()
+  },
+)
 
-const filteredMembers = computed(() => {
-  const query = searchQuery.value.toLowerCase().trim()
-  
-  if (!query) return members.value
-  
-  return members.value.filter(member => {
-    if (member.expand?.user?.name?.toLowerCase().includes(query)) return true
-    if (member.expand?.user?.email?.toLowerCase().includes(query)) return true
-    if (member.expand?.organization?.name?.toLowerCase().includes(query)) return true
-    if (member.role?.toLowerCase().includes(query)) return true
-    return false
-  })
+// One options object, passed to EVERY call into usePagination, the pager
+// buttons included -- passing only expand/sort there drops the filter and page
+// two comes back unfiltered.
+//
+// The organization clause is ANDed with the search rather than replaced by it.
+// A platform operator reaches this view too, and their memberships listRule
+// spans organizations, so dropping the clause would let another tenant's
+// members appear in a search result here.
+const queryOptions = computed(() => {
+  const org = `organization = "${authStore.currentOrgId}"`
+  return {
+    filter: searchFilter.value ? `(${org}) && (${searchFilter.value})` : org,
+    expand: 'user,invited_by,organization',
+    sort: 'role,-created',
+  }
 })
 
 const columns: Column<Membership>[] = [
@@ -63,11 +76,7 @@ const columns: Column<Membership>[] = [
 async function loadMembers() {
   if (!authStore.currentOrgId) return
 
-  await load({ 
-    filter: `organization = "${authStore.currentOrgId}"`, 
-    expand: 'user,invited_by,organization', 
-    sort: 'role',
-  })
+  await load(queryOptions.value)
 }
 
 // Navigate to Detail View
@@ -145,7 +154,7 @@ onUnmounted(() => {
     </BaseCard>
 
     <!-- Empty State -->
-    <BaseCard v-else-if="members.length === 0">
+    <BaseCard v-else-if="members.length === 0 && !searchQuery">
       <div class="text-center py-12">
         <span class="text-6xl">👥</span>
         <h3 class="text-xl font-bold mt-4">No members found</h3>
@@ -153,7 +162,7 @@ onUnmounted(() => {
     </BaseCard>
     
     <!-- No Search Results -->
-    <BaseCard v-else-if="filteredMembers.length === 0">
+    <BaseCard v-else-if="members.length === 0">
       <div class="text-center py-12">
         <span class="text-6xl">🔍</span>
         <h3 class="text-xl font-bold mt-4">No matching members</h3>
@@ -166,7 +175,7 @@ onUnmounted(() => {
     <!-- Responsive List -->
     <BaseCard v-else :no-padding="true">
       <ResponsiveList 
-        :items="filteredMembers" 
+        :items="members" 
         :columns="columns" 
         :loading="loading"
         :clickable="true"
@@ -241,7 +250,7 @@ onUnmounted(() => {
       </ResponsiveList>
       
       <!-- Pagination -->
-      <div v-if="!searchQuery" class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
+      <div class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
         <span class="text-sm text-base-content/70 text-center sm:text-left">
           Showing {{ members.length }} of {{ totalItems }} members
         </span>
@@ -249,7 +258,7 @@ onUnmounted(() => {
           <button 
             class="join-item btn btn-sm"
             :disabled="page === 1 || loading"
-            @click="prevPage({ expand: 'user,invited_by,organization', sort: 'role,-created' })"
+            @click="prevPage(queryOptions)"
           >
             «
           </button>
@@ -259,7 +268,7 @@ onUnmounted(() => {
           <button 
             class="join-item btn btn-sm"
             :disabled="page === totalPages || loading"
-            @click="nextPage({ expand: 'user,invited_by,organization', sort: 'role,-created' })"
+            @click="nextPage(queryOptions)"
           >
             »
           </button>

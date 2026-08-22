@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
+import { useServerSearch } from '@/composables/useServerSearch'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { pb } from '@/utils/pb'
@@ -30,25 +31,25 @@ const {
 } = usePagination<NebulaHost>('nebula_hosts', 20)
 
 // Search query
-const searchQuery = ref('')
-const deleting = ref(false)
+// Search runs on the SERVER. The client-side pass this replaces filtered the
+// twenty records already on screen, so a match on page three answered "No
+// results found" -- which is not the same claim at all.
+const { searchQuery, filter: searchFilter } = useServerSearch(
+  ['hostname', 'overlay_ip', 'public_host_port', 'network_id.name'],
+  () => {
+    page.value = 1
+    loadHosts()
+  },
+)
 
-/**
- * Filtered hosts based on client-side search
- */
-const filteredHosts = computed(() => {
-  const query = searchQuery.value.toLowerCase().trim()
-  
-  if (!query) return hosts.value
-  
-  return hosts.value.filter(host => {
-    if (host.hostname?.toLowerCase().includes(query)) return true
-    if (host.overlay_ip?.toLowerCase().includes(query)) return true
-    if (host.expand?.network_id?.name?.toLowerCase().includes(query)) return true
-    if (host.public_host_port?.toLowerCase().includes(query)) return true
-    return false
-  })
-})
+// One options object, passed to EVERY call into usePagination, the pager
+// buttons included -- passing only expand/sort there drops the filter and
+// page two comes back unfiltered.
+const queryOptions = computed(() => ({
+  filter: searchFilter.value,
+  expand: 'network_id',
+}))
+const deleting = ref(false)
 
 // Column configuration
 const columns: Column<NebulaHost>[] = [
@@ -91,9 +92,7 @@ const columns: Column<NebulaHost>[] = [
  * Load hosts from API
  */
 async function loadHosts() {
-  await load({ 
-    expand: 'network_id'
-  })
+  await load(queryOptions.value)
 }
 
 /**
@@ -188,7 +187,7 @@ onUnmounted(() => {
     </BaseCard>
 
     <!-- Empty State -->
-    <BaseCard v-else-if="hosts.length === 0">
+    <BaseCard v-else-if="hosts.length === 0 && !searchQuery">
       <div class="text-center py-12">
         <span class="text-6xl">🖥️</span>
         <h3 class="text-xl font-bold mt-4">No Nebula hosts found</h3>
@@ -202,7 +201,7 @@ onUnmounted(() => {
     </BaseCard>
     
     <!-- No Search Results -->
-    <BaseCard v-else-if="filteredHosts.length === 0">
+    <BaseCard v-else-if="hosts.length === 0">
       <div class="text-center py-12">
         <span class="text-6xl">🔍</span>
         <h3 class="text-xl font-bold mt-4">No matching hosts</h3>
@@ -215,7 +214,7 @@ onUnmounted(() => {
     <!-- Responsive List -->
     <BaseCard v-else :no-padding="true">
       <ResponsiveList 
-        :items="filteredHosts" 
+        :items="hosts" 
         :columns="columns" 
         :loading="loading"
         @row-click="handleRowClick"
@@ -316,7 +315,7 @@ onUnmounted(() => {
       </ResponsiveList>
       
       <!-- Pagination -->
-      <div v-if="!searchQuery" class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
+      <div class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
         <span class="text-sm text-base-content/70 text-center sm:text-left">
           Showing {{ hosts.length }} of {{ totalItems }} hosts
         </span>
@@ -324,7 +323,7 @@ onUnmounted(() => {
           <button 
             class="join-item btn btn-sm"
             :disabled="page === 1 || loading"
-            @click="prevPage({ expand: 'network_id' })"
+            @click="prevPage(queryOptions)"
           >
             «
           </button>
@@ -334,7 +333,7 @@ onUnmounted(() => {
           <button 
             class="join-item btn btn-sm"
             :disabled="page === totalPages || loading"
-            @click="nextPage({ expand: 'network_id' })"
+            @click="nextPage(queryOptions)"
           >
             »
           </button>

@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
+import { useServerSearch } from '@/composables/useServerSearch'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { pb } from '@/utils/pb'
@@ -28,20 +29,25 @@ const {
   prevPage,
 } = usePagination<LocationType>('location_types', 20)
 
-const searchQuery = ref('')
+// Search runs on the SERVER. The client-side pass this replaces filtered the
+// twenty records already on screen, so a match on page three answered "No
+// results found" -- which is not the same claim at all.
+const { searchQuery, filter: searchFilter } = useServerSearch(
+  ['name', 'description', 'code'],
+  () => {
+    page.value = 1
+    loadData()
+  },
+)
+
+// One options object, passed to EVERY call into usePagination, the pager
+// buttons included -- passing only expand/sort there drops the filter and
+// page two comes back unfiltered.
+const queryOptions = computed(() => ({
+  filter: searchFilter.value,
+  sort: 'name',
+}))
 const deleting = ref(false)
-
-const filteredItems = computed(() => {
-  const query = searchQuery.value.toLowerCase().trim()
-  if (!query) return items.value
-
-  return items.value.filter(item => {
-    if (item.name?.toLowerCase().includes(query)) return true
-    if (item.description?.toLowerCase().includes(query)) return true
-    if (item.code?.toLowerCase().includes(query)) return true
-    return false
-  })
-})
 
 const columns: Column<LocationType>[] = [
   { key: 'name', label: 'Name', mobileLabel: 'Name' },
@@ -56,7 +62,7 @@ const columns: Column<LocationType>[] = [
 ]
 
 async function loadData() {
-  await load({ sort: 'name' })
+  await load(queryOptions.value)
 }
 
 function handleRowClick(item: LocationType) {
@@ -134,7 +140,7 @@ onUnmounted(() => {
     </BaseCard>
 
     <!-- Empty State -->
-    <BaseCard v-else-if="items.length === 0">
+    <BaseCard v-else-if="items.length === 0 && !searchQuery">
       <div class="text-center py-12">
         <span class="text-6xl">📍</span>
         <h3 class="text-xl font-bold mt-4">No location types found</h3>
@@ -148,7 +154,7 @@ onUnmounted(() => {
     </BaseCard>
 
     <!-- No Search Results -->
-    <BaseCard v-else-if="filteredItems.length === 0">
+    <BaseCard v-else-if="items.length === 0">
       <div class="text-center py-12">
         <span class="text-6xl">🔍</span>
         <h3 class="text-xl font-bold mt-4">No matching location types</h3>
@@ -161,7 +167,7 @@ onUnmounted(() => {
     <!-- Responsive List -->
     <BaseCard v-else :no-padding="true">
       <ResponsiveList
-        :items="filteredItems"
+        :items="items"
         :columns="columns"
         :loading="loading"
         @row-click="handleRowClick"
@@ -178,7 +184,7 @@ onUnmounted(() => {
       </ResponsiveList>
 
       <!-- Pagination -->
-      <div v-if="!searchQuery" class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
+      <div class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
         <span class="text-sm text-base-content/70 text-center sm:text-left">
           Showing {{ items.length }} of {{ totalItems }} location types
         </span>
@@ -186,7 +192,7 @@ onUnmounted(() => {
           <button
             class="join-item btn btn-sm"
             :disabled="page === 1 || loading"
-            @click="prevPage({ sort: 'name' })"
+            @click="prevPage(queryOptions)"
           >
             «
           </button>
@@ -196,7 +202,7 @@ onUnmounted(() => {
           <button
             class="join-item btn btn-sm"
             :disabled="page === totalPages || loading"
-            @click="nextPage({ sort: 'name' })"
+            @click="nextPage(queryOptions)"
           >
             »
           </button>

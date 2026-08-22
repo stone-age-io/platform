@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNow } from '@vueuse/core'
 import { usePagination } from '@/composables/usePagination'
+import { useServerSearch } from '@/composables/useServerSearch'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { useNatsStore } from '@/stores/nats'
@@ -32,7 +33,24 @@ const {
   prevPage,
 } = usePagination<LeafNode>('leaf_nodes', 20)
 
-const searchQuery = ref('')
+// Search runs on the SERVER. The client-side pass this replaces filtered the
+// twenty records already on screen, so a match on page three answered "No
+// results found" -- which is not the same claim at all.
+const { searchQuery, filter: searchFilter } = useServerSearch(
+  ['name', 'code', 'domain', 'location.name'],
+  () => {
+    page.value = 1
+    loadLeafNodes()
+  },
+)
+
+// One options object, passed to EVERY call into usePagination, the pager
+// buttons included -- passing only expand/sort there drops the filter and
+// page two comes back unfiltered.
+const queryOptions = computed(() => ({
+  filter: searchFilter.value,
+  expand: 'location,nats_user',
+}))
 
 const deleting = ref(false)
 
@@ -56,16 +74,6 @@ watch(
   { immediate: true },
 )
 
-const filteredLeafNodes = computed(() => {
-  const query = searchQuery.value.toLowerCase().trim()
-  if (!query) return leafNodes.value
-  return leafNodes.value.filter(node =>
-    node.name?.toLowerCase().includes(query) ||
-    node.code?.toLowerCase().includes(query) ||
-    node.domain?.toLowerCase().includes(query)
-  )
-})
-
 const columns: Column<LeafNode>[] = [
   { key: 'name', label: 'Name', mobileLabel: 'Name' },
   { key: 'code', label: 'Code', mobileLabel: 'Code' },
@@ -77,7 +85,7 @@ const columns: Column<LeafNode>[] = [
 
 async function loadLeafNodes() {
   // Backend filters by current organization via API rules.
-  await load({ expand: 'location,nats_user' })
+  await load(queryOptions.value)
 }
 
 function handleRowClick(node: LeafNode) {
@@ -166,7 +174,7 @@ onUnmounted(() => {
     </BaseCard>
 
     <!-- Empty State -->
-    <BaseCard v-else-if="leafNodes.length === 0">
+    <BaseCard v-else-if="leafNodes.length === 0 && !searchQuery">
       <div class="text-center py-12">
         <span class="text-6xl">🍃</span>
         <h3 class="text-xl font-bold mt-4">No leaf nodes yet</h3>
@@ -180,7 +188,7 @@ onUnmounted(() => {
     </BaseCard>
 
     <!-- No Search Results -->
-    <BaseCard v-else-if="filteredLeafNodes.length === 0">
+    <BaseCard v-else-if="leafNodes.length === 0">
       <div class="text-center py-12">
         <span class="text-6xl">🔍</span>
         <h3 class="text-xl font-bold mt-4">No matching leaf nodes</h3>
@@ -192,7 +200,7 @@ onUnmounted(() => {
     <!-- Responsive List -->
     <BaseCard v-else :no-padding="true">
       <ResponsiveList
-        :items="filteredLeafNodes"
+        :items="leafNodes"
         :columns="columns"
         :loading="loading"
         @row-click="handleRowClick"
@@ -249,14 +257,14 @@ onUnmounted(() => {
       </ResponsiveList>
 
       <!-- Pagination -->
-      <div v-if="!searchQuery" class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
+      <div class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
         <span class="text-sm text-base-content/70 text-center sm:text-left">
           Showing {{ leafNodes.length }} of {{ totalItems }} leaf nodes
         </span>
         <div class="join">
-          <button class="join-item btn btn-sm" :disabled="page === 1 || loading" @click="prevPage({ expand: 'location,nats_user' })">«</button>
+          <button class="join-item btn btn-sm" :disabled="page === 1 || loading" @click="prevPage(queryOptions)">«</button>
           <button class="join-item btn btn-sm">{{ page }} / {{ totalPages }}</button>
-          <button class="join-item btn btn-sm" :disabled="page === totalPages || loading" @click="nextPage({ expand: 'location,nats_user' })">»</button>
+          <button class="join-item btn btn-sm" :disabled="page === totalPages || loading" @click="nextPage(queryOptions)">»</button>
         </div>
       </div>
     </BaseCard>

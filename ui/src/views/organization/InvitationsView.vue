@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { usePagination } from '@/composables/usePagination'
+import { useServerSearch } from '@/composables/useServerSearch'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
@@ -66,26 +67,31 @@ async function loadOrganizations() {
 }
 
 // Search
-const searchQuery = ref('')
+// Search runs on the SERVER. The client-side pass this replaces filtered the
+// twenty records already on screen, so a match on page three answered "No
+// results found" -- which is not the same claim at all.
+const { searchQuery, filter: searchFilter } = useServerSearch(
+  ['email', 'role', 'invited_by.name', 'invited_by.email'],
+  () => {
+    page.value = 1
+    loadInvitations()
+  },
+)
+
+// One options object, passed to EVERY call into usePagination, the pager
+// buttons included -- passing only expand/sort there drops the filter and
+// page two comes back unfiltered.
+const queryOptions = computed(() => ({
+  filter: searchFilter.value,
+  expand: 'invited_by',
+  // The pager already asked for this sort and the loader did not, so page one
+  // and page two were ordered differently. One options object fixes that by
+  // construction.
+  sort: '-created',
+}))
 
 // Token Visibility State
 const visibleTokens = ref<Record<string, boolean>>({})
-
-/**
- * Filtered invitations based on client-side search
- */
-const filteredInvitations = computed(() => {
-  const query = searchQuery.value.toLowerCase().trim()
-  
-  if (!query) return invitations.value
-  
-  return invitations.value.filter(invite => {
-    if (invite.email?.toLowerCase().includes(query)) return true
-    if (invite.role?.toLowerCase().includes(query)) return true
-    if (invite.expand?.invited_by?.name?.toLowerCase().includes(query)) return true
-    return false
-  })
-})
 
 // Column configuration for responsive list
 const columns: Column<Invitation>[] = [
@@ -151,9 +157,7 @@ async function copyToken(token?: string) {
  * Backend automatically filters by current organization
  */
 async function loadInvitations() {
-  await load({ 
-    expand: 'invited_by',
-  })
+  await load(queryOptions.value)
 }
 
 /**
@@ -401,7 +405,7 @@ onUnmounted(() => {
     </BaseCard>
 
     <!-- Empty State -->
-    <BaseCard v-else-if="invitations.length === 0">
+    <BaseCard v-else-if="invitations.length === 0 && !searchQuery">
       <div class="text-center py-12">
         <span class="text-6xl">✉️</span>
         <h3 class="text-xl font-bold mt-4">No pending invitations</h3>
@@ -418,7 +422,7 @@ onUnmounted(() => {
     </BaseCard>
     
     <!-- No Search Results -->
-    <BaseCard v-else-if="filteredInvitations.length === 0">
+    <BaseCard v-else-if="invitations.length === 0">
       <div class="text-center py-12">
         <span class="text-6xl">🔍</span>
         <h3 class="text-xl font-bold mt-4">No matching invitations</h3>
@@ -431,7 +435,7 @@ onUnmounted(() => {
     <!-- Responsive List -->
     <BaseCard v-else :no-padding="true">
       <ResponsiveList 
-        :items="filteredInvitations" 
+        :items="invitations" 
         :columns="columns" 
         :loading="loading"
         :clickable="false"
@@ -559,7 +563,7 @@ onUnmounted(() => {
       </ResponsiveList>
       
       <!-- Pagination -->
-      <div v-if="!searchQuery" class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
+      <div class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
         <span class="text-sm text-base-content/70 text-center sm:text-left">
           Showing {{ invitations.length }} of {{ totalItems }} invitations
         </span>
@@ -567,7 +571,7 @@ onUnmounted(() => {
           <button 
             class="join-item btn btn-sm"
             :disabled="page === 1 || loading"
-            @click="prevPage({ expand: 'invited_by', sort: '-created' })"
+            @click="prevPage(queryOptions)"
           >
             «
           </button>
@@ -577,7 +581,7 @@ onUnmounted(() => {
           <button 
             class="join-item btn btn-sm"
             :disabled="page === totalPages || loading"
-            @click="nextPage({ expand: 'invited_by', sort: '-created' })"
+            @click="nextPage(queryOptions)"
           >
             »
           </button>

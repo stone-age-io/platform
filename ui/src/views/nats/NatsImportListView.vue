@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
+import { useServerSearch } from '@/composables/useServerSearch'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { pb } from '@/utils/pb'
@@ -27,21 +28,25 @@ const {
   prevPage,
 } = usePagination<NatsAccountImport>('nats_account_imports', 20)
 
-const searchQuery = ref('')
+// Search runs on the SERVER. The client-side pass this replaces filtered the
+// twenty records already on screen, so a match on page three answered "No
+// results found" -- which is not the same claim at all.
+const { searchQuery, filter: searchFilter } = useServerSearch(
+  ['name', 'description', 'subject', 'account'],
+  () => {
+    page.value = 1
+    loadImports()
+  },
+)
+
+// One options object, passed to EVERY call into usePagination, the pager
+// buttons included -- passing only expand/sort there drops the filter and
+// page two comes back unfiltered.
+const queryOptions = computed(() => ({
+  filter: searchFilter.value,
+}))
 
 const deleting = ref(false)
-
-const filteredImports = computed(() => {
-  const query = searchQuery.value.toLowerCase().trim()
-  if (!query) return imports.value
-  return imports.value.filter(imp => {
-    if (imp.name?.toLowerCase().includes(query)) return true
-    if (imp.subject?.toLowerCase().includes(query)) return true
-    if (imp.account?.toLowerCase().includes(query)) return true
-    if (imp.description?.toLowerCase().includes(query)) return true
-    return false
-  })
-})
 
 function truncateKey(key: string): string {
   if (!key || key.length <= 16) return key
@@ -79,7 +84,7 @@ const columns: Column<NatsAccountImport>[] = [
 ]
 
 async function loadImports() {
-  await load()
+  await load(queryOptions.value)
 }
 
 function handleRowClick(imp: NatsAccountImport) {
@@ -165,7 +170,7 @@ onUnmounted(() => {
     </BaseCard>
 
     <!-- Empty State -->
-    <BaseCard v-else-if="imports.length === 0">
+    <BaseCard v-else-if="imports.length === 0 && !searchQuery">
       <div class="text-center py-12">
         <span class="text-6xl">📥</span>
         <h3 class="text-xl font-bold mt-4">No imports found</h3>
@@ -179,7 +184,7 @@ onUnmounted(() => {
     </BaseCard>
 
     <!-- No Search Results -->
-    <BaseCard v-else-if="filteredImports.length === 0">
+    <BaseCard v-else-if="imports.length === 0">
       <div class="text-center py-12">
         <span class="text-6xl">🔍</span>
         <h3 class="text-xl font-bold mt-4">No matching imports</h3>
@@ -192,7 +197,7 @@ onUnmounted(() => {
     <!-- Responsive List -->
     <BaseCard v-else :no-padding="true">
       <ResponsiveList
-        :items="filteredImports"
+        :items="imports"
         :columns="columns"
         :loading="loading"
         @row-click="handleRowClick"
@@ -251,7 +256,7 @@ onUnmounted(() => {
       </ResponsiveList>
 
       <!-- Pagination -->
-      <div v-if="!searchQuery" class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
+      <div class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
         <span class="text-sm text-base-content/70 text-center sm:text-left">
           Showing {{ imports.length }} of {{ totalItems }} imports
         </span>
@@ -259,7 +264,7 @@ onUnmounted(() => {
           <button
             class="join-item btn btn-sm"
             :disabled="page === 1 || loading"
-            @click="prevPage()"
+            @click="prevPage(queryOptions)"
           >
             «
           </button>
@@ -269,7 +274,7 @@ onUnmounted(() => {
           <button
             class="join-item btn btn-sm"
             :disabled="page === totalPages || loading"
-            @click="nextPage()"
+            @click="nextPage(queryOptions)"
           >
             »
           </button>

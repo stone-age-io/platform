@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { watchDebounced } from '@vueuse/core'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
+import { useServerSearch } from '@/composables/useServerSearch'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { pb } from '@/utils/pb'
@@ -42,31 +42,25 @@ const {
   prevPage,
 } = usePagination<Thing>('things', 20)
 
-// Search. This is a SERVER-side filter, not the client-side pass it used to be.
+// Search runs on the SERVER, not over the 20 records already on screen.
 //
-// The old version filtered the 20 records already on screen and admitted as much
-// in the UI ("searching current page only"). Adding metadata to that would have
-// been a false promise: the whole point of searching metadata is questions like
-// "which devices were serviced before 2025", and an answer drawn from one page of
-// results is not an answer. PocketBase filters a json column as text, so one `~`
-// covers both keys and values without knowing any type's schema.
-const searchQuery = ref('')
+// The client-side version admitted as much in the UI ("searching current page
+// only"), which is a disclaimer nobody reads after a zero-result answer. It also
+// made `metadata` unsearchable in any useful sense: the whole point of searching
+// it is questions like "which devices were serviced before 2025", and an answer
+// drawn from one page is not an answer. PocketBase matches a json column as text,
+// so one `~` covers both its keys and its values without knowing any type's schema.
+const { searchQuery, filter: searchFilter } = useServerSearch(
+  ['name', 'description', 'code', 'metadata', 'type.name', 'location.name'],
+  () => {
+    page.value = 1
+    loadThings()
+  },
+)
 
-const searchFilter = computed(() => {
-  const q = searchQuery.value.trim()
-  if (!q) return undefined
-  // pb.filter binds and escapes the parameter — never interpolate a user string
-  // into a filter expression by hand.
-  return pb.filter(
-    'name ~ {:q} || description ~ {:q} || code ~ {:q} || metadata ~ {:q}' +
-      ' || type.name ~ {:q} || location.name ~ {:q}',
-    { q },
-  )
-})
-
-// Every call into usePagination needs the same filter and expand, including the
-// pager buttons — passing only `expand` there would silently drop the filter and
-// page 2 would show unfiltered results.
+// One options object, passed to EVERY call into usePagination, the pager buttons
+// included -- passing only `expand` there drops the filter and page two comes
+// back unfiltered.
 const queryOptions = computed(() => ({
   filter: searchFilter.value,
   expand: 'type,location',
@@ -113,16 +107,6 @@ async function loadThings() {
   await load(queryOptions.value)
 }
 
-// Typing a query re-queries the server, so debounce it and go back to page 1 —
-// staying on page 3 of the old result set would show an empty list.
-watchDebounced(
-  searchQuery,
-  () => {
-    page.value = 1
-    loadThings()
-  },
-  { debounce: 300 },
-)
 
 /**
  * Handle row/card click - navigate to detail view

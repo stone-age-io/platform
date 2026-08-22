@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
+import { useServerSearch } from '@/composables/useServerSearch'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { pb } from '@/utils/pb'
@@ -29,25 +30,25 @@ const {
 } = usePagination<NebulaNetwork>('nebula_networks', 20)
 
 // Search query
-const searchQuery = ref('')
-const deleting = ref(false)
+// Search runs on the SERVER. The client-side pass this replaces filtered the
+// twenty records already on screen, so a match on page three answered "No
+// results found" -- which is not the same claim at all.
+const { searchQuery, filter: searchFilter } = useServerSearch(
+  ['name', 'description', 'cidr_range', 'ca_id.name'],
+  () => {
+    page.value = 1
+    loadNetworks()
+  },
+)
 
-/**
- * Filtered networks based on client-side search
- */
-const filteredNetworks = computed(() => {
-  const query = searchQuery.value.toLowerCase().trim()
-  
-  if (!query) return networks.value
-  
-  return networks.value.filter(network => {
-    if (network.name?.toLowerCase().includes(query)) return true
-    if (network.description?.toLowerCase().includes(query)) return true
-    if (network.cidr_range?.toLowerCase().includes(query)) return true
-    if (network.expand?.ca_id?.name?.toLowerCase().includes(query)) return true
-    return false
-  })
-})
+// One options object, passed to EVERY call into usePagination, the pager
+// buttons included -- passing only expand/sort there drops the filter and
+// page two comes back unfiltered.
+const queryOptions = computed(() => ({
+  filter: searchFilter.value,
+  expand: 'ca_id',
+}))
+const deleting = ref(false)
 
 // Column configuration
 const columns: Column<NebulaNetwork>[] = [
@@ -84,9 +85,7 @@ const columns: Column<NebulaNetwork>[] = [
  * Load networks from API
  */
 async function loadNetworks() {
-  await load({ 
-    expand: 'ca_id'
-  })
+  await load(queryOptions.value)
 }
 
 /**
@@ -181,7 +180,7 @@ onUnmounted(() => {
     </BaseCard>
 
     <!-- Empty State -->
-    <BaseCard v-else-if="networks.length === 0">
+    <BaseCard v-else-if="networks.length === 0 && !searchQuery">
       <div class="text-center py-12">
         <span class="text-6xl">🌐</span>
         <h3 class="text-xl font-bold mt-4">No networks found</h3>
@@ -195,7 +194,7 @@ onUnmounted(() => {
     </BaseCard>
     
     <!-- No Search Results -->
-    <BaseCard v-else-if="filteredNetworks.length === 0">
+    <BaseCard v-else-if="networks.length === 0">
       <div class="text-center py-12">
         <span class="text-6xl">🔍</span>
         <h3 class="text-xl font-bold mt-4">No matching networks</h3>
@@ -208,7 +207,7 @@ onUnmounted(() => {
     <!-- Responsive List -->
     <BaseCard v-else :no-padding="true">
       <ResponsiveList 
-        :items="filteredNetworks" 
+        :items="networks" 
         :columns="columns" 
         :loading="loading"
         @row-click="handleRowClick"
@@ -280,7 +279,7 @@ onUnmounted(() => {
       </ResponsiveList>
       
       <!-- Pagination -->
-      <div v-if="!searchQuery" class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
+      <div class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
         <span class="text-sm text-base-content/70 text-center sm:text-left">
           Showing {{ networks.length }} of {{ totalItems }} networks
         </span>
@@ -288,7 +287,7 @@ onUnmounted(() => {
           <button 
             class="join-item btn btn-sm"
             :disabled="page === 1 || loading"
-            @click="prevPage({ expand: 'ca_id' })"
+            @click="prevPage(queryOptions)"
           >
             «
           </button>
@@ -298,7 +297,7 @@ onUnmounted(() => {
           <button 
             class="join-item btn btn-sm"
             :disabled="page === totalPages || loading"
-            @click="nextPage({ expand: 'ca_id' })"
+            @click="nextPage(queryOptions)"
           >
             »
           </button>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { usePagination } from '@/composables/usePagination'
+import { useServerSearch } from '@/composables/useServerSearch'
 import { formatDate, formatRelativeTime, formatConstant } from '@/utils/format'
 import type { AuditLog } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
@@ -21,36 +22,26 @@ const {
 } = usePagination<AuditLog>('audit_logs', 20)
 
 // Search & Filter
-const searchQuery = ref('')
-const selectedLog = ref<AuditLog | null>(null)
+// Search runs on the SERVER. The client-side pass this replaces filtered the
+// twenty records already on screen, so a match on page three answered "No
+// results found" -- which is not the same claim at all.
+const { searchQuery, filter: searchFilter } = useServerSearch(
+  ['collection_name', 'record_id', 'event_type', 'request_ip', 'user.name', 'user.email'],
+  () => {
+    page.value = 1
+    loadLogs()
+  },
+)
 
-/**
- * Filtered logs based on client-side search
- * Searches in: user name/email, collection name, record id
- */
-const filteredLogs = computed(() => {
-  const query = searchQuery.value.toLowerCase().trim()
-  
-  if (!query) return logs.value
-  
-  return logs.value.filter(log => {
-    // Search User
-    const userName = log.expand?.user?.name?.toLowerCase() || ''
-    const userEmail = log.expand?.user?.email?.toLowerCase() || ''
-    if (userName.includes(query) || userEmail.includes(query)) return true
-    
-    // Search Collection
-    if (log.collection_name?.toLowerCase().includes(query)) return true
-    
-    // Search Record ID
-    if (log.record_id?.toLowerCase().includes(query)) return true
-    
-    // Search Action
-    if (log.event_type?.toLowerCase().includes(query)) return true
-    
-    return false
-  })
-})
+// One options object, passed to EVERY call into usePagination, the pager
+// buttons included -- passing only expand/sort there drops the filter and
+// page two comes back unfiltered.
+const queryOptions = computed(() => ({
+  filter: searchFilter.value,
+  expand: 'user',
+  sort: '-created',
+}))
+const selectedLog = ref<AuditLog | null>(null)
 
 // Column Configuration
 const columns: Column<AuditLog>[] = [
@@ -88,10 +79,7 @@ const columns: Column<AuditLog>[] = [
  */
 async function loadLogs() {
   // Expand user details to show who performed the action
-  await load({ 
-    expand: 'user',
-    sort: '-created'
-  })
+  await load(queryOptions.value)
 }
 
 /**
@@ -185,7 +173,7 @@ onUnmounted(() => {
     </BaseCard>
 
     <!-- Empty State -->
-    <BaseCard v-else-if="logs.length === 0">
+    <BaseCard v-else-if="logs.length === 0 && !searchQuery">
       <div class="text-center py-12">
         <span class="text-6xl">📋</span>
         <h3 class="text-xl font-bold mt-4">No audit logs found</h3>
@@ -196,7 +184,7 @@ onUnmounted(() => {
     </BaseCard>
     
     <!-- No Search Results -->
-    <BaseCard v-else-if="filteredLogs.length === 0">
+    <BaseCard v-else-if="logs.length === 0">
       <div class="text-center py-12">
         <span class="text-6xl">🔍</span>
         <h3 class="text-xl font-bold mt-4">No matching logs</h3>
@@ -209,7 +197,7 @@ onUnmounted(() => {
     <!-- Responsive List -->
     <BaseCard v-else :no-padding="true">
       <ResponsiveList 
-        :items="filteredLogs" 
+        :items="logs" 
         :columns="columns" 
         :loading="loading"
         @row-click="handleRowClick"
@@ -288,7 +276,7 @@ onUnmounted(() => {
       </ResponsiveList>
       
       <!-- Pagination -->
-      <div v-if="!searchQuery" class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
+      <div class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
         <span class="text-sm text-base-content/70 text-center sm:text-left">
           Showing {{ logs.length }} of {{ totalItems }} entries
         </span>
@@ -296,7 +284,7 @@ onUnmounted(() => {
           <button 
             class="join-item btn btn-sm"
             :disabled="page === 1 || loading"
-            @click="prevPage({ expand: 'user', sort: '-created' })"
+            @click="prevPage(queryOptions)"
           >
             «
           </button>
@@ -306,7 +294,7 @@ onUnmounted(() => {
           <button 
             class="join-item btn btn-sm"
             :disabled="page === totalPages || loading"
-            @click="nextPage({ expand: 'user', sort: '-created' })"
+            @click="nextPage(queryOptions)"
           >
             »
           </button>

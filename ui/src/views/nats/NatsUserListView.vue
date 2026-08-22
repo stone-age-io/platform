@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
+import { useServerSearch } from '@/composables/useServerSearch'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { pb } from '@/utils/pb'
@@ -30,26 +31,26 @@ const {
 } = usePagination<NatsUser>('nats_users', 20)
 
 // Search query
-const searchQuery = ref('')
+// Search runs on the SERVER. The client-side pass this replaces filtered the
+// twenty records already on screen, so a match on page three answered "No
+// results found" -- which is not the same claim at all.
+const { searchQuery, filter: searchFilter } = useServerSearch(
+  ['nats_username', 'description', 'account_id.name', 'role_id.name'],
+  () => {
+    page.value = 1
+    loadUsers()
+  },
+)
+
+// One options object, passed to EVERY call into usePagination, the pager
+// buttons included -- passing only expand/sort there drops the filter and
+// page two comes back unfiltered.
+const queryOptions = computed(() => ({
+  filter: searchFilter.value,
+  expand: 'account_id,role_id',
+}))
 
 const deleting = ref(false)
-
-/**
- * Filtered users based on client-side search
- */
-const filteredUsers = computed(() => {
-  const query = searchQuery.value.toLowerCase().trim()
-  
-  if (!query) return users.value
-  
-  return users.value.filter(user => {
-    if (user.nats_username?.toLowerCase().includes(query)) return true
-    if (user.description?.toLowerCase().includes(query)) return true
-    if (user.expand?.account_id?.name?.toLowerCase().includes(query)) return true
-    if (user.expand?.role_id?.name?.toLowerCase().includes(query)) return true
-    return false
-  })
-})
 
 // A user carries pb-nats per-user permission overrides when any of its
 // publish/subscribe (allow or deny) lists is non-empty. These merge with the
@@ -104,9 +105,7 @@ const columns: Column<NatsUser>[] = [
  * Load users from API
  */
 async function loadUsers() {
-  await load({ 
-    expand: 'account_id,role_id'
-  })
+  await load(queryOptions.value)
 }
 
 /**
@@ -201,7 +200,7 @@ onUnmounted(() => {
     </BaseCard>
 
     <!-- Empty State -->
-    <BaseCard v-else-if="users.length === 0">
+    <BaseCard v-else-if="users.length === 0 && !searchQuery">
       <div class="text-center py-12">
         <span class="text-6xl">👤</span>
         <h3 class="text-xl font-bold mt-4">No NATS users found</h3>
@@ -215,7 +214,7 @@ onUnmounted(() => {
     </BaseCard>
     
     <!-- No Search Results -->
-    <BaseCard v-else-if="filteredUsers.length === 0">
+    <BaseCard v-else-if="users.length === 0">
       <div class="text-center py-12">
         <span class="text-6xl">🔍</span>
         <h3 class="text-xl font-bold mt-4">No matching users</h3>
@@ -228,7 +227,7 @@ onUnmounted(() => {
     <!-- Responsive List -->
     <BaseCard v-else :no-padding="true">
       <ResponsiveList 
-        :items="filteredUsers" 
+        :items="users" 
         :columns="columns" 
         :loading="loading"
         @row-click="handleRowClick"
@@ -316,7 +315,7 @@ onUnmounted(() => {
       </ResponsiveList>
       
       <!-- Pagination -->
-      <div v-if="!searchQuery" class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
+      <div class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
         <span class="text-sm text-base-content/70 text-center sm:text-left">
           Showing {{ users.length }} of {{ totalItems }} users
         </span>
@@ -324,7 +323,7 @@ onUnmounted(() => {
           <button 
             class="join-item btn btn-sm"
             :disabled="page === 1 || loading"
-            @click="prevPage({ expand: 'account_id,role_id' })"
+            @click="prevPage(queryOptions)"
           >
             «
           </button>
@@ -334,7 +333,7 @@ onUnmounted(() => {
           <button 
             class="join-item btn btn-sm"
             :disabled="page === totalPages || loading"
-            @click="nextPage({ expand: 'account_id,role_id' })"
+            @click="nextPage(queryOptions)"
           >
             »
           </button>
