@@ -1,0 +1,95 @@
+# The API rules in schema.json are the only thing enforcing tenant isolation in
+# this platform, and they are plain strings in a JSON file -- no compiler, no
+# type checker. scripts/test-authz.sh is what checks them, and this workflow is
+# what makes it run. Everything else here is ordinary build hygiene.
+#
+# One job with sequential steps, on purpose. Splitting the frontend, Go and
+# authorization stages into parallel jobs would mean uploading pb_public as an
+# artifact and downloading it in two others -- real plumbing, to save about three
+# minutes on a five-minute pipeline. The Go build embeds the compiled console, so
+# the stages are genuinely ordered anyway.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---------------------------------------------------------------- frontend
+      - uses: actions/setup-node@v4
+        with:
+          # Pinned rather than lts/*, so a Node release cannot change the build
+          # without a commit saying so.
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: ui
+        run: npm ci
+
+      # Two dependencies in ui/package.json are deliberately held back, and the
+      # reasons are written down at the top of ui/tailwind.config.js and in
+      # CLAUDE.md. Neither has any other guard: there is no frontend test
+      # runner, so `vue-tsc && vite build` stays green while the console renders
+      # wrong. That is exactly why the check is here.
+      #
+      #   Tailwind 3 / daisyUI 4 -> v5 renames the theme CSS variables AND
+      #     changes them from bare OKLCH components to complete colors, so all
+      #     376 `oklch(var(--b1))` references become `oklch(oklch(...))`:
+      #     invalid, and silently falling back rather than erroring.
+      #   TypeScript 6 -> TS 7 is the native port and drops the ./lib/tsc
+      #     subpath that vue-tsc resolves at startup, so `npm run build` dies
+      #     before it type-checks anything.
+      - name: Assert the deliberately pinned majors
+        working-directory: ui
+        run: |
+          check() {
+            actual="$(node -p "require('$1/package.json').version")"
+            major="${actual%%.*}"
+            if [ "$major" != "$2" ]; then
+              echo "::error::$1 is $actual, expected major $2. See ui/tailwind.config.js and CLAUDE.md before changing this."
+              exit 1
+            fi
+            echo "ok  $1 $actual (major $2)"
+          }
+          check tailwindcss 3
+          check daisyui 4
+          check typescript 6
+
+      # vue-tsc, then vite build into ../pb_public. The Go build below embeds
+      # the result, so this step is a dependency and not just a check.
+      - name: Build the console
+        working-directory: ui
+        run: npm run build
+
+      # -------------------------------------------------------------------- go
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build
+        run: go build ./...
+
+      # ---------------------------------------------------------- authorization
+      # Builds its own binary, stands up a throwaway database, asserts every
+      # authorization behaviour against a live server, and tears it down. Needs
+      # go, curl and node -- all present above. This is the step that matters.
+      - name: Authorization rules
+        run: ./scripts/test-authz.sh
