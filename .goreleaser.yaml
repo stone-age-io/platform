@@ -1,0 +1,113 @@
+# Release configuration. Ported from rule-router, with two differences that
+# matter for this repo.
+#
+# 1. The Go build embeds the compiled console (`//go:embed all:pb_public/*`), so
+#    the frontend has to be built before goreleaser compiles anything. That is
+#    what the `before` hooks are for -- without them the binaries would ship the
+#    tracked placeholder page.
+#
+# 2. Two binaries with very different jobs. `stone-age` is the server an operator
+#    runs; `leaf-sync` is the agent that lands on customer hardware, which is why
+#    linux/arm64 is not optional here.
+version: 2
+
+project_name: stone-age
+
+before:
+  hooks:
+    # Plain command strings, not the {cmd, dir} form: this goreleaser rejects the
+    # map form for before.hooks.
+    - sh -c 'cd ui && npm ci'
+    - sh -c 'cd ui && npm run build'
+
+builds:
+  - id: stone-age
+    main: .
+    binary: stone-age
+    env:
+      # Free, because PocketBase's SQLite driver is modernc.org/sqlite -- a
+      # pure-Go translation. No C toolchain, so every target below
+      # cross-compiles from one runner.
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X platform/internal/version.Version={{.Version}}
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      # Windows on arm64 is not a deployment target for a server binary here.
+      - goos: windows
+        goarch: arm64
+
+  - id: leaf-sync
+    main: ./cmd/leaf-sync
+    binary: leaf-sync
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X platform/internal/version.Version={{.Version}}
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - id: default
+    ids: [stone-age, leaf-sync]
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+      - config.yaml
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - '^ci:'
+
+release:
+  github:
+    owner: stone-age-io
+    name: platform
+  header: |
+    ## Stone Age Platform {{ .Tag }}
+
+    Two binaries:
+
+    - **`stone-age`** — the control plane. One process: REST API, embedded Vue
+      console, SQLite, and (with `--nats`) the NATS server itself.
+    - **`leaf-sync`** — the edge agent. Mirrors an organization's configuration
+      into a NATS leaf node's local JetStream KV, and optionally runs that leaf
+      node in-process.
+
+    Or run the container, which needs no toolchain at all:
+
+    ```
+    docker run -d -p 8090:8090 -p 4222:4222 -p 9222:9222 \
+      -v stone-age-data:/data \
+      -e STONE_AGE_BOOTSTRAP_PASSWORD='change-me-8-chars-min' \
+      -e STONE_AGE_NATS_WEBSOCKET_URLS='ws://localhost:9222' \
+      ghcr.io/stone-age-io/platform:{{ .Tag }}
+    ```
+  footer: |
+    Pre-1.0: treat a minor version as potentially breaking, and pin what you
+    deploy.
+
+    **Full changelog**: https://github.com/stone-age-io/platform/commits/{{ .Tag }}
