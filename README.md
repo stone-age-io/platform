@@ -307,4 +307,4 @@ To change it:
 | [`CHANGELOG.md`](./CHANGELOG.md) | Releases |
 | [`SECURITY.md`](./SECURITY.md) | Reporting a vulnerability, and what counts as one |
 
-Apache 2.0 — see [`LICENSE`](./LICENSE).
+MIT — see [`LICENSE`](./LICENSE).

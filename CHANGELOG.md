@@ -36,7 +36,7 @@ and this file starts where the versioned releases do.
   commands on linux, darwin and windows (amd64 and arm64), plus a multi-arch
   image on GHCR. `modernc.org/sqlite` is pure Go, so none of this needs a C
   toolchain.
-- Apache 2.0 license, a security policy, and this changelog.
+- MIT license, a security policy, and this changelog.
 
 ### Fixed
 
