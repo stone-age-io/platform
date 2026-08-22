@@ -51,9 +51,13 @@ builds:
       - goos: windows
         goarch: arm64
 
+# One archive per binary, not one holding both. Someone provisioning an edge box
+# wants leaf-sync and nothing else -- making them download an archive named after
+# the server, containing a 40 MB control plane they will never run, is a bad first
+# impression on the audience that matters most here.
 archives:
-  - id: default
-    ids: [stone-age, leaf-sync]
+  - id: stone-age
+    ids: [stone-age]
     formats: [tar.gz]
     format_overrides:
       - goos: windows
@@ -64,7 +68,25 @@ archives:
       - CHANGELOG.md
       - config.yaml
     name_template: >-
-      {{ .ProjectName }}_
+      stone-age_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+
+  - id: leaf-sync
+    ids: [leaf-sync]
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      # The edge agent has its own configuration and its own deployment flow;
+      # the platform README is not the document its operator needs.
+      - src: cmd/leaf-sync/README.md
+        dst: README.md
+    name_template: >-
+      leaf-sync_
       {{- .Version }}_
       {{- .Os }}_
       {{- .Arch }}
