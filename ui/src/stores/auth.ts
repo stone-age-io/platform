@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { pb } from '@/utils/pb'
 import type { User, Membership, Organization, SuperUser, NatsUser } from '@/types/pocketbase'
-import type { AuthProviderInfo } from 'pocketbase' // Import SDK type
+import type { AuthProviderInfo } from 'pocketbase'
 
 // Extended interface to include the expansion we need
 export interface ExtendedMembership extends Membership {
@@ -31,7 +31,6 @@ export const useAuthStore = defineStore('auth', () => {
   
   const isAuthenticated = computed(() => !!user.value)
   
-  // ... (Keep existing computed properties: currentMembership, currentOrg, etc.) ...
   const currentMembership = computed(() => {
     if (!currentOrgId.value) return null
     return memberships.value.find(m => m.organization === currentOrgId.value) || null
@@ -45,9 +44,19 @@ export const useAuthStore = defineStore('auth', () => {
     return currentMembership.value?.expand?.nats_user || null
   })
   
-  const userRole = computed(() => {
+  // null when there is no membership in the active organization, NOT a role.
+  //
+  // This used to fall back to 'member', which is a fail-OPEN default: a user
+  // with no resolved membership -- memberships still loading, or a membership
+  // just deleted, which now clears their organization context server-side --
+  // was handed member capabilities, so the console offered create and edit
+  // controls the API then refused. The least privileged answer to "what may
+  // this person do here" is "nothing", and every consumer below compares
+  // against specific role strings, so null denies by construction rather than
+  // by a rule someone has to remember to maintain.
+  const userRole = computed<Membership['role'] | null>(() => {
     if (isSuperAdmin.value) return 'owner'
-    return currentMembership.value?.role || 'member'
+    return currentMembership.value?.role ?? null
   })
   
   // What each role may do, in one place. The router, the sidebar, and individual
@@ -132,7 +141,7 @@ export const useAuthStore = defineStore('auth', () => {
     await loadContext()
   }
 
-  // NEW: Fetch configured OAuth2 providers from backend
+  // The OAuth2 providers this deployment has configured, for the login screen.
   async function loadAuthMethods() {
     try {
       const result = await pb.collection('users').listAuthMethods()
@@ -142,7 +151,6 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  // NEW: Handle OAuth2 Login Flow
   async function loginWithOAuth2(provider: string) {
     // This triggers the popup window
     const authData = await pb.collection('users').authWithOAuth2({ provider })
@@ -183,7 +191,6 @@ export const useAuthStore = defineStore('auth', () => {
     isSuperAdmin.value = false
   }
   
-  // ... (Keep existing loadContext, switchOrganization, etc.) ...
   async function loadContext() {
     if (!user.value) return
     
@@ -286,7 +293,7 @@ export const useAuthStore = defineStore('auth', () => {
     memberships,
     currentOrgId,
     isSuperAdmin,
-    authProviders, // Exported
+    authProviders,
     
     // Computed
     isAuthenticated,
@@ -301,8 +308,8 @@ export const useAuthStore = defineStore('auth', () => {
     
     // Actions
     login,
-    loginWithOAuth2, // Exported
-    loadAuthMethods, // Exported
+    loginWithOAuth2,
+    loadAuthMethods,
     logout,
     requestPasswordReset,
     loadMemberships: loadContext,

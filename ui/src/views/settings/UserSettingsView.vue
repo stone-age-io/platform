@@ -290,7 +290,7 @@ watch(() => authStore.currentOrgId, loadIdentities)
               <h3 class="card-title">Context: {{ authStore.currentOrg?.name }}</h3>
               <p class="text-xs opacity-60">Settings specific to this organization</p>
             </div>
-            <div v-if="!isFakeMembership && authStore.userRole !== 'owner'">
+            <div v-if="authStore.currentMembership && !isFakeMembership && authStore.userRole !== 'owner'">
               <button @click="handleLeaveOrg" class="btn btn-xs btn-error btn-outline">Leave Org</button>
             </div>
           </div>

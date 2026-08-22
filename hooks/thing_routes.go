@@ -334,12 +334,39 @@ func resolveNatsUser(
 		}
 	}
 
+	// Scoped to the account, not global. A NATS user name only has to be
+	// unique within its own account -- the identity in a signed JWT is the
+	// public key, and the name is a label on it. Checking globally meant the
+	// second tenant who wanted "gateway-01" was refused because the first one
+	// had it, which is a cross-tenant collision in a platform whose entire
+	// point is that tenants do not collide. There is no unique index on the
+	// column, so this check is the whole policy.
 	if existing, _ := txApp.FindFirstRecordByFilter(
 		opts.NatsUserCollection,
-		"nats_username = {:u}",
-		dbx.Params{"u": body.Code},
+		"account_id = {:acct} && nats_username = {:u}",
+		dbx.Params{"acct": account.Id, "u": body.Code},
 	); existing != nil {
-		return "", re.BadRequestError(fmt.Sprintf("NATS username %q is already taken", body.Code), nil)
+		return "", re.BadRequestError(fmt.Sprintf("NATS username %q is already used in this organization", body.Code), nil)
+	}
+
+	// The synthetic email is globally unique (a partial unique index on the
+	// collection), and it is built from the org NAME slug -- so two
+	// organizations whose names slug identically ("Acme Inc" and "Acme, Inc."
+	// both give acme-inc) share an identifier domain and collide here. The
+	// organizations collection only enforces unique NAMES, so both are legal
+	// records. Checked up front purely so the failure says what happened:
+	// otherwise the duplicate surfaces from Save() as "failed to create thing",
+	// which sends the reader looking in the wrong place entirely.
+	email := fmt.Sprintf("%s@%s.nats.local", body.Code, orgSlug)
+	if clash, _ := txApp.FindFirstRecordByFilter(
+		opts.NatsUserCollection,
+		"email = {:e}",
+		dbx.Params{"e": email},
+	); clash != nil {
+		return "", re.BadRequestError(fmt.Sprintf(
+			"identifier %q is already in use, most likely by an organization whose name also shortens to %q. "+
+				"Give this Thing a different code, or rename one of the organizations.",
+			email, orgSlug), nil)
 	}
 
 	col, err := txApp.FindCollectionByNameOrId(opts.NatsUserCollection)
@@ -353,7 +380,7 @@ func resolveNatsUser(
 
 	u := core.NewRecord(col)
 	u.Set("nats_username", body.Code)
-	u.Set("email", fmt.Sprintf("%s@%s.nats.local", body.Code, orgSlug))
+	u.Set("email", email)
 	u.Set("emailVisibility", true)
 	u.SetPassword(pw)
 	u.Set("account_id", account.Id)
