@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=135         # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=140         # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -966,6 +966,66 @@ else
   no "rollback leaked a nats_users record -- the transaction is not covering provisioning"
 fi
 
+
+echo ""
+echo "=== 17. removing a membership ends the reader's access ==="
+# Runs last on purpose: it deletes bob's membership, which every earlier section
+# depends on.
+#
+# Every read rule on the inventory collections is
+# `organization = @request.auth.current_organization` with no membership check --
+# deliberately, since reads are org-scoped rather than role-scoped. That makes
+# users.current_organization the whole read boundary for a console user, and
+# nothing was clearing it when the membership behind it went away. The rule then
+# still matches, so a removed member keeps reading the tenant's inventory for as
+# long as their token lasts, and re-login does not fix it: authRule on `users` is
+# empty, so they can log back in and land in the org they were removed from.
+#
+# The fix is hooks/membership_lifecycle.go. The doctrine this platform wrote down
+# for devices -- a flag is not a control unless something acts on it -- applies to
+# humans too, and current_organization is that flag.
+
+# Baseline on the line above the action, not borrowed from section 14: a check
+# that an operation had an effect is worthless if anything in between could have
+# caused it.
+req GET "/collections/things/records" "$TB"
+BEFORE=$(jn "$RBODY" 'o.items.length')
+if [ "$RCODE" = "200" ] && [ "${BEFORE:-0}" -gt 0 ]; then
+  ok "member reads $BEFORE thing(s) immediately before losing their membership"
+else
+  no "member could not read the inventory before the membership delete (HTTP $RCODE, ${BEFORE:-0} items) -- the rest of this section proves nothing"
+fi
+
+req DELETE "/collections/memberships/records/$MBOB" "$TA"
+expect "owner CAN remove a member" "200|204" "$RCODE" "$RBODY"
+
+# The token is deliberately NOT invalidated. PocketBase loads the auth record
+# from the database on every request, so @request.auth.current_organization is
+# read live and clearing it takes effect immediately -- unlike a device's
+# authRule, which is only evaluated at the auth endpoint and therefore needs
+# RefreshTokenKey(). Bob may also still be a legitimate member of other orgs;
+# logging him out of those would be a second bug.
+req GET "/collections/things/records" "$TB"
+AFTER=$(jn "$RBODY" 'o.items.length')
+if [ "${AFTER:-1}" = "0" ]; then
+  ok "the removed member's inventory read returns nothing (was $BEFORE)"
+else
+  no "the removed member still reads $AFTER thing(s) -- current_organization was not cleared"
+fi
+
+req GET "/collections/things/records" "$TA"
+if [ "$RCODE" = "200" ] && [ "$(jn "$RBODY" 'o.items.length')" != "0" ]; then
+  ok "the owner still reads the inventory (so the deny above was scoping, not breakage)"
+else
+  no "the owner lost inventory reads too -- clearing context broke more than it fixed"
+fi
+
+req GET "/collections/users/records/$BOB" "$SU"
+if [ -z "$(j "$RBODY" current_organization)" ]; then
+  ok "current_organization was cleared on the removed member"
+else
+  no "current_organization still points at $(j "$RBODY" current_organization)"
+fi
 # ----------------------------------------------------------------------- result
 
 TOTAL=$((PASS + FAIL))

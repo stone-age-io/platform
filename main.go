@@ -334,6 +334,14 @@ func main() {
 		NatsUserCollection: natsOptions.UserCollectionName,
 	})
 
+	// Closes a departing member's tenant context. The inventory read rules trust
+	// users.current_organization on its own, so a membership delete that leaves
+	// it pointing at the old org leaves the reader inside it.
+	hooks.RegisterMembershipLifecycle(app, hooks.MembershipLifecycleOptions{
+		MembershipCollection: tenancyOptions.MembershipsCollection,
+		UserCollection:       "users",
+	})
+
 	// Leaf-node-authenticated bootstrap routes. These serve the operator JWT, the
 	// org account JWT, and the leaf's own creds, so a leaf-node identity needs no
 	// read grant on nats_users or nats_accounts at all.
