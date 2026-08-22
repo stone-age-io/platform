@@ -90,8 +90,8 @@ github.com/sagikazarmark/locafero v0.12.0 h1:/NQhBAkUb4+fH1jivKHWusDYFjMOOKU88ee
 github.com/sagikazarmark/locafero v0.12.0/go.mod h1:sZh36u/YSZ918v0Io+U9ogLYQJ9tLLBmM4eneO6WwsI=
 github.com/skeeeon/pb-audit v0.0.0-20260817024032-465574cebbfa h1:UXKBaQOgUF8LW2ek2NcgHQb61Y+wPs3yKAnU4Zad9lQ=
 github.com/skeeeon/pb-audit v0.0.0-20260817024032-465574cebbfa/go.mod h1:SxFiaL6i8asVlgpdZ9LQ2SXgQrS7FjcV4Q9/11XbFvg=
-github.com/skeeeon/pb-nats v0.0.0-20260822162159-a539e081b12b h1:CNuN5fhrRzZKHEZCqfdMsJXK01jbh748OuQB4tr/NKo=
-github.com/skeeeon/pb-nats v0.0.0-20260822162159-a539e081b12b/go.mod h1:3HWYpwr/Rq+aoILi5ywiQ5e1r7e7Pxu9zvJv+++Z0xM=
+github.com/skeeeon/pb-nats v0.0.0-20260822174619-50fca4306606 h1:Q4WZGEV9N5+EP8D8gxtFyNFydCZJ7hwuObCaA+8z604=
+github.com/skeeeon/pb-nats v0.0.0-20260822174619-50fca4306606/go.mod h1:3HWYpwr/Rq+aoILi5ywiQ5e1r7e7Pxu9zvJv+++Z0xM=
 github.com/skeeeon/pb-nebula v0.0.0-20260817024033-d6b174271cc2 h1:Hx8GsM3wQ5feDtsGgcKLYBKRQyJSNKcP8Lw6EOGO3uY=
 github.com/skeeeon/pb-nebula v0.0.0-20260817024033-d6b174271cc2/go.mod h1:1iDAMF48xWxMMwk56559cRu3WbVapwVHi80vN+lOQgQ=
 github.com/skeeeon/pb-tenancy v0.0.0-20260817024033-9de98681419a h1:4ewlHSQSTskrF4WPbSDeh464V1U9jz119X8olYmzCdE=
