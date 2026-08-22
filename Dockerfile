@@ -1,0 +1,81 @@
+# One container. The binary runs the bus.
+#
+# `serve --nats` starts a real nats-server in this process from the same
+# nats.conf that `nats export` writes (internal/natsd), so there is no second
+# container and no compose file: the whole pitch of the product is that this is
+# one moving part, and a stack that spawns a separate nats-server to do what a
+# flag already does argues against itself.
+#
+#   docker build -t stone-age .
+#   docker run -d --name stone-age \
+#     -p 8090:8090 -p 4222:4222 -p 9222:9222 \
+#     -v stone-age-data:/data \
+#     -e STONE_AGE_BOOTSTRAP_PASSWORD='change-me-8-chars-min' \
+#     -e STONE_AGE_NATS_WEBSOCKET_URLS='ws://localhost:9222' \
+#     stone-age
+#
+# STONE_AGE_NATS_WEBSOCKET_URLS is the address a BROWSER dials, which this
+# container cannot know: it is the host's name or address as the operator's users
+# reach it, not anything visible from inside. Nothing else is required.
+
+# ----------------------------------------------------------------- 1. console
+FROM node:24-alpine AS ui
+WORKDIR /src/ui
+
+# Dependencies first, so a source-only change does not re-run npm ci.
+COPY ui/package.json ui/package-lock.json ./
+RUN npm ci
+
+COPY ui/ ./
+# vue-tsc, then vite build into ../pb_public -- which the Go build embeds.
+RUN npm run build
+
+# ---------------------------------------------------------------- 2. binaries
+FROM golang:1.26-alpine AS build
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+COPY --from=ui /src/pb_public ./pb_public
+
+# CGO_ENABLED=0 is free here: PocketBase's SQLite driver is modernc.org/sqlite,
+# a pure-Go translation, so there is no C toolchain to satisfy and the result is
+# a static binary. That is also why cross-compiling releases costs nothing.
+ARG VERSION=dev
+RUN CGO_ENABLED=0 go build \
+      -trimpath \
+      -ldflags "-s -w -X platform/internal/version.Version=${VERSION}" \
+      -o /out/stone-age .
+
+# ----------------------------------------------------------------- 3. runtime
+FROM alpine:3
+
+# Alpine rather than distroless: the entrypoint has real work to do on first
+# boot (see docker-entrypoint.sh) and needs a shell. ca-certificates is for
+# outbound TLS -- OAuth2 providers and SMTP.
+#
+# The floating `alpine:3` tag rather than a pinned minor, on purpose: it always
+# resolves to the current stable, so the image picks up base security fixes
+# without anyone here watching Alpine release notes. Pinning a minor on a
+# one-maintainer project mostly means shipping an EOL base two years from now.
+RUN apk add --no-cache ca-certificates tzdata \
+    && adduser -D -H -u 10001 stoneage
+
+COPY --from=build /out/stone-age /usr/local/bin/stone-age
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+
+# Everything that must survive the container: the PocketBase database, the
+# generated NATS config, the account JWTs the resolver writes, and the JetStream
+# store. `nats export --output` resolves the resolver directory and the JetStream
+# store inside its output directory, so one volume covers all four.
+RUN mkdir -p /data && chown stoneage /data
+VOLUME /data
+USER stoneage
+
+# 8090 console + REST, 4222 NATS clients, 9222 NATS over WebSocket (browsers
+# cannot speak the NATS TCP protocol, so the console needs this one).
+EXPOSE 8090 4222 9222
+
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

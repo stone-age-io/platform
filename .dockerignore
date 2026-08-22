@@ -1,0 +1,22 @@
+# The build context is copied wholesale into the builder stage. Two things in
+# here would be actively wrong to ship: a local pb_data, which is somebody's
+# real database including NATS seeds, and pb_public, which the ui stage rebuilds
+# and would otherwise be overwritten by a stale local copy anyway.
+.git
+.github
+pb_data
+pb_public
+ui/node_modules
+ui/dist
+nats-config
+storage
+
+stone-age
+stone-age.exe
+stone-age-authz-test*
+leaf-sync
+leaf-sync.exe
+
+.claude
+*.log
+*.md
