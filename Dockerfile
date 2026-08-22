@@ -66,6 +66,14 @@ RUN apk add --no-cache ca-certificates tzdata \
 COPY --from=build /out/stone-age /usr/local/bin/stone-age
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
+# chmod even though the file is committed 100755. COPY preserves the source
+# mode, and the mode is exactly the thing a Windows checkout drops:
+# core.filemode defaults to false there, so a contributor re-adding this file
+# can silently clear the bit. The symptom is a container that exits immediately
+# with "permission denied" and nothing else, which is a bad way to learn about
+# a file permission.
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # Everything that must survive the container: the PocketBase database, the
 # generated NATS config, the account JWTs the resolver writes, and the JetStream
 # store. `nats export --output` resolves the resolver directory and the JetStream
