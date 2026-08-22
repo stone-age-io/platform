@@ -9,10 +9,10 @@ require (
 	github.com/nats-io/nkeys v0.4.16
 	github.com/pocketbase/dbx v1.12.0
 	github.com/pocketbase/pocketbase v0.39.11
-	github.com/skeeeon/pb-audit v0.0.0-20260817024032-465574cebbfa
-	github.com/skeeeon/pb-nats v0.0.0-20260822174619-50fca4306606
-	github.com/skeeeon/pb-nebula v0.0.0-20260817024033-d6b174271cc2
-	github.com/skeeeon/pb-tenancy v0.0.0-20260817024033-9de98681419a
+	github.com/skeeeon/pb-audit v0.1.0
+	github.com/skeeeon/pb-nats v0.1.0
+	github.com/skeeeon/pb-nebula v0.1.0
+	github.com/skeeeon/pb-tenancy v0.1.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	golang.org/x/term v0.45.0
