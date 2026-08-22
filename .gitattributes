@@ -1,0 +1,22 @@
+# Normalise line endings in the repository, and pin the ones that break things.
+#
+# Shell scripts and the container entrypoint run on Linux. A CRLF copy fails
+# there with `bad interpreter` or `$'\r': command not found` -- inside a Docker
+# build that surfaces as a container which exits immediately with no useful
+# message. Deciding this here rather than leaving it to each clone's
+# core.autocrlf means a Windows contributor cannot commit a broken script.
+#
+# Go files are pinned for a smaller but equally concrete reason: gofmt writes LF
+# and reports a CRLF file as unformatted, so a Windows checkout would fail any
+# formatting check on files nobody touched.
+* text=auto
+
+*.sh        text eol=lf
+*.go        text eol=lf
+Dockerfile  text eol=lf
+*.yaml      text eol=lf
+*.yml       text eol=lf
+
+*.png binary
+*.ico binary
+*.svg text

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<!--
+  Placeholder. This file is tracked in git so that `go build` works on a fresh
+  clone: main.go embeds this directory with `//go:embed all:pb_public/*`, and an
+  empty or missing directory is a compile error, not a runtime one.
+
+  `cd ui && npm run build` replaces this file (and everything beside it) with the
+  real console. That overwrite is expected and is not meant to be committed.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Stone Age &mdash; console not built</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #14110f;
+        color: #e8e3dc;
+        font: 15px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      main { max-width: 34rem; padding: 2rem; }
+      h1 { font-size: 1rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #c8a45c; }
+      p { color: #a8a29a; }
+      pre {
+        background: #1f1b18;
+        border-left: 2px solid #c8a45c;
+        padding: 0.75rem 1rem;
+        overflow-x: auto;
+      }
+      a { color: #c8a45c; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Console not built</h1>
+      <p>
+        The server is running, but this binary was compiled without the frontend.
+        Build it and restart:
+      </p>
+      <pre>cd ui &amp;&amp; npm install &amp;&amp; npm run build
+go build -o stone-age .</pre>
+      <p>
+        The admin panel at <a href="/_/">/_/</a> and the REST API under
+        <code>/api/</code> work either way.
+      </p>
+    </main>
+  </body>
+</html>

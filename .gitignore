@@ -13,7 +13,15 @@ dist-ssr
 *.local
 
 /pb_data
-/pb_public
+
+# pb_public holds the compiled console, which main.go embeds with
+# `//go:embed all:pb_public/*`. A missing directory is a COMPILE error, so a
+# fresh clone could not run `go build`, `go vet` or `go test` without first
+# installing Node and building the frontend. One placeholder page is tracked so
+# the Go side stands alone; `npm run build` overwrites it with the real one
+# (vite.config.ts sets emptyOutDir), and that overwrite is not worth committing.
+/pb_public/*
+!/pb_public/index.html
 
 stone-age
 stone-age-authz-test
