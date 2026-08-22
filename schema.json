@@ -1207,7 +1207,8 @@
     ],
     "indexes": [
       "CREATE UNIQUE INDEX `idx_tokenKey_pbc_704572500` ON `things` (`tokenKey`)",
-      "CREATE UNIQUE INDEX `idx_email_pbc_704572500` ON `things` (`email`) WHERE `email` != ''"
+      "CREATE UNIQUE INDEX `idx_email_pbc_704572500` ON `things` (`email`) WHERE `email` != ''",
+      "CREATE UNIQUE INDEX `idx_things_org_code` ON `things` (`organization`, `code`) WHERE `code` != ''"
     ],
     "system": false,
     "authRule": "// A deactivated Thing cannot obtain a new auth token.\n//\n// This rule is evaluated at the AUTH ENDPOINT ONLY (apis/record_helpers.go,\n// RecordAuthResponse) -- not on every request carrying an already-issued token.\n// authToken.duration below is 7 days, so on its own this rule would leave a\n// deactivated device connected for up to a week. hooks/active_flag.go closes\n// that window by refreshing tokenKey when active goes true -> false, which\n// invalidates every outstanding token immediately, and by revoking the linked\n// NATS identity -- which is the Thing's real capability, and is not touched by\n// anything PocketBase does.\nactive = true",
@@ -1936,7 +1937,9 @@
         "type": "autodate"
       }
     ],
-    "indexes": [],
+    "indexes": [
+      "CREATE UNIQUE INDEX `idx_location_types_org_code` ON `location_types` (`organization`, `code`) WHERE `code` != ''"
+    ],
     "system": false
   },
   {
@@ -2098,7 +2101,9 @@
         "type": "autodate"
       }
     ],
-    "indexes": [],
+    "indexes": [
+      "CREATE UNIQUE INDEX `idx_locations_org_code` ON `locations` (`organization`, `code`) WHERE `code` != ''"
+    ],
     "system": false
   },
   {
@@ -3606,7 +3611,9 @@
         "type": "relation"
       }
     ],
-    "indexes": [],
+    "indexes": [
+      "CREATE UNIQUE INDEX `idx_thing_types_org_code` ON `thing_types` (`organization`, `code`) WHERE `code` != ''"
+    ],
     "system": false
   },
   {
@@ -4276,7 +4283,7 @@
     "listRule": "// A leaf node authenticating as itself sees only its own record.\n// A user sees all leaf nodes belonging to their active organization.\n(@request.auth.collectionName = \"leaf_nodes\" && id = @request.auth.id) || \n(@request.auth.collectionName = \"users\" && organization = @request.auth.current_organization)",
     "viewRule": "// A leaf node authenticating as itself sees only its own record.\n// A user sees all leaf nodes belonging to their active organization.\n(@request.auth.collectionName = \"leaf_nodes\" && id = @request.auth.id) || \n(@request.auth.collectionName = \"users\" && organization = @request.auth.current_organization)",
     "createRule": "// Only Admins or Owners can create leaf nodes for their active organization.\n@request.auth.collectionName = \"users\" && \n@request.body.organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n (@request.auth.memberships_via_user.role ?= \"owner\" || @request.auth.memberships_via_user.role ?= \"admin\"))",
-    "updateRule": "// 1. Must be Admin/Owner.\n// 2. Must belong to active org.\n// 3. Prevent organization field tampering.\norganization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n (@request.auth.memberships_via_user.role ?= \"owner\" || @request.auth.memberships_via_user.role ?= \"admin\")) && \n@request.body.organization:changed = false",
+    "updateRule": "// 1. Must be Admin/Owner.\n// 2. Must belong to active org.\n// 3. Prevent organization field tampering.\n// 4. Freeze `code`: it is the KV key prefix and the JetStream domain suffix,\n//    so changing it silently orphans everything the edge already wrote.\norganization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n (@request.auth.memberships_via_user.role ?= \"owner\" || @request.auth.memberships_via_user.role ?= \"admin\")) && \n@request.body.organization:changed = false &&\n@request.body.code:changed = false",
     "deleteRule": "// Only Admins or Owners can delete leaf nodes.\norganization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n (@request.auth.memberships_via_user.role ?= \"owner\" || @request.auth.memberships_via_user.role ?= \"admin\"))",
     "name": "leaf_nodes",
     "type": "auth",
@@ -4511,7 +4518,8 @@
     ],
     "indexes": [
       "CREATE UNIQUE INDEX `idx_tokenKey_pbc_3920100277` ON `leaf_nodes` (`tokenKey`)",
-      "CREATE UNIQUE INDEX `idx_email_pbc_3920100277` ON `leaf_nodes` (`email`) WHERE `email` != ''"
+      "CREATE UNIQUE INDEX `idx_email_pbc_3920100277` ON `leaf_nodes` (`email`) WHERE `email` != ''",
+      "CREATE UNIQUE INDEX `idx_leaf_nodes_org_code` ON `leaf_nodes` (`organization`, `code`) WHERE `code` != ''"
     ],
     "system": false,
     "authRule": "// A deactivated leaf node cannot obtain a new auth token, so leaf-sync stops\n// pulling config and GET /api/leaf/bootstrap stops answering it.\n//\n// Same caveat and same remedy as the things authRule: this is checked at the\n// auth endpoint only, and hooks/active_flag.go refreshes tokenKey and revokes\n// the linked NATS identity on deactivation so the edge box actually goes dark.\n// leaf_nodes has no member-level write path -- create/update are already\n// owner/admin -- so `active` needs no extra field freeze.\nactive = true",

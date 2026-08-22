@@ -293,7 +293,13 @@ func syncCollection(ctx context.Context, pb recordLister, kv kvBucket, cache *sy
 		if id, _ := rec["id"].(string); id == "" {
 			continue // unkeyable; PocketBase always sets id, so this is defensive
 		}
-		key := recordKey(rec, counts)
+		key, fallback := recordKeyWithReason(rec, counts)
+		if fallback != "" {
+			// Not fatal: the record is still mirrored, under its id. But a
+			// lookup by handle will not find it, so say so rather than letting
+			// it be silent.
+			log.Printf("⚠️  %s/%s keyed by id: %s", col, key, fallback)
+		}
 		desired[key] = true
 		keyed = append(keyed, keyedRecord{key: key, rec: rec})
 	}
@@ -418,11 +424,36 @@ func candidateKey(rec pbclient.Record) string {
 // key; otherwise the opaque-but-always-unique record id. The id stays inside
 // the stored value either way, so id-based relation joins keep working.
 func recordKey(rec pbclient.Record, counts map[string]int) string {
+	key, _ := recordKeyWithReason(rec, counts)
+	return key
+}
+
+// recordKeyWithReason is recordKey plus a human-readable reason when the id
+// fallback was taken, or "" when the handle was used.
+//
+// The reason exists because the duplicate case is a data problem the fallback
+// HIDES. Keying by id keeps the mirror correct and complete, but every consumer
+// that looks a record up by its handle -- a rule reading thing.S01, a dashboard
+// widget bound to a KV key, stone-cli resolving an entity -- silently finds
+// nothing, and there is no error anywhere to explain it. The server now enforces
+// UNIQUE (organization, code), so a duplicate should be impossible on any
+// database that has run the migration; this log is for the ones that have not,
+// and for the collections where the handle falls back to a non-unique name.
+//
+// A record with NO handle at all is not worth a warning: it is normal, and
+// nothing was ever going to look it up by name.
+func recordKeyWithReason(rec pbclient.Record, counts map[string]int) (string, string) {
 	id, _ := rec["id"].(string)
-	if c := candidateKey(rec); c != "" && counts[c] == 1 && validKVKey(c) {
-		return c
+	c := candidateKey(rec)
+	switch {
+	case c == "":
+		return id, ""
+	case counts[c] > 1:
+		return id, fmt.Sprintf("handle %q is shared by %d records", c, counts[c])
+	case !validKVKey(c):
+		return id, fmt.Sprintf("handle %q is not a valid KV key", c)
 	}
-	return id
+	return c, ""
 }
 
 // keysToDelete returns the KV keys that should be purged: those present locally

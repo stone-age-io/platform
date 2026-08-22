@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=140         # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=147         # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -1026,6 +1026,49 @@ if [ -z "$(j "$RBODY" current_organization)" ]; then
 else
   no "current_organization still points at $(j "$RBODY" current_organization)"
 fi
+
+echo ""
+echo "=== 18. code is a per-organization handle, and the database says so ==="
+# `code` was documented as unique and used as one -- as a NATS KV key at the
+# edge, as a digital-twin key prefix, as the argument to `stone thing get` --
+# while nothing enforced it. Two Things sharing a code in one organization did
+# not fail: leaf-sync falls back to keying by record id, so the KV key silently
+# changes shape and every consumer looking up `thing.S01` finds nothing.
+#
+# UNIQUE (organization, code) is the enforcement. Scoped per organization, not
+# global, because two tenants both calling a site "HQ" is the tenancy model
+# working -- so the cross-tenant case below is as much the point as the
+# duplicate one.
+req POST /collections/locations/records "$SU" \
+  "{\"name\":\"Unique Code A\",\"code\":\"UNIQ1\",\"organization\":\"$ORG\"}"
+expect "a first location may take a code" 200 "$RCODE" "$RBODY"
+req POST /collections/locations/records "$SU" \
+  "{\"name\":\"Unique Code B\",\"code\":\"UNIQ1\",\"organization\":\"$ORG\"}"
+expect "a second location in the SAME org cannot reuse it" 400 "$RCODE" "$RBODY"
+req POST /collections/locations/records "$SU" \
+  "{\"name\":\"Unique Code Other Org\",\"code\":\"UNIQ1\",\"organization\":\"$ORG2\"}"
+expect "another ORGANIZATION may reuse it (the scoping is the point)" 200 "$RCODE" "$RBODY"
+
+# The index is partial (code != ''), because code is optional on all five
+# collections and SQLite treats the empty string as a value. Without the
+# WHERE clause an org could hold exactly one blank-coded record, which is a
+# restriction nobody asked for.
+req POST /collections/locations/records "$SU" \
+  "{\"name\":\"No Code One\",\"organization\":\"$ORG\"}"
+expect "a location may have no code" 200 "$RCODE" "$RBODY"
+req POST /collections/locations/records "$SU" \
+  "{\"name\":\"No Code Two\",\"organization\":\"$ORG\"}"
+expect "and so may a second one (the index is partial)" 200 "$RCODE" "$RBODY"
+
+# A leaf node's code is frozen after creation, the same way its organization
+# is. It is the JetStream domain suffix and the KV key prefix the edge has
+# already written under, so changing it centrally orphans everything at the
+# site without any error to show for it. Paired with a permitted edit on the
+# same record, so a blanket deny cannot pass.
+req PATCH "/collections/leaf_nodes/records/$LEAF" "$TA" '{"code":"RENAMED"}'
+expect "owner cannot change a leaf node's code" "403|400|404" "$RCODE" "$RBODY"
+req PATCH "/collections/leaf_nodes/records/$LEAF" "$TA" '{"name":"Leaf One Renamed"}'
+expect "owner CAN rename it (same record, so the deny was the frozen field)" 200 "$RCODE" "$RBODY"
 # ----------------------------------------------------------------------- result
 
 TOTAL=$((PASS + FAIL))
