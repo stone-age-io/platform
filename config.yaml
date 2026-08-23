@@ -78,6 +78,54 @@ audit:
     max_records: 0           # Max records to keep (0 = disabled)
     interval: "0 2 * * *"   # Cron schedule for cleanup
 
+# Readiness probe (GET /api/ready).
+#
+# Distinct from PocketBase's /api/health, which reports that the HTTP server is
+# listening — true of every failure that matters here. /api/ready answers 503
+# while the operator is unseeded, the schema was never imported, or the NATS
+# server does not trust this platform's operator. Warnings (at-rest encryption
+# off, no browser-facing WebSocket URL) still answer 200: a probe's only lever
+# is to restart or de-register, and neither fixes a note.
+#
+# The checks run on this interval in the background and the endpoint serves the
+# cached answer, so a probe never triggers a NATS dial and a slow check shows up
+# as a stale `checked` timestamp rather than as an outage. There is no switch to
+# turn the endpoint off — one that can be disabled is one that gets disabled and
+# then cannot be explained.
+#
+# Unauthenticated, and the whole body is public — the callers are orchestrators
+# and uptime checkers that hold no session, and /metrics already publishes every
+# check's state anyway, so withholding the detail here would buy half a boundary
+# and a second response shape to maintain. Put it behind a proxy to close it.
+readiness:
+  interval: 15s
+  timeout: 5s
+
+# Prometheus metrics (GET /metrics).
+#
+# Exposes the readiness checks as a state set, this process's HTTP traffic, row
+# counts from its own database, and — only with `serve --nats` — the embedded
+# bus's own counters. Nothing per-organization: the Control Plane holds the NATS
+# operator and $SYS and has no credential inside any tenant's account, so the
+# numbers that would justify a tenant label (which site is offline, which bucket
+# is stale) are not visible to it. leaf-sync exports those from the edge, where
+# they can actually be seen, and the console reads leaf_status with the browser's
+# own in-account credential.
+#
+# `stone_age_records{collection="leaf_nodes"}` therefore counts leaf nodes
+# CONFIGURED. It is not an availability metric and an alert on it can never fire.
+#
+# token: empty means the endpoint is open, which is the default. The series here
+# carry no customer identifiers, and an endpoint that needs a credential is one
+# that mostly does not get scraped. When set, the same value is accepted as
+# `Authorization: Bearer <token>` and as HTTP Basic with any username and the
+# token as the password — between them, every scraper in common use. PocketBase's
+# own auth is deliberately not used: its tokens expire and no scraper has a
+# refresh flow, so it would take a custom sidecar to read a standard format.
+metrics:
+  enabled: true
+  token: ""
+
 # Operator branding overlay (optional).
 # Drop logo.svg, theme.css, and/or branding.json into this directory to override
 # the embedded defaults. branding.json shape: { "appName": "...", "logo": "logo.svg" }

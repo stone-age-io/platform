@@ -277,7 +277,7 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
 11. **Operator Org & Managed Orgs** - Bootstrap creates the platform operator's own org (`is_operator_org`) alongside the `$SYS` org (`is_system_org`); its NATS account is the hub for shared operator services (helpdesk etc.). Flagging a customer org `managed` provisions a stream export of `helpdesk.>` (configurable: `nats.managed_export_subject`) from its account plus a hub-side import remapped to `helpdesk.{orgId}.>` — the org prefix is baked into the signed account JWT, so event provenance is subject-based and unforgeable (`hooks/managed_org_exports.go`).
 12. **Edge / Leaf Nodes** - `leaf_nodes` auth collection (a "special thing" with one nats_user, server-provisioned). The `leaf-sync` agent runs on the edge, authenticates as the leaf node, and mirrors its org's config collections into a NATS leaf node's local JetStream KV. A leaf-node identity holds **no read grant on any `nats_*` or `nebula_*` collection**: `leaf-sync config` gets everything it needs from `GET /api/leaf/bootstrap`, which returns eight named fields (`domain`, `code`, `creds`, `account_jwt`, `account_pub`, `operator_jwt`, `sys_account_jwt`, `sys_account_pub`). `nats_system_operator` stays superuser-only; `GET /api/leaf/operator-jwt` remains as a superseded alias so upgrade order doesn't matter.
     - **A generated `nats-leaf.conf` must satisfy operator-mode validation, which no string assertion can check.** Two directives are mandatory and were both missing for months, so `leaf-sync config` produced a file `nats-server` refused to load — the failure was invisible because the only tests were `strings.Contains` over the output. (1) Every leaf remote needs an `account` key naming the local account; (2) `resolver_preload` needs the **`$SYS` account JWT** as well as the org's, because the operator JWT names a system account and `resolver: MEMORY` has nowhere to fetch it — without it the server dies with `error resolving system account: account missing` before JetStream starts. Preloading `$SYS`'s *account* JWT is public trust material and grants nothing; connecting as `$SYS` needs a `$SYS` **user** credential, which is never served. `TestBuildLeafConfIsAcceptedByNATSServer` now runs the real generator's output through `nats-server`'s own `ProcessConfigFile` + `NewServer` (no ports, no network) — keep it, and don't replace it with more `Contains` checks.
-    - **`leaf-sync run --nats` runs the leaf node in-process** (`internal/leafsync/embedded.go`, reusing `internal/natsd`), off by default. Two consequences worth keeping: the server starts **before** PocketBase is touched, and a failed login then **retries** instead of exiting — exiting would take the bus down, and a supervisor cycling the pair through a WAN outage means devices reconnecting and JetStream recovering its store on a loop. Without `--nats` the old fail-fast behaviour stands, because the bus is another process. Cost: the binary goes ~12 MB → ~26 MB, since `nats-server` links in either way. `leaf-sync` writes a best-effort liveness heartbeat into the hub's `leaf_status` KV (when `nats.hub_domain` is set); the UI reads it to show online/offline status on the leaf node list + detail views. Credentials are resettable by org Admins/Owners (collection `manageRule`) — `things` now carries the same `manageRule`, so a device's PocketBase password is recoverable too.
+    - **`leaf-sync run --nats` runs the leaf node in-process** (`internal/leafsync/embedded.go`, reusing `internal/natsd`), off by default. Two consequences worth keeping: the server starts **before** PocketBase is touched, and a failed login then **retries** instead of exiting — exiting would take the bus down, and a supervisor cycling the pair through a WAN outage means devices reconnecting and JetStream recovering its store on a loop. Without `--nats` the old fail-fast behaviour stands, because the bus is another process. Cost: the binary goes ~12 MB → ~26 MB, since `nats-server` links in either way, plus ~3 MB for the Prometheus client behind `leaf-sync`'s `/metrics` (measured 25.8 → 28.9 MB). The Control Plane pays nothing for that second one — `slackhq/nebula` already linked `client_golang` in there. `leaf-sync` writes a best-effort liveness heartbeat into the hub's `leaf_status` KV (when `nats.hub_domain` is set); the UI reads it to show online/offline status on the leaf node list + detail views. Credentials are resettable by org Admins/Owners (collection `manageRule`) — `things` now carries the same `manageRule`, so a device's PocketBase password is recoverable too.
 13. **Digital Twin / Live State** - **Two** KV buckets per org, split by owner:
     `twin` (reported — the device writes it, flows edge→hub) and `twin_desired`
     (desired — operators write it, flows hub→edge). Keys are
@@ -355,7 +355,83 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
       so the alternative is `twin_<code>` at every edge and rule-router reading a
       different bucket name per site. Don't "finish the job" by making reported
       state a source without solving that.
-14. **Decommissioning a device** - `things.active` / `leaf_nodes.active`, owner/admin only. The flag is enforced in three places at once, because any one of them alone is a half-measure: the `authRule` (`active = true`) blocks new logins, `hooks/active_flag.go` refreshes `tokenKey` so tokens already issued die immediately, and the same hook sets `revoke` on the linked `nats_user` so the signed NATS credential stops working. Reactivating sets `regenerate`, issuing a fresh credential — the old `.creds` stays dead, because the account JWT's revocation cutoff is permanent. Distinct from a leaf node's heartbeat status, which reports whether the edge box *is* connected, not whether it *may* connect.
+14. **Readiness & metrics** - `GET /api/ready` (unauthenticated, 503/200) and
+    `GET /metrics` (Prometheus, open by default) on the Control Plane;
+    `/ready` + `/metrics` on `leaf-sync` behind `observability.addr`. Checks live
+    in `internal/health`, exposition in `internal/metrics`, platform-specific
+    parts in `hooks/observability.go` (one `RegisterObservability` call, one
+    options struct) + `hooks/readiness.go` + `hooks/metrics.go`.
+    - **A check must be answerable first-hand by the process running it.** This
+      is the whole design constraint, and it is the NATS account boundary
+      restated. The Control Plane holds the operator and `$SYS` and has **no user
+      credential inside any organization's account**, so it cannot read `twin`,
+      `twin_desired`, or the `leaf_status` heartbeats — the console can, because
+      a browser connects as the logged-in user, and `leaf-sync` can, because it
+      runs inside the account. Do not "improve" a metric by minting the platform
+      a credential in a tenant's account: that turns a credential issuer into a
+      data-plane participant in every tenant's bus. **No per-org labels**, for
+      the same reason — with per-org data reduced to row counts, a tenant label
+      would be a customer name on an inventory count.
+    - **`stone_age_records{collection="leaf_nodes"}` counts leaf nodes
+      CONFIGURED.** It is not availability and an alert on it can never fire.
+      Per-site liveness is `leaf_sync_*` on the edge box. Say this in the HELP
+      text of any metric that could be mistaken for a health signal.
+    - **Four states, and only `fail` is unready.** `warn` is
+      running-but-misconfigured (encryption off, no `websocket_urls`); failing on
+      those would refuse to serve the stock dev deployment. `skipped` is "this
+      check did not apply / could not look", and it ranks BELOW `ok` —
+      `Registry.Run` seeds the worst-state from the results rather than from
+      `StateOK`, or an all-skipped report reads as a clean bill of health.
+      Likewise the leaf collector **omits** server-derived series when the
+      monitoring port is down rather than emitting zeros.
+    - **An islanded edge warns, it does not fail.** Local NATS still works and
+      devices keep running against the mirrored config; that autonomy is why a
+      leaf node exists, so 503 would invert the design.
+    - **Don't publish a metric that cannot vary — but check the claim first.**
+      `stone_age_nats_cluster_routes` was nearly cut on the grounds that
+      `internal/natsd` "deliberately does not support clustering the Control
+      Plane". That comment was wrong and nothing in the code ever enforced it:
+      `Start` hands the parsed config straight to `nats-server`, so a `cluster`
+      block is honoured like any other directive.
+      `TestEmbeddedServerClustersWithAPeer` now pins it with two real peered
+      servers. A comment asserting a limitation is not evidence of one.
+    - **Don't add a check that cannot fail.** `serve` calls `RunAllMigrations`
+      before it listens (PocketBase `apis/serve.go`), so a "migrations pending"
+      check is always green — which is why `schema_version` looks for the
+      opposite: applied migrations this binary does not know, i.e. a pb_data
+      written by a NEWER build. `serve` cannot fix that one. The `schema` check
+      survives the same test only because `initial_schema.go` returns nil when
+      the embedded `SchemaJSON` is empty, marking itself applied.
+    - **`nats_trust` is the check that earns the feature.** It connects with the
+      `$SYS` creds from the database; a server whose `nats.conf` carries a stale
+      operator JWT rejects it, which is otherwise invisible — every account claim
+      fails, no org's account reaches the bus, and the console looks fine.
+      Reachability (`DialInfo`, an unauthenticated INFO read) is deliberately a
+      separate check, because "nothing listening" and "listening but does not
+      trust us" have different fixes. It reads `creds_file`, not the seed:
+      that column is not one at-rest encryption covers, so no decryption code is
+      duplicated from pb-nats.
+    - **The prober caches; the endpoint never runs checks.** A probe would
+      otherwise trigger a NATS dial per request, and a slow check would read as
+      unready and kill a healthy container. `OnRefresh` (every probe) feeds the
+      metrics; `OnChange` (flips only) feeds the log — collapsing them makes the
+      gauges stale or the log unreadable.
+    - **`/metrics` is open by default and does not use PocketBase auth.** PB
+      tokens are JWTs that expire and no scraper has a refresh flow, so it would
+      take a custom sidecar to read a standard format. `metrics.token` is
+      accepted as Bearer *or* Basic-with-any-username, which between them covers
+      every scraper in use. `/api/ready` is unauthenticated and serves ONE body
+      to everyone. A tiered version (names/states anonymously, detail and fixes
+      for a superuser) was built and cut: `/metrics` is open by default and
+      already publishes every check's state, so the withholding bought half a
+      boundary in exchange for a second response shape and six authz checks.
+      Closing these endpoints is a proxy's job.
+    - **Use `client_golang`, don't hand-roll the text format.** It costs no
+      binary size (slackhq/nebula already links it) and there is no scrape test
+      in CI, so a malformed exposition would look fine and be unscrapeable —
+      the same argument as `TestBuildLeafConfIsAcceptedByNATSServer`. The tests
+      parse the output with Prometheus's own parser and run promlint over it.
+15. **Decommissioning a device** - `things.active` / `leaf_nodes.active`, owner/admin only. The flag is enforced in three places at once, because any one of them alone is a half-measure: the `authRule` (`active = true`) blocks new logins, `hooks/active_flag.go` refreshes `tokenKey` so tokens already issued die immediately, and the same hook sets `revoke` on the linked `nats_user` so the signed NATS credential stops working. Reactivating sets `regenerate`, issuing a fresh credential — the old `.creds` stays dead, because the account JWT's revocation cutoff is permanent. Distinct from a leaf node's heartbeat status, which reports whether the edge box *is* connected, not whether it *may* connect.
 
 ## Roles & Authorization
 
@@ -551,9 +627,16 @@ Keep it in step with the table above.
 
 ## Testing
 
-- `go test ./...` — Go unit tests (`internal/leafsync` has the bulk of them)
+- `go test ./...` — Go unit tests (`internal/leafsync` has the bulk of them).
+  Two habits worth keeping: the readiness checks that touch NATS are tested
+  against a **real operator-mode `nats-server`** built in the test (see
+  `internal/health/nats_test.go`), because the thing being asserted IS the
+  server's trust decision and a mock only asserts what we believe it to be; and
+  the metrics exposition is parsed by **Prometheus's own parser and promlint**
+  rather than string-matched, because nothing in CI scrapes it and a malformed
+  body looks fine in a terminal.
 - `./scripts/test-authz.sh` — **run after any API-rule change in `schema.json`.**
-  Builds the binary, stands up a throwaway DB, and asserts 130 authorization
+  Builds the binary, stands up a throwaway DB, and asserts 150 authorization
   behaviours against a live server. The rules are the only tenancy enforcement
   in the platform and nothing else type-checks them. Add a check when you add a
   rule, and bump `EXPECTED_CHECKS`. Note PocketBase answers 404 (not 403) when an
@@ -570,6 +653,10 @@ Keep it in step with the table above.
 - `internal/leafsync/embedded.go` - `leaf-sync run --nats`: the edge's leaf node inside the agent process, via `internal/natsd`
 - `hooks/thing_routes.go` - `POST /api/org/things`: Thing + optional NATS/Nebula identity in one transaction; member-level for inventory, owner/admin for the identity half
 - `hooks/client_config_routes.go` - `GET /api/client-config`: deployment facts the SPA cannot be compiled with (browser-facing NATS WebSocket URLs). Authed (`users`) — there is no pre-login need, so no reason to publish the bus address
+- `internal/health/` - readiness engine shared by both binaries: check registry, background prober, and the unauthenticated NATS reachability (`DialInfo`) + operator-trust (`CheckCreds`) probes
+- `internal/metrics/` - Prometheus exposition shared by both binaries, plus the optional Bearer/Basic scrape token
+- `hooks/observability.go` + `hooks/readiness.go` + `hooks/metrics.go` - the Control Plane's `/api/ready` + `/metrics` routes, its checks, and its collectors
+- `internal/leafsync/observe.go` - the edge's own `/ready` + `/metrics`, reading the leaf's loopback monitoring port; the only place per-site health is actually visible
 - `cmd/leaf-sync/` + `internal/leafsync/` - Edge agent (config bootstrap + KV sync); see `cmd/leaf-sync/README.md`
 - `ui/src/stores/auth.ts` - Authentication and organization context
 - `ui/src/stores/nats.ts` - NATS WebSocket connection manager

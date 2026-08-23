@@ -11,9 +11,17 @@
 // config a real file you can read and edit, and makes moving to an external
 // server a config change rather than a migration.
 //
-// Deliberately not supported: clustering the Control Plane itself. Run one
-// embedded server. If you need more than one node, add external ones with a
-// cluster block, or turn the embedded server off entirely.
+// Clustering follows from that sameness rather than being a separate feature:
+// a `cluster` block in nats.conf is honoured like any other directive, so a
+// Control Plane can be one node of a cluster whose other nodes are ordinary
+// external nats-servers. TestEmbeddedServerClustersWithAPeer pins this, because
+// an earlier version of this comment claimed the opposite and nothing in the
+// code ever enforced it.
+//
+// The one thing to know before choosing it: this server's lifetime is the
+// Control Plane's, so restarting the platform takes a cluster node down with
+// it. That is an operational cost to weigh, not a restriction — run the bus as
+// a separate process (the default) wherever it is the wrong trade.
 package natsd
 
 import (
@@ -180,6 +188,69 @@ func portOf(rawURL string) (string, error) {
 		return "", fmt.Errorf("no host in %q", rawURL)
 	}
 	return "4222", nil // NATS default when the URL omits a port
+}
+
+// Stats is the embedded server's own view of itself, for the metrics endpoint.
+//
+// WHY THIS IS IN BOUNDS. Everything here is server-level, not account-level: a
+// NATS server counts its own connections and leaf remotes regardless of which
+// account they authenticated into, and reports its own JetStream store size.
+// None of it requires a credential inside a tenant's account, which is why the
+// Control Plane may publish it while it may not publish, say, the contents of
+// an organization's `twin` bucket.
+//
+// Leafnodes is the number of leaf CONNECTIONS currently attached to this
+// server. It is not the same fact as a leaf-sync heartbeat: this counts TCP
+// sessions the server can see, whereas a heartbeat says the agent on that box
+// is actually syncing. A site whose nats-server is up and whose leaf-sync has
+// been dead for a day is counted here and reports no heartbeat there.
+type Stats struct {
+	Connections int
+	Leafnodes   int
+	// Routes is peer connections to other servers in the same cluster. Not
+	// always zero: Start honours a `cluster` block like any other directive, so
+	// a Control Plane peered with external nodes reports them here. See
+	// TestEmbeddedServerClustersWithAPeer.
+	Routes        int
+	SlowConsumers int64
+	InMsgs        int64
+	OutMsgs       int64
+	InBytes       int64
+	OutBytes      int64
+
+	JetStreamEnabled bool
+	JetStreamMemory  uint64
+	JetStreamStore   uint64
+}
+
+// Stats reports the embedded server's counters. The second return is false when
+// no embedded server is running (the default topology), so the caller can leave
+// the corresponding metrics unpublished rather than exporting zeros that look
+// like a server with no traffic.
+func (s *Server) Stats() (*Stats, bool) {
+	if s == nil || s.ns == nil {
+		return nil, false
+	}
+	vz, err := s.ns.Varz(nil)
+	if err != nil || vz == nil {
+		return nil, false
+	}
+	st := &Stats{
+		Connections:   vz.Connections,
+		Leafnodes:     vz.Leafs,
+		Routes:        vz.Routes,
+		SlowConsumers: vz.SlowConsumers,
+		InMsgs:        vz.InMsgs,
+		OutMsgs:       vz.OutMsgs,
+		InBytes:       vz.InBytes,
+		OutBytes:      vz.OutBytes,
+	}
+	if js := vz.JetStream.Stats; js != nil {
+		st.JetStreamEnabled = true
+		st.JetStreamMemory = js.Memory
+		st.JetStreamStore = js.Store
+	}
+	return st, true
 }
 
 // Stop shuts the server down and waits for it to finish.

@@ -99,9 +99,20 @@ func Run(ctx context.Context, cfg *Config) error {
 	// records that actually changed. Persists for the lifetime of this daemon.
 	cache := newSyncCache()
 
-	// One cycle: reconcile every collection, then publish a heartbeat.
+	// Local readiness + metrics. Started after the connection exists so the
+	// checks have something to report on, and never fatal — a monitoring port
+	// that cannot bind must not stop a site from syncing.
+	state := newSyncState(cfg, collections)
+	state.setConn(nc)
+	obs := newObservability(cfg, state)
+	obs.Start(ctx)
+
+	// One cycle: reconcile every collection, publish a heartbeat for the
+	// console, and record the same facts locally for /ready and /metrics.
 	cycle := func() {
+		started := time.Now()
 		synced, errs := syncAll(ctx, pb, kw, cache, collections)
+		state.recordCycle(synced, errs, time.Since(started))
 		hb.publish(ctx, synced, errs, cfg.SyncInterval)
 	}
 

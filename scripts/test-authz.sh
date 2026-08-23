@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=147         # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=150         # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -1069,6 +1069,32 @@ req PATCH "/collections/leaf_nodes/records/$LEAF" "$TA" '{"code":"RENAMED"}'
 expect "owner cannot change a leaf node's code" "403|400|404" "$RCODE" "$RBODY"
 req PATCH "/collections/leaf_nodes/records/$LEAF" "$TA" '{"name":"Leaf One Renamed"}'
 expect "owner CAN rename it (same record, so the deny was the frozen field)" 200 "$RCODE" "$RBODY"
+
+echo ""
+echo "=== 19. the observability endpoints are unauthenticated by design ==="
+# /api/ready and /metrics are reachable without a session on purpose: the
+# callers are container orchestrators, load balancers and uptime checkers, none
+# of which hold one. That is an authorization decision rather than an oversight,
+# so it is pinned here -- if either endpoint ever starts requiring auth, every
+# probe in the field breaks silently and this is the check that says so.
+#
+# The whole readiness body is public, including each check's detail and
+# suggested fix. An operator who wants it closed puts it behind their proxy,
+# the same lever that closes /metrics (or sets metrics.token).
+
+req GET /ready ""
+expect "anyone CAN probe readiness without a session" "200|503" "$RCODE" "$RBODY"
+if [ -n "$(jn "$RBODY" 'o.checks && o.checks.length ? o.checks[0].name : ""')" ]; then
+  ok "the readiness body names each check, so a probe can say what is wrong"
+else
+  no "the readiness body carried no check names"
+fi
+
+# Open by default and documented as such: the series carry no customer
+# identifiers, and an endpoint needing a credential is one that does not get
+# scraped. metrics.token closes it; this asserts the default, not a rule.
+RAWCODE=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/metrics")
+expect "metrics are scrapeable without a session (metrics.token is unset here)" 200 "$RAWCODE" ""
 # ----------------------------------------------------------------------- result
 
 TOTAL=$((PASS + FAIL))

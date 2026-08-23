@@ -167,9 +167,9 @@ Full reference: the [platform docs](https://github.com/stone-age-io/platform-doc
 
 ### Running the bus separately
 
-`serve --nats` is single-node and off by default. It is an ordinary
-`nats-server` reading the ordinary config file `nats export` writes, so moving to
-a separate process is a config change rather than a migration:
+`serve --nats` is off by default. It is an ordinary `nats-server` reading the
+ordinary config file `nats export` writes, so moving to a separate process is a
+config change rather than a migration:
 
 ```bash
 ./stone-age nats export --output ./nats-config/
@@ -177,8 +177,92 @@ nats-server -c ./nats-config/nats.conf
 ./stone-age serve
 ```
 
-While they share a process, restarting the Control Plane restarts the bus. See
-ADR 0001 in the platform docs.
+That sameness is not a slogan: the parsed config goes straight to
+`nats-server`, so **a `cluster` block works like any other directive** and the
+Control Plane can be one node of a cluster whose other nodes are plain
+`nats-server` processes. `stone_age_nats_cluster_routes` reports the peers.
+
+The trade-off to weigh before choosing that: while they share a process,
+restarting the Control Plane restarts the bus — and in a cluster that means
+taking a node down with it. See ADR 0001 in the platform docs.
+
+### Readiness and metrics
+
+`GET /api/ready` answers whether the deployment actually *works*, which
+PocketBase's `/api/health` does not — that one reports the HTTP server is
+listening, and it is true of every failure worth catching here:
+
+```bash
+curl -s localhost:8090/api/ready
+```
+
+| Check | Catches |
+| --- | --- |
+| `database` | SQLite unreadable — `pb_data/` not writable, or held by another running instance |
+| `schema` | `schema.json` was never imported, so the platform's own fields do not exist — and PocketBase drops writes to missing fields silently, which is how `bootstrap` "succeeds" while writing nothing |
+| `schema_version` | This `pb_data` was written by a **newer** build. Migrations do not roll back, so `serve` cannot repair it |
+| `bootstrap` | No user has `is_operator`, or no organization has `is_system_org` — nobody can create an organization |
+| `nats_operator` | No NATS operator record, or no JWT on it. Nothing can sign an account or user credential |
+| `nats_reachable` | Nothing listening at `nats.server_url`. *Warns* if it answers but JetStream is off — KV buckets need it |
+| `nats_trust` | The NATS server **rejects this platform's `$SYS` credential**: its `nats.conf` carries a different operator, so every account claim fails, no organization reaches the bus, and the console looks fine |
+| `nats_websocket_urls` | *Warns* — unset, so the console falls back to `ws://localhost:9222` and no browser on another machine can reach the bus |
+| `encryption_at_rest` | *Warns* — NATS seeds and Nebula private keys are stored in plaintext |
+
+Only a failure returns 503. Warnings answer 200: a probe's only lever is to
+restart or de-register, and neither fixes "you have not set an encryption key".
+A check that could not look at all (no `$SYS` credential to test with) reports
+`skipped` rather than passing.
+
+Every check carries a `detail` and, when unhappy, a suggested `fix`; the same
+text goes to the log. The endpoint is unauthenticated, because the callers are
+orchestrators and uptime checkers that hold no session — put it behind your
+proxy if the deployment needs it closed. The container image wires it to
+`HEALTHCHECK`.
+
+`GET /metrics` is Prometheus text, open by default:
+
+```yaml
+scrape_configs:
+  - job_name: stone-age
+    static_configs: [{ targets: ["platform.example.com:8090"] }]
+```
+
+Set `metrics.token` to close it; the same value works as `Authorization: Bearer`
+or as HTTP Basic with any username, covering every scraper in common use.
+
+| Metric | What it says |
+| --- | --- |
+| `stone_age_ready` | 1 when the last probe passed. Warnings do not clear it |
+| `stone_age_check_state{name,state}` | Each check's current state, as a complete state set |
+| `stone_age_check_timestamp_seconds` | Last probe time — alert on this going stale, it means the prober itself is wedged |
+| `stone_age_build_info{version}` | Always 1; read the label |
+| `stone_age_http_requests_total{route,method,status}` | Traffic by matched route *pattern*, status by class |
+| `stone_age_http_request_duration_seconds` | Request latency histogram, same route label |
+| `stone_age_records{collection}` | Rows **configured** — inventory, not availability |
+| `stone_age_inactive_records{collection}` | Decommissioned things and leaf nodes (`active = false`) |
+| `stone_age_nats_users_revoked` | Credentials on their account's revocation list |
+| `stone_age_database_size_bytes` | SQLite plus its WAL, for disk growth |
+| `stone_age_collector_errors` | Collectors that failed *this scrape* — the affected series are missing, not zero |
+| `stone_age_nats_*` | The embedded bus: `_embedded_up`, connections, cluster routes, leaf-node connections, slow consumers, msgs/bytes, JetStream bytes. **Only with `serve --nats`** — absent entirely with an external server, rather than reported as zero |
+
+The standard `go_*` and `process_*` collectors are included too.
+
+**Nothing here is per-organization, and that is structural rather than a
+simplification.** This process holds the NATS operator and the `$SYS` account
+and has no user credential inside any organization's account, so it cannot read
+what is in one — not the `twin` buckets, and not the `leaf_status` heartbeats
+`leaf-sync` writes. `stone_age_records{collection="leaf_nodes"}` therefore
+counts leaf nodes *configured*; an alert on it can never fire.
+
+Per-site health is exported by `leaf-sync` on the edge box, which is inside the
+account and keeps answering when the WAN is down — see
+[cmd/leaf-sync/README.md](cmd/leaf-sync/README.md). The console shows the same
+thing for humans, because a browser connects with the logged-in user's own
+in-account credential.
+
+With an external `nats-server`, scrape it with
+[prometheus-nats-exporter](https://github.com/nats-io/prometheus-nats-exporter):
+it reads the server's own monitoring port and reports far more than this could.
 
 ### Branding overlay
 

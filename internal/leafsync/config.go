@@ -36,6 +36,23 @@ type Config struct {
 
 	SyncInterval time.Duration
 
+	// ObserveAddr is the listen address for /ready and /metrics. Empty (the
+	// default) means the endpoints are not served — the readiness checks still
+	// run and still log, they just are not reachable over the network. Opening
+	// a port on an edge appliance should be a decision, not a default.
+	ObserveAddr string
+	// MetricsToken optionally protects /metrics. Empty means open, which is
+	// reasonable on an address bound to loopback or a management LAN.
+	MetricsToken string
+	// MonitorURL is the local NATS server's monitoring endpoint — the `http:`
+	// line `leaf-sync config` writes into nats-leaf.conf. Loopback and
+	// unauthenticated by design, which is how the edge reads its own server's
+	// state (uplink attached? JetStream size?) without ever holding a $SYS
+	// identity. Empty disables the checks and metrics that depend on it.
+	MonitorURL string
+	// ReadinessInterval is how often the checks run.
+	ReadinessInterval time.Duration
+
 	// TwinEnabled turns on digital-twin sync between the local leaf domain and
 	// the hub (see twin.go): a server-maintained mirror of `twin_desired` down,
 	// and a relay of `twin` up. Off by default — it moves data plane traffic, so
@@ -78,6 +95,13 @@ func LoadConfig(path string) (*Config, error) {
 	v.SetDefault("sync.interval", "30s")
 	v.SetDefault("twin.enabled", false)
 	v.SetDefault("jwt_refresh.enabled", false)
+	// Matches the `http:` line buildLeafConf writes. Defaulted rather than left
+	// empty because it is not a deployment choice on a config this tool
+	// generated — it is the address of the file's own monitoring port.
+	v.SetDefault("nats.monitor_url", "http://127.0.0.1:8222")
+	v.SetDefault("observability.addr", "")
+	v.SetDefault("observability.metrics_token", "")
+	v.SetDefault("observability.interval", "15s")
 
 	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
@@ -88,6 +112,11 @@ func LoadConfig(path string) (*Config, error) {
 	interval, err := time.ParseDuration(v.GetString("sync.interval"))
 	if err != nil {
 		return nil, fmt.Errorf("invalid sync.interval: %w", err)
+	}
+
+	observeInterval, err := time.ParseDuration(v.GetString("observability.interval"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid observability.interval: %w", err)
 	}
 
 	cfg := &Config{
@@ -102,6 +131,10 @@ func LoadConfig(path string) (*Config, error) {
 		EmbedNATS:          v.GetBool("nats.embedded"),
 		EmbeddedConfig:     v.GetString("nats.embedded_config"),
 		SyncInterval:       interval,
+		ObserveAddr:        v.GetString("observability.addr"),
+		MetricsToken:       v.GetString("observability.metrics_token"),
+		MonitorURL:         v.GetString("nats.monitor_url"),
+		ReadinessInterval:  observeInterval,
 		TwinEnabled:        v.GetBool("twin.enabled"),
 		ReloadHook:         v.GetString("reload_hook"),
 		JWTRefresh:         v.GetBool("jwt_refresh.enabled"),

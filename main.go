@@ -141,6 +141,17 @@ func setDefaults() {
 	// Branding (operator-level overrides for logo / theme / app name).
 	// Empty disables overrides; the embedded default branding is used.
 	viper.SetDefault("branding.dir", "")
+
+	// Observability. /api/ready is always served — a readiness probe that can be
+	// switched off is one that gets switched off and then cannot be explained.
+	// /metrics can be turned off, and defaults to unauthenticated: the series it
+	// exposes are aggregate counts and process statistics with no customer
+	// identifiers, and an endpoint requiring a credential is one that mostly
+	// does not get scraped. Set metrics.token to close it.
+	viper.SetDefault("metrics.enabled", true)
+	viper.SetDefault("metrics.token", "")
+	viper.SetDefault("readiness.interval", "15s")
+	viper.SetDefault("readiness.timeout", "5s")
 }
 
 // validateEncryptionKey rejects a malformed at-rest encryption key at startup.
@@ -464,6 +475,40 @@ func main() {
 	app.OnTerminate().BindFunc(func(e *core.TerminateEvent) error {
 		embeddedNATS.Stop() // no-op when nil
 		return e.Next()
+	})
+
+	// --- Readiness + metrics ---
+	//
+	// GET /api/ready answers "is this deployment actually working", which
+	// PocketBase's own /api/health does not: every interesting failure here —
+	// `bootstrap` run before `migrate up`, a NATS server that does not trust
+	// this operator — leaves a binary serving 200s. GET /metrics exposes the
+	// same checks as a state set alongside this process's HTTP traffic, its own
+	// row counts, and (only with --nats) the embedded bus's counters.
+	//
+	// Nothing here reaches inside an organization's NATS account, because this
+	// process holds no credential in one. Per-site liveness is read by the
+	// console, whose browser connects as the logged-in user, and exported by
+	// leaf-sync from the edge.
+	hooks.RegisterObservability(app, hooks.ObservabilityOptions{
+		Version:               version.Version,
+		OrgCollection:         tenancyOptions.OrganizationsCollection,
+		MembershipCollection:  tenancyOptions.MembershipsCollection,
+		NatsAccountCollection: natsOptions.AccountCollectionName,
+		NatsUserCollection:    natsOptions.UserCollectionName,
+		NebulaHostCollection:  nebulaOptions.HostCollectionName,
+		AuditCollection:       auditOptions.CollectionName,
+		NatsServerURL:         natsOptions.NATSServerURL,
+		NatsWebsocketURLs:     natsWebsocketURLs,
+		NatsEncryptionKey:     natsOptions.EncryptionKey,
+		NebulaEncryptionKey:   nebulaOptions.EncryptionKey,
+		// Closure, not a value: `serve --nats` assigns embeddedNATS during
+		// OnServe, long after this registration runs.
+		EmbeddedNATS:   func() *natsd.Server { return embeddedNATS },
+		ProbeInterval:  viper.GetDuration("readiness.interval"),
+		ProbeTimeout:   viper.GetDuration("readiness.timeout"),
+		MetricsEnabled: viper.GetBool("metrics.enabled"),
+		MetricsToken:   viper.GetString("metrics.token"),
 	})
 
 	// 6. Serve Embedded UI with SPA Support

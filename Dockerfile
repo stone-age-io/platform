@@ -86,4 +86,25 @@ USER stoneage
 # cannot speak the NATS TCP protocol, so the console needs this one).
 EXPOSE 8090 4222 9222
 
+# /api/ready rather than PocketBase's /api/health, which only reports that the
+# HTTP server is listening -- true of every failure worth catching here. This
+# answers 503 while the operator is unseeded, the schema never imported, or the
+# NATS server does not trust this platform's operator.
+#
+# busybox wget is already in the base image and exits non-zero on a 503, so no
+# curl and no shell arithmetic are needed.
+#
+# start-period covers first boot: the entrypoint seeds the superuser, imports
+# the schema, bootstraps the operator and runs `nats export` before serving, and
+# on a slow disk that is not quick. Failed probes inside the period do not count
+# against retries.
+#
+# Note this marks the container unhealthy, it does not restart it -- plain
+# `docker run` takes no action on a health status. That is the right default:
+# most of what this endpoint reports (unseeded operator, unreachable bus) is not
+# fixed by a restart, and an orchestrator configured to restart on unhealthy
+# would loop instead of surfacing the actual problem.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
+  CMD wget -q -O /dev/null http://127.0.0.1:8090/api/ready || exit 1
+
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

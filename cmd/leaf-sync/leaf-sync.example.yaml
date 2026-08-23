@@ -35,6 +35,14 @@ nats:
   embedded: false
   # embedded_config: /etc/leaf-sync/nats-leaf.conf   # default: <output.dir>/nats-leaf.conf
 
+  # The local NATS server's monitoring endpoint — the `http:` line that
+  # `leaf-sync config` writes into nats-leaf.conf. Loopback and unauthenticated
+  # by design, which is how this agent reads its own server's state (is the hub
+  # uplink attached? how big is the JetStream store?) without ever holding a
+  # $SYS user credential. Works the same whether the leaf runs embedded or as a
+  # separate process. Empty disables the checks and metrics that need it.
+  monitor_url: http://127.0.0.1:8222
+
 output:
   dir: .            # where `config` writes nats-leaf.conf + the creds file
 
@@ -54,6 +62,40 @@ sync:
 # the bucket, so no key needs to encode it.
 twin:
   enabled: false
+
+# Readiness + Prometheus metrics for THIS site.
+#
+# This is where a site's real health lives, and it is deliberately not something
+# the central platform can report. Whether the config mirror is fresh, whether
+# the uplink to the hub is attached, how full JetStream is — all of it is inside
+# the organization's NATS account and on this box. The Control Plane holds the
+# NATS operator and the $SYS account and has no credential in any tenant's
+# account, so all it can count is how many leaf nodes are *configured*.
+#
+# The `leaf_status` KV heartbeat still carries a summary up for the console to
+# render. That is a tenant-facing product feature, not a monitoring channel: it
+# is best-effort, and being delivered over the very link that breaks, it goes
+# quiet during exactly the outage you want to know about. These endpoints are
+# scraped locally and keep answering when the WAN is down.
+#
+# The checks always run and always log a readiness transition. `addr` only
+# controls whether they are reachable over the network — opening a port on an
+# edge appliance should be a decision, not a default. Bind it to loopback or a
+# management interface; 0.0.0.0 exposes the site's device counts to the LAN.
+#
+#   /ready    503 while local NATS is unreachable or the sync loop has frozen.
+#             An islanded site (no hub uplink) is a WARNING and still 200 —
+#             local NATS keeps working and devices keep running against the
+#             mirrored config, which is the entire point of a leaf node.
+#   /metrics  leaf_sync_* — cycle freshness, per-collection mirrored counts,
+#             uplink state, JetStream bytes, attached device connections.
+#
+# metrics_token: empty means open. When set, accepted as `Authorization: Bearer
+# <token>` or as HTTP Basic with any username and the token as the password.
+observability:
+  addr: ""                  # e.g. 127.0.0.1:9100, or 0.0.0.0:9100 to scrape remotely
+  metrics_token: ""
+  interval: 15s
 
 # --- Reserved (not yet active in v0) ---------------------------------------
 # Optional account-JWT refresh. When enabled, leaf-sync watches the org account

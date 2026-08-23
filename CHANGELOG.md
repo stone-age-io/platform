@@ -11,7 +11,79 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **Readiness endpoint: `GET /api/ready`.** PocketBase's `/api/health` reports
+  that the HTTP server is listening, which is true of every failure worth
+  catching here. This returns 503 while the operator is unseeded, the schema was
+  never imported, or — the one that is otherwise invisible — the NATS server
+  does not trust this platform's operator, so every account claim it publishes
+  is rejected, no organization's account ever reaches the bus, and the console
+  looks fine. Warnings (at-rest encryption off, no browser-facing WebSocket URL)
+  still answer 200; a probe can only restart or de-register, and neither fixes a
+  note. Unauthenticated — the callers are orchestrators and uptime checkers that
+  hold no session — and every check carries a `detail` plus, when unhappy, a
+  suggested `fix`, with the same text in the log. Checks run on a background
+  interval and the endpoint serves the cached answer, so a probe never triggers
+  a NATS dial.
+
+- **Prometheus metrics: `GET /metrics`.** The readiness checks as a state set,
+  this process's HTTP traffic by matched route pattern, row counts from its own
+  database, SQLite size on disk, and — only with `serve --nats` — the embedded
+  bus's own counters. Open by default; `metrics.token` closes it and is accepted
+  as `Authorization: Bearer` or as HTTP Basic with any username, covering every
+  scraper in common use. PocketBase's own auth is deliberately not used: its
+  tokens expire and no scraper has a refresh flow.
+
+  Nothing is per-organization. This process holds the NATS operator and the
+  `$SYS` account and has no credential inside any tenant's account, so it cannot
+  see what is in one. `stone_age_records{collection="leaf_nodes"}` counts leaf
+  nodes **configured** — it is not availability, and an alert on it can never
+  fire.
+
+- **`leaf-sync` exports the health the platform cannot see.** `/ready` and
+  `/metrics` behind `observability.addr` (off by default — opening a port on an
+  edge appliance should be a decision): sync-cycle freshness, per-collection
+  mirrored counts, per-collection errors, whether the uplink to the hub is
+  attached, JetStream bytes, and devices actually connected at the site. The
+  server-derived numbers come from the leaf's loopback monitoring port, so the
+  edge reads its own server without ever holding a `$SYS` credential. An
+  islanded site warns rather than fails and still answers 200: local NATS keeps
+  working and devices keep running against the mirrored config, which is the
+  entire reason a leaf node exists.
+
+  This is not the `leaf_status` heartbeat. That is a tenant-facing feature the
+  console renders, delivered over the very link that breaks, so it goes quiet
+  during exactly the outage you want detail about. These endpoints are scraped
+  locally and keep answering with the WAN down.
+
+- **`HEALTHCHECK` in the container image**, wired to `/api/ready`. It marks the
+  container unhealthy rather than restarting it, which is right: most of what
+  the endpoint reports is not fixed by a restart.
+
+### Fixed
+
+- **`internal/natsd` claimed clustering the Control Plane was "deliberately not
+  supported". It was never true.** `Start` hands the parsed config straight to
+  `nats-server` — that is the package's stated design, "no embedded-only mode,
+  no options derived in Go" — so a `cluster` block has always been honoured like
+  any other directive, and `serve --nats` can be one node of a cluster whose
+  other nodes are plain `nats-server` processes. The comment contradicted its
+  own package doc three paragraphs above it. `TestEmbeddedServerClustersWithAPeer`
+  now pins the behaviour with two real peered servers, and
+  `stone_age_nats_cluster_routes` reports the peers. The real cost of the
+  topology is unchanged and now stated where the claim used to be: the bus dies
+  with the Control Plane process, so restarting the platform takes a cluster
+  node with it.
+
+### Changed
+
+- `github.com/prometheus/client_golang` is now a direct dependency. It was
+  already in the module graph via `slackhq/nebula`, so the binary does not grow.
+  Preferred over hand-writing the text format for the same reason the generated
+  leaf config is validated by `nats-server` itself: nothing in CI scrapes this,
+  so a malformed exposition would look fine in a terminal and be silently
+  unusable. The tests parse it with Prometheus's own parser and run promlint.
 
 ## [0.2.0] - 2026-08-22
 

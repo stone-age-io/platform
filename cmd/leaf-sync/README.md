@@ -52,8 +52,12 @@ working directory or `/etc/leaf-sync/`.
 | `nats.hub_domain` | | Hub's JetStream domain. When set, `run` writes a liveness heartbeat into the hub's `leaf_status` KV. Empty = heartbeat off, and the twin relay cannot run. |
 | `nats.embedded` | | Run the leaf node inside this process — see [Running the leaf node in-process](#running-the-leaf-node-in-process). Same as `--nats` (default `false`). |
 | `nats.embedded_config` | | The `nats-leaf.conf` `--nats` loads (default `<output.dir>/nats-leaf.conf`). |
+| `nats.monitor_url` | | The leaf's own monitoring endpoint, the `http:` line `config` writes (default `http://127.0.0.1:8222`). Loopback and unauthenticated by design — how the edge reads its own server without a `$SYS` credential. Empty disables the checks and metrics that need it. |
 | `output.dir` | | Where `config` writes files (default `.`). |
 | `sync.interval` | | Full-reconcile cadence (default `30s`). |
+| `observability.addr` | | Serve `/ready` + `/metrics` here (default empty = not served; the checks still run and still log). |
+| `observability.metrics_token` | | Closes `/metrics`; accepted as Bearer or Basic-with-any-username (default empty = open). |
+| `observability.interval` | | How often the readiness checks run (default `15s`). |
 | `twin.enabled` | | Turn on [twin sync](#twin-sync-data-plane) (default `false`). Requires `nats.hub_domain`. |
 | `reload_hook`, `jwt_refresh.enabled` | | Reserved — not yet active. |
 
@@ -157,6 +161,72 @@ what the UI treats as "offline."
 Any config key can be overridden by an environment variable: upper-case the key,
 replace dots with underscores, and prefix with `LEAF_SYNC_` — e.g.
 `LEAF_SYNC_POCKETBASE_PASSWORD`, `LEAF_SYNC_SYNC_INTERVAL=15s`.
+
+## Readiness and metrics
+
+A site's real health can only be measured on the site. Whether the config mirror
+is fresh, whether the uplink to the hub is attached, how full JetStream is — all
+of it lives inside the organization's NATS account and on this box. The Control
+Plane holds the NATS operator and the `$SYS` account and has **no credential
+inside any tenant's account**, so the most it can report is how many leaf nodes
+are *configured*. That is why the edge exports its own.
+
+The checks always run and always log a readiness transition. Setting an address
+is what makes them reachable:
+
+```yaml
+observability:
+  addr: "127.0.0.1:9100"    # 0.0.0.0:9100 to scrape from elsewhere
+  metrics_token: ""         # empty = open; Bearer or Basic when set
+  interval: 15s
+```
+
+```bash
+curl -s localhost:9100/ready
+curl -s localhost:9100/metrics
+```
+
+| Check | Fails when |
+|---|---|
+| `nats_local` | The agent is not connected to the local leaf |
+| `sync_freshness` | No cycle completed in three intervals — the loop is wedged |
+| `sync_errors` | *(warns)* A collection errored; its existing mirror is untouched and retried |
+| `hub_uplink` | *(warns)* No outbound leaf connection — this site is **islanded** |
+
+An islanded site warns rather than fails, and still answers 200. Local NATS keeps
+working and devices keep running against the mirrored config; that autonomy is
+the entire reason a leaf node exists, so reporting it as unready would invert the
+design.
+
+| Metric | What it says |
+|---|---|
+| `leaf_sync_last_cycle_timestamp_seconds` | Alert on this going stale — the mirror is frozen |
+| `leaf_sync_last_cycle_duration_seconds` | Wall time of the last reconcile |
+| `leaf_sync_cycles_total` | Cycles completed since this agent started |
+| `leaf_sync_mirrored_records{collection}` | Records in local KV, per collection |
+| `leaf_sync_last_cycle_errors` | Collections that failed last cycle — a stale mirror, not a lost one |
+| `leaf_sync_nats_connected` | 1 when this agent is connected to the local leaf |
+| `leaf_sync_hub_uplink_connected` | 0 = islanded |
+| `leaf_sync_nats_connections` | Devices actually attached at this site |
+| `leaf_sync_jetstream_bytes{tier}` | The number to watch on a small edge disk |
+
+The server-derived rows come from the leaf's own monitoring port
+(`nats.monitor_url`, the `http:` line `leaf-sync config` writes into
+`nats-leaf.conf`). It is loopback and unauthenticated by design, which is how
+the edge reads its own server without ever holding a `$SYS` user credential —
+and it works the same whether the leaf runs embedded or as a separate process.
+When it is unreachable those series are **omitted rather than reported as zero**:
+zero would claim an islanded site with no devices, a much louder statement than
+"not scraped".
+
+### This is not the heartbeat
+
+`leaf-sync` also writes a summary into the hub's `leaf_status` KV once per cycle,
+and the console renders it as online/offline. That is a tenant-facing product
+feature, not a monitoring channel. It is best-effort, one key per site with a
+fixed shape, and — being delivered over the very link that breaks — it goes
+quiet during exactly the outage you want detail about. These endpoints are
+scraped locally and keep answering with the WAN down.
 
 ## Twin sync (data plane)
 
