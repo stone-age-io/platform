@@ -13,6 +13,40 @@ and this file starts where the versioned releases do.
 
 _Nothing yet._
 
+## [0.3.1] - 2026-08-24
+
+The container image, which 0.3.1 exists to publish: 0.3.0 shipped its binaries
+and then failed on the image, so `ghcr.io/stone-age-io/platform:0.3.0` was never
+pushed and `:latest` stayed on 0.2.0. Nothing else about 0.3.0 was wrong, and its
+archives are still the ones to download if you do not want the container.
+
+### Fixed
+
+- **The container build no longer builds the console under emulation.** The `ui`
+  and Go stages now run on the builder's own architecture
+  (`--platform=$BUILDPLATFORM`), with the Go stage cross-compiling via buildx's
+  `TARGETOS`/`TARGETARCH` instead of running an emulated compiler. Vite output is
+  byte-identical whatever the target is, and `CGO_ENABLED=0` cross-compiles for
+  free, so both stages were paying QEMU for nothing: `npm ci` alone took 2m
+  emulated against 12s native.
+
+  It was also a correctness problem, not just a slow one. On the arm64 leg npm
+  installed 207 packages against amd64's 208 — silently, because a platform
+  binding is `optional: true` and npm treats a failed fetch as a shrug — and the
+  build died four minutes later on `Cannot find module
+  '../lightningcss.linux-arm64-musl.node'`, naming a file rather than the package
+  that was never installed. Same base-image digest and same lockfile had built
+  clean two days earlier, so it was a flake; but only the emulated leg could ever
+  hit it. Now only the runtime stage is emulated, and all it does is `apk add`.
+
+### Added
+
+- **CI builds the container image**, amd64 only and without pushing. Nothing
+  outside the release workflow built it before, so the Dockerfile's first
+  exercise was always a tag push — which is why the 0.3.0 failure could not have
+  been caught earlier than the release it broke. Roughly a minute, no QEMU, and
+  it runs after the authorization suite so that result never waits behind it.
+
 ## [0.3.0] - 2026-08-24
 
 Readiness and metrics endpoints on both binaries — and the schema fixes that
@@ -334,7 +368,8 @@ repository public. Each of these was reproduced before being fixed.
 - `scripts/test-authz.sh` grew from 135 to 147 checks, covering the membership
   lifecycle, the code uniqueness constraint, and the frozen leaf-node code.
 
-[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/stone-age-io/platform/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/stone-age-io/platform/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/stone-age-io/platform/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/stone-age-io/platform/releases/tag/v0.1.0

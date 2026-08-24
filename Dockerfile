@@ -19,7 +19,22 @@
 # reach it, not anything visible from inside. Nothing else is required.
 
 # ----------------------------------------------------------------- 1. console
-FROM node:24-alpine AS ui
+# --platform=$BUILDPLATFORM: vite output is static JS and CSS, byte-identical
+# whatever the target architecture, so this stage has no business running under
+# QEMU. Building it once on the builder's own architecture and copying the result
+# into every target leg is both faster and strictly more reliable.
+#
+# It was neither, and cutting v0.3.0 is where that bill came due. The arm64 leg
+# emulated the entire console build -- npm ci alone went from 12s to 2m -- and
+# there npm installed 207 packages against amd64's 208, silently, because a
+# platform binding is `optional: true` and npm treats a failed fetch as a shrug.
+# Four minutes later the build died on `Cannot find module
+# '../lightningcss.linux-arm64-musl.node'`, naming a file rather than the package
+# that was never installed. The same base-image digest and the same lockfile had
+# built clean two days before, so it was a flake -- but only the emulated leg
+# could ever hit it, and it cost a release its container image after the binaries
+# had already published.
+FROM --platform=$BUILDPLATFORM node:24-alpine AS ui
 WORKDIR /src/ui
 
 # Dependencies first, so a source-only change does not re-run npm ci.
@@ -31,7 +46,11 @@ COPY ui/ ./
 RUN npm run build
 
 # ---------------------------------------------------------------- 2. binaries
-FROM golang:1.26-alpine AS build
+# Also the builder's architecture, for the reason the CGO note below already
+# gives: with CGO_ENABLED=0 the Go toolchain cross-compiles for free, so running
+# an emulated compiler to produce the same static binary is pure cost.
+# TARGETOS/TARGETARCH are supplied by buildx, one value per target leg.
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
 WORKDIR /src
 
 COPY go.mod go.sum ./
@@ -44,7 +63,9 @@ COPY --from=ui /src/pb_public ./pb_public
 # a pure-Go translation, so there is no C toolchain to satisfy and the result is
 # a static binary. That is also why cross-compiling releases costs nothing.
 ARG VERSION=dev
-RUN CGO_ENABLED=0 go build \
+ARG TARGETOS
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
       -trimpath \
       -ldflags "-s -w -X platform/internal/version.Version=${VERSION}" \
       -o /out/stone-age .
