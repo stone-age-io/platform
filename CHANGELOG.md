@@ -63,6 +63,53 @@ and this file starts where the versioned releases do.
 
 ### Fixed
 
+- **`schema.json` described two collections it could never actually change.**
+  `nats_account_exports` and `nats_account_imports` carried hand-written field
+  ids (`text_export_name`) while every running install has PocketBase's
+  deterministic ones (`text1579384326`), because pb-nats creates those
+  collections at bootstrap. `core.ImportCollections` keeps the LIVE field
+  whenever the name matches and the id does not — `FieldsList.add` replaces the
+  imported field with the existing one — so all 25 of those definitions were
+  inert, and a re-import migration touching them would have logged success and
+  done nothing. Harmless while they happened to agree; a silent no-op the first
+  time anyone widened a field or added a select value. The ids are now aligned
+  to what the install has, the same fix `e72557f` applied to `account_id`.
+  These are not throwaway collections: pb-nats sets all their rules to `nil`,
+  so their org-scoped owner/admin rules come from `schema.json` and are load
+  bearing. Changing an id cannot lose data — PocketBase reuses the existing
+  field object precisely to avoid recreating the column.
+
+- **`schema.json` now describes pb-nats's `system_account_id`.** The library's
+  own migration adds it to `nats_system_operator`; leaving it undescribed meant
+  every schema comparison reported it as drift, which buries real findings in
+  known noise. Same precedent as `99bf217`.
+
+- **The Members and Invitations screens answered 400 for everyone.** Both
+  sorted by `created`, and `memberships` and `invites` were the only two
+  collections in `schema.json` without it — the other sixteen have carried
+  `created`/`updated` from the beginning. PocketBase rejects an unknown sort
+  term while *parsing* the query, before any API rule is evaluated, so the
+  failure was total (superusers included) and the response said only
+  "Something went wrong while processing your request." Fixed by adding the
+  autodate pair to both collections rather than by dropping the sort, which
+  also leaves the database able to answer when a member joined and when an
+  invite was sent — it could not before.
+
+  The bug was latent from the first commit and only became total in the
+  release: before it, MembersView's loader sent `sort: role` and only the
+  pager buttons sent `role,-created`, so page one worked and page two 400'd,
+  which is invisible on a member list under twenty rows. Consolidating both
+  onto one options object — correct, and necessary so page two keeps the
+  search filter — moved the bad term onto first paint. That change verified
+  every generated *filter* field against `schema.json`; sort terms were not
+  checked, and are now, across all 47 in the console.
+
+  Existing rows keep an empty `created` and therefore sort last, deliberately.
+  An autodate only fills on write and nothing in the database records when
+  those rows were made — PocketBase ids are random, not time-ordered — so a
+  backfill would be an invented date, which downstream readers cannot tell
+  from a real one.
+
 - **`internal/natsd` claimed clustering the Control Plane was "deliberately not
   supported". It was never true.** `Start` hands the parsed config straight to
   `nats-server` — that is the package's stated design, "no embedded-only mode,

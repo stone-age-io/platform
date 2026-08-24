@@ -611,6 +611,21 @@ Rules to follow when touching authorization:
   `authRule: "active = true"` without the `UPDATE` in
   `schema_update_device_active_flag.go` would lock every already-provisioned
   device out of the API on deploy.
+- **A `schema.json` re-import silently keeps the LIVE field when a name matches
+  and the id does not.** `core.ImportCollections` re-adds each existing field
+  the import did not carry by id, and `FieldsList.add` then replaces the
+  imported definition with the existing one — so the migration logs ✅ and
+  changes nothing. Since every `schema_update_*.go` here is "re-import
+  schema.json", this turns a whole class of migration into a no-op. It has bitten
+  twice: `e72557f` (pb-nats recreated `account_id` as text) and the 25
+  hand-written ids on `nats_account_exports`/`nats_account_imports`, whose
+  definitions had never been applied anywhere. **Use PocketBase's deterministic
+  id — `<type>` + crc32 of the field name — for anything a library also creates,
+  and diff a real install before trusting that a re-import migration did what it
+  says.** Only field definitions freeze this way; collection rules are applied
+  normally, which is why those two collections' org-scoped rules are live while
+  their field definitions were inert. Changing an id is safe: PocketBase reuses
+  the existing field object rather than recreating the column.
 - **Run `./scripts/test-authz.sh` after any rule change** and add a check. Pair
   every "cannot" with a "can" on the same record, or a blanket deny passes.
 - **Capture "before" state immediately before the action it belongs to.** A check
@@ -642,6 +657,19 @@ Keep it in step with the table above.
   rule, and bump `EXPECTED_CHECKS`. Note PocketBase answers 404 (not 403) when an
   update rule rejects, and 400 on a denied create — which is why every "cannot"
   is paired with a "can" on the same record.
+- **An unknown `sort` or `filter` field is a 400 before any rule is evaluated.**
+  `apis.recordsList` hands the query to `searchProvider.ParseAndExec` and returns
+  `BadRequestError("", err)`, which reaches the browser as only "Something went
+  wrong while processing your request." — no field name, and it fails for
+  superusers too, so it never looks like authorization. Members and Invitations
+  sorted by a `created` that `memberships` and `invites` did not have, and both
+  screens were dead for every caller. Nothing type-checks a query string against
+  `schema.json`, so **check sort and filter terms against the collection when you
+  touch a list view** — the fix that caused this verified its generated filter
+  fields and not its sort terms. `expand` also 400s but by a different route,
+  after the query, in `apis.expandFetch`: a relation whose TARGET collection has
+  a nil `viewRule` is an error, not an empty expansion, so making a collection
+  superuser-only breaks every list view that expands a relation into it.
 - Frontend has no test runner; development relies on HMR (`npm run dev`),
   browser DevTools, and the PocketBase admin panel at `/_/`
 
