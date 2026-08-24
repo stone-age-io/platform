@@ -11,6 +11,29 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.3.0] - 2026-08-24
+
+Readiness and metrics endpoints on both binaries — and the schema fixes that
+shipping them turned up. `GET /api/ready` immediately reported two migrations
+the binary did not know, which led to diffing a running install against
+`schema.json` for the first time. That found the Members and Invitations
+screens returning 400 for every caller, and 25 field definitions that could
+never have been applied to any database. A check earning its keep before it had
+a single production alert wired to it.
+
+**Upgrading.** The new `schema_version` check compares the `_migrations` table
+against the migrations compiled into the binary, so an install carrying
+automigrate files that were never committed will report unready and answer 503
+on `/api/ready` the moment it starts. `Automigrate` writes those files under
+`go run`, so any database that has ever been pointed at a dev build can have
+them. `./stone-age migrate history-sync --dir <pb_data>`, with the server
+stopped, deletes exactly the rows the check names — it derives its list from
+the same place. Diff the running schema against `schema.json` before you run
+it, though: the rows are the only evidence the drift existed, and once they are
+gone there is nothing left to tell you what those migrations changed.
+
 ### Added
 
 - **Readiness endpoint: `GET /api/ready`.** PocketBase's `/api/health` reports
@@ -311,6 +334,7 @@ repository public. Each of these was reproduced before being fixed.
 - `scripts/test-authz.sh` grew from 135 to 147 checks, covering the membership
   lifecycle, the code uniqueness constraint, and the frozen leaf-node code.
 
-[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/stone-age-io/platform/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/stone-age-io/platform/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/stone-age-io/platform/releases/tag/v0.1.0
