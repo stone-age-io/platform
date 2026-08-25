@@ -5,6 +5,7 @@ import { useUIStore } from '@/stores/ui'
 import { useNatsStore } from '@/stores/nats'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
+import { useValidation } from '@/composables/useValidation'
 import { pb } from '@/utils/pb'
 import type { User, NatsUser } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
@@ -14,6 +15,7 @@ const uiStore = useUIStore()
 const natsStore = useNatsStore()
 const toast = useToast()
 const { confirm } = useConfirm()
+const { validateWebSocketUrl } = useValidation()
 
 // --- Profile State ---
 const profileForm = ref({ name: '' })
@@ -186,10 +188,13 @@ async function handleLeaveOrg() {
 function handleAddUrl() {
   if (newUrl.value) {
     const url = newUrl.value.trim()
-    if (!url.startsWith('ws://') && !url.startsWith('wss://')) {
-      toast.error('URL must start with ws:// or wss://')
+    const syntax = validateWebSocketUrl(url)
+    if (!syntax.valid) {
+      toast.error(syntax.error!)
       return
     }
+    // Syntax is context-free and lives in useValidation; this next rule is not —
+    // it depends on how *this page* was served, which the validator cannot know.
     // A secure page cannot open an insecure socket — browsers block it outright,
     // with no user override. Rejecting here beats saving a URL that can never
     // connect and reports only a generic failure later.

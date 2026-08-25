@@ -82,7 +82,7 @@ platform/
 │   │   ├── main.ts         # Vue app initialization
 │   │   ├── App.vue         # Root component
 │   │   ├── components/     # UI components
-│   │   │   ├── common/     # Reusable UI (ConfirmDialog, ErrorBoundary, etc.)
+│   │   │   ├── common/     # Reusable UI (ConfirmDialog, MetadataEditor, etc.)
 │   │   │   ├── layout/     # AppHeader, AppSidebar, MainLayout
 │   │   │   ├── ui/         # Base UI primitives (BaseCard, ResponsiveList)
 │   │   │   ├── dashboard/  # Dashboard grid, widget containers, variables
@@ -90,7 +90,7 @@ platform/
 │   │   │   ├── widgets/    # 17 widget type components
 │   │   │   │   └── map/    # Map marker sub-components (detail, kv, publish, switch, text)
 │   │   │   ├── map/        # FloorPlanMap component
-│   │   │   ├── nats/       # NATS-specific components (KvDashboard, LiveMessageStream)
+│   │   │   ├── nats/       # NATS-specific components (KvDashboard)
 │   │   │   └── locations/  # Location map visualization
 │   │   ├── composables/    # Vue composables (useNatsKv, useLeafletMap, etc.)
 │   │   ├── stores/         # Pinia stores (auth, dashboard, nats, ui, widgetData)

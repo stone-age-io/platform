@@ -1,7 +1,7 @@
 <template>
   <div class="widget-state" :class="state">
     <template v-if="state === 'loading'">
-      <LoadingState size="small" inline />
+      <span class="loading loading-spinner loading-md"></span>
       <div v-if="message && !compact" class="state-message">{{ message }}</div>
     </template>
 
@@ -23,8 +23,6 @@
 </template>
 
 <script setup lang="ts">
-import LoadingState from '@/components/common/LoadingState.vue'
-
 defineProps<{
   state: 'loading' | 'error' | 'empty'
   message?: string

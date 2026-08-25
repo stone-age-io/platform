@@ -22,13 +22,13 @@ The official web management console for the Stone Age Platform. A "Single Pane o
 ```text
 src/
 ├── components/
-│   ├── common/        # ConfirmDialog, DebugPanel, ErrorBoundary, JsonViewer, LoadingState, ResponseModal, KeyboardShortcutsModal
+│   ├── common/        # ConfirmDialog, DebugPanel, JsonViewer, ResponseModal, KeyboardShortcutsModal
 │   ├── dashboard/     # Visualizer shell (Grid, Sidebar, Tree, WidgetContainer, Add/Configure modals, VariableBar, GaugeZone/Threshold editors)
 │   │   └── config/    # Per-widget config panels (Button, Chart, Console, Gauge, Kv, KvTable, Map, Markdown, PocketBase, Publisher, Scanner, Slider, Stat, Status, Switch, Text)
 │   ├── layout/        # App shell (MainLayout, AppHeader, AppSidebar)
 │   ├── locations/     # LocationMapViz, LocationMapDrawer
 │   ├── map/           # FloorPlanMap (image-overlay indoor positioning)
-│   ├── nats/          # KvDashboard, LiveMessageStream
+│   ├── nats/          # KvDashboard
 │   ├── things/        # SchemaBuilder (visual JSON Schema editor used by MessageSchemaFormView)
 │   ├── ui/            # Generic UI (BaseCard, ResponsiveList)
 │   └── widgets/       # Visualizer widget implementations
@@ -152,7 +152,6 @@ We bridge the gap between **SQL Metadata** (PocketBase) and **Live State** (NATS
     gives it a server-maintained JetStream **mirror** of `twin_desired` and relays
     its local `twin` up to the hub — so the edge keeps writing reported state, and
     reading the last-known desired state, straight through a WAN outage.
-*   **Live Message Stream:** The `LiveMessageStream` component tails core NATS subjects for debugging wire traffic.
 
 ### 5. Visualizer (Dashboard)
 The Visualizer is the home view at `/`, and the only screen the `dashboard` role can reach. It is a per-user, per-org widget canvas backed by `stores/dashboard.ts`.
