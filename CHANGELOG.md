@@ -11,7 +11,56 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+
+- **pb-nats upgraded to v0.2.0, which repairs operators that have no usable
+  signing key.** Every account JWT is signed with the operator's most recent
+  signing key, and the publisher refuses to start without one — so an operator
+  whose key list is empty fails every account save and sits in bootstrap mode for
+  the life of the process. It is silent while it lasts: a NATS server whose
+  resolver directory is already populated keeps authenticating every client, so
+  the deployment looks healthy until somebody edits an account.
+
+  Databases created before pb-nats had signing keys are in that state. The
+  migration adopts the operator's own *identity* key as signing key #1 rather
+  than generating a fresh one, because a new key is absent from the operator JWT
+  baked into every running server's `nats.conf` — that list is never published
+  over `$SYS` — so signing accounts with it would reject them all until a
+  re-export and a fleet restart. The identity key is already trusted and already
+  signed those accounts, so adopting it is invisible to a running server: no
+  re-export, no NATS restart, no downtime, nothing to do by hand. It is the same
+  migration `nsc reissue operator --convert-to-signing-key` performs.
+
+  Upgraded deployments now log a warning on every boot saying identity and
+  signing key are the same key. That state works and needs no urgent action, but
+  it blocks keeping the identity key offline and blocks
+  `strict_signing_key_usage`, both of which assume the identity key signs nothing
+  but the operator JWT. Separating them is a deliberate ceremony —
+  `add_signing_key` on the operator, `nats export`, restart NATS, re-save every
+  account, then `remove_signing_key` for the old key — not something a library
+  upgrade should do behind an operator's back.
+
+  Fresh installs are unaffected: they have always generated a distinct signing
+  key, and the migration skips any operator that already has one.
+
+- **`nats_system_operator.private_key` and `.seed` are no longer required.**
+  Same trap as the legacy signing columns in 0.2.0: PocketBase validates the
+  whole record on every save, so a blank required column fails the next write to
+  the operator for an unrelated reason — and because pb-nats initializes from
+  `OnBootstrap`, which fires for every command, an operator save it cannot
+  complete takes down `migrate up` as well as `serve`, leaving no in-band way to
+  relax the flag. Nothing clears these fields today; this keeps the door open.
+
+  It has to be done here as well as in pb-nats. `nats_system_operator` is
+  declared twice — pb-nats builds it, and `schema.json` carries a dump of it —
+  and on a collection that already exists the schema import wins, so relaxing it
+  in the library alone would be undone by the next re-import.
+
+Two further pb-nats fixes in v0.2.0 do not affect this deployment but are worth
+recording: at-rest encryption silently loaded *zero* signing keys for the
+operator and every account (`nats.encryption_key` is unset here), and
+`$SYS.REQ.CLAIMS.DELETE` was signed with the operator identity key, which breaks
+under `strict_signing_key_usage` (not enabled here).
 
 ## [0.3.1] - 2026-08-24
 
