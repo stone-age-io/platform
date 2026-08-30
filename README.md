@@ -93,6 +93,26 @@ inventory entry, a login, a NATS identity and a mesh node. Deactivating it takes
 all four away in one operation — the API rule blocks new logins, outstanding
 tokens are invalidated immediately, and the NATS credential is revoked.
 
+**One name for a tenant, everywhere.** `organizations.code` is the ecosystem's
+single globally unique identifier; everything under it is unique only within its
+organization. The rule is **ids for storage, codes for addressing** — relation
+columns stay PocketBase ids, while anything that has to survive leaving this
+database (a NATS subject, a URL, a sticker on a wall) travels by code. The
+managed-org subject rewrite roots at it, so a sibling app reading
+`helpdesk.{code}.>` and a person scanning a label are naming the same tenant.
+Codes are optional but **immutable**: mutability, not optionality, was what
+disqualified the alternative. See ADR 0002 in
+[platform-docs](https://github.com/stone-age-io/platform-docs).
+
+**QR labels.** Print an operator-branded label for any thing or location that
+has a code, sized in millimetres to real stock (2″ × 1″ and 4″ × 2″, both
+reserving the centred RFID inlay keep-out so one layout prints on plain or RFID
+media). The payload is the **bare code** — no host, no organization, no kind
+token — because a sticker in a public hallway is something a stranger can
+replace, and a URL payload would let a forged label send a person to arbitrary
+content. Scanning happens inside an app (the `scanner` widget here, `/staff/scan`
+in the helpdesk); nothing ever fetches the decoded string as a destination.
+
 **The contract layer.** Declarative device contracts describing *where* a
 participant speaks and *what shape* its messages take, so a consumer can resolve
 both from data alone:

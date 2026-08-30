@@ -274,7 +274,7 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
 8. **Maps** - Leaflet-based maps with floorplan overlays
 9. **PWA** - Service worker, manifest, installable
 10. **Keyboard Shortcuts** - Configurable keyboard shortcuts with modal reference
-11. **Operator Org & Managed Orgs** - Bootstrap creates the platform operator's own org (`is_operator_org`) alongside the `$SYS` org (`is_system_org`); its NATS account is the hub for shared operator services (helpdesk etc.). Flagging a customer org `managed` provisions a stream export of `helpdesk.>` (configurable: `nats.managed_export_subject`) from its account plus a hub-side import remapped to `helpdesk.{orgId}.>` — the org prefix is baked into the signed account JWT, so event provenance is subject-based and unforgeable (`hooks/managed_org_exports.go`).
+11. **Operator Org & Managed Orgs** - Bootstrap creates the platform operator's own org (`is_operator_org`) alongside the `$SYS` org (`is_system_org`); its NATS account is the hub for shared operator services (helpdesk etc.). Flagging a customer org `managed` provisions a stream export of `helpdesk.>` (configurable: `nats.managed_export_subject`) from its account plus a hub-side import remapped to `helpdesk.{organizations.code}.>` — the org prefix is baked into the signed account JWT, so event provenance is subject-based and unforgeable (`hooks/managed_org_exports.go`). That token was `org.Id` until ADR 0002 (see **Organization code** below); `hubImportName(org.Id)` still keys the import *record* by the immutable id, which is correct and should stay. `ensureManagedExports` is no longer create-if-missing: it `reconcile`s the desired fields on an existing import, because a create-only hook would have left a renamed org's signed import routing at the old token while the consumer's `helpdesk.*.tickets.>` wildcard masked the failure — traffic matches, and never arrives.
 12. **Edge / Leaf Nodes** - `leaf_nodes` auth collection (a "special thing" with one nats_user, server-provisioned). The `leaf-sync` agent runs on the edge, authenticates as the leaf node, and mirrors its org's config collections into a NATS leaf node's local JetStream KV. A leaf-node identity holds **no read grant on any `nats_*` or `nebula_*` collection**: `leaf-sync config` gets everything it needs from `GET /api/leaf/bootstrap`, which returns eight named fields (`domain`, `code`, `creds`, `account_jwt`, `account_pub`, `operator_jwt`, `sys_account_jwt`, `sys_account_pub`). `nats_system_operator` stays superuser-only; `GET /api/leaf/operator-jwt` remains as a superseded alias so upgrade order doesn't matter.
     - **A generated `nats-leaf.conf` must satisfy operator-mode validation, which no string assertion can check.** Two directives are mandatory and were both missing for months, so `leaf-sync config` produced a file `nats-server` refused to load — the failure was invisible because the only tests were `strings.Contains` over the output. (1) Every leaf remote needs an `account` key naming the local account; (2) `resolver_preload` needs the **`$SYS` account JWT** as well as the org's, because the operator JWT names a system account and `resolver: MEMORY` has nowhere to fetch it — without it the server dies with `error resolving system account: account missing` before JetStream starts. Preloading `$SYS`'s *account* JWT is public trust material and grants nothing; connecting as `$SYS` needs a `$SYS` **user** credential, which is never served. `TestBuildLeafConfIsAcceptedByNATSServer` now runs the real generator's output through `nats-server`'s own `ProcessConfigFile` + `NewServer` (no ports, no network) — keep it, and don't replace it with more `Contains` checks.
     - **`leaf-sync run --nats` runs the leaf node in-process** (`internal/leafsync/embedded.go`, reusing `internal/natsd`), off by default. Two consequences worth keeping: the server starts **before** PocketBase is touched, and a failed login then **retries** instead of exiting — exiting would take the bus down, and a supervisor cycling the pair through a WAN outage means devices reconnecting and JetStream recovering its store on a loop. Without `--nats` the old fail-fast behaviour stands, because the bus is another process. Cost: the binary goes ~12 MB → ~26 MB, since `nats-server` links in either way, plus ~3 MB for the Prometheus client behind `leaf-sync`'s `/metrics` (measured 25.8 → 28.9 MB). The Control Plane pays nothing for that second one — `slackhq/nebula` already linked `client_golang` in there. `leaf-sync` writes a best-effort liveness heartbeat into the hub's `leaf_status` KV (when `nats.hub_domain` is set); the UI reads it to show online/offline status on the leaf node list + detail views. Credentials are resettable by org Admins/Owners (collection `manageRule`) — `things` now carries the same `manageRule`, so a device's PocketBase password is recoverable too.
@@ -432,6 +432,60 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
       the same argument as `TestBuildLeafConfIsAcceptedByNATSServer`. The tests
       parse the output with Prometheus's own parser and run promlint over it.
 15. **Decommissioning a device** - `things.active` / `leaf_nodes.active`, owner/admin only. The flag is enforced in three places at once, because any one of them alone is a half-measure: the `authRule` (`active = true`) blocks new logins, `hooks/active_flag.go` refreshes `tokenKey` so tokens already issued die immediately, and the same hook sets `revoke` on the linked `nats_user` so the signed NATS credential stops working. Reactivating sets `regenerate`, issuing a fresh credential — the old `.creds` stays dead, because the account JWT's revocation cutoff is permanent. Distinct from a leaf node's heartbeat status, which reports whether the edge box *is* connected, not whether it *may* connect.
+
+16. **Organization code — the ecosystem's namespace root** (ADR 0002 in
+    `platform-docs`). The rule is **ids for storage, codes for addressing**.
+    `organizations.code` is the one *globally* unique identifier in the
+    ecosystem; everything below it (`things`, `locations`, `thing_types`,
+    `location_types`, `leaf_nodes`) is unique only within its org, which the
+    `UNIQUE (organization, code) WHERE code != ''` partial indexes already
+    enforce. Relation columns stay PocketBase ids — codes address, ids store.
+
+    `hooks/org_code.go` derives a code from the name on create when one wasn't
+    given (`Slugify`, max 31, `^[a-z][a-z0-9-]{1,30}$`) and **refuses on
+    collision rather than auto-suffixing** — an invented `acme-2` would be
+    printed on labels and baked into signed JWTs before anyone noticed it was
+    the wrong tenant. Errors go through `apis.NewBadRequestError`, because a
+    plain `fmt.Errorf` from a hook reaches the client as
+    `{"message":"Failed to create record."}` and the operator never learns which
+    name collided. Bootstrap reserves `system` and `operator`, matching the
+    existing `is_system_org` / `is_operator_org` special cases.
+
+    **`code` is optional but immutable.** Mutability was the disqualifier, not
+    optionality: `@request.body.code:changed = false` freezes it on
+    `organizations` and the four inventory collections. The sharp edge is that
+    this is a hook and rule guard, so it binds the API and **not** a superuser
+    editing in the PocketBase dashboard — and once codes are on stickers and in
+    signed account JWTs, an edit is a site visit plus a re-signed export.
+
+    `orgSlugFor` (`hooks/thing_routes.go`) returns this code rather than
+    slugifying the mutable `name`. That was a second, independent instance of
+    the same bug, and it yields the review question worth keeping: not *"is this
+    identifier unique"* but **"whose database does this identifier belong to."**
+
+17. **QR labels** (`ui/src/components/common/QrLabelModal.vue`) - print an
+    operator-branded label from any thing or location that has a code. The
+    payload is the **bare code** — no host, no org, no kind token. A sticker in
+    a public hallway is an attacker-writable surface, so a URL payload would let
+    a forged label send a person to arbitrary content; a bare in-system
+    identifier means the worst case is resolving a different record inside an
+    already-authenticated session. It also makes maximum error correction free:
+    `DOOR-1` at EC level H is a 21×21 symbol where the URL form needs 41×41.
+
+    Sizes are **millimetres**, not pixels — 2″ × 1″ and 4″ × 2″, the two that
+    exist in both plain and UHF RFID stock — with the per-size `@page` box
+    written imperatively, since `@page` cannot be interpolated from a template
+    or a scoped style block. Both reserve a centred **RFID inlay keep-out** that
+    the artwork straddles (QR one side, text the other), so one layout prints on
+    either medium; the *RFID stock* toggle only reveals the reserved band for
+    checking against a datasheet. Quiet zone is the spec's 4 modules. The
+    human-readable code is not decoration — it is the path for the label that
+    won't scan. The customer/org name is deliberately **not** printed: a tenant
+    name beside a device naming convention is free reconnaissance.
+
+    The same labels are scanned by `ScannerWidget` here and by the helpdesk's
+    `/staff/scan`. Nothing fetches the decoded string as a destination, and
+    there is deliberately **no resolver service**.
 
 ## Roles & Authorization
 

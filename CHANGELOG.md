@@ -11,7 +11,69 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+### Added
+
+- **`organizations.code` — the ecosystem's namespace root.** Optional, unique
+  when set (partial index), matching `^[a-z][a-z0-9-]{1,30}$`, derived from the
+  organization name on create when one isn't supplied. It is the single
+  *globally* unique identifier in the ecosystem; everything below it is unique
+  only within its organization, which the existing
+  `UNIQUE (organization, code) WHERE code != ''` indexes already enforce. The
+  rule is **ids for storage, codes for addressing** — relation columns are
+  untouched and stay PocketBase ids. Rationale and rejected alternatives: ADR
+  0002 in `platform-docs`.
+
+  Derivation **refuses on collision instead of auto-suffixing**. An invented
+  `acme-2` would be printed onto labels and baked into a signed account JWT
+  before anyone noticed it named the wrong tenant, so the operator is asked to
+  choose. Bootstrap reserves `system` and `operator`, matching the existing
+  `is_system_org` / `is_operator_org` special cases.
+
+- **QR labels for things and locations.** Printable, operator-branded, from the
+  record detail views. The payload is the **bare code** — no host, no
+  organization, no kind token — because a sticker in a public hallway is
+  something a stranger can replace, and a URL payload would let a forged label
+  send a person to arbitrary content. Sized in millimetres to real stock
+  (2″ × 1″ and 4″ × 2″), both reserving the centred RFID inlay keep-out so one
+  layout prints on plain or RFID media. The existing scanner widget reads them
+  with no changes, since a bare code was always what its `{value}` placeholder
+  expected.
+
+### Changed
+
+- **The managed-org subject rewrite roots at the organization code, not the
+  PocketBase organization id.** The hub-side import is now
+  `helpdesk.{code}.>`. Both directions of the boundary — inbound machine
+  tickets and outbound helpdesk events — now name a tenant by the same handle,
+  so a consumer can join the two without a mapping table only one database
+  could produce. The security property is unchanged: the rewrite is still
+  operator-signed, so the token is still unforgeable.
+
+  Consumers were updated **before** this (readers before writers). The helpdesk
+  acks an unresolved organization rather than retrying it, so switching the
+  emitter first would have dropped every machine-filed ticket with nothing but
+  a log line to show for it.
+
+- **`code` is now immutable** on `organizations`, `things`, `locations`,
+  `thing_types` and `location_types` (`@request.body.code:changed = false`,
+  matching `leaf_nodes`, which was already frozen). Mutability — not
+  optionality — was what disqualified the alternative designs. Note this binds
+  the record API and **not** a superuser editing in the PocketBase dashboard.
+
 ### Fixed
+
+- **`ensureManagedExports` now reconciles an existing import instead of only
+  creating a missing one.** It previously backfilled the `organization` stamp
+  and never touched `local_subject`, so a change to the routing token would
+  have left the signed import pointing at the old one — and the consumer's
+  `helpdesk.*.tickets.>` wildcard filter hid it, because traffic still
+  *matched* the filter while never arriving. Latent before this release;
+  load-bearing now that the token is derived from a code.
+
+- **`orgSlugFor` returns `organizations.code` instead of slugifying the
+  organization's name.** The name is mutable, so every route built from it
+  changed silently when someone corrected a typo in a display name. Same defect
+  as the subject token, found separately.
 
 - **pb-nats upgraded to v0.2.0, which repairs operators that have no usable
   signing key.** Every account JWT is signed with the operator's most recent

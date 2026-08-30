@@ -11,7 +11,8 @@ The official web management console for the Stone Age Platform. A "Single Pane o
 *   **Routing**: [Vue Router](https://router.vuejs.org/)
 *   **Maps**: [Leaflet](https://leafletjs.com/) (geospatial + floor-plan overlays)
 *   **Charts**: [ECharts](https://echarts.apache.org/) via `vue-echarts` (Visualizer chart/gauge widgets)
-*   **QR / Scanning**: `html5-qrcode` camera-based scanner widget
+*   **QR / Scanning**: `html5-qrcode` camera-based scanner widget; `qrcode` for
+    printable labels
 *   **Real-time / Messaging**: [NATS.js](https://github.com/nats-io/nats.js) (Modular: Core, KV, JetStream)
 *   **Backend SDK**: [PocketBase JS SDK](https://github.com/pocketbase/js-sdk)
 
@@ -171,7 +172,39 @@ A camera QR/barcode reader for validation and check-in workflows, usable on a ph
 *   **Publish:** Optionally publishes the scan on a templatable subject with a fixed payload shape (`scannerPublish.ts`).
 *   **The verdict is advisory, not an authorization decision.** It is computed in the browser from a record the browser read, and the published `passed` is self-asserted by the scanning device. Anything that must actually *authorize* — opening a door, releasing an asset — has to decide server- or edge-side from the raw scanned value. For physical access that is [`access-control`](https://github.com/stone-age-io/access-control)'s `policy.Decide` at the controller.
 
-### 7. Responsive Design
+### 7. QR Labels
+`components/common/QrLabelModal.vue` prints an operator-branded label from a
+thing or location detail view. Available only when the record has a `code` —
+the payload **is** the code.
+
+*   **The payload is the bare code.** No host, no organization, no kind token
+    (ADR 0002 in `platform-docs`). A sticker in a public hallway is an
+    attacker-writable surface, so a URL payload would let a forged label send a
+    person to arbitrary content; a bare in-system identifier means the worst
+    case is resolving a different record inside an already-authenticated
+    session. It also buys error correction: `DOOR-1` at EC level H is a 21×21
+    symbol where the URL form of the same identifier needs 41×41.
+*   **Sized in millimetres, not pixels.** 2″ × 1″ and 4″ × 2″ — the two sizes
+    that exist in both plain and UHF RFID stock. The per-size `@page` box is
+    written from script, because `@page` cannot be interpolated from a template
+    or a scoped style block; without it the browser prints onto whatever paper
+    is selected, with its default margins.
+*   **RFID inlay keep-out.** Both sizes reserve a clear band across the centre
+    where a length-wise UHF dipole's chip sits, and the artwork straddles it
+    (QR one side, text the other) so the *same* layout prints correctly on
+    plain or RFID media. The *RFID stock* toggle only reveals the reserved band
+    for checking against a specific inlay's datasheet — it never changes the
+    layout. Inlay geometry varies by vendor; the defaults are conservative, not
+    a guarantee.
+*   **The human-readable code is not decoration.** It is the path for the label
+    that won't scan — greasy, scratched, or in a closet too dark to focus in.
+    The organization name is deliberately *not* printed: a tenant name beside a
+    device naming convention is free reconnaissance for anyone walking past.
+
+The same labels are read back by the Scanner Widget above, and by the
+helpdesk's `/staff/scan`.
+
+### 8. Responsive Design
 We prioritize simplicity and maintainability:
 *   **ResponsiveList:** A core component that renders as a high-density Table on desktop and a Card Grid on mobile.
 *   **Theming:** Dark/Light mode support (including map tiles and design tokens exposed via `useDesignTokens`).
