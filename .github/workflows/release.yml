@@ -59,6 +59,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # :latest is computed rather than listed, because a prerelease must not
+      # move it. It is what people pull for production, and a v0.4.1-rc1 that
+      # quietly became :latest would ship a release candidate to every
+      # deployment that does not pin -- with nothing in the run to say so.
+      - name: Compute image tags
+        id: image_tags
+        run: |
+          image=ghcr.io/stone-age-io/platform
+          tags="$image:$GITHUB_REF_NAME"
+          case "$GITHUB_REF_NAME" in
+            *-*) echo "prerelease tag, holding :latest at its current image" ;;
+            *)   tags="$tags,$image:latest" ;;
+          esac
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+          echo "will push: $tags"
+
       - uses: docker/build-push-action@v7
         with:
           context: .
@@ -68,8 +84,6 @@ jobs:
           push: true
           build-args: |
             VERSION=${{ github.ref_name }}
-          tags: |
-            ghcr.io/stone-age-io/platform:${{ github.ref_name }}
-            ghcr.io/stone-age-io/platform:latest
+          tags: ${{ steps.image_tags.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
