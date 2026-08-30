@@ -3,7 +3,6 @@ package migrations
 import (
 	"fmt"
 	"log"
-	"regexp"
 	"strings"
 
 	"github.com/pocketbase/dbx"
@@ -12,11 +11,6 @@ import (
 
 	"platform/hooks"
 )
-
-// orgCodePattern mirrors the `pattern` on organizations.code in schema.json.
-// Duplicated rather than derived because the schema is data and this is a
-// pre-flight check that has to run before the import validates anything.
-var orgCodePattern = regexp.MustCompile(`^[a-z][a-z0-9-]{1,30}$`)
 
 // schema_update_org_code adds `organizations.code` -- the root of the public
 // namespace, and the only globally unique identifier in the ecosystem (ADR 0002
@@ -95,10 +89,10 @@ func init() {
 			case code == "":
 				problems = append(problems, fmt.Sprintf(
 					"  %q -> nothing usable could be derived from the name", r.Name))
-			case !orgCodePattern.MatchString(code):
+			case !hooks.OrgCodePattern.MatchString(code):
 				problems = append(problems, fmt.Sprintf(
 					"  %q -> derived %q, which is not a valid code (must match %s)",
-					r.Name, code, orgCodePattern))
+					r.Name, code, hooks.OrgCodePattern))
 			case taken[code] != "":
 				problems = append(problems, fmt.Sprintf(
 					"  %q -> derived %q, already used by %q", r.Name, code, taken[code]))
@@ -113,9 +107,13 @@ func init() {
 				"cannot backfill organizations.code for %d organization(s):\n%s\n\n"+
 					"An organization code is the root of the public namespace: it roots the\n"+
 					"operator-signed subject rewrite and is printed on physical labels, and it is\n"+
-					"immutable once set. Assign codes to these organizations by hand (admin panel\n"+
-					"at /_/, or the API), then run `migrate up` again. This migration deliberately\n"+
-					"does not pick one for you.",
+					"immutable once set, so this migration deliberately does not pick one for you.\n\n"+
+					"Note that there is no `code` field to fill in yet. PocketBase runs the whole\n"+
+					"migration list inside one transaction (core/migrations_runner.go), so this\n"+
+					"failure rolled back the column along with everything else. Rename the\n"+
+					"organization to something a valid code can be derived from, run `migrate up`\n"+
+					"again, and rename it back afterwards if you like -- `name` stays mutable, and\n"+
+					"`code` is frozen only once it has a value.",
 				len(problems), strings.Join(problems, "\n"))
 		}
 

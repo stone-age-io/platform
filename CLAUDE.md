@@ -442,14 +442,29 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
     enforce. Relation columns stay PocketBase ids — codes address, ids store.
 
     `hooks/org_code.go` derives a code from the name on create when one wasn't
-    given (`Slugify`, max 31, `^[a-z][a-z0-9-]{1,30}$`) and **refuses on
+    given (`Slugify`, max 31, `^[a-z0-9][a-z0-9-]{1,30}$`) and **refuses on
     collision rather than auto-suffixing** — an invented `acme-2` would be
     printed on labels and baked into signed JWTs before anyone noticed it was
     the wrong tenant. Errors go through `apis.NewBadRequestError`, because a
     plain `fmt.Errorf` from a hook reaches the client as
     `{"message":"Failed to create record."}` and the operator never learns which
-    name collided. Bootstrap reserves `system` and `operator`, matching the
-    existing `is_system_org` / `is_operator_org` special cases.
+    name collided. A leading digit is fine — `816tech` is a valid code; the
+    pattern demanded a leading letter until an operator org named exactly that
+    could not be migrated, and nothing downstream (NATS subject tokens,
+    `edge-`-prefixed JetStream domains, KV bucket names, RFC 1123 hostname
+    labels) justified the restriction.
+
+    **Bootstrap derives the two infrastructure orgs' codes the same way**, from
+    `--org-name` / `--operator-org`, falling back to `system` / `operator` only
+    when the name yields nothing valid (`orgCodeFor` in `bootstrap.go`). It used
+    to pin those two strings unconditionally, so bootstrap and
+    `migrations/schema_update_org_code.go` disagreed about the same org: a fresh
+    install of `--operator-org "816tech"` produced `operator` while the backfill
+    migration produced `816tech`. One deployment, two codes, decided by install
+    history — for a value that is immutable and printed on labels. The cost of
+    the fix is that `system` and `operator` are no longer reserved by
+    construction, which is acceptable because nothing resolves an org by them:
+    they are written and never read.
 
     **`code` is optional but immutable.** Mutability was the disqualifier, not
     optionality: `@request.body.code:changed = false` freezes it on

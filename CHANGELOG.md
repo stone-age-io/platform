@@ -14,7 +14,7 @@ and this file starts where the versioned releases do.
 ### Added
 
 - **`organizations.code` — the ecosystem's namespace root.** Optional, unique
-  when set (partial index), matching `^[a-z][a-z0-9-]{1,30}$`, derived from the
+  when set (partial index), matching `^[a-z0-9][a-z0-9-]{1,30}$`, derived from the
   organization name on create when one isn't supplied. It is the single
   *globally* unique identifier in the ecosystem; everything below it is unique
   only within its organization, which the existing
@@ -40,6 +40,25 @@ and this file starts where the versioned releases do.
   expected.
 
 ### Changed
+
+- **An organization code may start with a digit.** The pattern went from
+  `^[a-z][a-z0-9-]{1,30}$` to `^[a-z0-9][a-z0-9-]{1,30}$`. The leading-letter
+  rule blocked an operator org named `816tech` from migrating at all, and
+  nothing downstream justified it — NATS subject tokens, JetStream domains
+  (always prefixed `edge-`), KV bucket names and RFC 1123 hostname labels all
+  permit a leading digit. RFC 952 did not, but RFC 1123 obsoleted that in 1989.
+
+- **Bootstrap derives the system and operator org codes from their names**
+  instead of pinning `system` / `operator`, which are now only the fallback for
+  a name nothing valid can be derived from. The two paths that assign an org
+  code — `bootstrap.go` and the backfill in `schema_update_org_code.go` — used
+  to disagree, so the same deployment got a different operator org code
+  depending on whether it had been installed fresh or migrated. The code is
+  immutable and gets printed on labels, so that is not a difference worth
+  keeping. Consequence: the two strings are no longer reserved by construction
+  and an org named "Operator" can take `operator`. Nothing resolves an org by
+  those values — they were written and never read — and the unique index still
+  prevents two orgs sharing a code.
 
 - **The managed-org subject rewrite roots at the organization code, not the
   PocketBase organization id.** The hub-side import is now

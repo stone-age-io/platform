@@ -9,7 +9,7 @@ import (
 // to return values this rejects (see the cases below); what must never happen
 // is Slugify returning something that PASSES the pattern but is not the code we
 // meant, because a code is immutable the moment it is saved.
-var pattern = regexp.MustCompile(`^[a-z][a-z0-9-]{1,30}$`)
+var pattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,30}$`)
 
 func TestSlugify(t *testing.T) {
 	cases := []struct {
@@ -24,13 +24,13 @@ func TestSlugify(t *testing.T) {
 		{"leading junk is dropped", "  ...Acme", "acme"},
 		{"trailing junk is dropped", "Acme, Inc.  ", "acme-inc"},
 		{"digits survive", "Site 42 North", "site-42-north"},
+		{"a leading digit is kept -- the pattern permits one", "3M", "3m"},
 		{"non-ascii is a separator, not a transliteration", "Café Beta", "caf-beta"},
 		{"the two reserved names derive to themselves", "System", "system"},
 		{"operator too", "Operator", "operator"},
 
 		// Deliberately invalid outputs. The hook refuses these rather than
 		// inventing a prefix, because the guess would be permanent.
-		{"a leading digit is not repaired", "3M", "3m"},
 		{"nothing usable yields empty", "!!!", ""},
 		{"a single letter is too short for the pattern", "X", "x"},
 	}
@@ -60,11 +60,14 @@ func TestSlugifyTruncatesWithoutLeavingATrailingHyphen(t *testing.T) {
 	}
 }
 
-// The three cases the hook is expected to reject. Pinned so a future change to
+// The two cases the hook is expected to reject. Pinned so a future change to
 // Slugify that "helpfully" repairs them is a test failure and a decision,
 // rather than a silent shift to codes nobody chose.
+//
+// "3M" used to be in this list. It is not any more: the pattern now permits a
+// leading digit, so "3m" is a code the hook accepts.
 func TestSlugifyDoesNotInventAValidCode(t *testing.T) {
-	for _, in := range []string{"3M", "!!!", "X"} {
+	for _, in := range []string{"!!!", "X"} {
 		if got := Slugify(in); pattern.MatchString(got) {
 			t.Errorf("Slugify(%q) = %q, which passes the pattern — the hook can no longer refuse it", in, got)
 		}

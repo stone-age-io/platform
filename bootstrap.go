@@ -14,21 +14,48 @@ import (
 	"golang.org/x/term"
 
 	pbnats "github.com/skeeeon/pb-nats"
+
+	"platform/hooks"
 )
 
 // PocketBase's own minimum for auth record passwords. Checked up front so a typo
 // surfaces as a clear message instead of a validation error after the prompts.
 const minPasswordLen = 8
 
-// Organization codes for the two infrastructure orgs (ADR 0002). Both are
-// renameable -- --org-name and --operator-org -- so their codes are pinned here
-// rather than slugified from whatever they end up called, and pinning them is
-// also what reserves the two strings: the unique index on organizations.code
-// makes them unavailable to every other org without a reserved-word list.
+// FALLBACK organization codes for the two infrastructure orgs (ADR 0002).
+//
+// These used to be pinned unconditionally, on the reasoning that a
+// deterministic code is what reserves the two strings: the unique index on
+// organizations.code makes them unavailable to every other org, so no
+// reserved-word list is needed. The cost was not worth it. Both orgs are
+// renameable -- --org-name and --operator-org -- and pinning meant bootstrap
+// and migrations/schema_update_org_code.go DISAGREED about the same org: a
+// fresh install of `--operator-org "816tech"` produced `operator`, while
+// running the backfill migration over an existing database produced `816tech`.
+// One deployment, two codes, decided by install history -- for a value that is
+// immutable and gets printed on physical labels.
+//
+// Codes are now derived from the name like every other org's, and these are
+// used only when the name yields nothing valid. So the two strings are no
+// longer reserved by construction: an org named "Operator" can take
+// `operator`. That is acceptable because nothing resolves an org by these
+// values -- they are written here and never read anywhere -- and the unique
+// index still stops two orgs sharing one code.
 const (
 	systemOrgCode   = "system"
 	operatorOrgCode = "operator"
 )
+
+// orgCodeFor derives an organization code from a display name, falling back to
+// one of the constants above when the name yields nothing the field will accept
+// (no alphanumerics at all, or a single character). Deliberately the same
+// derivation the backfill migration uses, which is the whole point: see above.
+func orgCodeFor(name, fallback string) string {
+	if code := hooks.Slugify(name); hooks.OrgCodePattern.MatchString(code) {
+		return code
+	}
+	return fallback
+}
 
 // addBootstrapCommand registers the `bootstrap` CLI command, which provisions
 // the initial System organization, admin user, and links the pre-existing NATS
@@ -134,10 +161,11 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 			} else {
 				org = core.NewRecord(orgCol)
 				org.Set("name", orgName)
-				// Set explicitly rather than letting RegisterOrgCode slugify the
-				// name: the reservation only works if the code is deterministic,
-				// and the system org is renameable via --org-name.
-				org.Set("code", systemOrgCode)
+				// Derived from the name, same as every other org and same as the
+				// backfill migration. Set explicitly rather than left to
+				// RegisterOrgCode so that a name nothing can be derived from
+				// falls back to systemOrgCode instead of failing the bootstrap.
+				org.Set("code", orgCodeFor(orgName, systemOrgCode))
 				org.Set("active", true)
 				org.Set("owner", user.Id)
 				// The org-provisioning hook skips system orgs, avoiding duplicate
@@ -158,10 +186,10 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 			}
 
 			// Same backfill for the code, on a DB bootstrapped before ADR 0002.
-			// Only when empty: a code that already exists is frozen, and the
-			// migration may have derived a different one from the org's name.
+			// Only when empty: a code that already exists is frozen. It agrees
+			// with the migration now, so reaching here after one is a no-op.
 			if org.GetString("code") == "" {
-				org.Set("code", systemOrgCode)
+				org.Set("code", orgCodeFor(orgName, systemOrgCode))
 				if err := app.Save(org); err != nil {
 					log.Printf("⚠️ Failed to set system org code: %v", err)
 				}
@@ -398,12 +426,11 @@ func ensureOperatorOrg(app *pocketbase.PocketBase, orgCol *core.Collection, user
 		org.Set("active", true)
 		org.Set("owner", user.Id)
 	}
-	// Deterministic rather than slugified from --operator-org, and claiming it
-	// here is what reserves it: the unique index makes the string unavailable to
-	// every other org, so no reserved-word list is needed (ADR 0002). Only when
-	// empty -- an existing code is frozen.
+	// Derived from --operator-org rather than pinned, so a fresh bootstrap and a
+	// `migrate up` over an existing database land on the same code (ADR 0002).
+	// Only when empty -- an existing code is frozen.
 	if org.GetString("code") == "" {
-		org.Set("code", operatorOrgCode)
+		org.Set("code", orgCodeFor(name, operatorOrgCode))
 	}
 	org.Set("is_operator_org", true)
 	if err := app.Save(org); err != nil {

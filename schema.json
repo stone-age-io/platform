@@ -3391,7 +3391,7 @@
         "max": 31,
         "min": 0,
         "name": "code",
-        "pattern": "^[a-z][a-z0-9-]{1,30}$",
+        "pattern": "^[a-z0-9][a-z0-9-]{1,30}$",
         "presentable": false,
         "primaryKey": false,
         "required": false,

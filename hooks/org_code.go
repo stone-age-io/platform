@@ -2,6 +2,7 @@ package hooks
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/pocketbase/pocketbase"
@@ -9,19 +10,33 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
+// OrgCodePattern mirrors the `pattern` on organizations.code in schema.json.
+// Exported so bootstrap and the backfill migration can pre-flight a derived
+// code against the same rule the field enforces. Duplicated from the schema
+// rather than derived from it, because both callers run before the import has
+// validated anything -- but duplicated exactly once, not once per caller.
+var OrgCodePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,30}$`)
+
 // OrgCodeMaxLen is the upper bound in the `code` field's pattern,
-// ^[a-z][a-z0-9-]{1,30}$ -- one leading letter plus up to thirty more.
+// ^[a-z0-9][a-z0-9-]{1,30}$ -- one leading alphanumeric plus up to thirty more.
 const OrgCodeMaxLen = 31
 
 // Slugify derives an organization code from a display name: lowercased, every
 // run of characters outside [a-z0-9] collapsed to a single hyphen, trimmed, and
 // truncated to OrgCodeMaxLen.
 //
-// It can legitimately return a string the field pattern rejects -- a name that
-// starts with a digit ("3M"), or one with no alphanumerics at all. That is
-// deliberate. The hook below refuses instead of inventing a prefix, because the
-// code is immutable once saved and a guess would be permanent. Asking the
-// operator costs one error message; guessing costs a superuser edit later.
+// It can legitimately return a string the field pattern rejects -- a name with
+// no alphanumerics at all (""), or one that reduces to a single character
+// ("X" -> "x", below the two-character minimum). That is deliberate. The hook
+// below refuses instead of padding or prefixing, because the code is immutable
+// once saved and a guess would be permanent. Asking the operator costs one
+// error message; guessing costs a superuser edit later.
+//
+// A leading digit is NOT one of those cases: "816tech" is a valid code. The
+// pattern required a leading letter until an operator org named exactly that
+// could not be migrated, and nothing downstream justified the restriction --
+// NATS subject tokens, JetStream domains (always prefixed "edge-"), KV bucket
+// names and RFC 1123 hostname labels all permit a leading digit.
 func Slugify(name string) string {
 	var b strings.Builder
 	pendingHyphen := false
@@ -73,7 +88,7 @@ func RegisterOrgCode(app *pocketbase.PocketBase, orgCollection string) {
 		}
 		if code == "" {
 			return apis.NewBadRequestError(fmt.Sprintf(
-				"No organization code could be derived from the name %q. Set one explicitly: lowercase letters, digits and hyphens, starting with a letter.", name), nil)
+				"No organization code could be derived from the name %q. Set one explicitly: lowercase letters, digits and hyphens, at least two characters.", name), nil)
 		}
 
 		existing, _ := e.App.FindFirstRecordByFilter(
