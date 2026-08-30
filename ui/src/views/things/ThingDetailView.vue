@@ -13,6 +13,7 @@ import KvDashboard from '@/components/nats/KvDashboard.vue'
 import { TWIN_BUCKET, TWIN_DESIRED_BUCKET } from '@/utils/twin'
 import MetadataCard from '@/components/common/MetadataCard.vue'
 import ExpiryBadge from '@/components/common/ExpiryBadge.vue'
+import QrLabelModal from '@/components/common/QrLabelModal.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -25,6 +26,7 @@ const thing = ref<Thing | null>(null)
 const loading = ref(true)
 const regenerating = ref(false)
 const showRegenerateModal = ref(false)
+const showLabelModal = ref(false)
 const deleting = ref(false)
 const togglingActive = ref(false)
 
@@ -214,6 +216,14 @@ onMounted(() => {
             </span>
           </div>
           <div class="flex gap-2 w-full sm:w-auto">
+            <!-- No code, no label: the QR payload IS the code (ADR 0002). -->
+            <button
+              v-if="thingCode"
+              @click="showLabelModal = true"
+              class="btn btn-outline flex-1 sm:flex-initial"
+            >
+              Label
+            </button>
             <router-link
               v-if="canEditMetadata"
               :to="`/things/${thing.id}/edit`"
@@ -449,6 +459,19 @@ onMounted(() => {
       </div>
       <form method="dialog" class="modal-backdrop"><button @click="showRegenerateModal = false">close</button></form>
     </dialog>
+
+    <!--
+      No organization-name prop: a console user is scoped to one organization and
+      already knows whose device this is. The helpdesk passes it because its staff
+      are cross-customer.
+    -->
+    <QrLabelModal
+      v-if="showLabelModal && thing"
+      :code="thing.code || ''"
+      :name="thing.name || ''"
+      kind="thing"
+      @close="showLabelModal = false"
+    />
   </div>
 </template>
 

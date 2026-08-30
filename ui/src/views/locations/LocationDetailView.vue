@@ -14,6 +14,7 @@ import { useNatsStore } from '@/stores/nats'
 import { useAuthStore } from '@/stores/auth'
 import { formatDate } from '@/utils/format'
 import MetadataCard from '@/components/common/MetadataCard.vue'
+import QrLabelModal from '@/components/common/QrLabelModal.vue'
 import type { Location, LocationType, Thing } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
@@ -36,6 +37,7 @@ const { initMap, renderMarkers, updateTheme, invalidateSize, cleanup: cleanupMap
 const location = ref<Location | null>(null)
 const loading = ref(true)
 const deleting = ref(false)
+const showLabelModal = ref(false)
 const mapContainerId = 'mini-map-container'
 const activeTab = ref<'floorplan' | 'coordinates'>('floorplan')
 const miniMapInitialized = ref(false)
@@ -318,6 +320,14 @@ onUnmounted(() => cleanupMap())
             <span v-if="location.expand?.type" class="badge badge-lg badge-ghost">{{ location.expand.type.name }}</span>
           </div>
           <div class="flex gap-2 w-full sm:w-auto">
+            <!-- No code, no label: the QR payload IS the code (ADR 0002). -->
+            <button
+              v-if="location.code"
+              @click="showLabelModal = true"
+              class="btn btn-outline flex-1 sm:flex-initial"
+            >
+              Label
+            </button>
             <router-link
               v-if="canEditMetadata"
               :to="`/locations/${location.id}/edit`"
@@ -563,6 +573,14 @@ onUnmounted(() => cleanupMap())
         </template>
 
       </div>
+
+      <QrLabelModal
+        v-if="showLabelModal"
+        :code="location.code || ''"
+        :name="location.name || ''"
+        kind="location"
+        @close="showLabelModal = false"
+      />
     </template>
   </div>
 </template>
