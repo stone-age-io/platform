@@ -2,6 +2,9 @@
 import { ref, shallowRef, onUnmounted } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import 'maplibre-gl/dist/maplibre-gl.css'
+// Side-effect import: registers L.maplibreGL and augments the leaflet module types.
+import '@maplibre/maplibre-gl-leaflet'
 import 'leaflet.markercluster'
 import 'leaflet.markercluster/dist/MarkerCluster.css'
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
@@ -21,23 +24,39 @@ import type { BufferedMessage } from '@/stores/widgetData'
  */
 
 /**
- * Basemap tile sources. Both are keyless.
+ * Basemap styles. Keyless, and vector rather than raster.
  *
- * The dark tiles are lifted by a brightness/contrast filter on .leaflet-tile-pane
- * (see assets/main.css) — raw dark_all is near-black at the zooms a site map uses.
- * If you change this URL, revisit that rule; it is tuned to this source.
+ * Both sources had to move. CARTO put its raster basemaps behind an API key and
+ * is retiring them, so dark_all now serves a watermark; light mode was calling
+ * tile.openstreetmap.org directly, which the OSMF tile usage policy does not
+ * allow for a product. OpenFreeMap replaces both: no key, no request cap,
+ * commercial use permitted, and self-hostable if a deployment ever cannot reach
+ * tiles.openfreemap.org.
  *
- * Alternatives evaluated and rejected: Stadia's Alidade Smooth Dark needs an API
- * key (401 keyless), and Esri's Dark Gray Canvas stops at z16 — above it the
- * server returns a *light* grey "Map data not yet available" tile rather than a
- * blank one, which is conspicuous on a dark UI. Neither is worth the trade.
+ * These are MapLibre style documents, not {z}/{x}/{y} templates — OpenFreeMap
+ * publishes no raster endpoint — so the basemap renders through L.maplibreGL
+ * onto a WebGL canvas instead of L.tileLayer. That swap is contained here:
+ * markers, clustering, popups and the floor-plan image overlay are unchanged
+ * Leaflet on top of it. It does mean the basemap needs WebGL, which is worth
+ * remembering for the 'dashboard' appliance screens.
+ *
+ * fiord is a designed dark style and needs no correction, so the brightness
+ * filter dark_all required is gone from assets/main.css. Do not re-add it: the
+ * GL canvas lands in .leaflet-tile-pane too, and it would wash fiord out.
  */
-const TILE_URLS = {
-  light: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-  dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+const STYLE_URLS = {
+  light: 'https://tiles.openfreemap.org/styles/bright',
+  dark: 'https://tiles.openfreemap.org/styles/fiord'
 }
 
-const TILE_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+/**
+ * OpenFreeMap's style JSON carries no `attribution` on its sources, so MapLibre
+ * renders no credit of its own and ODbL still requires one. Added to the map's
+ * attribution control once at init rather than per layer — it is the same for
+ * both styles, and L.maplibreGL's options are typed as MapLibre's own, which
+ * have no Leaflet `attribution` key.
+ */
+const TILE_ATTRIBUTION = '<a href="https://openfreemap.org">OpenFreeMap</a> &copy; <a href="https://www.openmaptiles.org/">OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 
 const DEFAULT_CENTER = { lat: 39.8283, lon: -98.5795 }
 const DEFAULT_ZOOM = 4
@@ -72,7 +91,7 @@ export interface FitOptions {
 export function useLeafletMap() {
   const map = shallowRef<L.Map | null>(null)
   const markersLayer = shallowRef<L.LayerGroup | null>(null)
-  const tileLayer = shallowRef<L.TileLayer | null>(null)
+  const basemapLayer = shallowRef<L.MaplibreGL | null>(null)
   const initialized = ref(false)
 
   const markerInstances = new Map<string, L.Marker>()
@@ -106,9 +125,14 @@ export function useLeafletMap() {
     const mapInstance = L.map(containerId, {
       center: [center.lat, center.lon],
       zoom,
+      // Was an L.tileLayer option; the GL layer supplies no zoom bounds, and
+      // without this Leaflet would zoom in without limit.
+      maxZoom: 19,
       zoomControl: false,
       attributionControl: true,
     })
+
+    mapInstance.attributionControl.addAttribution(TILE_ATTRIBUTION)
 
     if (zoomControlPosition !== 'none') {
       L.control.zoom({ position: zoomControlPosition }).addTo(mapInstance)
@@ -151,17 +175,16 @@ export function useLeafletMap() {
   function updateTheme(isDarkMode: boolean) {
     if (!map.value) return
 
-    if (tileLayer.value) {
-      map.value.removeLayer(tileLayer.value)
+    if (basemapLayer.value) {
+      map.value.removeLayer(basemapLayer.value)
     }
 
-    const url = isDarkMode ? TILE_URLS.dark : TILE_URLS.light
-    const newTileLayer = L.tileLayer(url, {
-      attribution: TILE_ATTRIBUTION,
-      maxZoom: 19
+    const newLayer = L.maplibreGL({
+      style: isDarkMode ? STYLE_URLS.dark : STYLE_URLS.light,
+      attributionControl: false,
     })
-    newTileLayer.addTo(map.value)
-    tileLayer.value = newTileLayer
+    newLayer.addTo(map.value)
+    basemapLayer.value = newLayer
   }
 
   function renderMarkers(
@@ -401,7 +424,7 @@ export function useLeafletMap() {
       map.value = null
     }
     markersLayer.value = null
-    tileLayer.value = null
+    basemapLayer.value = null
     markerInstances.clear()
     dynamicMarkerInstances.clear()
     selectedMarkerId = null
