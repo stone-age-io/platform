@@ -21,6 +21,29 @@ body {
  * targeted, so it would wash out the whole basemap. See the style notes in
  * composables/useLeafletMap.ts. */
 
+/* Keep the basemap attribution to one line.
+ *
+ * Leaflet anchors attribution bottom-right and every map here puts the zoom
+ * control at bottomleft (ThingMapViz, LocationMapViz, MapWidget), so a credit
+ * long enough to wrap grows upward and leftward straight across those buttons.
+ * Dashboard widgets are the narrow case, and they are the ones that lose.
+ *
+ * Truncated rather than abbreviated: the credit is a licence obligation, so the
+ * full text stays in the DOM, and hover or keyboard focus expands it. */
+.leaflet-control-attribution {
+  max-width: calc(100% - 4rem);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.leaflet-control-attribution:hover,
+.leaflet-control-attribution:focus-within {
+  max-width: none;
+  white-space: normal;
+  overflow: visible;
+}
+
 /* Custom scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;

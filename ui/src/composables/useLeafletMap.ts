@@ -2,6 +2,8 @@
 import { ref, shallowRef, onUnmounted } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { setWorkerUrl } from 'maplibre-gl'
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
 import 'maplibre-gl/dist/maplibre-gl.css'
 // Side-effect import: registers L.maplibreGL and augments the leaflet module types.
 import '@maplibre/maplibre-gl-leaflet'
@@ -15,6 +17,25 @@ import { JSONPath } from 'jsonpath-plus'
 import { resolveTemplate } from '@/utils/variables'
 import { fixLeafletIcons } from '@/utils/leafletIcons'
 import type { BufferedMessage } from '@/stores/widgetData'
+
+/**
+ * Point MapLibre at its tile-parsing worker explicitly.
+ *
+ * maplibre-gl resolves the worker as a file sitting NEXT TO ITSELF --
+ * `new URL('./maplibre-gl-worker.mjs', import.meta.url)`. Once Vite has bundled
+ * the library into a hashed application chunk, that resolves to
+ * /assets/maplibre-gl-worker.mjs — which the build never emits, so it 404s.
+ *
+ * Nothing throws, which is what makes it worth this comment: the style still
+ * loads and its background layer still paints, so the map renders as a flat
+ * sheet of colour. Water, landuse, roads and labels are all parsed in the worker
+ * that failed to start, so all of them are simply absent.
+ *
+ * `?url` makes Vite emit the worker as a real asset and hands back its hashed
+ * URL. It stays a .mjs, which PocketBase serves as text/javascript (Go's mime
+ * table has the extension) -- a module worker refuses anything else.
+ */
+setWorkerUrl(maplibreWorkerUrl)
 
 /**
  * Unified Leaflet map composable.
@@ -55,8 +76,14 @@ const STYLE_URLS = {
  * attribution control once at init rather than per layer — it is the same for
  * both styles, and L.maplibreGL's options are typed as MapLibre's own, which
  * have no Leaflet `attribution` key.
+ *
+ * Three names separated by dots rather than a sentence. The prose form ("... Data
+ * from OpenStreetMap contributors") wrapped to three lines in a dashboard widget
+ * and grew across the zoom control, which every map here puts at bottomleft.
+ * Shortening is half the fix; assets/main.css keeps it to one line and truncates
+ * rather than wrapping, so the credit can never cover a control again.
  */
-const TILE_ATTRIBUTION = '<a href="https://openfreemap.org">OpenFreeMap</a> &copy; <a href="https://www.openmaptiles.org/">OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+const TILE_ATTRIBUTION = '&copy; <a href="https://openfreemap.org">OpenFreeMap</a> &middot; <a href="https://www.openmaptiles.org/">OpenMapTiles</a> &middot; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
 
 const DEFAULT_CENTER = { lat: 39.8283, lon: -98.5795 }
 const DEFAULT_ZOOM = 4
@@ -132,6 +159,9 @@ export function useLeafletMap() {
       attributionControl: true,
     })
 
+    // The default "⧉ Leaflet" prefix is width a dashboard widget cannot spare,
+    // and the credit that has to be there is the data's, not the library's.
+    mapInstance.attributionControl.setPrefix(false)
     mapInstance.attributionControl.addAttribution(TILE_ATTRIBUTION)
 
     if (zoomControlPosition !== 'none') {
