@@ -35,9 +35,9 @@ Stone Age IoT Platform is a single-binary IoT and Event-Driven management platfo
 - **marked** for Markdown rendering
 - **PocketBase JS SDK** for API client
 
-### Two dependencies are deliberately held back
+### Three dependencies are deliberately held back
 
-Everything else in `ui/package.json` tracks latest. These two do not, and a
+Everything else in `ui/package.json` tracks latest. These three do not, and a
 routine "bump everything" pass must not drag them along:
 
 - **Tailwind 3.x + daisyUI 4.x.** Upgrading is a design-system migration, not a
@@ -52,6 +52,21 @@ routine "bump everything" pass must not drag them along:
   one repo alone breaks that contract. The full reasoning lives at the top of
   `ui/tailwind.config.js`; do it as scheduled work across both repos, with a
   human clicking through dashboards, widgets and both themes.
+- **maplibre-gl 5, not 6.** v5 inlines its tile-parsing worker into
+  `dist/maplibre-gl.js`. v6 splits it out and resolves it as a file sitting
+  next to itself — `new URL('./maplibre-gl-worker.mjs', import.meta.url)` —
+  which, once Vite has bundled the library into a hashed application chunk,
+  points at `/assets/maplibre-gl-worker.mjs`, a file the build never emits.
+  **Nothing throws and nothing reaches the console.** The style still loads over
+  HTTP and its background layer still paints, so the map renders as a flat sheet
+  of the theme colour; water, landuse, roads and labels are all parsed in the
+  worker that never started, so they vanish together and it reads as a design
+  choice rather than a failure. `setWorkerUrl()` with a `?url` import does fix
+  it, and was tried, but it is a workaround for a problem v5 does not have —
+  and v5 is also the version OpenFreeMap's own quick start pins, for both the
+  plain and the Leaflet-binding setup. Revisit when
+  `@maplibre/maplibre-gl-leaflet` documents v6 rather than merely permitting it
+  in `peerDependencies`.
 - **TypeScript 6, not 7.** TS 7 is the native port and no longer exposes the
   `./lib/tsc` subpath that `vue-tsc` resolves at startup, so `npm run build`
   dies before type checking. `vue-tsc` 3.3.10 is the newest there is; 6.0 is the

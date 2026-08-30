@@ -23,7 +23,7 @@
     "jsonpath-plus": "^10.4.0",
     "leaflet": "^1.9.4",
     "leaflet.markercluster": "^1.5.3",
-    "maplibre-gl": "^6.6.0",
+    "maplibre-gl": "^5.24.0",
     "marked": "^18.0.9",
     "pinia": "^4.0.3",
     "pocketbase": "^0.27.3",

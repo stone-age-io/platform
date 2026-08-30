@@ -2,8 +2,9 @@
 import { ref, shallowRef, onUnmounted } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { setWorkerUrl } from 'maplibre-gl'
-import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
+// maplibre-gl is held at v5 on purpose -- see "deliberately held back" in
+// CLAUDE.md. v5 inlines its tile-parsing worker; v6 loads it as a sibling file
+// no bundler emits, which renders the basemap as a flat sheet of colour.
 import 'maplibre-gl/dist/maplibre-gl.css'
 // Side-effect import: registers L.maplibreGL and augments the leaflet module types.
 import '@maplibre/maplibre-gl-leaflet'
@@ -17,25 +18,6 @@ import { JSONPath } from 'jsonpath-plus'
 import { resolveTemplate } from '@/utils/variables'
 import { fixLeafletIcons } from '@/utils/leafletIcons'
 import type { BufferedMessage } from '@/stores/widgetData'
-
-/**
- * Point MapLibre at its tile-parsing worker explicitly.
- *
- * maplibre-gl resolves the worker as a file sitting NEXT TO ITSELF --
- * `new URL('./maplibre-gl-worker.mjs', import.meta.url)`. Once Vite has bundled
- * the library into a hashed application chunk, that resolves to
- * /assets/maplibre-gl-worker.mjs — which the build never emits, so it 404s.
- *
- * Nothing throws, which is what makes it worth this comment: the style still
- * loads and its background layer still paints, so the map renders as a flat
- * sheet of colour. Water, landuse, roads and labels are all parsed in the worker
- * that failed to start, so all of them are simply absent.
- *
- * `?url` makes Vite emit the worker as a real asset and hands back its hashed
- * URL. It stays a .mjs, which PocketBase serves as text/javascript (Go's mime
- * table has the extension) -- a module worker refuses anything else.
- */
-setWorkerUrl(maplibreWorkerUrl)
 
 /**
  * Unified Leaflet map composable.
