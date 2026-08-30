@@ -26,7 +26,8 @@ Stone Age IoT Platform is a single-binary IoT and Event-Driven management platfo
 - **Tailwind CSS 3.4 + DaisyUI 4.12** styling (light/dark themes) — **pinned, see below**
 - **TypeScript 6** (7 is out but unusable here, see below)
 - **NATS WebSocket** (@nats-io/nats-core, jetstream, kv)
-- **Leaflet 1.9** for maps
+- **Leaflet 1.9** for maps — markers, clustering, floor-plan overlays — over a
+  **MapLibre GL 5** vector basemap via `@maplibre/maplibre-gl-leaflet` (WebGL)
 - **ECharts 6.1 + vue-echarts** for charts
 - **grid-layout-plus** for dashboard grid layout
 - **@vueuse/core** for reactive utilities
@@ -286,7 +287,7 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
 5. **Resource Inventory** - Things and Locations with type definitions and metadata
 6. **Digital Twin** - Live state via NATS KV buckets, revision history
 7. **Audit Logging** - Comprehensive audit trail with searchable viewer
-8. **Maps** - Leaflet-based maps with floorplan overlays
+8. **Maps** - Leaflet maps over an OpenFreeMap vector basemap (WebGL), with floorplan overlays
 9. **PWA** - Service worker, manifest, installable
 10. **Keyboard Shortcuts** - Configurable keyboard shortcuts with modal reference
 11. **Operator Org & Managed Orgs** - Bootstrap creates the platform operator's own org (`is_operator_org`) alongside the `$SYS` org (`is_system_org`); its NATS account is the hub for shared operator services (helpdesk etc.). Flagging a customer org `managed` provisions a stream export of `helpdesk.>` (configurable: `nats.managed_export_subject`) from its account plus a hub-side import remapped to `helpdesk.{organizations.code}.>` — the org prefix is baked into the signed account JWT, so event provenance is subject-based and unforgeable (`hooks/managed_org_exports.go`). That token was `org.Id` until ADR 0002 (see **Organization code** below); `hubImportName(org.Id)` still keys the import *record* by the immutable id, which is correct and should stay. `ensureManagedExports` is no longer create-if-missing: it `reconcile`s the desired fields on an existing import, because a create-only hook would have left a renamed org's signed import routing at the old token while the consumer's `helpdesk.*.tickets.>` wildcard masked the failure — traffic matches, and never arrives.

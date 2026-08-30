@@ -9,7 +9,9 @@ The official web management console for the Stone Age Platform. A "Single Pane o
 *   **State Management**: [Pinia](https://pinia.vuejs.org/)
 *   **Styling**: [Tailwind CSS](https://tailwindcss.com/) + [DaisyUI](https://daisyui.com/)
 *   **Routing**: [Vue Router](https://router.vuejs.org/)
-*   **Maps**: [Leaflet](https://leafletjs.com/) (geospatial + floor-plan overlays)
+*   **Maps**: [Leaflet](https://leafletjs.com/) (markers, clustering, floor-plan
+    overlays) over an [OpenFreeMap](https://openfreemap.org/) vector basemap
+    rendered by [MapLibre GL](https://maplibre.org/) (WebGL)
 *   **Charts**: [ECharts](https://echarts.apache.org/) via `vue-echarts` (Visualizer chart/gauge widgets)
 *   **QR / Scanning**: `html5-qrcode` camera-based scanner widget; `qrcode` for
     printable labels
@@ -38,7 +40,7 @@ src/
 │   ├── useNatsKv.ts / useNatsKvWatcher.ts  # NATS KV read + reactive watch
 │   ├── useSubscriptionManager.ts           # Core NATS subscription lifecycles
 │   ├── useJetStreamManager.ts              # Stream / consumer ops
-│   ├── useLeafletMap.ts / useMap.ts / useFloorPlan.ts
+│   ├── useLeafletMap.ts / useFloorPlan.ts
 │   ├── useWidgetOperations.ts / useWidgetForm.ts / useThresholds.ts / useSwitchState.ts
 │   ├── useKeyboardShortcuts.ts / useDesignTokens.ts
 │   ├── usePagination.ts / useValidation.ts / useConfirm.ts / useToast.ts

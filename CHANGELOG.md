@@ -11,6 +11,32 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.4.0] - 2026-08-30
+
+The organization code, and the two things that needed one. `organizations.code`
+is now the ecosystem's single *globally* unique identifier: the managed-org
+subject rewrite roots at it rather than at a PocketBase id, and QR labels print
+it. Everything below an organization stays unique only within it. Codes are
+immutable once set, which is the property that makes them safe to sign into an
+account JWT and to put on a sticker.
+
+Basemaps moved too, for an unrelated reason: CARTO put its raster tiles behind
+an API key and is retiring them, so both themes now render OpenFreeMap vector
+tiles through MapLibre GL. That requires WebGL and costs 285 kB gzipped on map
+screens.
+
+**Upgrading an existing database.** `migrate up` backfills
+`organizations.code` from each organization's name, and aborts rather than
+guessing when a name yields nothing valid or two names collide — an invented
+code would be permanent, printed on labels and baked into signed JWTs. If it
+stops, rename the organization so a valid code derives, run `migrate up` again,
+and rename it back afterwards: `name` stays mutable, `code` freezes only once
+it has a value. PocketBase runs the whole migration list inside one transaction,
+so a refusal leaves nothing half-applied — and no `code` column to fill in by
+hand in the meantime.
+
 ### Added
 
 - **`organizations.code` — the ecosystem's namespace root.** Optional, unique
@@ -40,6 +66,32 @@ and this file starts where the versioned releases do.
   expected.
 
 ### Changed
+
+- **Basemaps moved to OpenFreeMap, and now render as vector tiles.** CARTO put
+  its raster basemaps behind an API key and is retiring them, so the dark
+  theme's tiles began serving a watermark. Light mode had the quieter version of
+  the same problem: it called `tile.openstreetmap.org` directly, which the OSMF
+  tile usage policy does not permit for a product. Both themes now use
+  OpenFreeMap — `bright` for light, `fiord` for dark — which requires no key,
+  sets no request cap, permits commercial use, and can be self-hosted.
+
+  OpenFreeMap publishes no raster endpoint, so this is a rendering change rather
+  than a URL swap. The basemap draws through `L.maplibreGL` onto a WebGL canvas
+  instead of `L.tileLayer`, and consequently **requires WebGL**. Markers,
+  clustering, popups and the `CRS.Simple` floor-plan overlay are unchanged
+  Leaflet on top of it, and no consuming component needed edits. The dark-mode
+  brightness filter that CARTO's `dark_all` required is gone: `fiord` is a
+  designed dark style, and the GL canvas lands in the same `.leaflet-tile-pane`
+  the old rule targeted, so keeping it would have washed the basemap out.
+
+  Cost: the lazily-loaded map chunk goes from 10.8 kB to 285 kB gzipped, paid on
+  map screens only rather than at app load. Verified on desktop, iPad and
+  iPhone, and under Chrome throttling at every speed.
+
+  maplibre-gl is pinned to v5 — see the held-back dependencies note in
+  `CLAUDE.md`. v6 loads its tile-parsing worker as a sibling file that no
+  bundler emits, which renders the basemap as a flat sheet of colour with
+  nothing in the console.
 
 - **An organization code may start with a digit.** The pattern went from
   `^[a-z][a-z0-9-]{1,30}$` to `^[a-z0-9][a-z0-9-]{1,30}$`. The leading-letter
@@ -498,7 +550,8 @@ repository public. Each of these was reproduced before being fixed.
 - `scripts/test-authz.sh` grew from 135 to 147 checks, covering the membership
   lifecycle, the code uniqueness constraint, and the frozen leaf-node code.
 
-[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/stone-age-io/platform/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/stone-age-io/platform/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/stone-age-io/platform/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/stone-age-io/platform/compare/v0.1.0...v0.2.0
