@@ -324,6 +324,11 @@ func main() {
 	// Register CLI Commands (for generating configs, keys, etc.)
 	pbnats.RegisterCommands(app)
 
+	// Platform-owned hooks: every org gets an immutable `code`, the root of the
+	// public namespace (ADR 0002). Registered before the provisioning hook so a
+	// code exists on the record the moment anything else reads it.
+	hooks.RegisterOrgCode(app, tenancyOptions.OrganizationsCollection)
+
 	// Platform-owned hooks: auto-provision NATS account + Nebula CA per new org.
 	hooks.RegisterOrgProvisioning(app, hooks.OrgProvisioningOptions{
 		OrgCollection:                tenancyOptions.OrganizationsCollection,

@@ -2,7 +2,6 @@ package hooks
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/pocketbase/dbx"
@@ -266,21 +265,37 @@ func assertThingCodeFree(re *core.RequestEvent, opts ThingRoutesOptions, orgID, 
 	return nil
 }
 
-var slugNonAlnum = regexp.MustCompile(`[^a-z0-9]+`)
-
-// orgSlugFor derives the email-domain slug from the organization name, matching
-// what the console used to build client-side so existing records keep their shape.
+// orgSlugFor returns the organization's code, used as the domain half of the
+// synthetic emails this route mints for a Thing and its NATS / Nebula identities.
+//
+// It used to derive a slug from the organization NAME on every call, matching
+// what the console built client-side. Two things were wrong with that, and both
+// are fixed by reading the stored code instead (ADR 0002 in platform-docs):
+//
+//   - The name is mutable, so renaming an organization silently changed the
+//     identifier domain of every Thing created afterwards, leaving one org's
+//     devices split across two domains with nothing to indicate it.
+//   - Names are unique but their slugs are not ("Acme Inc" and "Acme, Inc."
+//     both give acme-inc), so two legal organizations could collide in a
+//     namespace that has a global unique index over it.
+//
+// organizations.code is globally unique and frozen, so both classes are closed:
+// the emails below are now literally the (organization, code) join key, with
+// each half immutable.
 func orgSlugFor(re *core.RequestEvent, opts ThingRoutesOptions, orgID string) (string, error) {
 	org, err := re.App.FindRecordById(opts.OrgCollection, orgID)
 	if err != nil {
 		return "", re.NotFoundError("active organization not found", err)
 	}
-	slug := slugNonAlnum.ReplaceAllString(strings.ToLower(org.GetString("name")), "-")
-	slug = strings.Trim(slug, "-")
-	if slug == "" {
-		slug = "org"
+	code := org.GetString("code")
+	if code == "" {
+		// Unreachable through the record API: the create hook assigns a code to
+		// every organization and the migration backfilled the rest. Refusing
+		// beats minting "DOOR-1@.thing.local" and discovering it much later.
+		return "", re.BadRequestError(
+			"the active organization has no code; set one before creating Things", nil)
 	}
-	return slug, nil
+	return code, nil
 }
 
 // resolveNatsUser returns the nats_users id to link, minting one under "auto".
@@ -350,13 +365,17 @@ func resolveNatsUser(
 	}
 
 	// The synthetic email is globally unique (a partial unique index on the
-	// collection), and it is built from the org NAME slug -- so two
-	// organizations whose names slug identically ("Acme Inc" and "Acme, Inc."
-	// both give acme-inc) share an identifier domain and collide here. The
-	// organizations collection only enforces unique NAMES, so both are legal
-	// records. Checked up front purely so the failure says what happened:
-	// otherwise the duplicate surfaces from Save() as "failed to create thing",
-	// which sends the reader looking in the wrong place entirely.
+	// collection). The domain half is now organizations.code, which is itself
+	// globally unique and frozen, so the collision this check was written for --
+	// two organizations whose NAMES slugged identically ("Acme Inc" and
+	// "Acme, Inc." both gave acme-inc) sharing an identifier domain -- can no
+	// longer happen.
+	//
+	// The check stays because the local half can still repeat: a Thing code
+	// already used in this organization reaches here if assertThingCodeFree was
+	// somehow bypassed. Kept purely so the failure says what happened, rather
+	// than surfacing from Save() as "failed to create thing" and sending the
+	// reader looking in the wrong place entirely.
 	email := fmt.Sprintf("%s@%s.nats.local", body.Code, orgSlug)
 	if clash, _ := txApp.FindFirstRecordByFilter(
 		opts.NatsUserCollection,
@@ -364,9 +383,8 @@ func resolveNatsUser(
 		dbx.Params{"e": email},
 	); clash != nil {
 		return "", re.BadRequestError(fmt.Sprintf(
-			"identifier %q is already in use, most likely by an organization whose name also shortens to %q. "+
-				"Give this Thing a different code, or rename one of the organizations.",
-			email, orgSlug), nil)
+			"identifier %q is already in use — a Thing with code %q already has a NATS identity in this organization",
+			email, body.Code), nil)
 	}
 
 	col, err := txApp.FindCollectionByNameOrId(opts.NatsUserCollection)

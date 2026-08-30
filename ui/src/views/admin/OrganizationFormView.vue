@@ -20,6 +20,7 @@ const loading = ref(false)
 // Form state
 const form = ref({
   name: '',
+  code: '',
   description: '',
   active: true,
   managed: false,
@@ -82,6 +83,7 @@ async function loadData() {
     existingRecord.value = record
     form.value = {
       name: record.name,
+      code: record.code || '',
       description: record.description || '',
       active: record.active,
       managed: !!record.managed,
@@ -185,6 +187,12 @@ async function submit() {
     // the same request as the rest of the fields.
     const data = new FormData()
     data.append('name', form.value.name)
+    // Create only: the update rule freezes `code`, so sending it on edit would
+    // fail the request even when the value is unchanged. Blank is fine — the
+    // server slugifies the name when no code is given.
+    if (!isEdit.value) {
+      data.append('code', form.value.code.trim())
+    }
     data.append('description', form.value.description)
     data.append('active', String(form.value.active))
     if (!isReservedOrg.value) {
@@ -260,6 +268,33 @@ onMounted(() => {
               <div class="form-control">
                 <label class="label"><span class="label-text">Name *</span></label>
                 <input v-model="form.name" type="text" class="input input-bordered" required :disabled="loading" />
+              </div>
+
+              <!-- Code: the root of the public namespace (ADR 0002). Immutable
+                   once set, so it is editable on create and read-only after. -->
+              <div class="form-control">
+                <label class="label"><span class="label-text">Code</span></label>
+                <input
+                  v-model="form.code"
+                  type="text"
+                  class="input input-bordered font-mono"
+                  pattern="^[a-z][a-z0-9-]{1,30}$"
+                  placeholder="left blank, derived from the name"
+                  :disabled="loading || isEdit"
+                  :readonly="isEdit"
+                />
+                <label class="label">
+                  <span class="label-text-alt text-base-content/60">
+                    <template v-if="isEdit">
+                      Permanent. It roots this organization's NATS subjects and may be printed on
+                      physical labels, so it cannot be changed after creation.
+                    </template>
+                    <template v-else>
+                      Lowercase letters, digits and hyphens. Chosen once and permanent — leave blank
+                      to derive it from the name.
+                    </template>
+                  </span>
+                </label>
               </div>
 
               <!-- Description -->

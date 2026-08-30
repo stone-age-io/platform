@@ -20,6 +20,16 @@ import (
 // surfaces as a clear message instead of a validation error after the prompts.
 const minPasswordLen = 8
 
+// Organization codes for the two infrastructure orgs (ADR 0002). Both are
+// renameable -- --org-name and --operator-org -- so their codes are pinned here
+// rather than slugified from whatever they end up called, and pinning them is
+// also what reserves the two strings: the unique index on organizations.code
+// makes them unavailable to every other org without a reserved-word list.
+const (
+	systemOrgCode   = "system"
+	operatorOrgCode = "operator"
+)
+
 // addBootstrapCommand registers the `bootstrap` CLI command, which provisions
 // the initial System organization, admin user, and links the pre-existing NATS
 // System records (seeded by `pb-nats superuser upsert`) to it.
@@ -124,6 +134,10 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 			} else {
 				org = core.NewRecord(orgCol)
 				org.Set("name", orgName)
+				// Set explicitly rather than letting RegisterOrgCode slugify the
+				// name: the reservation only works if the code is deterministic,
+				// and the system org is renameable via --org-name.
+				org.Set("code", systemOrgCode)
 				org.Set("active", true)
 				org.Set("owner", user.Id)
 				// The org-provisioning hook skips system orgs, avoiding duplicate
@@ -140,6 +154,16 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 				org.Set("is_system_org", true)
 				if err := app.Save(org); err != nil {
 					log.Printf("⚠️ Failed to set system org flag: %v", err)
+				}
+			}
+
+			// Same backfill for the code, on a DB bootstrapped before ADR 0002.
+			// Only when empty: a code that already exists is frozen, and the
+			// migration may have derived a different one from the org's name.
+			if org.GetString("code") == "" {
+				org.Set("code", systemOrgCode)
+				if err := app.Save(org); err != nil {
+					log.Printf("⚠️ Failed to set system org code: %v", err)
 				}
 			}
 
@@ -373,6 +397,13 @@ func ensureOperatorOrg(app *pocketbase.PocketBase, orgCol *core.Collection, user
 		org.Set("name", name)
 		org.Set("active", true)
 		org.Set("owner", user.Id)
+	}
+	// Deterministic rather than slugified from --operator-org, and claiming it
+	// here is what reserves it: the unique index makes the string unavailable to
+	// every other org, so no reserved-word list is needed (ADR 0002). Only when
+	// empty -- an existing code is frozen.
+	if org.GetString("code") == "" {
+		org.Set("code", operatorOrgCode)
 	}
 	org.Set("is_operator_org", true)
 	if err := app.Save(org); err != nil {
