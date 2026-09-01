@@ -57,24 +57,16 @@ every credential below is a signed JWT the platform minted.
 ./stone-age bootstrap --email admin@demo.local --org "System" --operator-org "816tech"
 ./stone-age demo-seed --confirm
 ./stone-age nats export -o ./nats-config
-cd nats-config && ../stone-age serve --nats --nats-config ./nats.conf
+./stone-age serve --nats --nats-config ./nats-config/nats.conf
 ```
 
-Two things about that last pair of lines:
+`nats export` writes absolute paths into the generated config, so `serve --nats`
+runs from wherever you like. (It needs pb-nats **v0.2.1 or later**: in v0.2.0 the
+export flag collided with the host's own `--config`, so `-o` printed to stdout and
+wrote nothing at all.)
 
-- **`nats export -o <dir>` currently writes nothing** — it ignores the flag and
-  prints to stdout instead, in the pb-nats version vendored here. Until that is
-  fixed, redirect the three artifacts by hand:
-  `nats export --config > nats-config/nats.conf`, `--operator-conf >
-  nats-config/operator.conf`, `--operator-jwt > nats-config/operator.jwt`.
-- **Run `serve --nats` from the directory holding `nats.conf`.** The generated
-  config references `operator.jwt`, the `jwt` resolver directory and
-  `./storage/jetstream` by relative path, resolved against the process working
-  directory rather than the config file. Start it from elsewhere and it dies with
-  `error parsing operator JWT: open operator.jwt`.
-
-An external `nats-server` works exactly the same way — same config, same
-credentials. Only the process boundary differs.
+An external `nats-server -c nats-config/nats.conf` works exactly the same way —
+same config, same credentials. Only the process boundary differs.
 
 ## Which credential
 

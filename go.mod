@@ -12,7 +12,7 @@ require (
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/common v0.70.1
 	github.com/skeeeon/pb-audit v0.1.0
-	github.com/skeeeon/pb-nats v0.2.0
+	github.com/skeeeon/pb-nats v0.2.1
 	github.com/skeeeon/pb-nebula v0.1.0
 	github.com/skeeeon/pb-tenancy v0.1.0
 	github.com/spf13/cobra v1.10.2

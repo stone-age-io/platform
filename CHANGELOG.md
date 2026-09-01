@@ -125,6 +125,31 @@ and this file starts where the versioned releases do.
 
 ### Fixed
 
+- **`nats export --output` wrote nothing when combined with `--config`** (pb-nats
+  bumped to v0.2.1). pb-nats registered a bool flag named `config` on the export
+  subcommand, and this binary defines `--config <path>` as a persistent root flag.
+  Cobra let the subcommand's local bool shadow the root's string, so
+
+  ```
+  ./stone-age --config ./config.yaml nats export -o ./nats-config
+  ```
+
+  set pb-nats's *preview* flag, swallowed the config path as a positional
+  argument, printed `nats.conf` to stdout, created no directory, and exited zero.
+  The `--config` global is documented on every command, so the failure was easy to
+  hit and gave no sign it had happened.
+
+  Two things follow from the fix. The preview flag is now `--nats-conf`, so any
+  script using `nats export --config` needs updating — though in this binary that
+  script was never doing what it looked like. And because the export resolves
+  paths against its output directory, the generated config now carries **absolute**
+  paths: `serve --nats` and an external `nats-server -c` no longer have to be
+  started from the export directory.
+
+  `readiness.go` and `natsd.go` both tell operators to run
+  `nats export --output ./nats-config/`; that advice was correct all along and now
+  works as written.
+
 - **Seeded `device` and `gateway` NATS roles could not carry the contracts their
   own thing types declare.** Four separate gaps, all invisible in the console —
   every screen renders correctly and the JWT signs cleanly; the permission is
