@@ -11,7 +11,65 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **`demo-seed` — a deployment worth looking at, in one command.** A fresh
+  bootstrap leaves an empty console, and most of what this platform does is only
+  legible once there is something in it: the location map, the floor-plan
+  positioning drawer, the thing-type contract screens, the KV browser. The two
+  applications built on the platform each had a seeder; the platform itself, the
+  thing both depend on, did not.
+
+  `./stone-age demo-seed --confirm` seeds three fictional tenants — Northwind
+  Traders (cold chain), Ironbridge Manufacturing, Galewind Energy — each with
+  mapped locations, a type taxonomy carrying JSON Schemas, versioned message
+  schemas and operations, things spanning **devices, gateways, applications and
+  unattended screens**, NATS roles and signed identities, a Nebula network with a
+  lighthouse, edge sites, and members holding all five console roles. Default 120
+  things; `--things N` to change it.
+
+  Three properties worth stating, because each was a decision:
+
+  - It runs **through the provisioning hooks, not around them**. An organization
+    gets its NATS account and Nebula CA from `RegisterOrgProvisioning`; a leaf
+    node gets its NATS user from `RegisterLeafNodeProvisioning`. A seeded
+    deployment is indistinguishable from one built by hand in the console, and a
+    hook that breaks breaks the seed.
+  - It needs **no NATS server**. Keys are generated and JWTs signed locally; the
+    claim publish queues in `nats_publish_queue` and drains whenever a server
+    appears.
+  - It is **idempotent**, keyed on the `code` that ADR 0002 already made unique.
+    Re-running tops up rather than duplicating, a run that dies partway heals on
+    the next one, and `fill` only runs on create — so hand-edits to demo data
+    survive a re-seed.
+
+  The three organization codes are the same ones the helpdesk's `seed-demo` marks
+  as platform organizations, so the two demos join on `organizations.code` exactly
+  as ADR 0002 intends. Two of the three are `managed`, which wires the
+  `helpdesk.>` export into the operator hub remapped to `helpdesk.<code>.>` when
+  an operator org exists — and warns, rather than failing, when it does not.
+
+  The seeded read-only console roles (`viewer`, `dashboard`) are paired with a
+  genuinely read-only NATS role. A console role is **not** a NATS role and nothing
+  enforces the pairing, so a demo that shipped a "read-only" auditor holding
+  publish `>` would teach the trap rather than the practice.
+
+  `--confirm` is required. This ships in the binary an operator runs in
+  production, and the command writes signed NATS credentials and Nebula
+  certificates.
+
+- **`internal/testutil` — a shared PocketBase test harness.** A real app against
+  a throwaway data dir, with the four embedded libraries set up, every migration
+  applied, and the platform's provisioning hooks bound. `SetupApp(t)` for a
+  per-test app; `NewApp(dir)` for a `TestMain` that wants one app shared across a
+  package's read-only tests, which is the difference between a 53-second package
+  and a four-minute one.
+
+  It pushes pb-nats's debounce (3s) and publish-queue (30s) timers past the life
+  of any test. Neither is tied to the app's lifecycle, so a timer firing after
+  `ResetBootstrapState` panics with a nil dereference inside
+  `core.BaseApp.RecordQuery` — invisible to a long-lived server, which outlives
+  every timer.
 
 ## [0.4.0] - 2026-08-30
 

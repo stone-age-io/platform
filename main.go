@@ -19,6 +19,7 @@ import (
 	pbtenancy "github.com/skeeeon/pb-tenancy"
 
 	"platform/hooks"
+	"platform/internal/demoseed"
 	"platform/internal/natsd"
 	"platform/internal/version"
 	"platform/migrations"
@@ -583,6 +584,14 @@ func main() {
 
 	// Register Bootstrap Command
 	addBootstrapCommand(app, tenancyOptions.OrganizationsCollection, tenancyOptions.MembershipsCollection, natsOptions)
+
+	// `demo-seed`: three fictional tenants with the full contract, identity and
+	// edge surface. Registered AFTER every hook above, which is what makes the
+	// seed go in through the platform's own provisioning rather than around it —
+	// an organization it creates gets its NATS account and Nebula CA from
+	// RegisterOrgProvisioning, and a leaf node gets its NATS user from
+	// RegisterLeafNodeProvisioning, exactly as one created in the console does.
+	demoseed.RegisterCommand(app)
 
 	if err := app.Start(); err != nil {
 		log.Fatal(err)

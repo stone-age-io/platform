@@ -68,6 +68,38 @@ commands are eleven.
 Granting operator status is deliberately impossible through the API. This command
 or the admin panel, nothing else.
 
+### Something to look at
+
+A freshly bootstrapped deployment is empty, and most of what this thing does is
+only visible once there is something in it — the maps, the floor plans, the
+contract screens, the KV browser. One command fills it:
+
+```bash
+./stone-age demo-seed --confirm
+```
+
+Three fictional tenants — a cold-chain distributor, a manufacturer, and a wind
+operator — each with locations on a real map, a type taxonomy with JSON Schemas,
+things spanning **devices, gateways, applications and unattended screens**, NATS
+roles and signed identities, a Nebula network with a lighthouse, edge sites, and
+members holding all five console roles. Every login is `demo1234`; start with
+`dana@northwind.example`, or `casey@msp.example` to see the organization switcher
+with three tenants behind it.
+
+It runs offline — account and user JWTs are signed locally and the claim
+publishes queue until a server is reachable — and it is idempotent, so re-running
+tops up rather than duplicating. `--things 400` if you want a bigger fleet.
+
+Two of the three organizations are `managed`, so if you bootstrapped with an
+`--operator-org` you also get the cross-account wiring: their `helpdesk.>` subtree
+exported into the operator hub and remapped to `helpdesk.northwind.>` /
+`helpdesk.galewind.>`. Those three organization codes are the same ones the
+[helpdesk](https://github.com/stone-age-io/helpdesk)'s own `seed-demo` uses, so
+the two demos name the same tenants.
+
+`--confirm` is required and is the whole safety mechanism: this ships in the
+binary you run in production, and the command writes real signed credentials.
+
 ---
 
 ## What it does
