@@ -71,6 +71,79 @@ var things = []thingFixture{
 	{Org: "northwind", Code: "DISP-KC-01", Name: "KC Dock Display", Type: "dock-display", Location: "KC-DC1",
 		Description: "Above dock doors 1-12.",
 		Metadata:    map[string]any{"panel_size": "55in", "orientation": "landscape"}},
+	// ---- northwind: the stone-access estate.
+	//
+	// EVERY CODE BELOW IS ALSO A RECORD IN THE ACCESS-CONTROL APP — a `controllers`
+	// row or a `portals` row, with the identical code. They are lowercase where the
+	// rest of this file is uppercase, and that is not sloppiness: these codes appear
+	// in NATS subjects (acc.{location}.{type}.{thing}), so they are minted in
+	// subject-token form by the app that puts them on the wire, and the inventory
+	// follows. Site codes go the other way — access-control takes KC-DC1, KC-OFFICE
+	// and SGF-XD2 from here, because the platform is the system of record for sites.
+	//
+	// The join is the point. A door here and a door there are one door: scan its QR
+	// label in the platform's ScannerWidget or in the helpdesk's /staff/scan, and
+	// the bare code resolves in whichever app you are standing in.
+	//
+	// Only the controllers get a Nebula host. A door is not a network participant —
+	// it is I/O on a controller's terminal block, reachable only through the box
+	// that drives it — and giving every door a mesh certificate would misrepresent
+	// both the topology and what the overlay is for.
+	{Org: "northwind", Code: "ctrl-kc-dc1-1", Name: "KC DC1 - Dock Panel", Type: "access-controller",
+		Location: "KC-DC1", Description: "Drives the DC main entrance, Dock A and the Freezer Zone 1 door.",
+		NebulaIP: "10.20.40.1", NebulaGroups: []string{"access", "kc"},
+		Metadata: map[string]any{"model": "kincony-server-mini", "serial": "KC-SM-00418",
+			"reader_bus": "/dev/ttyAMA0", "relays": 8, "inputs": 8}},
+	{Org: "northwind", Code: "ctrl-kc-dc1-2", Name: "KC DC1 - Interior Panel", Type: "access-controller",
+		Location: "KC-DC1-MDF", Description: "Drives the comms cabinet and the yard gate.",
+		NebulaIP: "10.20.40.2", NebulaGroups: []string{"access", "kc"},
+		Metadata: map[string]any{"model": "kincony-pi5r8", "serial": "KC-P5-00092",
+			"reader_bus": "/dev/ttyAMA2", "relays": 8, "inputs": 8}},
+	{Org: "northwind", Code: "ctrl-kc-office-1", Name: "KC Office Panel", Type: "access-controller",
+		Location: "KC-OFFICE", Description: "Drives the office lobby and the server room.",
+		NebulaIP: "10.20.40.3", NebulaGroups: []string{"access", "kc"},
+		Metadata: map[string]any{"model": "kincony-server-mini", "serial": "KC-SM-00421",
+			"reader_bus": "/dev/ttyAMA0", "relays": 8, "inputs": 8}},
+	{Org: "northwind", Code: "ctrl-sgf-xd2-1", Name: "Springfield Panel", Type: "access-controller",
+		Location: "SGF-XD2-MDF", Description: "Drives all three Springfield doors.",
+		NebulaIP: "10.20.40.4", NebulaGroups: []string{"access", "sgf"},
+		Metadata: map[string]any{"model": "kincony-pi5r8", "serial": "SGF-P5-00107",
+			"reader_bus": "/dev/ttyAMA2", "relays": 8, "inputs": 8}},
+
+	{Org: "northwind", Code: "kc-dc1-main", Name: "DC Main Entrance", Type: "access-door", Location: "KC-DC1",
+		Metadata: map[string]any{"lock_type": "strike", "reader_make": "HID Signo 20",
+			"reader_protocol": "osdp", "held_open_seconds": 30, "installed": "2024-03-12"}},
+	{Org: "northwind", Code: "kc-dc1-dock-a", Name: "Dock A Personnel Door", Type: "access-door", Location: "KC-DC1",
+		Metadata: map[string]any{"lock_type": "strike", "reader_make": "HID Signo 20",
+			"reader_protocol": "osdp", "held_open_seconds": 45, "installed": "2024-03-12"}},
+	{Org: "northwind", Code: "kc-dc1-freezer-1", Name: "Freezer Zone 1 Door", Type: "access-door", Location: "KC-DC1-FZ1",
+		Description: "Maglock, not a strike: fail-safe so the fire panel drops it.",
+		Metadata: map[string]any{"lock_type": "maglock", "reader_make": "HID Signo 20K",
+			"reader_protocol": "osdp", "held_open_seconds": 60, "installed": "2024-06-04"}},
+	{Org: "northwind", Code: "kc-dc1-mdf", Name: "Comms Cabinet Door", Type: "access-door", Location: "KC-DC1-MDF",
+		Metadata: map[string]any{"lock_type": "strike", "reader_make": "HID Signo 20",
+			"reader_protocol": "osdp", "held_open_seconds": 15, "installed": "2024-03-12"}},
+	{Org: "northwind", Code: "kc-dc1-yard", Name: "Yard Gate", Type: "access-gate", Location: "KC-DC1",
+		Metadata: map[string]any{"operator_make": "LiftMaster CSW24U", "reader_protocol": "osdp",
+			"held_open_seconds": 180, "loop_detector": true}},
+	{Org: "northwind", Code: "kc-office-lobby", Name: "Office Lobby Door", Type: "access-door", Location: "KC-OFFICE",
+		Description: "Unlocked on a schedule during business hours.",
+		Metadata: map[string]any{"lock_type": "strike", "reader_make": "HID Signo 20",
+			"reader_protocol": "osdp", "held_open_seconds": 30, "installed": "2023-11-20"}},
+	{Org: "northwind", Code: "kc-office-server", Name: "Office Server Room Door", Type: "access-door", Location: "KC-OFFICE",
+		Metadata: map[string]any{"lock_type": "strike", "reader_make": "HID Signo 20",
+			"reader_protocol": "osdp", "held_open_seconds": 15, "installed": "2023-11-20"}},
+	{Org: "northwind", Code: "sgf-xd2-main", Name: "Cross-Dock Main Entrance", Type: "access-door", Location: "SGF-XD2",
+		Description: "disarm_on_grant: the first valid badge of the morning disarms the dock.",
+		Metadata: map[string]any{"lock_type": "strike", "reader_make": "HID Signo 20",
+			"reader_protocol": "osdp", "held_open_seconds": 30, "installed": "2025-02-18"}},
+	{Org: "northwind", Code: "sgf-xd2-dock-b", Name: "Dock B Personnel Door", Type: "access-door", Location: "SGF-XD2",
+		Metadata: map[string]any{"lock_type": "strike", "reader_make": "HID Signo 20",
+			"reader_protocol": "osdp", "held_open_seconds": 45, "installed": "2025-02-18"}},
+	{Org: "northwind", Code: "sgf-xd2-mdf", Name: "Springfield Comms Cabinet Door", Type: "access-door", Location: "SGF-XD2-MDF",
+		Metadata: map[string]any{"lock_type": "strike", "reader_make": "HID Signo 20",
+			"reader_protocol": "osdp", "held_open_seconds": 15, "installed": "2025-02-18"}},
+
 	{Org: "northwind", Code: "TP-KC-LEGACY-07", Name: "Legacy Probe 07", Type: "temp-probe", Location: "KC-DC1-FZ1",
 		Description: "Replaced during the 2026 refit. Kept for its history.", Inactive: true,
 		Metadata: map[string]any{"serial": "TP-LEG-0007", "firmware": "1.2.9", "probe_type": "air", "calibrated_on": "2024-08-19"}},

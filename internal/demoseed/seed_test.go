@@ -3,6 +3,7 @@ package demoseed_test
 import (
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/pocketbase/dbx"
@@ -77,9 +78,9 @@ func TestSeedPopulatesEveryCollectionItClaimsTo(t *testing.T) {
 		{"memberships", 13},
 		{"location_types", 13},
 		{"locations", 25},
-		{"message_schemas", 17},
-		{"thing_type_operations", 28},
-		{"thing_types", 19},
+		{"message_schemas", 21},
+		{"thing_type_operations", 35},
+		{"thing_types", 22},
 		{"things", testThings},
 		{"leaf_nodes", 5},
 		{"nats_accounts", 3},
@@ -410,7 +411,7 @@ func TestThingsSpanDevicesGatewaysAndApplications(t *testing.T) {
 		switch byID[thing.GetString("type")] {
 		case "wms-connector", "coldchain-rules", "oee-analytics", "mes-connector", "scada-bridge", "market-feed":
 			kinds["application"] = true
-		case "edge-gateway":
+		case "edge-gateway", "access-controller":
 			kinds["gateway"] = true
 		case "dock-display", "ops-wallboard":
 			kinds["appliance"] = true
@@ -421,6 +422,104 @@ func TestThingsSpanDevicesGatewaysAndApplications(t *testing.T) {
 	for _, want := range []string{"device", "gateway", "application", "appliance"} {
 		if !kinds[want] {
 			t.Errorf("no thing of kind %q was seeded", want)
+		}
+	}
+}
+
+// The stone-access join.
+//
+// Every code below is ALSO a record in the access-control repository — a
+// `controllers` row or a `portals` row with the identical code — and the three
+// site codes go the other way, from here into that app's `locations`. Two Go
+// modules cannot import each other's fixtures, so this list IS the contract:
+// changing a code on either side has to change it on both, and this test is what
+// says so out loud on this side. access-control's
+// TestSiteCodesMatchThePlatformDemo is its mirror.
+func TestTheAccessControlEstateIsPresentAndJoinable(t *testing.T) {
+	app := shared
+
+	org, err := app.FindFirstRecordByFilter("organizations", "code = 'northwind'", nil)
+	if err != nil {
+		t.Fatalf("northwind org: %v", err)
+	}
+
+	typeOf := map[string]string{}
+	types, err := app.FindAllRecords("thing_types", dbx.NewExp("organization = {:o}", dbx.Params{"o": org.Id}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range types {
+		typeOf[tt.Id] = tt.GetString("code")
+	}
+
+	// controller code -> the access-control `controllers` rows.
+	// portal code     -> the access-control `portals` rows.
+	want := map[string]string{
+		"ctrl-kc-dc1-1":    "access-controller",
+		"ctrl-kc-dc1-2":    "access-controller",
+		"ctrl-kc-office-1": "access-controller",
+		"ctrl-sgf-xd2-1":   "access-controller",
+
+		"kc-dc1-main":      "access-door",
+		"kc-dc1-dock-a":    "access-door",
+		"kc-dc1-freezer-1": "access-door",
+		"kc-dc1-mdf":       "access-door",
+		"kc-dc1-yard":      "access-gate",
+		"kc-office-lobby":  "access-door",
+		"kc-office-server": "access-door",
+		"sgf-xd2-main":     "access-door",
+		"sgf-xd2-dock-b":   "access-door",
+		"sgf-xd2-mdf":      "access-door",
+	}
+
+	for code, wantType := range want {
+		thing, err := app.FindFirstRecordByFilter("things",
+			"organization = {:o} && code = {:c}", dbx.Params{"o": org.Id, "c": code})
+		if err != nil || thing == nil {
+			t.Errorf("no Thing with code %q in northwind — the access-control join is broken", code)
+			continue
+		}
+		if got := typeOf[thing.GetString("type")]; got != wantType {
+			t.Errorf("Thing %q has type %q, want %q", code, got, wantType)
+		}
+		// A controller is a network participant and gets a Nebula host; a door is
+		// I/O on that controller's terminal block and must not.
+		hasNebula := thing.GetString("nebula_host") != ""
+		if wantType == "access-controller" && !hasNebula {
+			t.Errorf("controller %q has no Nebula host; it is the box that needs the management path", code)
+		}
+		if wantType != "access-controller" && hasNebula {
+			t.Errorf("door %q has a Nebula host; a door is not a network participant", code)
+		}
+	}
+
+	// The site codes access-control mirrors. These are the ones its own
+	// TestSiteCodesMatchThePlatformDemo asserts from the other side.
+	for _, code := range []string{"KC-DC1", "KC-OFFICE", "SGF-XD2"} {
+		if _, err := app.FindFirstRecordByFilter("locations",
+			"organization = {:o} && code = {:c}", dbx.Params{"o": org.Id, "c": code}); err != nil {
+			t.Errorf("no location %q in northwind — access-control mirrors this code", code)
+		}
+	}
+}
+
+// A portal's subject prefix has to compose to what a controller actually
+// publishes on: acc.{location}.{type}.{thing}. Getting this wrong is invisible —
+// the Thing Type screen renders a plausible subject that nothing is listening to.
+func TestAccessSubjectPrefixesMatchTheWireFormat(t *testing.T) {
+	app := shared
+
+	for _, tc := range []struct{ code, want string }{
+		{"access-controller", "acc.{location}.ctrl.{thing}"},
+		{"access-door", "acc.{location}.door.{thing}"},
+		{"access-gate", "acc.{location}.gate.{thing}"},
+	} {
+		tt, err := app.FindFirstRecordByFilter("thing_types", "code = {:c}", dbx.Params{"c": tc.code})
+		if err != nil {
+			t.Fatalf("thing type %q: %v", tc.code, err)
+		}
+		if got := tt.GetString("subject_prefix"); got != tc.want {
+			t.Errorf("%s subject_prefix = %q, want %q", tc.code, got, tc.want)
 		}
 	}
 }
@@ -503,5 +602,180 @@ func TestTheContractGraphIsWhole(t *testing.T) {
 	}
 	if linked == 0 {
 		t.Error("no thing type has any operations linked")
+	}
+}
+
+// A thing type's default NATS role has to be able to carry that type's own
+// contract. Nothing in this platform checks that at runtime: a role is a set of
+// subject patterns on one screen, a thing type is a subject prefix plus a list
+// of operations on another, and the credential minted from the pair is only
+// tested by a device trying to speak and being refused by the server.
+//
+// It shipped wrong twice at once. The three stone-access types took the stock
+// `device`/`gateway` roles, whose publish lists named every subtree in the
+// fixture except `acc.>` — so a seeded door could not publish the decision its
+// own type declares, and a controller could not receive the taps it exists to
+// answer. Separately, `reply_diagnostics` on three types resolved to roles
+// carrying `_INBOX.>` on SUBSCRIBE only, which is the requester's side of
+// request/reply rather than the responder's.
+//
+// Both failures are invisible in the console. Every screen renders correctly and
+// the JWT signs cleanly; the permission is simply absent from it.
+func TestEveryThingTypeCanSpeakItsOwnContract(t *testing.T) {
+	app := shared
+
+	types, err := app.FindAllRecords("thing_types")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(types) == 0 {
+		t.Fatal("no thing types were seeded")
+	}
+
+	checked := 0
+	for _, tt := range types {
+		code := tt.GetString("code")
+
+		role, err := app.FindRecordById("nats_roles", tt.GetString("nats_role"))
+		if err != nil {
+			t.Fatalf("thing type %q: default role: %v", code, err)
+		}
+		var pub, sub []string
+		if err := role.UnmarshalJSONField("publish_permissions", &pub); err != nil {
+			t.Fatalf("role %q publish_permissions: %v", role.GetString("name"), err)
+		}
+		if err := role.UnmarshalJSONField("subscribe_permissions", &sub); err != nil {
+			t.Fatalf("role %q subscribe_permissions: %v", role.GetString("name"), err)
+		}
+
+		for _, opID := range tt.GetStringSlice("operations") {
+			op, err := app.FindRecordById("thing_type_operations", opID)
+			if err != nil {
+				t.Fatalf("thing type %q: operation %s: %v", code, opID, err)
+			}
+			subject := composeSubject(tt.GetString("subject_prefix"), op.GetString("subject_suffix"))
+			name := op.GetString("name")
+			checked++
+
+			// A responder needs the subject on subscribe and an inbox on publish;
+			// a requester needs the mirror image. Getting one half is the failure
+			// mode, because the half you have is the one that looks like it works.
+			switch op.GetString("capability") {
+			case "publish":
+				requirePermission(t, code, name, "publish", subject, pub)
+			case "subscribe":
+				requirePermission(t, code, name, "subscribe", subject, sub)
+			case "reply":
+				requirePermission(t, code, name, "subscribe", subject, sub)
+				requirePermission(t, code, name, "publish", "_INBOX.abc123", pub)
+			case "request":
+				requirePermission(t, code, name, "publish", subject, pub)
+				requirePermission(t, code, name, "subscribe", "_INBOX.abc123", sub)
+			default:
+				t.Errorf("operation %q on %q has unknown capability %q",
+					name, code, op.GetString("capability"))
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no thing type had any operation to check")
+	}
+}
+
+func requirePermission(t *testing.T, thingType, op, dir, subject string, patterns []string) {
+	t.Helper()
+	for _, p := range patterns {
+		if subjectMatches(p, subject) {
+			return
+		}
+	}
+	t.Errorf("thing type %q declares operation %q but its default NATS role cannot %s %q (patterns: %v)",
+		thingType, op, dir, subject, patterns)
+}
+
+// composeSubject renders a thing type's subject prefix the way the console's
+// Thing Type screen does, substituting a placeholder for each template variable.
+// Only the literal tokens matter for a permission check, and every prefix in the
+// fixture is literal in its first token.
+func composeSubject(prefix, suffix string) string {
+	var b strings.Builder
+	for i := 0; i < len(prefix); i++ {
+		if prefix[i] != '{' {
+			b.WriteByte(prefix[i])
+			continue
+		}
+		end := strings.IndexByte(prefix[i:], '}')
+		if end < 0 {
+			b.WriteByte(prefix[i])
+			continue
+		}
+		b.WriteString("X")
+		i += end
+	}
+	if suffix == "" {
+		return b.String()
+	}
+	return b.String() + "." + suffix
+}
+
+// subjectMatches implements NATS subject matching for a permission pattern:
+// `*` matches exactly one token, `>` matches one or more trailing tokens.
+func subjectMatches(pattern, subject string) bool {
+	p := strings.Split(pattern, ".")
+	s := strings.Split(subject, ".")
+	for i, tok := range p {
+		if tok == ">" {
+			return i < len(s)
+		}
+		if i >= len(s) {
+			return false
+		}
+		if tok != "*" && tok != s[i] {
+			return false
+		}
+	}
+	return len(p) == len(s)
+}
+
+// The three permissions an edge service needs that no thing type's operation
+// list mentions, so TestEveryThingTypeCanSpeakItsOwnContract cannot derive them.
+// Each was found by running the real thing — four access-controllers against a
+// `serve --nats` deployment, authenticating as their own seeded Things — and each
+// failed in a way that looked like someone else's bug.
+//
+//	$JS.API.>  bind a stream, create a consumer. Missing: no policy sync at all.
+//	$KV.>      WRITE a KV value, which is a plain publish to $KV.{bucket}.{key}
+//	           and is NOT covered by $JS.API.>. Missing: the controller boots
+//	           clean, syncs its whole policy graph, arms every portal, and then
+//	           fails on the first status write with a permissions violation. A
+//	           box that starts fine and cannot report state is worse than one
+//	           that refuses to start.
+//	_INBOX.>   answer a request. Missing: request/reply is dead in one direction
+//	           only, which is the half that looks like it works.
+//
+// The one to keep in mind when adding a role: reading a KV bucket and writing one
+// need different permissions, and only the read goes through the JetStream API.
+func TestGatewayRoleCanRunAnEdgeService(t *testing.T) {
+	app := shared
+
+	roles, err := app.FindAllRecords("nats_roles", dbx.NewExp("name = 'gateway'"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(roles) == 0 {
+		t.Fatal("gateway role was not seeded")
+	}
+	for _, r := range roles {
+		var pub []string
+		if err := r.UnmarshalJSONField("publish_permissions", &pub); err != nil {
+			t.Fatalf("publish_permissions: %v", err)
+		}
+		for _, subject := range []string{
+			"$JS.API.STREAM.INFO.KV_ACC_POLICY", // bind a bucket
+			"$KV.ACC_STATUS.portal.kc-dc1-main", // write one
+			"_INBOX.abc123",                     // answer a request
+		} {
+			requirePermission(t, "gateway role", "edge service", "publish", subject, pub)
+		}
 	}
 }

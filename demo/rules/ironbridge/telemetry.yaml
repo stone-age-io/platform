@@ -1,0 +1,388 @@
+# =============================================================================
+# Ironbridge Manufacturing — live plant telemetry
+# =============================================================================
+# Companion to demo/rules/northwind/telemetry.yaml, which carries the long-form
+# notes on subject composition, the one-minute cron floor, static payloads, and
+# why publish mode is `core` here. Read that file first; this one assumes it.
+#
+# Run this in its OWN rule-router process, authenticated into the IRONBRIDGE
+# NATS account:
+#
+#   rule-router --config config/rule-scheduler.yaml --rules demo/rules/ironbridge
+#
+# Ironbridge is the org the seed leaves UNMANAGED (`managed: false`), so unlike
+# Northwind and Galewind it exports nothing to the operator hub. Nothing in this
+# file depends on that; it is worth knowing because the Northwind and Galewind
+# demos have a second place their traffic can be observed from and this one does
+# not.
+#
+# Plant runs two shifts, Mon-Fri 06:00-22:00 Eastern. Everything below is gated
+# on that in the cron rather than in a condition, so an idle plant overnight is
+# visible as an idle plant rather than as a broken demo.
+
+# -----------------------------------------------------------------------------
+# PANEL POWER — the signal worth charting
+#
+# Four phase-shifted rules walking PM-001 (Building 1 fabrication) through a
+# load profile, for the reason spelled out in the Northwind file: a single rule
+# has a fixed payload and draws a flat line. Point a chart at
+# `telemetry.PIT-B1.PM-001.power` with jsonPath `$.kw`.
+# -----------------------------------------------------------------------------
+- trigger:
+    schedule:
+      cron: "0-59/4 6-21 * * 1-5"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "telemetry.PIT-B1.PM-001.power"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","kw":412.6,"kvar":118.2,"pf":0.96,"voltage_ll":479.1}'
+
+- trigger:
+    schedule:
+      cron: "1-59/4 6-21 * * 1-5"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "telemetry.PIT-B1.PM-001.power"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","kw":488.3,"kvar":142.7,"pf":0.94,"voltage_ll":478.4}'
+
+- trigger:
+    schedule:
+      cron: "2-59/4 6-21 * * 1-5"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "telemetry.PIT-B1.PM-001.power"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","kw":531.9,"kvar":167.4,"pf":0.91,"voltage_ll":477.6}'
+
+- trigger:
+    schedule:
+      cron: "3-59/4 6-21 * * 1-5"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "telemetry.PIT-B1.PM-001.power"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","kw":455.1,"kvar":129.8,"pf":0.95,"voltage_ll":478.9}'
+
+# Overnight base load, when the presses are down and only the chillers and air
+# compressors are running. Same meter, a tenth of the power — the contrast is
+# the point, and it is the sort of thing an energy dashboard exists to show.
+- trigger:
+    schedule:
+      cron: "*/5 22-23,0-5 * * *"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "telemetry.PIT-B1.PM-001.power"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","kw":47.2,"kvar":19.6,"pf":0.92,"voltage_ll":481.3}'
+
+- trigger:
+    schedule:
+      cron: "*/3 6-21 * * 1-5"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "telemetry.PIT-B2.PM-002.power"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","kw":286.4,"kvar":91.1,"pf":0.95,"voltage_ll":479.8}'
+
+- trigger:
+    schedule:
+      cron: "*/5 * * * *"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "telemetry.PIT-MCC1.PM-003.power"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","kw":63.8,"kvar":21.4,"pf":0.95,"voltage_ll":480.2}'
+
+# -----------------------------------------------------------------------------
+# BEARING VIBRATION — reduced on the device, not on the bus
+#
+# The sensor samples at kHz and publishes an RMS/peak summary. That reduction
+# happens on the device on purpose: shipping raw waveform to the hub would be the
+# expensive way to compute the same three numbers, and the schema records what
+# was actually sent rather than what was measured.
+#
+# VS-002 on Line B runs high — 6.4 mm/s RMS against a 4.5 alarm threshold on a
+# machine of this class. That is the reading a maintenance rule should watch.
+# -----------------------------------------------------------------------------
+- trigger:
+    schedule:
+      cron: "*/2 6-21 * * 1-5"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "telemetry.LINE-A.VS-001.vibration"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","rms_mm_s":2.1,"peak_mm_s":5.8,"axis":"x"}'
+
+- trigger:
+    schedule:
+      cron: "*/2 6-21 * * 1-5"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "telemetry.LINE-B.VS-002.vibration"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","rms_mm_s":6.4,"peak_mm_s":17.9,"axis":"y"}'
+
+- trigger:
+    schedule:
+      cron: "*/4 6-21 * * 1-5"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "telemetry.LINE-C.VS-003.vibration"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","rms_mm_s":1.6,"peak_mm_s":4.2,"axis":"z"}'
+
+# -----------------------------------------------------------------------------
+# MACHINE CYCLES — the unit of OEE, and the busiest traffic in this file
+#
+# One completed cycle per line per minute during shift. A real press cycles far
+# faster than that; the cron floor is one minute and no amount of rule-writing
+# gets under it, so this is a sampled view of the real rate rather than the real
+# rate. Anything that needs true cycle-level throughput belongs on a device
+# publishing directly, not on a scheduler standing in for one.
+# -----------------------------------------------------------------------------
+- trigger:
+    schedule:
+      cron: "* 6-21 * * 1-5"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "line.LINE-A.LC-LINE-A.cycle"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","seconds":42.6,"good":true,"part":"IB-4471-A","operator":"BADGE-1180"}'
+
+- trigger:
+    schedule:
+      cron: "* 6-21 * * 1-5"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "line.LINE-B.LC-LINE-B.cycle"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","seconds":58.1,"good":true,"part":"IB-4471-B","operator":"BADGE-1204"}'
+
+- trigger:
+    schedule:
+      cron: "* 6-21 * * 1-5"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "line.LINE-C.LC-LINE-C.cycle"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","seconds":91.4,"good":true,"part":"IB-4471-FA","operator":"BADGE-1219"}'
+
+# A scrapped part every 13 minutes on Line B — the `good: false` cycles are the
+# quality term in OEE, and a demo where every cycle passes has nothing to compute.
+- trigger:
+    schedule:
+      cron: "*/13 6-21 * * 1-5"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "line.LINE-B.LC-LINE-B.cycle"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","seconds":61.7,"good":false,"part":"IB-4471-B","operator":"BADGE-1204"}'
+
+# -----------------------------------------------------------------------------
+# ALARMS — raised AND cleared
+#
+# `active` is a field on the alarm, not a separate subject, so an alarm is
+# cleared by publishing the same code with `active: false`. Both rules exist for
+# the same reason the fire drill in the access-control demo has two: a raise with
+# no matching clear leaves a permanent red badge that stops meaning anything
+# about twenty minutes into a demo.
+# -----------------------------------------------------------------------------
+- trigger:
+    schedule:
+      cron: "7,37 6-21 * * 1-5"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "line.LINE-B.LC-LINE-B.alarm"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","code":"E-2204","severity":"warning","active":true,"message":"Weld current out of band on station 3"}'
+
+- trigger:
+    schedule:
+      cron: "11,41 6-21 * * 1-5"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "line.LINE-B.LC-LINE-B.alarm"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","code":"E-2204","severity":"warning","active":false,"message":"Weld current back in band"}'
+
+# A critical one, twice a shift, on the press line.
+- trigger:
+    schedule:
+      cron: "23 9,15 * * 1-5"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "line.LINE-A.LC-LINE-A.alarm"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","code":"E-1102","severity":"critical","active":true,"message":"Die protection fault - press stopped"}'
+
+- trigger:
+    schedule:
+      cron: "31 9,15 * * 1-5"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "line.LINE-A.LC-LINE-A.alarm"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","code":"E-1102","severity":"critical","active":false,"message":"Die protection cleared - press restarted"}'
+
+# -----------------------------------------------------------------------------
+# LINE MODE — the instruction, and the echo that makes it checkable
+#
+# `.mode` is a SUBSCRIBE operation on the line controller: the controller
+# listens, and something else publishes. `.mode.echo` is the controller's
+# publish of the mode actually in force. Pair a `twin_desired` value against the
+# ECHO, never against a measurement — the same rule the reefer setpoints
+# illustrate in the Northwind file.
+# -----------------------------------------------------------------------------
+- trigger:
+    schedule:
+      cron: "0 6 * * 1-5"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "line.LINE-A.LC-LINE-A.mode"
+      mode: core
+      payload: '{"mode":"run","issued_by":"MES-CONN-01"}'
+
+- trigger:
+    schedule:
+      cron: "0 14 * * 1-5"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "line.LINE-A.LC-LINE-A.mode"
+      mode: core
+      payload: '{"mode":"changeover","issued_by":"MES-CONN-01"}'
+
+- trigger:
+    schedule:
+      cron: "*/6 6-21 * * 1-5"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "line.LINE-A.LC-LINE-A.mode.echo"
+      mode: core
+      payload: '{"mode":"run","issued_by":"LC-LINE-A"}'
+
+# -----------------------------------------------------------------------------
+# APPLICATIONS AND THE GATEWAY
+#
+# OEE-01 is an eKuiper stream processor. It is a Thing with a signed identity
+# exactly like the meters above, and it does the windowed aggregation the rule
+# engine deliberately does not — a rule engine answers "is this reading out of
+# band right now", not "what was availability over the last fifteen minutes".
+# -----------------------------------------------------------------------------
+- trigger:
+    schedule:
+      cron: "*/5 6-21 * * 1-5"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "app.oee.OEE-01.oee"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","window_mins":15,"availability":0.91,"performance":0.87,"quality":0.98,"oee":0.776,"line":"LINE-A"}'
+
+- trigger:
+    schedule:
+      cron: "2-59/5 6-21 * * 1-5"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "app.oee.OEE-01.oee"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","window_mins":15,"availability":0.84,"performance":0.79,"quality":0.94,"oee":0.624,"line":"LINE-B"}'
+
+- trigger:
+    schedule:
+      cron: "*/5 * * * *"
+  action:
+    nats:
+      subject: "app.oee.OEE-01.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":907200}'
+
+- trigger:
+    schedule:
+      cron: "1-59/5 * * * *"
+  action:
+    nats:
+      subject: "app.mes.MES-CONN-01.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":2592000}'
+
+- trigger:
+    schedule:
+      cron: "*/5 * * * *"
+  action:
+    nats:
+      subject: "gateway.PIT-MCC1.GW-PIT-01.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":5184000}'
+
+# =============================================================================
+# DIGITAL TWIN — reported state only
+# =============================================================================
+# Requires the `twin` bucket to exist (console → NATS → KV Buckets → Initialize).
+# The full reasoning — why `$KV.{bucket}.{key}`, why `mode: jetstream`, and why
+# nothing here ever writes `twin_desired` — is in the Northwind file. Delete this
+# section if you have not created the bucket.
+# =============================================================================
+
+# The echo, which is the key a desired mode should be paired with.
+- trigger:
+    schedule:
+      cron: "*/3 * * * *"
+  action:
+    nats:
+      subject: "$KV.twin.thing.LC-LINE-A.mode"
+      mode: jetstream
+      payload: '"run"'
+
+- trigger:
+    schedule:
+      cron: "*/3 * * * *"
+  action:
+    nats:
+      subject: "$KV.twin.thing.LC-LINE-B.mode"
+      mode: jetstream
+      payload: '"run"'
+
+# Line C is in changeover. Set `twin_desired` `thing.LC-LINE-C.mode` to `"run"`
+# in the console and the Digital Twin row shows `"changeover" → "run"` — the
+# values themselves, not the word "differs", because "differs on: mode" is the
+# same width and sends the reader off to look both values up.
+- trigger:
+    schedule:
+      cron: "*/3 * * * *"
+  action:
+    nats:
+      subject: "$KV.twin.thing.LC-LINE-C.mode"
+      mode: jetstream
+      payload: '"changeover"'
+
+- trigger:
+    schedule:
+      cron: "*/4 * * * *"
+  action:
+    nats:
+      subject: "$KV.twin.thing.GW-PIT-01.status"
+      mode: jetstream
+      payload: '{"wan":"up","leaf":"connected","oee_pipeline":"running","version":"0.4.0"}'

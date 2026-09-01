@@ -97,8 +97,26 @@ exported into the operator hub and remapped to `helpdesk.northwind.>` /
 [helpdesk](https://github.com/stone-age-io/helpdesk)'s own `seed-demo` uses, so
 the two demos name the same tenants.
 
+Northwind's inventory also carries the **stone-access estate** — four access
+controllers and ten doors and gates, with the contract layer to match
+(`acc.{location}.door.{thing}`, decision and alarm schemas, the operator-grant
+command). Every one of those codes is also a record in
+[access-control](https://github.com/stone-age-io/access-control), whose own
+`accessd demo-seed --confirm` seeds the same three sites by the same codes. Run
+both and a door in one app and a Thing in the other are the same door — which is
+what `organizations.code` and the per-org code namespace are *for*.
+
 `--confirm` is required and is the whole safety mechanism: this ships in the
 binary you run in production, and the command writes real signed credentials.
+
+### Making it move
+
+The seed writes records; a dashboard needs traffic. [`demo/rules/`](demo/rules)
+holds [rule-router](https://github.com/stone-age-io) scheduler rules — one
+directory per organization, because the NATS account is the tenant boundary —
+that publish on the exact subjects each seeded thing type declares. Charts,
+stats, the console widget and the KV browser all have something to draw within a
+minute. Run the bus with `serve --nats` and the platform is its own NATS server.
 
 ---
 

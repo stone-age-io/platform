@@ -81,6 +81,54 @@ var messageSchemas = []schemaFixture{
 			"version": str("Agent version"),
 		}, "ts")},
 
+	// ---- northwind: the access-control app's contract.
+	//
+	// stone-access is a sibling app running inside this same organization's NATS
+	// account, and these four documents describe what its controllers actually put
+	// on the bus. They are written down HERE, in the inventory, because that is
+	// what the contract layer is for: a consumer should be able to resolve where a
+	// participant speaks and what shape its messages take from data alone, without
+	// reading another repository's source. The shapes mirror
+	// access-control/internal/policy and its events projection.
+	{Org: "northwind", Namespace: "access", Name: "decision", Version: "1.0.0",
+		Description: "The outcome of a credential presentation at a door. `reason` is a stable code from access-control's policy package, not free text.",
+		Schema: objSchema(map[string]any{
+			"ts":         stamp("Decided at"),
+			"portal":     str("Portal code"),
+			"credential": str("Credential value presented"),
+			"user":       str("Cardholder name, when the credential resolved to one"),
+			"allow":      boolF("Granted"),
+			"reason":     str("Stable reason code, e.g. allow_grant / deny_schedule_closed"),
+			"source":     enum("Source", "nats", "osdp", "command", "badge"),
+		}, "ts", "portal", "allow", "reason")},
+
+	{Org: "northwind", Namespace: "access", Name: "alarm", Version: "1.0.0",
+		Description: "A door alarm: forced open, or held open past its threshold.",
+		Schema: objSchema(map[string]any{
+			"ts":     stamp("Raised at"),
+			"portal": str("Portal code"),
+			"alarm":  enum("Alarm", "forced", "held", "held_clear", "intrusion"),
+			"detail": str("Human-readable text"),
+		}, "ts", "portal", "alarm")},
+
+	{Org: "northwind", Namespace: "access", Name: "grant", Version: "1.0.0",
+		Description: "An operator-initiated momentary unlock. The door pops without a credential, and the resulting decision is stamped source=command so it stays distinguishable from a card read.",
+		Schema: objSchema(map[string]any{
+			"portal":    str("Portal code"),
+			"issued_by": str("Requesting operator"),
+			"seconds":   intF("Strike pulse (s)"),
+		}, "portal")},
+
+	{Org: "northwind", Namespace: "access", Name: "controller_health", Version: "1.0.0",
+		Description: "Controller liveness beat. Rides core NATS outside the audited .evt subtree, deliberately, so the events stream cannot capture it.",
+		Schema: objSchema(map[string]any{
+			"ts":      stamp("Sent at"),
+			"uptime":  intF("Uptime (s)"),
+			"portals": intF("Portals armed"),
+			"synced":  enum("Policy sync state", "synced", "cached", "loading"),
+			"version": str("Controller build"),
+		}, "ts")},
+
 	// ---- ironbridge
 	{Org: "ironbridge", Namespace: "telemetry", Name: "power", Version: "1.0.0",
 		Description: "Three-phase electrical measurement from a panel meter.",
@@ -213,6 +261,33 @@ var operations = []operationFixture{
 		Description: "A shipment event lifted out of the warehouse management system."},
 	{Org: "northwind", Name: "request_inventory", Capability: "request", SubjectSuffix: "inventory",
 		Description: "Ask the WMS connector for on-hand inventory at a location."},
+
+	// ---- northwind: stone-access.
+	//
+	// The suffixes are the real ones from access-control/internal/subjects, so a
+	// subject composed on the Thing Type screen is the subject a controller
+	// actually publishes on. `evt.tap` rather than `tap` is not a typo: the bare
+	// `.tap` subject is the READER's input (a credential presentation arriving at
+	// the controller), while `.evt.tap` is the DECISION the controller emits. Two
+	// different messages, and only the second is audited.
+	{Org: "northwind", Name: "publish_access_decision", Capability: "publish", SubjectSuffix: "evt.tap",
+		Description: "The decision on a credential presentation.",
+		SchemaNS:    "access", SchemaName: "decision", SchemaVersion: "1.0.0"},
+	{Org: "northwind", Name: "publish_access_alarm", Capability: "publish", SubjectSuffix: "evt.alarm",
+		Description: "Door forced or held open past its threshold.",
+		SchemaNS:    "access", SchemaName: "alarm", SchemaVersion: "1.0.0"},
+	{Org: "northwind", Name: "publish_access_state", Capability: "publish", SubjectSuffix: "evt.state",
+		Description: "Effective-posture change on a portal."},
+	{Org: "northwind", Name: "subscribe_access_tap", Capability: "subscribe", SubjectSuffix: "tap",
+		Description: "A credential presentation arriving from a reader. The controller's input, not its output."},
+	{Org: "northwind", Name: "subscribe_access_grant", Capability: "subscribe", SubjectSuffix: "cmd.grant",
+		Description: "Operator-initiated momentary unlock.",
+		SchemaNS:    "access", SchemaName: "grant", SchemaVersion: "1.0.0"},
+	{Org: "northwind", Name: "subscribe_access_posture", Capability: "subscribe", SubjectSuffix: "cmd.posture",
+		Description: "Set or clear a runtime posture override on a portal."},
+	{Org: "northwind", Name: "publish_controller_heartbeat", Capability: "publish", SubjectSuffix: "heartbeat",
+		Description: "Controller liveness beat, outside the audited .evt subtree.",
+		SchemaNS:    "access", SchemaName: "controller_health", SchemaVersion: "1.0.0"},
 
 	// ---- ironbridge
 	{Org: "ironbridge", Name: "publish_power", Capability: "publish", SubjectSuffix: "power",
@@ -379,6 +454,63 @@ var thingTypes = []thingTypeFixture{
 			"version":    str("Build"),
 			"rule_count": intF("Loaded rules"),
 		})},
+
+	// ---- northwind: stone-access hardware.
+	//
+	// These three carry the codes of records in the ACCESS-CONTROL app, and the
+	// prefixes are its real subject hierarchy: acc.{location}.{type}.{thing} for a
+	// portal, acc.{location}.ctrl.{code} for a controller. `ctrl` is a reserved
+	// segment there — it is not a portal type — which is why the controller gets
+	// its own thing type rather than a `{thing_type_code}` substitution.
+	//
+	// A door and a gate are separate types for the same reason: the second token
+	// is the portal's TYPE, so one thing type per type is the only way a composed
+	// subject on the Thing Type screen matches what a controller publishes.
+	{Org: "northwind", Code: "access-controller", Name: "Access Controller", Kind: kindGateway,
+		Description:   "A stone-access edge controller. Decides credential presentations locally against a mirrored policy graph, and keeps deciding when the WAN is down.",
+		SubjectPrefix: "acc.{location}.ctrl.{thing}",
+		Capabilities:  []string{"publish", "subscribe"},
+		Operations:    []string{"publish_controller_heartbeat", "publish_access_state"},
+		Role:          "gateway",
+		Schema: objSchema(map[string]any{
+			"model":      enum("Board", "kincony-server-mini", "kincony-pi5r8"),
+			"serial":     str("Serial number"),
+			"reader_bus": str("RS485 device"),
+			"relays":     intF("Relay outputs"),
+			"inputs":     intF("Digital inputs"),
+		}),
+	},
+
+	{Org: "northwind", Code: "access-door", Name: "Access-Controlled Door", Kind: kindDevice,
+		Description:   "A door with a reader, a strike or maglock, and door-position monitoring. Its code is the portal code in stone-access.",
+		SubjectPrefix: "acc.{location}.door.{thing}",
+		Capabilities:  []string{"publish", "subscribe"},
+		Operations: []string{"publish_access_decision", "publish_access_alarm", "publish_access_state",
+			"subscribe_access_tap", "subscribe_access_grant", "subscribe_access_posture"},
+		Role: "device",
+		Schema: objSchema(map[string]any{
+			"lock_type":         enum("Lock", "strike", "maglock"),
+			"reader_make":       str("Reader make"),
+			"reader_protocol":   enum("Reader protocol", "osdp", "wiegand"),
+			"held_open_seconds": intF("Held-open threshold (s)"),
+			"installed":         date("Installed"),
+		}),
+	},
+
+	{Org: "northwind", Code: "access-gate", Name: "Access-Controlled Gate", Kind: kindDevice,
+		Description:   "A vehicle gate on the same controller as the doors, with a much longer held-open threshold.",
+		SubjectPrefix: "acc.{location}.gate.{thing}",
+		Capabilities:  []string{"publish", "subscribe"},
+		Operations: []string{"publish_access_decision", "publish_access_alarm",
+			"subscribe_access_tap", "subscribe_access_grant"},
+		Role: "device",
+		Schema: objSchema(map[string]any{
+			"operator_make":     str("Gate operator make"),
+			"reader_protocol":   enum("Reader protocol", "osdp", "wiegand"),
+			"held_open_seconds": intF("Held-open threshold (s)"),
+			"loop_detector":     boolF("Vehicle loop fitted"),
+		}),
+	},
 
 	{Org: "northwind", Code: "dock-display", Name: "Dock Display", Kind: kindAppliance,
 		Description:   "Unattended screen above a dock door. Subscribes only.",
@@ -586,16 +718,77 @@ type roleFixture struct {
 // creating an ephemeral consumer and fetching from the stream. Those are the
 // minimum publishes a read-only console session actually issues.
 var roleTemplates = []roleFixture{
+	// `acc.>` is on both lists here and on `gateway` below because a sibling app
+	// running inside this account owns that subtree, and its participants are
+	// Things of these two kinds: an access-controlled door defaults to `device`
+	// and a controller to `gateway`. Without it, a door's minted credential
+	// cannot publish the decision its own thing type declares, and a controller
+	// cannot receive the taps it exists to answer — and the failure would look
+	// like an access-control bug rather than a permission the inventory forgot
+	// to grant. It is on SUBSCRIBE as well as publish because a door listens on
+	// `acc.{location}.{type}.{thing}.cmd.grant`, not on the generic `cmd.>`.
+	//
+	// The two lists below cover the SAME SUBTREES, and that is the invariant to
+	// keep. It was not true before: subscribe carried only `cmd.>` and `config.>`,
+	// on the assumption that anything inbound arrives on a command root. Nothing
+	// in the fixture works that way — a reefer takes its setpoint on
+	// `asset.{location}.{thing}.setpoint`, a line controller its mode on
+	// `line.…mode`, a turbine its curtailment on `turbine.…curtail` — because a
+	// thing type composes every operation under its OWN prefix, inbound and
+	// outbound alike. A pattern rooted at `cmd.` matches none of them, so three
+	// types shipped unable to receive the instructions they declare, and the
+	// `.echo` half of each pair had nothing to echo.
+	//
+	// Mirroring is deliberately coarse: a device can subscribe to a peer's
+	// telemetry, not just its own. That is the cost of a role template being a
+	// KIND of participation rather than one identity's contract, and the reason
+	// narrowing lives on the thing's own `publish_permissions` — owner/admin only,
+	// because it is equivalent to granting NATS permissions.
+	//
+	// `_INBOX.>` is on PUBLISH for the same class of reason. A `reply` operation
+	// means the thing answers requests, and an answer goes to the requester's
+	// inbox — so a type declaring `reply_diagnostics` needs an inbox publish or
+	// its request/reply half is dead. Three types declared one against a role
+	// that had `_INBOX.>` on subscribe only, which is the requester's side of the
+	// pair, not the responder's.
+	//
+	// TestEveryThingTypeCanSpeakItsOwnContract now checks both directions for
+	// every type against the role it actually points at. Nothing at runtime does:
+	// a role is a set of subject patterns, a thing type is a prefix plus a list
+	// of operations, and the two are edited on different screens.
+	//
+	// The lists are subtree-coarse throughout (`telemetry.>`, not one subject per
+	// device), so a role grants a KIND of participation rather than an identity's
+	// exact contract. Narrowing per thing is a per-user `publish_permissions`
+	// edit, which is owner/admin-only precisely because it is equivalent to
+	// granting NATS permissions.
 	{Name: "device", IsDefault: true,
 		Description:      "A field device: publishes its own telemetry and status, listens for commands addressed to it.",
-		Publish:          []string{"telemetry.>", "event.>", "asset.>", "line.>", "turbine.>", "status.>"},
-		Subscribe:        []string{"cmd.>", "config.>", "_INBOX.>"},
+		Publish:          []string{"telemetry.>", "event.>", "asset.>", "line.>", "turbine.>", "status.>", "acc.>", "_INBOX.>"},
+		Subscribe:        []string{"telemetry.>", "event.>", "asset.>", "line.>", "turbine.>", "status.>", "acc.>", "cmd.>", "config.>", "_INBOX.>"},
 		MaxSubscriptions: 64, MaxPayload: 1048576},
 
 	{Name: "gateway",
-		Description:      "A site aggregator: everything a device may do, plus the site's own subtree and JetStream access for the local mirror.",
-		Publish:          []string{"telemetry.>", "event.>", "status.>", "gateway.>", "$JS.API.>"},
-		Subscribe:        []string{"cmd.>", "config.>", "gateway.>", "_INBOX.>"},
+		Description: "A site aggregator: everything a device may do, plus the site's own subtree and JetStream access for the local mirror.",
+		// `$KV.>` is NOT covered by `$JS.API.>`, and the gap is invisible until an
+		// edge service tries to write a bucket. Reading a KV bucket goes through
+		// the JetStream API (bind the stream, create a consumer, deliver to an
+		// inbox), so a role with `$JS.API.>` + `_INBOX.>` watches KV perfectly
+		// well — but a WRITE is a plain publish to `$KV.{bucket}.{key}`, which
+		// matches neither. An access controller came up, synced its whole policy
+		// graph, armed every portal, and then failed on the first status write
+		// with `Permissions Violation for Publish to "$KV.ACC_STATUS.portal.…"`.
+		// A box that boots clean and cannot report state is worse than one that
+		// refuses to start.
+		//
+		// It is on `gateway` and deliberately not on `device`: a gateway runs the
+		// edge services that own buckets (leaf node, rule engine, access
+		// controller), while a field sensor publishes telemetry and lets the edge
+		// relay it. `device` has no JetStream access at all, so `$KV.>` alone
+		// would not even let it bind a bucket — half a permission is worse than
+		// none, because it reads as support for something that cannot work.
+		Publish:          []string{"telemetry.>", "event.>", "status.>", "gateway.>", "acc.>", "_INBOX.>", "$JS.API.>", "$KV.>"},
+		Subscribe:        []string{"telemetry.>", "event.>", "status.>", "gateway.>", "acc.>", "cmd.>", "config.>", "_INBOX.>"},
 		MaxSubscriptions: 512, MaxPayload: 4194304},
 
 	{Name: "application",

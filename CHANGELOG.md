@@ -58,6 +58,58 @@ and this file starts where the versioned releases do.
   production, and the command writes signed NATS credentials and Nebula
   certificates.
 
+- **The stone-access estate in Northwind's inventory.** `demo-seed` now also
+  writes the physical access-control hardware for the Northwind organization:
+  three thing types (`access-controller`, `access-door`, `access-gate`), four
+  message schemas describing what a controller actually publishes, seven
+  operations, four controllers and ten doors and gates.
+
+  Every one of those device codes is *also* a record in the
+  [access-control](https://github.com/stone-age-io/access-control) repository —
+  a `controllers` or `portals` row with the identical code — and the three site
+  codes go the other way, from here into that app's `locations`. Two Go modules
+  cannot import each other's fixtures, so the code list in
+  `TestTheAccessControlEstateIsPresentAndJoinable` is the contract on this side;
+  its mirror is `TestSiteCodesMatchThePlatformDemo` over there.
+
+  The direction of each half is deliberate. A site code is minted HERE, because
+  the platform is the inventory system of record for sites. A controller or
+  portal code is minted THERE, because those appear in NATS subjects
+  (`acc.{location}.{type}.{thing}`) and belong in subject-token form. Whichever
+  app first puts an object on the wire names it; the other follows. That is why
+  the access codes are lowercase where the rest of the inventory is not.
+
+  Only the controllers carry a Nebula host. A door is I/O on a controller's
+  terminal block rather than a network participant, and a test asserts both
+  halves of that — a controller without a mesh certificate is a missing
+  management path, a door with one misrepresents the topology.
+
+- **`demo/rules/` — live telemetry for the seeded inventory.** `demo-seed` fills
+  the console with records, which is what it should do and is not enough to make
+  a dashboard move: a chart needs a stream of readings. Three
+  [rule-router](https://github.com/stone-age-io) scheduler rule sets — one per
+  seeded organization — publish on the exact subjects each thing type declares,
+  composed as `subject_prefix` + `subject_suffix` the way the Thing Type screen
+  renders them.
+
+  **One directory per organization, run as one rule-router process each**, because
+  in operator mode the NATS account *is* the tenant boundary and a connection
+  authenticated into one cannot publish into another. Pointing `--rules` at the
+  parent loads all three and two thirds of them fail authorization.
+
+  Two constraints are documented in the files rather than worked around: cron
+  floors at one minute, and a rule's payload is fixed, so a single rule draws a
+  flat line on a chart. Each file gives its one showcase signal a handful of
+  phase-shifted rules to produce a waveform, and says why.
+
+  Each ends with a separable block writing **reported** state into the `twin` KV
+  bucket — never `twin_desired`, because these rules stand in for devices and one
+  writer per bucket is the whole safety property. rule-router has no KV action, so
+  they publish to `$KV.{bucket}.{key}`, which is what `nats kv put` does.
+
+  A companion set in the access-control repo drives the same Northwind account
+  with real credential presentations at the ten seeded doors.
+
 - **`internal/testutil` — a shared PocketBase test harness.** A real app against
   a throwaway data dir, with the four embedded libraries set up, every migration
   applied, and the platform's provisioning hooks bound. `SetupApp(t)` for a
@@ -70,6 +122,45 @@ and this file starts where the versioned releases do.
   `ResetBootstrapState` panics with a nil dereference inside
   `core.BaseApp.RecordQuery` — invisible to a long-lived server, which outlives
   every timer.
+
+### Fixed
+
+- **Seeded `device` and `gateway` NATS roles could not carry the contracts their
+  own thing types declare.** Four separate gaps, all invisible in the console —
+  every screen renders correctly and the JWT signs cleanly; the permission is
+  simply absent from it.
+
+  - `acc.>` was on neither role, so a seeded door could not publish the decision
+    its type declares and a controller could not receive the taps it exists to
+    answer. The stone-access thing types were added pointing at the stock roles
+    without checking that the stock roles reached `acc.`.
+  - The subscribe lists carried only `cmd.>` and `config.>`, on the assumption
+    that inbound traffic arrives on a command root. Nothing in the fixture works
+    that way — a reefer takes its setpoint on `asset.{location}.{thing}.setpoint`,
+    a line controller its mode on `line.…mode`, a turbine its curtailment on
+    `turbine.…curtail` — so three types shipped unable to receive the instructions
+    they declare, and the `.echo` half of each pair had nothing to echo. The two
+    lists now cover the same subtrees.
+  - `_INBOX.>` was on subscribe only, which is the *requester's* half of
+    request/reply. Three types declaring `reply_diagnostics` could not answer one.
+  - `$KV.>` was missing from `gateway`, and is **not** covered by `$JS.API.>`.
+    Reading a KV bucket goes through the JetStream API, but a write is a plain
+    publish to `$KV.{bucket}.{key}`. An access controller authenticating as its
+    own seeded Thing booted clean, synced its entire policy graph, armed every
+    portal, and then failed on the first status write with a permissions
+    violation. A box that starts fine and cannot report state is worse than one
+    that refuses to start.
+
+  The first three are now checked structurally:
+  `TestEveryThingTypeCanSpeakItsOwnContract` composes every operation's subject
+  and asserts the type's default role permits it, in the direction the capability
+  implies — `reply` needs the subject on subscribe *and* an inbox on publish, and
+  `request` needs the mirror image. The fourth cannot be derived from a thing
+  type, so `TestGatewayRoleCanRunAnEdgeService` names the three permissions an
+  edge service needs and why each one's absence looks like someone else's bug.
+
+  All four were found by running the thing: four access-controllers against a
+  `serve --nats` deployment, each authenticating as its own seeded Thing.
 
 ## [0.4.0] - 2026-08-30
 

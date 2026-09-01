@@ -1,0 +1,483 @@
+# =============================================================================
+# Northwind Traders — live telemetry for the `stone-age demo-seed` inventory
+# =============================================================================
+# rule-router scheduler rules that put traffic on the subjects the seeded
+# Northwind things declare, so the Visualizer's charts, stats, gauges, KV
+# browser and console widgets have something to draw.
+#
+# ONE FILE PER ORGANIZATION, AND ONE rule-router PER FILE. In NATS operator mode
+# the ACCOUNT is the tenant boundary: Northwind, Ironbridge and Galewind each
+# hold their own account, and a connection authenticated into one cannot publish
+# into another. That is not a rule-router limitation to work around — it is the
+# platform's isolation model, and three processes is what honouring it looks
+# like. See demo/rules/README.md for which credential to use.
+#
+# SUBJECTS ARE COMPOSED, NOT INVENTED. Every subject below is a thing type's
+# `subject_prefix` with the operation's `subject_suffix` appended, exactly as the
+# console's Thing Type screen renders it:
+#
+#   telemetry.{location}.{thing}  +  temperature  ->  telemetry.KC-DC1-FZ1.TP-001.temperature
+#   asset.{location}.{thing}      +  setpoint.echo -> asset.TRL-1180.REEFER-1180.setpoint.echo
+#   app.wms.{thing}               +  shipment     ->  app.wms.WMS-CONN-01.shipment
+#
+# No subject carries an organization token, and that is deliberate: inside NATS
+# the account already IS the tenant, so an org token here would be redundant.
+# The single place one appears in this platform is on the way OUT of an account,
+# in a managed org's `helpdesk.{code}.>` export — which is exactly why it is
+# unforgeable there and pointless here.
+#
+# PUBLISH MODE: `core` throughout. The demo seed creates no JetStream streams,
+# and the console's widgets subscribe over plain core NATS
+# (`useSubscriptionManager` calls `nc.subscribe`). A jetstream publish to these
+# subjects would hang waiting for an ack no stream will send. The one exception
+# is the twin section at the bottom, which writes into a KV bucket — that is a
+# stream, and the ack is what tells you the bucket exists.
+#
+# PREREQUISITES
+#   ./stone-age migrate up
+#   ./stone-age demo-seed --confirm
+#   rule-router --config config/rule-scheduler.yaml --rules demo/rules/northwind
+#
+#   Point --rules at demo/rules/northwind, NOT at demo/rules. rule-router walks
+#   the directory recursively, so the parent would load all three organizations
+#   into one process — and every subject belonging to the other two would then be
+#   published on a connection with no permission for it, filling the log with
+#   authorization errors for rules that are perfectly correct.
+#
+# ------------------------------- THE ONE-MINUTE FLOOR, AND WHAT IT COSTS ------
+# rule-router's cron is 5-field and validated as such: one message per rule per
+# minute, no faster. A rule's payload is also fixed — there is no random
+# function, and no arithmetic on `{@time.*}` — so a single rule publishing every
+# minute draws a flat line on a chart, which is worse than no chart.
+#
+# The workaround, used once and named where it happens: give the ONE signal you
+# actually want to watch a small set of phase-shifted rules, each firing on a
+# different minute with a different value, so the series repeats as a waveform
+# rather than a constant. TP-001 below gets six. Everything else publishes a
+# single plausible value, which is enough for a stat, a gauge or a table and
+# honest about being a fixture.
+#
+# --------------------------------- WHY MOST THINGS HERE ARE SILENT ------------
+# The seed creates about 120 things; this file speaks for roughly a dozen. That
+# is the shape of a real rollout — inventory is recorded long before every device
+# is commissioned — and a demo where all 120 report would misrepresent both the
+# platform and the work. The silent ones are the reason the Things list has an
+# `active` filter and the reason `stone_age_records` is documented as a count of
+# things CONFIGURED rather than things alive.
+
+# -----------------------------------------------------------------------------
+# COLD CHAIN — Freezer Zone 1, the signal worth charting
+#
+# Six rules, one signal. TP-001 sits in KC-DC1-FZ1 against a -18C setpoint, and
+# these six phase-shifted crons walk it through a six-minute compressor cycle:
+# pull down to -19.4, drift up to -17.2, cut back in. Point a chart widget at
+# `telemetry.KC-DC1-FZ1.TP-001.temperature` with jsonPath `$.celsius` and it
+# draws a sawtooth instead of a straight line.
+#
+# This is the only signal in the file that gets the treatment. It is verbose, and
+# it is verbose because the cron floor and the static payload are real
+# constraints rather than something to hide — if you want a second animated
+# signal, copy this block. If rule-router ever grows a value generator, this is
+# the block that collapses to one rule.
+# -----------------------------------------------------------------------------
+- trigger:
+    schedule:
+      cron: "0-59/6 * * * *"
+  action:
+    nats:
+      subject: "telemetry.KC-DC1-FZ1.TP-001.temperature"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","celsius":-19.4,"setpoint_c":-18.0,"probe":"TP-001"}'
+
+- trigger:
+    schedule:
+      cron: "1-59/6 * * * *"
+  action:
+    nats:
+      subject: "telemetry.KC-DC1-FZ1.TP-001.temperature"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","celsius":-19.1,"setpoint_c":-18.0,"probe":"TP-001"}'
+
+- trigger:
+    schedule:
+      cron: "2-59/6 * * * *"
+  action:
+    nats:
+      subject: "telemetry.KC-DC1-FZ1.TP-001.temperature"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","celsius":-18.6,"setpoint_c":-18.0,"probe":"TP-001"}'
+
+- trigger:
+    schedule:
+      cron: "3-59/6 * * * *"
+  action:
+    nats:
+      subject: "telemetry.KC-DC1-FZ1.TP-001.temperature"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","celsius":-17.9,"setpoint_c":-18.0,"probe":"TP-001"}'
+
+- trigger:
+    schedule:
+      cron: "4-59/6 * * * *"
+  action:
+    nats:
+      subject: "telemetry.KC-DC1-FZ1.TP-001.temperature"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","celsius":-17.2,"setpoint_c":-18.0,"probe":"TP-001"}'
+
+- trigger:
+    schedule:
+      cron: "5-59/6 * * * *"
+  action:
+    nats:
+      subject: "telemetry.KC-DC1-FZ1.TP-001.temperature"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","celsius":-18.4,"setpoint_c":-18.0,"probe":"TP-001"}'
+
+# -----------------------------------------------------------------------------
+# COLD CHAIN — the rest of the probes, one value each
+#
+# Bulk-generated probes cycle through the freezer, chilled and cross-dock zones
+# in code order (TP-001 FZ1, TP-002 FZ2, TP-003 CH1, TP-004 SGF chilled, then
+# round again). Enough spread for a stat grid or a table; not enough motion for a
+# chart, which is the point of the block above.
+# -----------------------------------------------------------------------------
+- trigger:
+    schedule:
+      cron: "*/2 * * * *"
+  action:
+    nats:
+      subject: "telemetry.KC-DC1-FZ2.TP-002.temperature"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","celsius":-18.7,"setpoint_c":-18.0,"probe":"TP-002"}'
+
+- trigger:
+    schedule:
+      cron: "*/2 * * * *"
+  action:
+    nats:
+      subject: "telemetry.KC-DC1-CH1.TP-003.temperature"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","celsius":2.4,"setpoint_c":2.0,"probe":"TP-003"}'
+
+- trigger:
+    schedule:
+      cron: "*/2 * * * *"
+  action:
+    nats:
+      subject: "telemetry.SGF-XD2-CH1.TP-004.temperature"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","celsius":3.1,"setpoint_c":2.0,"probe":"TP-004"}'
+
+- trigger:
+    schedule:
+      cron: "*/3 * * * *"
+  action:
+    nats:
+      subject: "telemetry.KC-DC1-FZ2.TP-006.temperature"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","celsius":-18.2,"setpoint_c":-18.0,"probe":"TP-006"}'
+
+# THE EXCURSION. TP-005 shares Freezer Zone 1 with TP-001 and reports a
+# temperature ten degrees above setpoint every 47 minutes — a door left open, a
+# failed defrost termination, or a probe hanging in warm air. This is the reading
+# the cold-chain rule-router instance (thing RULES-COLD-01) exists to catch, and
+# it is what a threshold rule should watch: REPORTED state, over time. Note where
+# it does NOT belong — a range is not a desired value, and putting `{"min":-20,
+# "max":-16}` in `twin_desired` would be a rules engine hiding in a KV bucket.
+- trigger:
+    schedule:
+      cron: "*/47 * * * *"
+  action:
+    nats:
+      subject: "telemetry.KC-DC1-FZ1.TP-005.temperature"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","celsius":-7.9,"setpoint_c":-18.0,"probe":"TP-005"}'
+
+# Battery, hourly and on change — the second operation these probes declare, and
+# a reminder that a thing type's operations are a list rather than a single feed.
+- trigger:
+    schedule:
+      cron: "12 * * * *"
+  action:
+    nats:
+      subject: "telemetry.KC-DC1-FZ1.TP-001.battery"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","percent":78,"volts":3.41}'
+
+- trigger:
+    schedule:
+      cron: "17 * * * *"
+  action:
+    nats:
+      subject: "telemetry.KC-DC1-FZ1.TP-005.battery"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","percent":19,"volts":3.02}'
+
+# -----------------------------------------------------------------------------
+# DOCK DOORS — event, not telemetry
+#
+# A different subject root (`event.` rather than `telemetry.`) because a door
+# transition is an event: it has a moment and a previous state, not a sample
+# rate. The `device` NATS role grants both, which is why one credential covers a
+# probe and a contact.
+# -----------------------------------------------------------------------------
+- trigger:
+    schedule:
+      cron: "*/3 5-21 * * 1-6"
+  action:
+    nats:
+      subject: "event.KC-DC1.DS-001.door"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","state":"open","duration":1840}'
+
+- trigger:
+    schedule:
+      cron: "1-59/3 5-21 * * 1-6"
+  action:
+    nats:
+      subject: "event.KC-DC1.DS-001.door"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","state":"closed","duration":62}'
+
+- trigger:
+    schedule:
+      cron: "*/5 5-21 * * 1-6"
+  action:
+    nats:
+      subject: "event.SGF-XD2.DS-002.door"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","state":"open","duration":3610}'
+
+- trigger:
+    schedule:
+      cron: "2-59/5 5-21 * * 1-6"
+  action:
+    nats:
+      subject: "event.SGF-XD2.DS-002.door"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","state":"closed","duration":141}'
+
+- trigger:
+    schedule:
+      cron: "*/7 5-21 * * 1-6"
+  action:
+    nats:
+      subject: "event.KC-DC1.DS-003.door"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","state":"open","duration":940}'
+
+# -----------------------------------------------------------------------------
+# REEFER TRAILERS — a setpoint, and the echo that makes it checkable
+#
+# The reefer subscribes to `.setpoint` and publishes `.setpoint.echo`. That pair
+# is the whole reason the platform can say anything honest about desired state:
+# an echo converges exactly on the instruction, so "differs" means "the unit has
+# not accepted it". Compare a desired setpoint against a measured `.temperature`
+# instead and it differs forever, because an instruction and a continuous reading
+# never converge — and no tolerance fixes that in general.
+#
+# `asset.` rather than `telemetry.` as the root: a trailer moves between sites and
+# is addressed as an asset, not as a fixture of a building.
+# -----------------------------------------------------------------------------
+- trigger:
+    schedule:
+      cron: "*/2 * * * *"
+  action:
+    nats:
+      subject: "asset.TRL-1180.REEFER-1180.temperature"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","celsius":-18.9,"setpoint_c":-18.0,"probe":"return-air"}'
+
+- trigger:
+    schedule:
+      cron: "*/2 * * * *"
+  action:
+    nats:
+      subject: "asset.TRL-1184.REEFER-1184.temperature"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","celsius":1.7,"setpoint_c":2.0,"probe":"return-air"}'
+
+- trigger:
+    schedule:
+      cron: "*/5 * * * *"
+  action:
+    nats:
+      subject: "asset.TRL-1180.REEFER-1180.setpoint.echo"
+      mode: core
+      payload: '{"celsius":-18.0,"issued_by":"WMS-CONN-01","expires_at":""}'
+
+- trigger:
+    schedule:
+      cron: "*/5 * * * *"
+  action:
+    nats:
+      subject: "asset.TRL-1184.REEFER-1184.setpoint.echo"
+      mode: core
+      payload: '{"celsius":2.0,"issued_by":"WMS-CONN-01","expires_at":""}'
+
+# The instruction itself, twice an hour: the WMS re-asserting a setpoint on a
+# trailer about to be loaded. A `subscribe` operation on the thing type means the
+# THING listens here — something else publishes, and in this demo that something
+# is this rule.
+- trigger:
+    schedule:
+      cron: "9,39 * * * *"
+  action:
+    nats:
+      subject: "asset.TRL-1180.REEFER-1180.setpoint"
+      mode: core
+      payload: '{"celsius":-18.0,"issued_by":"WMS-CONN-01"}'
+
+# -----------------------------------------------------------------------------
+# APPLICATIONS — first-class participants, not a special case
+#
+# The WMS connector and the cold-chain rule engine hold signed NATS identities of
+# their own and publish on their own subtrees, exactly like the probes above. A
+# demo with nothing but sensors in it quietly contradicts the platform's central
+# claim, which is that an application is a Thing.
+# -----------------------------------------------------------------------------
+- trigger:
+    schedule:
+      cron: "*/3 * * * *"
+  action:
+    nats:
+      subject: "app.wms.WMS-CONN-01.shipment"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","event":"picked","order":"SO-448120","site":"KC-DC1","lines":14,"trace":"{@uuid7()}"}'
+
+- trigger:
+    schedule:
+      cron: "1-59/4 * * * *"
+  action:
+    nats:
+      subject: "app.wms.WMS-CONN-01.shipment"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","event":"loaded","order":"SO-448119","site":"SGF-XD2","lines":6,"trace":"{@uuid7()}"}'
+
+- trigger:
+    schedule:
+      cron: "*/5 * * * *"
+  action:
+    nats:
+      subject: "app.rules.RULES-COLD-01.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":186400,"version":"1.9.0"}'
+
+# -----------------------------------------------------------------------------
+# GATEWAYS AND THE UNATTENDED SCREEN
+# -----------------------------------------------------------------------------
+- trigger:
+    schedule:
+      cron: "*/5 * * * *"
+  action:
+    nats:
+      subject: "gateway.KC-DC1-MDF.GW-KC-01.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":2419200,"version":"0.4.0"}'
+
+- trigger:
+    schedule:
+      cron: "2-59/5 * * * *"
+  action:
+    nats:
+      subject: "gateway.SGF-XD2-MDF.GW-SGF-01.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":1209600,"version":"0.4.0"}'
+
+# The dock display's only operation is a SUBSCRIBE. It renders what it is sent
+# and publishes nothing at all — which is why its thing type defaults to the
+# `console-readonly` NATS role, and why a demo that never publishes to it leaves
+# a blank screen above the dock doors.
+- trigger:
+    schedule:
+      cron: "*/2 5-21 * * 1-6"
+  action:
+    nats:
+      subject: "display.KC-DC1.DISP-KC-01.render"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","headline":"Doors 1-12","next_load":"SO-448120","dock":"D07","eta":"14:20"}'
+
+# =============================================================================
+# DIGITAL TWIN — reported state, and only reported state
+# =============================================================================
+# DELETE THIS SECTION IF YOU HAVE NOT CREATED THE BUCKETS. `twin` and
+# `twin_desired` are NOT created by the platform server — it holds the NATS
+# operator and has no user credential inside any organization's account, so it
+# cannot reach in and make them. Create them from the console (NATS → KV Buckets
+# → Initialize) or let `leaf-sync` do it, then come back.
+#
+# HOW THIS WRITES A KV KEY. rule-router has no KV action — only `nats`, `http`
+# and `respond` — so these publish to the bucket's underlying stream subject,
+# `$KV.{bucket}.{key}`. That is not a trick: a KV bucket IS a stream, and it is
+# exactly what `nats kv put` does. What it skips is the revision bookkeeping of a
+# compare-and-set, which a simulator standing in for a device does not need. If
+# rule-router grows a first-class KV action, this section should use it.
+#
+# `mode: jetstream` here and nowhere else in the file: the ack is what tells you
+# the bucket exists. Publish these core and a missing bucket looks exactly like a
+# working demo with an empty screen.
+#
+# ONLY `twin` IS WRITTEN, NEVER `twin_desired`. One writer per bucket is the
+# whole safety property: `twin` flows edge→hub and the device owns it,
+# `twin_desired` flows hub→edge and the operator owns it. A single bucket written
+# from both ends does not pick a loser on a conflict, it oscillates. This file
+# stands in for the devices, so it writes the device's half and nothing else.
+#
+# TO SEE DRIFT: open Digital Twin, put `-20` in `twin_desired` under
+# `thing.REEFER-1180.setpoint`, and watch the row show `-18 → -20`. Then watch
+# nothing happen — no hook, no agent and no subscription in this platform applies
+# a desired value to a device. The console says `differs`, never `pending`,
+# because "waiting for the device" would assert a control loop that does not
+# exist. Delivering the value to the edge's local KV is where the platform's job
+# ends; what consumes it is the integrator's firmware or a rule-router rule.
+# =============================================================================
+
+# The two keys worth pairing a desired value against: setpoint ECHOES, which
+# converge exactly on an instruction.
+- trigger:
+    schedule:
+      cron: "*/2 * * * *"
+  action:
+    nats:
+      subject: "$KV.twin.thing.REEFER-1180.setpoint"
+      mode: jetstream
+      payload: '-18.0'
+
+- trigger:
+    schedule:
+      cron: "*/2 * * * *"
+  action:
+    nats:
+      subject: "$KV.twin.thing.REEFER-1184.setpoint"
+      mode: jetstream
+      payload: '2.0'
+
+# A whole object as a value. `twinDrift` compares a desired object as a PARTIAL
+# assertion — only the keys present in the desired value are checked — so an
+# assertion of `{"wan":"up"}` keeps holding the day this gateway starts reporting
+# a field nobody has heard of yet.
+- trigger:
+    schedule:
+      cron: "*/3 * * * *"
+  action:
+    nats:
+      subject: "$KV.twin.thing.GW-KC-01.status"
+      mode: jetstream
+      payload: '{"wan":"up","leaf":"connected","rules":34,"version":"0.4.0"}'
+
+# A MEASUREMENT in reported state. This is fine — `twin` is where last-known
+# reported state belongs, and a stat widget reading a last value rather than
+# subscribing to a feed is a legitimate thing to build. What is NOT fine is
+# pairing a desired value against this key: `temp = -18` desired against
+# `-18.6` reported differs forever, because it compares an instruction to a
+# continuous reading. If equality feels wrong for a key, the key is paired with a
+# measurement instead of an echo — fix the pairing, don't add a tolerance.
+- trigger:
+    schedule:
+      cron: "*/2 * * * *"
+  action:
+    nats:
+      subject: "$KV.twin.thing.TP-001.temp"
+      mode: jetstream
+      payload: '-18.6'

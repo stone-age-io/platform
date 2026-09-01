@@ -1,0 +1,319 @@
+# =============================================================================
+# Galewind Energy — live wind farm and substation telemetry
+# =============================================================================
+# Companion to demo/rules/northwind/telemetry.yaml, which carries the long-form
+# notes on subject composition, the one-minute cron floor, static payloads, and
+# why publish mode is `core` here. Read that file first; this one assumes it.
+#
+# Run this in its OWN rule-router process, authenticated into the GALEWIND NATS
+# account:
+#
+#   rule-router --config config/rule-scheduler.yaml --rules demo/rules/galewind
+#
+# A wind farm runs 24/7 and the weather does not keep office hours, so unlike the
+# other two files almost nothing here is gated on a time of day. The site is in
+# Sweetwater, Texas — America/Chicago, stated on the rules that do care.
+
+# -----------------------------------------------------------------------------
+# TURBINE 114 — the signal worth charting
+#
+# Six phase-shifted rules walking a wind ramp: 5.8 m/s up to 11.2 and back, with
+# output following the cube law well enough to look right (a V112-3.0 rated at
+# 2800 kW). Point a chart at `turbine.T-114.TC-114.generation` with jsonPath
+# `$.kw`, and a second series at `$.wind_ms` if the widget takes two.
+#
+# The reason there are six rules rather than one is in the Northwind file: cron
+# floors at one minute and a rule's payload is fixed, so a single rule draws a
+# straight line. This is the one signal per file that gets the treatment.
+# -----------------------------------------------------------------------------
+- trigger:
+    schedule:
+      cron: "0-59/6 * * * *"
+  action:
+    nats:
+      subject: "turbine.T-114.TC-114.generation"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","kw":486.0,"wind_ms":5.8,"nacelle_deg":214.0,"rpm":9.1}'
+
+- trigger:
+    schedule:
+      cron: "1-59/6 * * * *"
+  action:
+    nats:
+      subject: "turbine.T-114.TC-114.generation"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","kw":812.0,"wind_ms":7.1,"nacelle_deg":216.0,"rpm":11.4}'
+
+- trigger:
+    schedule:
+      cron: "2-59/6 * * * *"
+  action:
+    nats:
+      subject: "turbine.T-114.TC-114.generation"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","kw":1544.0,"wind_ms":8.9,"nacelle_deg":219.0,"rpm":13.8}'
+
+- trigger:
+    schedule:
+      cron: "3-59/6 * * * *"
+  action:
+    nats:
+      subject: "turbine.T-114.TC-114.generation"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","kw":2310.0,"wind_ms":10.4,"nacelle_deg":221.0,"rpm":15.2}'
+
+- trigger:
+    schedule:
+      cron: "4-59/6 * * * *"
+  action:
+    nats:
+      subject: "turbine.T-114.TC-114.generation"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","kw":2742.0,"wind_ms":11.2,"nacelle_deg":220.0,"rpm":15.6}'
+
+- trigger:
+    schedule:
+      cron: "5-59/6 * * * *"
+  action:
+    nats:
+      subject: "turbine.T-114.TC-114.generation"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","kw":1188.0,"wind_ms":8.0,"nacelle_deg":217.0,"rpm":12.6}'
+
+# -----------------------------------------------------------------------------
+# THE REST OF THE FLEET
+#
+# TC-211 IS DELIBERATELY SILENT. The seed marks it inactive — a gearbox
+# replacement, controller removed from service — and a decommissioned turbine
+# that keeps reporting would contradict the one thing `active` means. It is the
+# fastest way to see that `things.active` is a real control rather than a badge:
+# its NATS credential is revoked, so even a rule written for it here would be
+# refused by the server rather than quietly ignored.
+# -----------------------------------------------------------------------------
+- trigger:
+    schedule:
+      cron: "*/2 * * * *"
+  action:
+    nats:
+      subject: "turbine.T-118.TC-118.generation"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","kw":2104.0,"wind_ms":9.8,"nacelle_deg":218.0,"rpm":14.7}'
+
+- trigger:
+    schedule:
+      cron: "*/2 * * * *"
+  action:
+    nats:
+      subject: "turbine.T-207.TC-207.generation"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","kw":2896.0,"wind_ms":10.9,"nacelle_deg":203.0,"rpm":13.1}'
+
+# The met mast: wind for the whole collection area, independent of any turbine's
+# own nacelle anemometer. It publishes the same `generation` document — a schema
+# is a message shape, not a device class, and reusing one across two device types
+# is normal rather than a shortcut.
+- trigger:
+    schedule:
+      cron: "*/2 * * * *"
+  action:
+    nats:
+      subject: "telemetry.SUB-N1.MET-N1.generation"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","kw":0.0,"wind_ms":10.1,"nacelle_deg":218.0,"rpm":0.0}'
+
+# -----------------------------------------------------------------------------
+# CURTAILMENT — an instruction with an expiry, and an echo
+#
+# `.curtail` is a SUBSCRIBE operation: the turbine listens, the ISO-facing side
+# publishes. `.curtail.echo` is the ceiling actually in force. `expires_at` is
+# part of the message, not of the transport — a curtailment that outlives its
+# window because nobody sent a follow-up is a real failure mode, and putting the
+# expiry in the payload is what lets the turbine refuse a stale one itself.
+#
+# The wildlife curtailment below runs at dusk through the spring bat migration
+# window, which is a real practice rather than an invented demo scenario.
+# -----------------------------------------------------------------------------
+- trigger:
+    schedule:
+      cron: "0 20 * 3-5 *"
+      timezone: "America/Chicago"
+  action:
+    nats:
+      subject: "turbine.T-114.TC-114.curtail"
+      mode: core
+      payload: '{"percent":40,"reason":"wildlife","issued_by":"SCADA-BR-01","expires_at":""}'
+
+- trigger:
+    schedule:
+      cron: "0 6 * 3-5 *"
+      timezone: "America/Chicago"
+  action:
+    nats:
+      subject: "turbine.T-114.TC-114.curtail"
+      mode: core
+      payload: '{"percent":100,"reason":"grid","issued_by":"SCADA-BR-01","expires_at":""}'
+
+- trigger:
+    schedule:
+      cron: "*/4 * * * *"
+  action:
+    nats:
+      subject: "turbine.T-114.TC-114.curtail.echo"
+      mode: core
+      payload: '{"percent":100,"reason":"grid","issued_by":"TC-114"}'
+
+# -----------------------------------------------------------------------------
+# SUBSTATION FEEDERS
+# -----------------------------------------------------------------------------
+- trigger:
+    schedule:
+      cron: "*/2 * * * *"
+  action:
+    nats:
+      subject: "telemetry.SUB-N1.FR-001.feeder"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","amps":384.2,"kv":34.5,"feeder":"F01"}'
+
+- trigger:
+    schedule:
+      cron: "*/3 * * * *"
+  action:
+    nats:
+      subject: "telemetry.SUB-S2.FR-002.feeder"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","amps":291.7,"kv":34.4,"feeder":"F02"}'
+
+# A protection alarm, raised and cleared. Same discipline as everywhere else in
+# these files: a raise with no clear leaves a red badge that stops meaning
+# anything by the time anyone looks at it.
+- trigger:
+    schedule:
+      cron: "19 */4 * * *"
+      timezone: "America/Chicago"
+  action:
+    nats:
+      subject: "telemetry.SUB-N1.FR-001.alarm"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","code":"50/51-F01","severity":"warning","active":true,"message":"Overcurrent pickup on feeder F01"}'
+
+- trigger:
+    schedule:
+      cron: "26 */4 * * *"
+      timezone: "America/Chicago"
+  action:
+    nats:
+      subject: "telemetry.SUB-N1.FR-001.alarm"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","code":"50/51-F01","severity":"warning","active":false,"message":"Overcurrent pickup reset"}'
+
+# -----------------------------------------------------------------------------
+# GATEWAYS ON CELLULAR — the reason these sites run leaf nodes
+#
+# Both substations are unmanned and backhauled over cellular. That is the whole
+# argument for a leaf node: the site keeps deciding, buffering and running when
+# the WAN does not, and reconciles when it returns. A heartbeat gap here is
+# expected behaviour rather than an incident.
+# -----------------------------------------------------------------------------
+- trigger:
+    schedule:
+      cron: "*/5 * * * *"
+  action:
+    nats:
+      subject: "gateway.SUB-N1-CAB.GW-N1-01.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":1814400}'
+
+- trigger:
+    schedule:
+      cron: "2-59/5 * * * *"
+  action:
+    nats:
+      subject: "gateway.SUB-S2.GW-S2-01.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":1209600}'
+
+# -----------------------------------------------------------------------------
+# APPLICATIONS
+#
+# The wallboard (WALL-OPS-01) publishes nothing and its thing type declares no
+# operations at all — it is a screen. Nothing addresses it here, which is why the
+# operations centre display stays blank unless you build a dashboard for it in
+# the console and sign it in with the `dashboard` console role. That is the
+# intended workflow rather than an omission.
+# -----------------------------------------------------------------------------
+- trigger:
+    schedule:
+      cron: "*/5 * * * *"
+  action:
+    nats:
+      subject: "app.scada.SCADA-BR-01.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":7776000}'
+
+- trigger:
+    schedule:
+      cron: "1-59/5 * * * *"
+  action:
+    nats:
+      subject: "app.market.MARKET-01.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":604800}'
+
+# ERCOT dispatch instructions, every five minutes on the market interval.
+- trigger:
+    schedule:
+      cron: "*/5 * * * *"
+      timezone: "America/Chicago"
+  action:
+    nats:
+      subject: "app.market.MARKET-01.dispatch"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","iso":"ercot","interval":"5min","node":"SWTWTR_ALL","mw":41.6,"price_mwh":28.44}'
+
+- trigger:
+    schedule:
+      cron: "2-59/5 * * * *"
+      timezone: "America/Chicago"
+  action:
+    nats:
+      subject: "app.market.MARKET-01.dispatch"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","iso":"ercot","interval":"5min","node":"SWTWTR_ALL","mw":38.2,"price_mwh":-4.10}'
+
+# =============================================================================
+# DIGITAL TWIN — reported state only
+# =============================================================================
+# Requires the `twin` bucket to exist (console → NATS → KV Buckets → Initialize).
+# The full reasoning — why `$KV.{bucket}.{key}`, why `mode: jetstream`, and why
+# nothing here ever writes `twin_desired` — is in the Northwind file. Delete this
+# section if you have not created the bucket.
+# =============================================================================
+
+# The curtailment ceiling in force. An echo, so equality is the right question
+# and a desired value paired against it means something actionable.
+- trigger:
+    schedule:
+      cron: "*/3 * * * *"
+  action:
+    nats:
+      subject: "$KV.twin.thing.TC-114.curtail"
+      mode: jetstream
+      payload: '100'
+
+- trigger:
+    schedule:
+      cron: "*/3 * * * *"
+  action:
+    nats:
+      subject: "$KV.twin.thing.TC-118.curtail"
+      mode: jetstream
+      payload: '100'
+
+- trigger:
+    schedule:
+      cron: "*/4 * * * *"
+  action:
+    nats:
+      subject: "$KV.twin.thing.GW-N1-01.status"
+      mode: jetstream
+      payload: '{"wan":"cellular","rssi_dbm":-79,"leaf":"connected","version":"0.4.0"}'
