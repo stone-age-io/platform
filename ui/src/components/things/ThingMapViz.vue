@@ -136,12 +136,15 @@ watch(markersForMap, (next) => {
 onMounted(async () => {
   checkMobile()
   window.addEventListener('resize', checkMobile)
-  await loadData()
+  // The basemap before the data -- see the same note in LocationMapViz. Unlike
+  // that one, loadData() here only fills `things`, so the markers are still
+  // rendered below once it resolves.
   initMap(mapContainerId, {
     isDarkMode: uiStore.theme === 'dark',
     onClusterClick: handleClusterClick,
     zoomControlPosition: 'bottomleft',
   })
+  await loadData()
   renderMarkers(markersForMap.value, handleMarkerClick, { fitBounds: true })
 })
 

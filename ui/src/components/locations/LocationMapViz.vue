@@ -115,12 +115,17 @@ watch(filteredLocations, (next) => {
 onMounted(async () => {
   checkMobile()
   window.addEventListener('resize', checkMobile)
-  await loadData()
+  // The basemap before the data, deliberately. The tiles do not depend on the
+  // inventory, so awaiting loadData() first put a getFullList round trip (plus
+  // two relation expansions) in front of MapLibre's own chain -- style, then
+  // TileJSON, then glyphs and sprite, then tiles -- and the map sat as a flat
+  // sheet of theme colour for all of it. loadData() renders the markers itself
+  // once the map exists.
   initMap(mapContainerId, {
     isDarkMode: uiStore.theme === 'dark',
     zoomControlPosition: 'bottomleft',
   })
-  renderMarkers(toMarkers(filteredLocations.value), handleMarkerClick, { fitBounds: true })
+  await loadData()
 })
 
 onUnmounted(() => {

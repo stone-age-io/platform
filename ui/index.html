@@ -6,6 +6,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Stone Age Console</title>
     <link rel="manifest" href="/manifest.json">
+    <!-- The basemap origin. MapLibre does not ask for the style until the map
+         is constructed, several chunks and a PocketBase round trip into the
+         page, so the DNS + TCP + TLS handshake to this host is worth starting
+         during the HTML parse instead. crossorigin is load-bearing, not
+         decoration: the style, glyphs, sprite and tiles are all CORS fetches,
+         and a preconnect without it opens the socket in the wrong credentials
+         mode, so nothing reuses it and the handshake happens twice. -->
+    <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
     <meta name="theme-color" content="#0a0a0a">
     <link rel="apple-touch-icon" href="/icon-192.png">
     <!-- Optional operator branding overlay; harmless 404 if not configured. -->

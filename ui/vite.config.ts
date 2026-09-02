@@ -75,6 +75,12 @@ export default defineConfig({
             { name: 'echarts', test: /[\\/]node_modules[\\/](echarts|vue-echarts)[\\/]/ },
             // Mapping library
             { name: 'leaflet', test: /[\\/]node_modules[\\/]leaflet[\\/]/ },
+            // MapLibre GL, the vector basemap renderer behind L.maplibreGL.
+            // Named separately from `leaflet` because it is ~900kB on its own:
+            // left ungrouped it fell into the useLeafletMap chunk, so every edit
+            // to that composable re-hashed a megabyte and every returning user
+            // re-downloaded the renderer to pick up a five-line change.
+            { name: 'maplibre', test: /[\\/]node_modules[\\/](?:maplibre-gl|@maplibre[\\/][^\\/]+)[\\/]/ },
             // NATS messaging libraries
             { name: 'nats', test: /[\\/]node_modules[\\/]@nats-io[\\/]/ },
             // Grid layout
