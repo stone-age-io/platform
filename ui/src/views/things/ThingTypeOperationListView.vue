@@ -11,6 +11,7 @@ import type { ThingTypeOperation } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
+import ListPager from '@/components/ui/ListPager.vue'
 
 const router = useRouter()
 const toast = useToast()
@@ -39,21 +40,33 @@ const { searchQuery, filter: searchFilter } = useServerSearch(
   },
 )
 
+// The active sort, in PocketBase's own syntax ('name', '-created'). It rides in
+// queryOptions rather than being passed at the call site, for the same reason the
+// filter does: the pager buttons reuse that object, and a sort that is not in it
+// is a sort that page two forgets.
+const sort = ref('name')
+
 // One options object, passed to EVERY call into usePagination, the pager
 // buttons included -- passing only expand/sort there drops the filter and
 // page two comes back unfiltered.
 const queryOptions = computed(() => ({
   filter: searchFilter.value,
-  sort: 'name',
+  sort: sort.value,
 }))
+
+function onSort(next: string) {
+  sort.value = next
+  page.value = 1 // a new order makes the old page number meaningless
+  loadData()
+}
 
 const deleting = ref(false)
 
 const columns: Column<ThingTypeOperation>[] = [
-  { key: 'name', label: 'Name', mobileLabel: 'Name' },
-  { key: 'capability', label: 'Capability', mobileLabel: 'Capability' },
-  { key: 'subject_suffix', label: 'Subject Suffix', mobileLabel: 'Suffix' },
-  { key: 'created', label: 'Created', mobileLabel: 'Created', format: (val) => formatDate(val, 'PP') },
+  { key: 'name', sortable: 'name', label: 'Name', mobileLabel: 'Name' },
+  { key: 'capability', sortable: 'capability', label: 'Capability', mobileLabel: 'Capability' },
+  { key: 'subject_suffix', sortable: 'subject_suffix', label: 'Subject Suffix', mobileLabel: 'Suffix' },
+  { key: 'created', sortable: '-created', width: '8rem', label: 'Created', mobileLabel: 'Created', format: (val) => formatDate(val, 'PP') },
 ]
 
 async function loadData() {
@@ -148,11 +161,18 @@ onUnmounted(() => {
     </BaseCard>
 
     <BaseCard v-else :no-padding="true">
-      <ResponsiveList :items="items" :columns="columns" :loading="loading" @row-click="handleRowClick">
+      <ResponsiveList
+        :items="items"
+        :columns="columns"
+        :loading="loading"
+        :sort="sort"
+        @update:sort="onSort"
+        @row-click="handleRowClick"
+      >
         <template #cell-name="{ item }">
           <div>
             <div class="font-medium">{{ item.name }}</div>
-            <div v-if="item.description" class="text-sm text-base-content/60 line-clamp-1">{{ item.description }}</div>
+            <div v-if="item.description" :title="item.description" class="text-sm text-base-content/60 line-clamp-1">{{ item.description }}</div>
           </div>
         </template>
 
@@ -170,16 +190,16 @@ onUnmounted(() => {
         </template>
       </ResponsiveList>
 
-      <div class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
-        <span class="text-sm text-base-content/70 text-center sm:text-left">
-          Showing {{ items.length }} of {{ totalItems }} operations
-        </span>
-        <div class="join">
-          <button class="join-item btn btn-sm" :disabled="page === 1 || loading" @click="prevPage(queryOptions)">«</button>
-          <button class="join-item btn btn-sm">{{ page }} / {{ totalPages }}</button>
-          <button class="join-item btn btn-sm" :disabled="page === totalPages || loading" @click="nextPage(queryOptions)">»</button>
-        </div>
-      </div>
+      <ListPager
+        :page="page"
+        :total-pages="totalPages"
+        :shown="items.length"
+        :total="totalItems"
+        noun="operations"
+        :loading="loading"
+        @prev="prevPage(queryOptions)"
+        @next="nextPage(queryOptions)"
+      />
     </BaseCard>
   </div>
 </template>

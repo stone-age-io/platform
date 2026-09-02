@@ -11,6 +11,7 @@ import type { NatsRole } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
+import ListPager from '@/components/ui/ListPager.vue'
 
 const router = useRouter()
 const toast = useToast()
@@ -41,12 +42,25 @@ const { searchQuery, filter: searchFilter } = useServerSearch(
   },
 )
 
+// The active sort, in PocketBase's own syntax ('name', '-created'). It rides in
+// queryOptions rather than being passed at the call site, for the same reason the
+// filter does: the pager buttons reuse that object, and a sort that is not in it
+// is a sort that page two forgets.
+const sort = ref('')
+
 // One options object, passed to EVERY call into usePagination, the pager
 // buttons included -- passing only expand/sort there drops the filter and
 // page two comes back unfiltered.
 const queryOptions = computed(() => ({
   filter: searchFilter.value,
+  sort: sort.value,
 }))
+
+function onSort(next: string) {
+  sort.value = next
+  page.value = 1 // a new order makes the old page number meaningless
+  loadRoles()
+}
 
 const deleting = ref(false)
 
@@ -54,6 +68,7 @@ const deleting = ref(false)
 const columns: Column<NatsRole>[] = [
   {
     key: 'name',
+    sortable: 'name',
     label: 'Name',
     mobileLabel: 'Name',
   },
@@ -65,12 +80,15 @@ const columns: Column<NatsRole>[] = [
   },
   {
     key: 'max_subscriptions',
+    sortable: 'max_subscriptions',
     label: 'Max Subscriptions',
     mobileLabel: 'Max Subs',
     format: (value) => value === -1 ? 'Unlimited' : value?.toString() || '0',
   },
   {
     key: 'created',
+    sortable: '-created',
+    width: '8rem',
     label: 'Created',
     mobileLabel: 'Created',
     format: (value) => formatDate(value, 'PP'),
@@ -203,6 +221,8 @@ onUnmounted(() => {
     <!-- Responsive List -->
     <BaseCard v-else :no-padding="true">
       <ResponsiveList 
+        :sort="sort"
+        @update:sort="onSort"
         :items="roles" 
         :columns="columns" 
         :loading="loading"
@@ -214,7 +234,7 @@ onUnmounted(() => {
             <div class="font-medium">
               {{ item.name }}
             </div>
-            <div v-if="item.description" class="text-sm text-base-content/60 line-clamp-1">
+            <div v-if="item.description" :title="item.description" class="text-sm text-base-content/60 line-clamp-1">
               {{ item.description }}
             </div>
           </div>
@@ -259,30 +279,16 @@ onUnmounted(() => {
       </ResponsiveList>
       
       <!-- Pagination -->
-      <div class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
-        <span class="text-sm text-base-content/70 text-center sm:text-left">
-          Showing {{ roles.length }} of {{ totalItems }} roles
-        </span>
-        <div class="join">
-          <button 
-            class="join-item btn btn-sm"
-            :disabled="page === 1 || loading"
-            @click="prevPage(queryOptions)"
-          >
-            «
-          </button>
-          <button class="join-item btn btn-sm">
-            {{ page }} / {{ totalPages }}
-          </button>
-          <button 
-            class="join-item btn btn-sm"
-            :disabled="page === totalPages || loading"
-            @click="nextPage(queryOptions)"
-          >
-            »
-          </button>
-        </div>
-      </div>
+      <ListPager
+        :page="page"
+        :total-pages="totalPages"
+        :shown="roles.length"
+        :total="totalItems"
+        noun="roles"
+        :loading="loading"
+        @prev="prevPage(queryOptions)"
+        @next="nextPage(queryOptions)"
+      />
     </BaseCard>
   </div>
 </template>

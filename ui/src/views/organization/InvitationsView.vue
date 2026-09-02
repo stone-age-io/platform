@@ -11,6 +11,7 @@ import type { Invitation, Organization } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
+import ListPager from '@/components/ui/ListPager.vue'
 
 const authStore = useAuthStore()
 const toast = useToast()
@@ -78,17 +79,26 @@ const { searchQuery, filter: searchFilter } = useServerSearch(
   },
 )
 
+// The active sort, in PocketBase's own syntax ('name', '-created'). It rides in
+// queryOptions rather than being passed at the call site, for the same reason the
+// filter does: the pager buttons reuse that object, and a sort that is not in it
+// is a sort that page two forgets.
+const sort = ref('-created')
+
 // One options object, passed to EVERY call into usePagination, the pager
 // buttons included -- passing only expand/sort there drops the filter and
 // page two comes back unfiltered.
 const queryOptions = computed(() => ({
   filter: searchFilter.value,
   expand: 'invited_by',
-  // The pager already asked for this sort and the loader did not, so page one
-  // and page two were ordered differently. One options object fixes that by
-  // construction.
-  sort: '-created',
+  sort: sort.value,
 }))
+
+function onSort(next: string) {
+  sort.value = next
+  page.value = 1 // a new order makes the old page number meaningless
+  loadInvitations()
+}
 
 // Token Visibility State
 const visibleTokens = ref<Record<string, boolean>>({})
@@ -97,6 +107,7 @@ const visibleTokens = ref<Record<string, boolean>>({})
 const columns: Column<Invitation>[] = [
   {
     key: 'email',
+    sortable: 'email',
     label: 'Email',
     mobileLabel: 'Email',
   },
@@ -107,17 +118,20 @@ const columns: Column<Invitation>[] = [
   },
   {
     key: 'role',
+    sortable: 'role',
     label: 'Role',
     mobileLabel: 'Role',
     format: (value) => value.charAt(0).toUpperCase() + value.slice(1),
   },
   {
     key: 'expand.invited_by.name',
+    sortable: 'invited_by.name',
     label: 'Invited By',
     mobileLabel: 'Invited By',
   },
   {
     key: 'expires_at',
+    sortable: 'expires_at',
     label: 'Expires',
     mobileLabel: 'Expires',
     format: (value) => value ? formatRelativeTime(value) : 'Never',
@@ -435,6 +449,8 @@ onUnmounted(() => {
     <!-- Responsive List -->
     <BaseCard v-else :no-padding="true">
       <ResponsiveList 
+        :sort="sort"
+        @update:sort="onSort"
         :items="invitations" 
         :columns="columns" 
         :loading="loading"
@@ -563,30 +579,16 @@ onUnmounted(() => {
       </ResponsiveList>
       
       <!-- Pagination -->
-      <div class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
-        <span class="text-sm text-base-content/70 text-center sm:text-left">
-          Showing {{ invitations.length }} of {{ totalItems }} invitations
-        </span>
-        <div class="join">
-          <button 
-            class="join-item btn btn-sm"
-            :disabled="page === 1 || loading"
-            @click="prevPage(queryOptions)"
-          >
-            «
-          </button>
-          <button class="join-item btn btn-sm">
-            {{ page }} / {{ totalPages }}
-          </button>
-          <button 
-            class="join-item btn btn-sm"
-            :disabled="page === totalPages || loading"
-            @click="nextPage(queryOptions)"
-          >
-            »
-          </button>
-        </div>
-      </div>
+      <ListPager
+        :page="page"
+        :total-pages="totalPages"
+        :shown="invitations.length"
+        :total="totalItems"
+        noun="invitations"
+        :loading="loading"
+        @prev="prevPage(queryOptions)"
+        @next="nextPage(queryOptions)"
+      />
     </BaseCard>
   </div>
 </template>

@@ -9,6 +9,7 @@ import type { Location } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
+import ListPager from '@/components/ui/ListPager.vue'
 import LocationMapViz from '@/components/locations/LocationMapViz.vue'
 import { useAuthStore } from '@/stores/auth'
 
@@ -102,8 +103,8 @@ const columns: Column<Location>[] = [
   { key: 'name', label: 'Name', mobileLabel: 'Name' },
   { key: 'expand.type.name', label: 'Type', mobileLabel: 'Type' },
   { key: 'expand.parent.name', label: 'Parent', mobileLabel: 'Parent', class: 'hidden md:table-cell' },
-  { key: 'code', label: 'Code', mobileLabel: 'Code' },
-  { key: 'created', label: 'Created', mobileLabel: 'Created', format: (value) => formatDate(value, 'PP') },
+  { key: 'code', width: '7rem', label: 'Code', mobileLabel: 'Code' },
+  { key: 'created', width: '8rem', label: 'Created', mobileLabel: 'Created', format: (value) => formatDate(value, 'PP') },
 ]
 
 // Actions
@@ -266,7 +267,7 @@ onUnmounted(() => {
             <template #cell-name="{ item }">
               <div>
                 <div class="font-medium">{{ item.name }}</div>
-                <div v-if="item.description" class="text-sm text-base-content/60 line-clamp-1">{{ item.description }}</div>
+                <div v-if="item.description" :title="item.description" class="text-sm text-base-content/60 line-clamp-1">{{ item.description }}</div>
               </div>
             </template>
             <template #card-name="{ item }">
@@ -304,16 +305,16 @@ onUnmounted(() => {
           </ResponsiveList>
 
           <!-- Pagination -->
-          <div v-if="totalPages > 1" class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
-            <span class="text-sm text-base-content/70 text-center sm:text-left">
-              Showing {{ paginatedLocations.length }} of {{ filteredLocations.length }} locations
-            </span>
-            <div class="join">
-              <button class="join-item btn btn-sm" :disabled="currentPage === 1" @click="currentPage--">«</button>
-              <button class="join-item btn btn-sm">Page {{ currentPage }}</button>
-              <button class="join-item btn btn-sm" :disabled="currentPage === totalPages" @click="currentPage++">»</button>
-            </div>
-          </div>
+          <ListPager
+            v-if="totalPages > 1"
+            :page="currentPage"
+            :total-pages="totalPages"
+            :shown="paginatedLocations.length"
+            :total="filteredLocations.length"
+            noun="locations"
+            @prev="currentPage--"
+            @next="currentPage++"
+          />
         </template>
       </BaseCard>
     </div>

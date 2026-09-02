@@ -8,6 +8,7 @@ import type { KvBucketSummary } from '@/types/jetstream'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
+import ListPager from '@/components/ui/ListPager.vue'
 
 const router = useRouter()
 const natsStore = useNatsStore()
@@ -152,7 +153,7 @@ watch(() => natsStore.isConnected, (connected) => {
           <template #cell-name="{ item }">
             <div>
               <div class="font-medium font-mono">{{ item.name }}</div>
-              <div v-if="item.description" class="text-sm text-base-content/60 line-clamp-1">{{ item.description }}</div>
+              <div v-if="item.description" :title="item.description" class="text-sm text-base-content/60 line-clamp-1">{{ item.description }}</div>
             </div>
           </template>
 
@@ -173,16 +174,16 @@ watch(() => natsStore.isConnected, (connected) => {
         </ResponsiveList>
 
         <!-- Pagination -->
-        <div v-if="filteredBuckets.length > itemsPerPage" class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t border-base-300">
-          <span class="text-sm text-base-content/70">
-            Showing {{ paginatedBuckets.length }} of {{ filteredBuckets.length }} buckets
-          </span>
-          <div class="join">
-            <button class="join-item btn btn-sm" :disabled="currentPage === 1" @click="currentPage--">«</button>
-            <button class="join-item btn btn-sm">{{ currentPage }} / {{ totalPages }}</button>
-            <button class="join-item btn btn-sm" :disabled="currentPage === totalPages" @click="currentPage++">»</button>
-          </div>
-        </div>
+        <ListPager
+          v-if="filteredBuckets.length > itemsPerPage"
+          :page="currentPage"
+          :total-pages="totalPages"
+          :shown="paginatedBuckets.length"
+          :total="filteredBuckets.length"
+          noun="buckets"
+          @prev="currentPage--"
+          @next="currentPage++"
+        />
       </BaseCard>
     </template>
   </div>

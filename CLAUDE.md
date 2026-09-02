@@ -742,6 +742,15 @@ Keep it in step with the table above.
   rule, and bump `EXPECTED_CHECKS`. Note PocketBase answers 404 (not 403) when an
   update rule rejects, and 400 on a denied create — which is why every "cannot"
   is paired with a "can" on the same record.
+- `./scripts/check-sort-fields.sh` — asks a real server about every `sortable:`
+  term on a list-view column, which is the only thing that checks them. Same
+  shape as the authz script: build, throwaway database, probe, tear down. The
+  probes are deliberately unauthenticated — PocketBase validates the sort
+  expression after building the list rule but before applying one, so a guest
+  gets the same 400 for a bad field that a member would, and the check needs no
+  fixtures or login to fail for the right reason. Run it when you add a
+  `sortable:` column. It covers the sort half of the next bullet only; `filter`
+  and `expand` terms are still unchecked.
 - **An unknown `sort` or `filter` field is a 400 before any rule is evaluated.**
   `apis.recordsList` hands the query to `searchProvider.ParseAndExec` and returns
   `BadRequestError("", err)`, which reaches the browser as only "Something went

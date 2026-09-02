@@ -88,13 +88,13 @@ const {
 const subLocColumns: Column<Location>[] = [
   { key: 'name', label: 'Name', mobileLabel: 'Name' },
   { key: 'expand.type.name', label: 'Type', mobileLabel: 'Type' },
-  { key: 'code', label: 'Code', mobileLabel: 'Code' },
+  { key: 'code', width: '7rem', label: 'Code', mobileLabel: 'Code' },
 ]
 
 const thingColumns: Column<Thing>[] = [
   { key: 'name', label: 'Name', mobileLabel: 'Name' },
   { key: 'expand.type.name', label: 'Type', mobileLabel: 'Type' },
-  { key: 'code', label: 'Code', mobileLabel: 'Code' },
+  { key: 'code', width: '7rem', label: 'Code', mobileLabel: 'Code' },
 ]
 
 /**
