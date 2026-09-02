@@ -2,8 +2,9 @@
 # Ironbridge Manufacturing — live plant telemetry
 # =============================================================================
 # Companion to demo/rules/northwind/telemetry.yaml, which carries the long-form
-# notes on subject composition, the one-minute cron floor, static payloads, and
-# why publish mode is `core` here. Read that file first; this one assumes it.
+# notes on subject composition, why publish mode is `core` here, and what the
+# six-field cron and the `{@random.*}` functions are and are not for. Read that
+# file first; this one assumes it.
 #
 # Run this in its OWN rule-router process, authenticated into the IRONBRIDGE
 # NATS account:
@@ -18,88 +19,103 @@
 #
 # Plant runs two shifts, Mon-Fri 06:00-22:00 Eastern. Everything below is gated
 # on that in the cron rather than in a condition, so an idle plant overnight is
-# visible as an idle plant rather than as a broken demo.
+# visible as an idle plant rather than as a broken demo. With a seconds field in
+# play, read those crons carefully: `*/5 * 6-21 * * 1-5` is every five SECONDS
+# during shift, not every five minutes.
 
 # -----------------------------------------------------------------------------
 # PANEL POWER — the signal worth charting
 #
-# Four phase-shifted rules walking PM-001 (Building 1 fabrication) through a
-# load profile, for the reason spelled out in the Northwind file: a single rule
-# has a fixed payload and draws a flat line. Point a chart at
-# `telemetry.PIT-B1.PM-001.power` with jsonPath `$.kw`.
+# PM-001 meters Building 1 fabrication and reports every five seconds across the
+# band a working shift draws. Point a chart at `telemetry.PIT-B1.PM-001.power`
+# with jsonPath `$.kw`.
+#
+# This one rule replaces four phase-shifted ones. Power factor tracks load
+# loosely rather than exactly — the two random ranges are independent, so an
+# occasional high-kW/high-pf sample appears that a real panel would not produce.
+# That is the honest limit of bounded noise: it gets the RANGE right and the
+# CORRELATION wrong, which is fine for a chart and wrong for anything computing
+# apparent power from these three numbers.
 # -----------------------------------------------------------------------------
 - trigger:
     schedule:
-      cron: "0-59/4 6-21 * * 1-5"
+      cron: "*/5 * 6-21 * * 1-5"
       timezone: "America/New_York"
   action:
     nats:
       subject: "telemetry.PIT-B1.PM-001.power"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","kw":412.6,"kvar":118.2,"pf":0.96,"voltage_ll":479.1}'
-
-- trigger:
-    schedule:
-      cron: "1-59/4 6-21 * * 1-5"
-      timezone: "America/New_York"
-  action:
-    nats:
-      subject: "telemetry.PIT-B1.PM-001.power"
-      mode: core
-      payload: '{"ts":"{@timestamp.iso}","kw":488.3,"kvar":142.7,"pf":0.94,"voltage_ll":478.4}'
-
-- trigger:
-    schedule:
-      cron: "2-59/4 6-21 * * 1-5"
-      timezone: "America/New_York"
-  action:
-    nats:
-      subject: "telemetry.PIT-B1.PM-001.power"
-      mode: core
-      payload: '{"ts":"{@timestamp.iso}","kw":531.9,"kvar":167.4,"pf":0.91,"voltage_ll":477.6}'
-
-- trigger:
-    schedule:
-      cron: "3-59/4 6-21 * * 1-5"
-      timezone: "America/New_York"
-  action:
-    nats:
-      subject: "telemetry.PIT-B1.PM-001.power"
-      mode: core
-      payload: '{"ts":"{@timestamp.iso}","kw":455.1,"kvar":129.8,"pf":0.95,"voltage_ll":478.9}'
+      payload: '{"ts":"{@timestamp.iso}","kw":{@random.float(398.0,548.0,1)},"kvar":{@random.float(112.0,171.0,1)},"pf":{@random.float(0.90,0.97,2)},"voltage_ll":{@random.float(477.2,479.8,1)}}'
 
 # Overnight base load, when the presses are down and only the chillers and air
 # compressors are running. Same meter, a tenth of the power — the contrast is
 # the point, and it is the sort of thing an energy dashboard exists to show.
 - trigger:
     schedule:
-      cron: "*/5 22-23,0-5 * * *"
+      cron: "*/15 * 22-23,0-5 * * *"
       timezone: "America/New_York"
   action:
     nats:
       subject: "telemetry.PIT-B1.PM-001.power"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","kw":47.2,"kvar":19.6,"pf":0.92,"voltage_ll":481.3}'
+      payload: '{"ts":"{@timestamp.iso}","kw":{@random.float(42.0,53.0,1)},"kvar":{@random.float(17.0,22.0,1)},"pf":{@random.float(0.90,0.94,2)},"voltage_ll":{@random.float(480.4,482.1,1)}}'
 
 - trigger:
     schedule:
-      cron: "*/3 6-21 * * 1-5"
+      cron: "*/10 * 6-21 * * 1-5"
       timezone: "America/New_York"
   action:
     nats:
       subject: "telemetry.PIT-B2.PM-002.power"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","kw":286.4,"kvar":91.1,"pf":0.95,"voltage_ll":479.8}'
+      payload: '{"ts":"{@timestamp.iso}","kw":{@random.float(262.0,318.0,1)},"kvar":{@random.float(84.0,101.0,1)},"pf":{@random.float(0.93,0.97,2)},"voltage_ll":{@random.float(478.9,480.6,1)}}'
 
 - trigger:
     schedule:
-      cron: "*/5 * * * *"
+      cron: "*/20 * * * * *"
       timezone: "America/New_York"
   action:
     nats:
       subject: "telemetry.PIT-MCC1.PM-003.power"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","kw":63.8,"kvar":21.4,"pf":0.95,"voltage_ll":480.2}'
+      payload: '{"ts":"{@timestamp.iso}","kw":{@random.float(58.0,71.0,1)},"kvar":{@random.float(19.0,24.0,1)},"pf":{@random.float(0.93,0.96,2)},"voltage_ll":{@random.float(479.4,481.0,1)}}'
+
+# ---- More of the fleet, previously silent.
+#
+# PM-004 through PM-006 are seeded by `fillThings` on the same PIT-B1 / PIT-B2 /
+# PIT-MCC1 round-robin as the three above, and said nothing. Sub-panels rather
+# than main incomers, so the numbers are smaller — an energy dashboard with one
+# meter per building has nothing to break down, which is half of what an energy
+# dashboard is for.
+- trigger:
+    schedule:
+      cron: "*/20 * 6-21 * * 1-5"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "telemetry.PIT-B1.PM-004.power"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","kw":{@random.float(88.0,124.0,1)},"kvar":{@random.float(28.0,41.0,1)},"pf":{@random.float(0.91,0.95,2)},"voltage_ll":{@random.float(478.0,480.2,1)}}'
+
+- trigger:
+    schedule:
+      cron: "*/20 * 6-21 * * 1-5"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "telemetry.PIT-B2.PM-005.power"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","kw":{@random.float(64.0,97.0,1)},"kvar":{@random.float(20.0,33.0,1)},"pf":{@random.float(0.92,0.96,2)},"voltage_ll":{@random.float(479.1,481.3,1)}}'
+
+- trigger:
+    schedule:
+      cron: "*/30 * * * * *"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "telemetry.PIT-MCC1.PM-006.power"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","kw":{@random.float(31.0,44.0,1)},"kvar":{@random.float(10.0,16.0,1)},"pf":{@random.float(0.92,0.95,2)},"voltage_ll":{@random.float(479.8,481.4,1)}}'
 
 # -----------------------------------------------------------------------------
 # BEARING VIBRATION — reduced on the device, not on the bus
@@ -109,80 +125,129 @@
 # expensive way to compute the same three numbers, and the schema records what
 # was actually sent rather than what was measured.
 #
-# VS-002 on Line B runs high — 6.4 mm/s RMS against a 4.5 alarm threshold on a
-# machine of this class. That is the reading a maintenance rule should watch.
+# VS-002 on Line B runs high — around 6.4 mm/s RMS against a 4.5 alarm threshold
+# on a machine of this class. That is the reading a maintenance rule should
+# watch, and its band is deliberately kept ABOVE the threshold rather than
+# straddling it: a fault that intermittently clears itself is a different and
+# much less useful demo than a fault that is simply present.
 # -----------------------------------------------------------------------------
 - trigger:
     schedule:
-      cron: "*/2 6-21 * * 1-5"
+      cron: "*/10 * 6-21 * * 1-5"
       timezone: "America/New_York"
   action:
     nats:
       subject: "telemetry.LINE-A.VS-001.vibration"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","rms_mm_s":2.1,"peak_mm_s":5.8,"axis":"x"}'
+      payload: '{"ts":"{@timestamp.iso}","rms_mm_s":{@random.float(1.7,2.6,1)},"peak_mm_s":{@random.float(4.9,6.4,1)},"axis":"x"}'
 
 - trigger:
     schedule:
-      cron: "*/2 6-21 * * 1-5"
+      cron: "*/10 * 6-21 * * 1-5"
       timezone: "America/New_York"
   action:
     nats:
       subject: "telemetry.LINE-B.VS-002.vibration"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","rms_mm_s":6.4,"peak_mm_s":17.9,"axis":"y"}'
+      payload: '{"ts":"{@timestamp.iso}","rms_mm_s":{@random.float(5.9,7.1,1)},"peak_mm_s":{@random.float(16.2,19.4,1)},"axis":"y"}'
 
 - trigger:
     schedule:
-      cron: "*/4 6-21 * * 1-5"
+      cron: "*/15 * 6-21 * * 1-5"
       timezone: "America/New_York"
   action:
     nats:
       subject: "telemetry.LINE-C.VS-003.vibration"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","rms_mm_s":1.6,"peak_mm_s":4.2,"axis":"z"}'
+      payload: '{"ts":"{@timestamp.iso}","rms_mm_s":{@random.float(1.3,2.0,1)},"peak_mm_s":{@random.float(3.6,4.9,1)},"axis":"z"}'
+
+# ---- A second sensor on each line, previously silent. Different axis, same
+# machine: one point per line cannot distinguish a bearing from an imbalance, and
+# a maintenance screen that shows two axes per line is the first thing anyone
+# building one would ask for.
+- trigger:
+    schedule:
+      cron: "*/15 * 6-21 * * 1-5"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "telemetry.LINE-A.VS-004.vibration"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","rms_mm_s":{@random.float(1.9,2.9,1)},"peak_mm_s":{@random.float(5.1,6.9,1)},"axis":"z"}'
+
+- trigger:
+    schedule:
+      cron: "*/15 * 6-21 * * 1-5"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "telemetry.LINE-B.VS-005.vibration"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","rms_mm_s":{@random.float(2.4,3.5,1)},"peak_mm_s":{@random.float(6.8,9.1,1)},"axis":"x"}'
+
+- trigger:
+    schedule:
+      cron: "*/20 * 6-21 * * 1-5"
+      timezone: "America/New_York"
+  action:
+    nats:
+      subject: "telemetry.LINE-C.VS-006.vibration"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","rms_mm_s":{@random.float(1.1,1.8,1)},"peak_mm_s":{@random.float(3.1,4.4,1)},"axis":"y"}'
 
 # -----------------------------------------------------------------------------
 # MACHINE CYCLES — the unit of OEE, and the busiest traffic in this file
 #
-# One completed cycle per line per minute during shift. A real press cycles far
-# faster than that; the cron floor is one minute and no amount of rule-writing
-# gets under it, so this is a sampled view of the real rate rather than the real
-# rate. Anything that needs true cycle-level throughput belongs on a device
-# publishing directly, not on a scheduler standing in for one.
+# One completed cycle per line every fifteen to thirty seconds during shift. That
+# is still a SAMPLED view rather than the real rate — a press on a short die runs
+# faster than one cycle per fifteen seconds — but the old note here said "no
+# amount of rule-writing gets under one minute", and that is no longer true. The
+# floor is one second now, and the reason these are not at the floor is judgement
+# rather than a limit: a cycle every second for three lines fills the console
+# widget faster than anyone can read it.
+#
+# `part` and `operator` are drawn with `{@random.choice(...)}`, which is what
+# gives a table on this subject more than one distinct row.
 # -----------------------------------------------------------------------------
 - trigger:
     schedule:
-      cron: "* 6-21 * * 1-5"
+      cron: "*/15 * 6-21 * * 1-5"
       timezone: "America/New_York"
   action:
     nats:
       subject: "line.LINE-A.LC-LINE-A.cycle"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","seconds":42.6,"good":true,"part":"IB-4471-A","operator":"BADGE-1180"}'
+      payload: '{"ts":"{@timestamp.iso}","seconds":{@random.float(39.4,46.2,1)},"good":true,"part":"{@random.choice(IB-4471-A,IB-4471-C,IB-5518-A)}","operator":"BADGE-{@random.choice(1180,1191,1207)}"}'
 
 - trigger:
     schedule:
-      cron: "* 6-21 * * 1-5"
+      cron: "*/20 * 6-21 * * 1-5"
       timezone: "America/New_York"
   action:
     nats:
       subject: "line.LINE-B.LC-LINE-B.cycle"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","seconds":58.1,"good":true,"part":"IB-4471-B","operator":"BADGE-1204"}'
+      payload: '{"ts":"{@timestamp.iso}","seconds":{@random.float(54.8,62.7,1)},"good":true,"part":"{@random.choice(IB-4471-B,IB-5518-B)}","operator":"BADGE-{@random.choice(1204,1216)}"}'
 
 - trigger:
     schedule:
-      cron: "* 6-21 * * 1-5"
+      cron: "*/30 * 6-21 * * 1-5"
       timezone: "America/New_York"
   action:
     nats:
       subject: "line.LINE-C.LC-LINE-C.cycle"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","seconds":91.4,"good":true,"part":"IB-4471-FA","operator":"BADGE-1219"}'
+      payload: '{"ts":"{@timestamp.iso}","seconds":{@random.float(86.1,97.9,1)},"good":true,"part":"{@random.choice(IB-4471-FA,IB-5518-FA)}","operator":"BADGE-{@random.choice(1219,1228)}"}'
 
 # A scrapped part every 13 minutes on Line B — the `good: false` cycles are the
-# quality term in OEE, and a demo where every cycle passes has nothing to compute.
+# quality term in OEE, and a demo where every cycle passes has nothing to
+# compute.
+#
+# THIS IS A SEPARATE RULE ON PURPOSE, and it is the clearest case in these files
+# for not reaching for `{@random.choice(true,false)}`. A choice would make the
+# scrap RATE random too, and the scrap rate is the number the whole OEE quality
+# term is built from — a demo that cannot state its own scrap rate is not
+# demonstrating OEE. The cron sets the rate; random sets the values within it.
 - trigger:
     schedule:
       cron: "*/13 6-21 * * 1-5"
@@ -191,7 +256,82 @@
     nats:
       subject: "line.LINE-B.LC-LINE-B.cycle"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","seconds":61.7,"good":false,"part":"IB-4471-B","operator":"BADGE-1204"}'
+      payload: '{"ts":"{@timestamp.iso}","seconds":{@random.float(58.2,68.4,1)},"good":false,"part":"{@random.choice(IB-4471-B,IB-5518-B)}","operator":"BADGE-{@random.choice(1204,1216)}"}'
+
+# -----------------------------------------------------------------------------
+# HEARTBEATS — the operation every device type here declares and none used to send
+#
+# power-meter, vib-sensor and line-controller all declare publish_heartbeat, and
+# until now only the gateway and the two applications sent one. See the Northwind
+# file for why that mattered: without it the console cannot tell a commissioned
+# device from a recorded one, which is the distinction `active` exists to make.
+#
+# Not gated on shift. A meter does not stop existing at 22:00, and a heartbeat
+# that respected business hours would make every device look dead overnight —
+# which is the opposite of what a heartbeat is for.
+# -----------------------------------------------------------------------------
+- trigger:
+    schedule:
+      cron: "*/30 * * * * *"
+  action:
+    nats:
+      subject: "telemetry.PIT-B1.PM-001.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(8640000,8640200)},"comms":"modbus-tcp"}'
+
+- trigger:
+    schedule:
+      cron: "*/30 * * * * *"
+  action:
+    nats:
+      subject: "telemetry.PIT-B2.PM-002.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(7776000,7776200)},"comms":"modbus-tcp"}'
+
+- trigger:
+    schedule:
+      cron: "*/45 * * * * *"
+  action:
+    nats:
+      subject: "telemetry.LINE-A.VS-001.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(1209600,1209800)},"rssi_dbm":{@random.int(-66,-54)}}'
+
+- trigger:
+    schedule:
+      cron: "*/45 * * * * *"
+  action:
+    nats:
+      subject: "telemetry.LINE-B.VS-002.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(1036800,1037000)},"rssi_dbm":{@random.int(-79,-68)}}'
+
+- trigger:
+    schedule:
+      cron: "*/30 * * * * *"
+  action:
+    nats:
+      subject: "line.LINE-A.LC-LINE-A.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(2592000,2592200)},"scan_ms":{@random.int(8,14)}}'
+
+- trigger:
+    schedule:
+      cron: "*/30 * * * * *"
+  action:
+    nats:
+      subject: "line.LINE-B.LC-LINE-B.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(2592000,2592200)},"scan_ms":{@random.int(9,16)}}'
+
+- trigger:
+    schedule:
+      cron: "*/30 * * * * *"
+  action:
+    nats:
+      subject: "line.LINE-C.LC-LINE-C.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(1814400,1814600)},"scan_ms":{@random.int(11,19)}}'
 
 # -----------------------------------------------------------------------------
 # ALARMS — raised AND cleared
@@ -201,6 +341,12 @@
 # the same reason the fire drill in the access-control demo has two: a raise with
 # no matching clear leaves a permanent red badge that stops meaning anything
 # about twenty minutes into a demo.
+#
+# ALARMS STAY ON MINUTE CRONS. Everything else in this file got faster; these did
+# not, and the reason is the same one that keeps the Northwind excursion on a
+# 47-minute cron. An alarm that fires every few seconds is not an alarm, it is
+# wallpaper, and the pairing above only reads as a pairing if there is a visible
+# gap between the raise and the clear.
 # -----------------------------------------------------------------------------
 - trigger:
     schedule:
@@ -251,6 +397,12 @@
 # publish of the mode actually in force. Pair a `twin_desired` value against the
 # ECHO, never against a measurement — the same rule the reefer setpoints
 # illustrate in the Northwind file.
+#
+# NO RANDOM ANYWHERE IN THIS SECTION, and that is the point of putting it right
+# after a section full of it. A mode is an assertion, not a measurement. The
+# moment `{@random.choice(run,changeover)}` appears here the echo stops echoing
+# anything and every desired/reported pairing in the Digital Twin screen goes
+# permanently red.
 # -----------------------------------------------------------------------------
 - trigger:
     schedule:
@@ -274,7 +426,7 @@
 
 - trigger:
     schedule:
-      cron: "*/6 6-21 * * 1-5"
+      cron: "*/30 * 6-21 * * 1-5"
       timezone: "America/New_York"
   action:
     nats:
@@ -289,64 +441,71 @@
 # exactly like the meters above, and it does the windowed aggregation the rule
 # engine deliberately does not — a rule engine answers "is this reading out of
 # band right now", not "what was availability over the last fifteen minutes".
+#
+# Its three factors move independently here, which means the published `oee` is
+# NOT their product. A real OEE feed would compute it; this one cannot, because
+# a template has no arithmetic and adding some would turn the template engine
+# into an expression language. If you are pointing a gauge at `$.oee`, point it
+# at that field and do not check the multiplication.
 # -----------------------------------------------------------------------------
 - trigger:
     schedule:
-      cron: "*/5 6-21 * * 1-5"
+      cron: "*/20 * 6-21 * * 1-5"
       timezone: "America/New_York"
   action:
     nats:
       subject: "app.oee.OEE-01.oee"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","window_mins":15,"availability":0.91,"performance":0.87,"quality":0.98,"oee":0.776,"line":"LINE-A"}'
+      payload: '{"ts":"{@timestamp.iso}","window_mins":15,"availability":{@random.float(0.86,0.94,2)},"performance":{@random.float(0.81,0.91,2)},"quality":{@random.float(0.96,0.99,2)},"oee":{@random.float(0.71,0.83,3)},"line":"LINE-A"}'
 
 - trigger:
     schedule:
-      cron: "2-59/5 6-21 * * 1-5"
+      cron: "10,30,50 * 6-21 * * 1-5"
       timezone: "America/New_York"
   action:
     nats:
       subject: "app.oee.OEE-01.oee"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","window_mins":15,"availability":0.84,"performance":0.79,"quality":0.94,"oee":0.624,"line":"LINE-B"}'
+      payload: '{"ts":"{@timestamp.iso}","window_mins":15,"availability":{@random.float(0.78,0.88,2)},"performance":{@random.float(0.74,0.84,2)},"quality":{@random.float(0.91,0.96,2)},"oee":{@random.float(0.56,0.68,3)},"line":"LINE-B"}'
 
 - trigger:
     schedule:
-      cron: "*/5 * * * *"
+      cron: "*/30 * * * * *"
   action:
     nats:
       subject: "app.oee.OEE-01.heartbeat"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","uptime":907200}'
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(907200,907400)},"streams":{@random.int(6,9)}}'
 
 - trigger:
     schedule:
-      cron: "1-59/5 * * * *"
+      cron: "15,45 * * * * *"
   action:
     nats:
       subject: "app.mes.MES-CONN-01.heartbeat"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","uptime":2592000}'
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(2592000,2592200)},"queue":{@random.int(0,7)}}'
 
 - trigger:
     schedule:
-      cron: "*/5 * * * *"
+      cron: "*/30 * * * * *"
   action:
     nats:
       subject: "gateway.PIT-MCC1.GW-PIT-01.heartbeat"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","uptime":5184000}'
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(5184000,5184200)},"load":{@random.float(0.15,0.72,2)}}'
 
 # =============================================================================
 # DIGITAL TWIN — reported state only
 # =============================================================================
 # Requires the `twin` bucket to exist (console → NATS → KV Buckets → Initialize).
-# The full reasoning — why `$KV.{bucket}.{key}`, why `mode: jetstream`, and why
-# nothing here ever writes `twin_desired` — is in the Northwind file. Delete this
+# The full reasoning — why `$KV.{bucket}.{key}`, why `mode: jetstream`, why
+# nothing here ever writes `twin_desired`, and why these stay on minute crons
+# when everything above them got faster — is in the Northwind file. Delete this
 # section if you have not created the bucket.
 # =============================================================================
 
-# The echo, which is the key a desired mode should be paired with.
+# The echo, which is the key a desired mode should be paired with. Fixed values.
 - trigger:
     schedule:
       cron: "*/3 * * * *"
@@ -385,4 +544,4 @@
     nats:
       subject: "$KV.twin.thing.GW-PIT-01.status"
       mode: jetstream
-      payload: '{"wan":"up","leaf":"connected","oee_pipeline":"running","version":"0.4.0"}'
+      payload: '{"wan":"up","leaf":"connected","oee_pipeline":"running","version":"0.4.0","clients":{@random.int(12,18)}}'

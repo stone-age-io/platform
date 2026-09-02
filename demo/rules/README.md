@@ -9,10 +9,22 @@ These are [rule-router](https://github.com/stone-age-io) scheduler rules that pu
 that traffic on the bus, on the exact subjects the seeded things declare.
 
 ```
-northwind/telemetry.yaml    cold chain: probes, dock doors, reefers, WMS, twin state
+northwind/telemetry.yaml    cold chain: probes, batteries, dock doors, reefers, WMS, twin state
 ironbridge/telemetry.yaml   plant: panel power, bearing vibration, cycles, alarms, OEE
 galewind/telemetry.yaml     wind: turbines, curtailment, feeders, ERCOT dispatch
 ```
+
+Between them they speak for about **forty** of the seeded things, on **111**
+rules. The rest stay silent on purpose: inventory is recorded long before every
+device is commissioned, and a demo where all 120 reported would misrepresent both
+the platform and the work. It is the reason the Things list has an `active`
+filter, and the reason `stone_age_records` counts things *configured* rather than
+things alive.
+
+Every device type that declares `publish_heartbeat` now sends one. Until
+recently only gateways and applications did, which left the console unable to
+tell a commissioned device from a merely recorded one — exactly the distinction
+`active` exists to make legible.
 
 Nothing here ships in the binary and nothing here is required to run the
 platform. It is demo tooling.
@@ -101,26 +113,65 @@ Point a dashboard widget at any of these:
 | Chart | `turbine.T-114.TC-114.generation` | `$.kw` |
 | Chart | `telemetry.PIT-B1.PM-001.power` | `$.kw` |
 | Stat | `telemetry.LINE-B.VS-002.vibration` | `$.rms_mm_s` |
+| Gauge | `telemetry.KC-DC1-FZ1.TP-005.battery` | `$.percent` |
+| Chart | `app.market.MARKET-01.dispatch` | `$.price_mwh` |
 | Console | `event.KC-DC1.DS-001.door` | — |
 | Console | `app.wms.WMS-CONN-01.shipment` | — |
+| Console | `telemetry.KC-DC1-FZ1.TP-001.heartbeat` | — |
 
-The three chart rows are the three signals that actually move. Everything else
-publishes a single plausible value, for a reason worth knowing before you write
-your own rules.
+The top three fill in **under a minute** — they publish every five seconds.
+Nearly everything else moves too, on a ten- to forty-five-second cron.
 
-## Two constraints you will hit immediately
+## What these files need from rule-router
 
-**Cron floors at one minute.** rule-router's scheduler is 5-field and validates
-it, so one rule publishes at most once a minute. A real press cycles faster than
-that; these files sample rather than reproduce.
+A build with **six-field cron** and the **`{@random.*}` template functions**. On
+an older one every rule fails to load, loudly, at startup — which is the right
+failure, because a silently ignored seconds field would publish sixty times
+slower than the files claim.
 
-**A rule's payload is fixed.** There is no random function and no arithmetic on
-`{@time.*}`, so one rule publishing every minute draws a *flat line*. The
-workaround, used once per file and commented where it happens, is to give the one
-signal you actually want to watch a handful of phase-shifted rules — different
-minute, different value — so the series repeats as a waveform. It is verbose, and
-it is the honest cost of simulating a device with a scheduler. If rule-router
-ever grows a value generator, those blocks each collapse to one rule.
+Both are recent, and the files were rewritten around them. What that changed:
+
+**Cron takes an optional seconds field.** `*/5 * * * * *` is every five seconds.
+One second is the floor — cron cannot express less. A rule that fires faster than
+its action completes drops the overlap rather than stacking it, and the drop is
+counted at `scheduler_job_runs_total{status="singleton_rescheduled"}` with the
+first one per schedule logged.
+
+**Payloads move.** `{@random.float(min,max,decimals)}`, `{@random.int(min,max)}`
+and `{@random.choice(a,b)}` replaced the phase-shifted blocks each file used to
+carry — six rules for one temperature probe, six for one turbine, four for one
+power meter — with one rule each.
+
+### Three things worth knowing before you copy the pattern
+
+**It is bounded noise, not a shape.** The old six-rule blocks modelled a
+compressor cycle and a wind ramp: repeating *shapes*. A random band never draws
+one. For a probe in a working freezer that is arguably more honest; for anything
+where the shape is the point, phase-shifted rules still work — they just shift on
+seconds now.
+
+**Independent draws lose correlation.** Galewind publishes `kw` and `wind_ms`
+from two separate ranges, so each series looks right alone and the *pairing* is
+wrong on any given sample. Fine for a chart, wrong for fitting a power curve.
+Ironbridge's OEE has the same property: the published `oee` is not the product of
+its three factors, because a template has no arithmetic. Each file says so where
+it happens.
+
+**Random goes on measurements, never on assertions.** Temperatures, power and
+vibration are randomised. Setpoints, setpoint echoes, line modes and curtailment
+ceilings are *not*, and must not be — an echo is the device repeating the
+instruction it accepted, so a value that wanders by a tenth turns every
+desired/reported pairing in the Digital Twin screen permanently red. Same reason
+Ironbridge's scrap rate stays on its own cron instead of becoming a
+`{@random.choice(true,false)}`: the cron sets the rate, random sets the value.
+
+## Volume, and turning it down
+
+Each org publishes on the order of a few hundred messages a minute — nothing for
+NATS, but more than you want in a log you are reading. To calm it, widen the
+crons or drop the seconds field to go back to minute granularity. Alarms,
+excursions, market intervals and every KV write were deliberately **left on
+minute crons**; each file says why where it does it.
 
 ## The Digital Twin section
 

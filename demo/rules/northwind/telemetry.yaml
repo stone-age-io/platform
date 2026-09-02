@@ -44,147 +44,172 @@
 #   published on a connection with no permission for it, filling the log with
 #   authorization errors for rules that are perfectly correct.
 #
-# ------------------------------- THE ONE-MINUTE FLOOR, AND WHAT IT COSTS ------
-# rule-router's cron is 5-field and validated as such: one message per rule per
-# minute, no faster. A rule's payload is also fixed — there is no random
-# function, and no arithmetic on `{@time.*}` — so a single rule publishing every
-# minute draws a flat line on a chart, which is worse than no chart.
+#   Needs a rule-router with six-field cron and the `{@random.*}` functions. On a
+#   build without them every rule here fails to load, loudly, at startup — which
+#   is the right failure: a silently ignored seconds field would publish sixty
+#   times slower than this file claims.
 #
-# The workaround, used once and named where it happens: give the ONE signal you
-# actually want to watch a small set of phase-shifted rules, each firing on a
-# different minute with a different value, so the series repeats as a waveform
-# rather than a constant. TP-001 below gets six. Everything else publishes a
-# single plausible value, which is enough for a stat, a gauge or a table and
-# honest about being a fixture.
+# ------------------------------- SECONDS, AND A VALUE THAT MOVES --------------
+# These files used to open with a section headed "the one-minute floor, and what
+# it costs". Both halves of that cost are gone:
+#
+#   * Cron takes an optional SECONDS field. `*/5 * * * * *` is every five
+#     seconds, so a chart fills in under a minute instead of half an hour. One
+#     second is the floor — cron cannot express less — and a rule that fires
+#     faster than its action completes drops the overlap rather than stacking it,
+#     countable as `scheduler_job_runs_total{status="singleton_rescheduled"}`.
+#
+#   * `{@random.float(min,max,decimals)}`, `{@random.int(min,max)}` and
+#     `{@random.choice(a,b)}` put motion in a payload. The six phase-shifted
+#     rules that used to drive TP-001 are now one rule.
+#
+# WHAT THAT TRADE ACTUALLY IS, said plainly: the six-rule block modelled a
+# compressor cycle — a repeating SHAPE. A random band is BOUNDED NOISE, and no
+# amount of it will ever draw a sawtooth. For a probe sitting in a working
+# freezer that is arguably the more honest picture, because what a real probe
+# reports between compressor calls is jitter around setpoint. Where the shape is
+# the point, phase-shifted rules still work — they just phase-shift on seconds
+# now. Nothing in this file needs that, so nothing in this file does it.
+#
+# These functions are FIXTURE DATA and rule-router documents them as such. They
+# are not for nonces (`{@uuid4()}`), correlation ids (`{@uuid7()}`), or anything
+# a consumer will treat as an identity. Note also which rules below did NOT get a
+# random value: setpoints and echoes stayed fixed, for a reason spelled out at
+# the reefer section.
 #
 # --------------------------------- WHY MOST THINGS HERE ARE SILENT ------------
-# The seed creates about 120 things; this file speaks for roughly a dozen. That
-# is the shape of a real rollout — inventory is recorded long before every device
-# is commissioned — and a demo where all 120 report would misrepresent both the
-# platform and the work. The silent ones are the reason the Things list has an
-# `active` filter and the reason `stone_age_records` is documented as a count of
-# things CONFIGURED rather than things alive.
+# The seed creates about 120 things; this file speaks for roughly thirty. That is
+# still the shape of a real rollout — inventory is recorded long before every
+# device is commissioned — and a demo where all 120 reported would misrepresent
+# both the platform and the work. The silent ones are the reason the Things list
+# has an `active` filter and the reason `stone_age_records` is documented as a
+# count of things CONFIGURED rather than things alive.
 
 # -----------------------------------------------------------------------------
 # COLD CHAIN — Freezer Zone 1, the signal worth charting
 #
-# Six rules, one signal. TP-001 sits in KC-DC1-FZ1 against a -18C setpoint, and
-# these six phase-shifted crons walk it through a six-minute compressor cycle:
-# pull down to -19.4, drift up to -17.2, cut back in. Point a chart widget at
-# `telemetry.KC-DC1-FZ1.TP-001.temperature` with jsonPath `$.celsius` and it
-# draws a sawtooth instead of a straight line.
+# TP-001 sits in KC-DC1-FZ1 against a -18C setpoint and reports every five
+# seconds, jittering across the band a working freezer holds. Point a chart
+# widget at `telemetry.KC-DC1-FZ1.TP-001.temperature` with jsonPath `$.celsius`
+# and it draws a live trace within about ten seconds of starting the scheduler.
 #
-# This is the only signal in the file that gets the treatment. It is verbose, and
-# it is verbose because the cron floor and the static payload are real
-# constraints rather than something to hide — if you want a second animated
-# signal, copy this block. If rule-router ever grows a value generator, this is
-# the block that collapses to one rule.
+# This one rule replaces six. The six existed because a payload used to be a
+# fixed string, so the only way to make a series move was to write a different
+# rule for each value and phase them across the minutes. That is the whole
+# history of this block, and it is worth knowing before you write your own.
 # -----------------------------------------------------------------------------
 - trigger:
     schedule:
-      cron: "0-59/6 * * * *"
+      cron: "*/5 * * * * *"
   action:
     nats:
       subject: "telemetry.KC-DC1-FZ1.TP-001.temperature"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","celsius":-19.4,"setpoint_c":-18.0,"probe":"TP-001"}'
-
-- trigger:
-    schedule:
-      cron: "1-59/6 * * * *"
-  action:
-    nats:
-      subject: "telemetry.KC-DC1-FZ1.TP-001.temperature"
-      mode: core
-      payload: '{"ts":"{@timestamp.iso}","celsius":-19.1,"setpoint_c":-18.0,"probe":"TP-001"}'
-
-- trigger:
-    schedule:
-      cron: "2-59/6 * * * *"
-  action:
-    nats:
-      subject: "telemetry.KC-DC1-FZ1.TP-001.temperature"
-      mode: core
-      payload: '{"ts":"{@timestamp.iso}","celsius":-18.6,"setpoint_c":-18.0,"probe":"TP-001"}'
-
-- trigger:
-    schedule:
-      cron: "3-59/6 * * * *"
-  action:
-    nats:
-      subject: "telemetry.KC-DC1-FZ1.TP-001.temperature"
-      mode: core
-      payload: '{"ts":"{@timestamp.iso}","celsius":-17.9,"setpoint_c":-18.0,"probe":"TP-001"}'
-
-- trigger:
-    schedule:
-      cron: "4-59/6 * * * *"
-  action:
-    nats:
-      subject: "telemetry.KC-DC1-FZ1.TP-001.temperature"
-      mode: core
-      payload: '{"ts":"{@timestamp.iso}","celsius":-17.2,"setpoint_c":-18.0,"probe":"TP-001"}'
-
-- trigger:
-    schedule:
-      cron: "5-59/6 * * * *"
-  action:
-    nats:
-      subject: "telemetry.KC-DC1-FZ1.TP-001.temperature"
-      mode: core
-      payload: '{"ts":"{@timestamp.iso}","celsius":-18.4,"setpoint_c":-18.0,"probe":"TP-001"}'
+      payload: '{"ts":"{@timestamp.iso}","celsius":{@random.float(-19.4,-17.2,1)},"setpoint_c":-18.0,"probe":"TP-001"}'
 
 # -----------------------------------------------------------------------------
-# COLD CHAIN — the rest of the probes, one value each
+# COLD CHAIN — the rest of the probes
 #
 # Bulk-generated probes cycle through the freezer, chilled and cross-dock zones
 # in code order (TP-001 FZ1, TP-002 FZ2, TP-003 CH1, TP-004 SGF chilled, then
-# round again). Enough spread for a stat grid or a table; not enough motion for a
-# chart, which is the point of the block above.
+# round again), which is why the location in each subject below is not arbitrary
+# — it is what `fillThings` assigned. Each band suits its zone: freezers hold
+# near -18, chilled bays near +2.
 # -----------------------------------------------------------------------------
 - trigger:
     schedule:
-      cron: "*/2 * * * *"
+      cron: "*/15 * * * * *"
   action:
     nats:
       subject: "telemetry.KC-DC1-FZ2.TP-002.temperature"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","celsius":-18.7,"setpoint_c":-18.0,"probe":"TP-002"}'
+      payload: '{"ts":"{@timestamp.iso}","celsius":{@random.float(-19.1,-17.6,1)},"setpoint_c":-18.0,"probe":"TP-002"}'
 
 - trigger:
     schedule:
-      cron: "*/2 * * * *"
+      cron: "*/15 * * * * *"
   action:
     nats:
       subject: "telemetry.KC-DC1-CH1.TP-003.temperature"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","celsius":2.4,"setpoint_c":2.0,"probe":"TP-003"}'
+      payload: '{"ts":"{@timestamp.iso}","celsius":{@random.float(1.6,3.2,1)},"setpoint_c":2.0,"probe":"TP-003"}'
 
 - trigger:
     schedule:
-      cron: "*/2 * * * *"
+      cron: "*/15 * * * * *"
   action:
     nats:
       subject: "telemetry.SGF-XD2-CH1.TP-004.temperature"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","celsius":3.1,"setpoint_c":2.0,"probe":"TP-004"}'
+      payload: '{"ts":"{@timestamp.iso}","celsius":{@random.float(2.2,3.9,1)},"setpoint_c":2.0,"probe":"TP-004"}'
 
 - trigger:
     schedule:
-      cron: "*/3 * * * *"
+      cron: "*/20 * * * * *"
   action:
     nats:
       subject: "telemetry.KC-DC1-FZ2.TP-006.temperature"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","celsius":-18.2,"setpoint_c":-18.0,"probe":"TP-006"}'
+      payload: '{"ts":"{@timestamp.iso}","celsius":{@random.float(-18.9,-17.4,1)},"setpoint_c":-18.0,"probe":"TP-006"}'
+
+# ---- More of the fleet, previously silent.
+#
+# TP-007 through TP-010 are seeded exactly like the four above and said nothing,
+# for no reason other than what a moving signal used to cost: six rules each. At
+# one rule each that reason is gone, so the Chilled Zone and the Springfield bay
+# now have more than one probe apiece and a stat grid or a table has rows to
+# fill. Their locations follow the same round-robin — check `fillThings` before
+# adding TP-011 rather than guessing.
+- trigger:
+    schedule:
+      cron: "*/20 * * * * *"
+  action:
+    nats:
+      subject: "telemetry.KC-DC1-CH1.TP-007.temperature"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","celsius":{@random.float(1.4,2.9,1)},"setpoint_c":2.0,"probe":"TP-007"}'
+
+- trigger:
+    schedule:
+      cron: "*/20 * * * * *"
+  action:
+    nats:
+      subject: "telemetry.SGF-XD2-CH1.TP-008.temperature"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","celsius":{@random.float(1.9,3.4,1)},"setpoint_c":2.0,"probe":"TP-008"}'
+
+- trigger:
+    schedule:
+      cron: "*/30 * * * * *"
+  action:
+    nats:
+      subject: "telemetry.KC-DC1-FZ1.TP-009.temperature"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","celsius":{@random.float(-19.2,-17.8,1)},"setpoint_c":-18.0,"probe":"TP-009"}'
+
+- trigger:
+    schedule:
+      cron: "*/30 * * * * *"
+  action:
+    nats:
+      subject: "telemetry.KC-DC1-FZ2.TP-010.temperature"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","celsius":{@random.float(-18.8,-17.3,1)},"setpoint_c":-18.0,"probe":"TP-010"}'
 
 # THE EXCURSION. TP-005 shares Freezer Zone 1 with TP-001 and reports a
-# temperature ten degrees above setpoint every 47 minutes — a door left open, a
-# failed defrost termination, or a probe hanging in warm air. This is the reading
-# the cold-chain rule-router instance (thing RULES-COLD-01) exists to catch, and
-# it is what a threshold rule should watch: REPORTED state, over time. Note where
-# it does NOT belong — a range is not a desired value, and putting `{"min":-20,
-# "max":-16}` in `twin_desired` would be a rules engine hiding in a KV bucket.
+# temperature well above setpoint every 47 minutes — a door left open, a failed
+# defrost termination, or a probe hanging in warm air. This is the reading the
+# cold-chain rule-router instance (thing RULES-COLD-01) exists to catch, and it
+# is what a threshold rule should watch: REPORTED state, over time.
+#
+# DELIBERATELY STILL ON A MINUTE CRON. An excursion every five seconds is not an
+# excursion, it is a broken freezer, and this rule's entire value is being rare
+# enough to stand out against TP-001's steady band. Sub-minute cron is a
+# capability, not an instruction.
+#
+# Note where a range does NOT belong — a range is not a desired value, and
+# putting `{"min":-20,"max":-16}` in `twin_desired` would be a rules engine
+# hiding in a KV bucket.
 - trigger:
     schedule:
       cron: "*/47 * * * *"
@@ -192,27 +217,121 @@
     nats:
       subject: "telemetry.KC-DC1-FZ1.TP-005.temperature"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","celsius":-7.9,"setpoint_c":-18.0,"probe":"TP-005"}'
+      payload: '{"ts":"{@timestamp.iso}","celsius":{@random.float(-9.2,-6.4,1)},"setpoint_c":-18.0,"probe":"TP-005"}'
 
-# Battery, hourly and on change — the second operation these probes declare, and
-# a reminder that a thing type's operations are a list rather than a single feed.
+# -----------------------------------------------------------------------------
+# BATTERY — the second operation these probes declare
+#
+# A reminder that a thing type's operations are a LIST rather than a single feed:
+# `temp-probe` declares publish_temperature, publish_battery and
+# publish_heartbeat, and a demo exercising only the first makes the other two
+# look decorative.
+#
+# THE BANDS ARE NARROW ON PURPOSE. A battery does not jitter, it drains, so a
+# wide random range would read as a broken gauge rather than a live one. What
+# moves across a couple of tenths here is ADC noise, which is what the reading
+# actually contains. This is the general shape of the judgement each `random`
+# range in this file represents: the width is a claim about the physics.
+#
+# TP-005 is the one to watch — 19% and falling is the second reason that probe
+# shows up on a dashboard.
+# -----------------------------------------------------------------------------
 - trigger:
     schedule:
-      cron: "12 * * * *"
+      cron: "*/2 * * * *"
   action:
     nats:
       subject: "telemetry.KC-DC1-FZ1.TP-001.battery"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","percent":78,"volts":3.41}'
+      payload: '{"ts":"{@timestamp.iso}","percent":{@random.int(77,79)},"volts":{@random.float(3.39,3.43,2)}}'
 
 - trigger:
     schedule:
-      cron: "17 * * * *"
+      cron: "*/2 * * * *"
   action:
     nats:
       subject: "telemetry.KC-DC1-FZ1.TP-005.battery"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","percent":19,"volts":3.02}'
+      payload: '{"ts":"{@timestamp.iso}","percent":{@random.int(18,20)},"volts":{@random.float(3.00,3.05,2)}}'
+
+- trigger:
+    schedule:
+      cron: "*/3 * * * *"
+  action:
+    nats:
+      subject: "telemetry.KC-DC1-CH1.TP-003.battery"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","percent":{@random.int(91,93)},"volts":{@random.float(3.55,3.60,2)}}'
+
+# -----------------------------------------------------------------------------
+# HEARTBEATS — the operation every device type declares and none used to send
+#
+# `publish_heartbeat` is on temp-probe, door-sensor, reefer-unit and
+# edge-gateway here, and on power-meter, vib-sensor, line-controller,
+# turbine-ctl, feeder-relay and met-mast in the other two files. Until now only
+# gateways and applications sent one, which left the console unable to
+# distinguish a commissioned device from a merely recorded one — the exact
+# distinction `active` exists to make legible.
+#
+# Thirty to forty-five seconds is a realistic device heartbeat and fast enough
+# that a "last seen" column means something during a demo. `uptime` jitters by a
+# few seconds rather than counting up, because a scheduler standing in for a
+# device holds no state and a counter that reset on every restart would be a
+# worse lie than a wobble.
+# -----------------------------------------------------------------------------
+- trigger:
+    schedule:
+      cron: "*/30 * * * * *"
+  action:
+    nats:
+      subject: "telemetry.KC-DC1-FZ1.TP-001.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(2419100,2419300)},"rssi_dbm":{@random.int(-74,-62)}}'
+
+- trigger:
+    schedule:
+      cron: "*/30 * * * * *"
+  action:
+    nats:
+      subject: "telemetry.KC-DC1-FZ1.TP-005.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(986000,986200)},"rssi_dbm":{@random.int(-89,-81)}}'
+
+- trigger:
+    schedule:
+      cron: "*/30 * * * * *"
+  action:
+    nats:
+      subject: "telemetry.KC-DC1-CH1.TP-003.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(1728000,1728200)},"rssi_dbm":{@random.int(-71,-58)}}'
+
+- trigger:
+    schedule:
+      cron: "*/45 * * * * *"
+  action:
+    nats:
+      subject: "event.KC-DC1.DS-001.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(604700,604900)},"rssi_dbm":{@random.int(-68,-55)}}'
+
+- trigger:
+    schedule:
+      cron: "*/45 * * * * *"
+  action:
+    nats:
+      subject: "asset.TRL-1180.REEFER-1180.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(432000,432200)},"engine_hrs":{@random.int(14820,14823)}}'
+
+- trigger:
+    schedule:
+      cron: "*/45 * * * * *"
+  action:
+    nats:
+      subject: "asset.TRL-1184.REEFER-1184.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(259100,259300)},"engine_hrs":{@random.int(9310,9313)}}'
 
 # -----------------------------------------------------------------------------
 # DOCK DOORS — event, not telemetry
@@ -221,51 +340,85 @@
 # transition is an event: it has a moment and a previous state, not a sample
 # rate. The `device` NATS role grants both, which is why one credential covers a
 # probe and a contact.
+#
+# `{@random.choice(open,closed)}` collapses each door's open/closed pair into a
+# single rule. NOTE THE QUOTES around it and their absence around
+# `{@random.int(...)}` on the next field: choice renders a string and int renders
+# a bare number, so JSON needs one quoted and the other not. It is the same split
+# `{@uuid7()}` and `{@time.hour}` have always had.
+#
+# THE COST OF `choice` HERE: a door can report `open` twice running, which a real
+# contact cannot. For a console widget scrolling events that reads fine; for
+# anything computing dwell time from consecutive states it does not, and the
+# honest fix is a device rather than a scheduler.
 # -----------------------------------------------------------------------------
 - trigger:
     schedule:
-      cron: "*/3 5-21 * * 1-6"
+      cron: "*/20 5-21 * * 1-6"
   action:
     nats:
       subject: "event.KC-DC1.DS-001.door"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","state":"open","duration":1840}'
+      payload: '{"ts":"{@timestamp.iso}","state":"{@random.choice(open,closed)}","duration":{@random.int(45,2400)}}'
 
 - trigger:
     schedule:
-      cron: "1-59/3 5-21 * * 1-6"
-  action:
-    nats:
-      subject: "event.KC-DC1.DS-001.door"
-      mode: core
-      payload: '{"ts":"{@timestamp.iso}","state":"closed","duration":62}'
-
-- trigger:
-    schedule:
-      cron: "*/5 5-21 * * 1-6"
+      cron: "*/30 5-21 * * 1-6"
   action:
     nats:
       subject: "event.SGF-XD2.DS-002.door"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","state":"open","duration":3610}'
+      payload: '{"ts":"{@timestamp.iso}","state":"{@random.choice(open,closed)}","duration":{@random.int(60,3800)}}'
 
 - trigger:
     schedule:
-      cron: "2-59/5 5-21 * * 1-6"
-  action:
-    nats:
-      subject: "event.SGF-XD2.DS-002.door"
-      mode: core
-      payload: '{"ts":"{@timestamp.iso}","state":"closed","duration":141}'
-
-- trigger:
-    schedule:
-      cron: "*/7 5-21 * * 1-6"
+      cron: "*/40 5-21 * * 1-6"
   action:
     nats:
       subject: "event.KC-DC1.DS-003.door"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","state":"open","duration":940}'
+      payload: '{"ts":"{@timestamp.iso}","state":"{@random.choice(open,closed)}","duration":{@random.int(40,1500)}}'
+
+# ---- DS-004 (Springfield) and DS-005 (KC) are seeded and were silent. Both are
+# quieter than the three above, which is what a door at the far end of a dock
+# actually looks like. The leading `0` and `30` are the SECONDS field: these fire
+# at one instant within their minute rather than throughout it.
+- trigger:
+    schedule:
+      cron: "0 */2 5-21 * * 1-6"
+  action:
+    nats:
+      subject: "event.SGF-XD2.DS-004.door"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","state":"{@random.choice(open,closed)}","duration":{@random.int(90,2600)}}'
+
+- trigger:
+    schedule:
+      cron: "30 */3 5-21 * * 1-6"
+  action:
+    nats:
+      subject: "event.KC-DC1.DS-005.door"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","state":"{@random.choice(open,closed)}","duration":{@random.int(30,900)}}'
+
+# The door sensors' own battery operation, which no rule used to exercise.
+- trigger:
+    schedule:
+      cron: "*/4 * * * *"
+  action:
+    nats:
+      subject: "event.KC-DC1.DS-001.battery"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","percent":{@random.int(84,86)},"volts":{@random.float(3.48,3.52,2)}}'
+
+- trigger:
+    schedule:
+      cron: "*/4 * * * *"
+  action:
+    nats:
+      subject: "event.SGF-XD2.DS-002.battery"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","percent":{@random.int(41,43)},"volts":{@random.float(3.18,3.22,2)}}'
 
 # -----------------------------------------------------------------------------
 # REEFER TRAILERS — a setpoint, and the echo that makes it checkable
@@ -277,26 +430,33 @@
 # instead and it differs forever, because an instruction and a continuous reading
 # never converge — and no tolerance fixes that in general.
 #
+# NOTICE WHICH RULES BELOW GOT A RANDOM VALUE AND WHICH DID NOT. The temperatures
+# did; the setpoint and its echo did not, and must not. An echo whose value
+# wandered would stop being an echo — it is the unit repeating the instruction it
+# accepted, and the instant it drifts by a tenth every desired/reported pairing in
+# the Digital Twin screen goes permanently red. Random belongs on measurements,
+# never on assertions. That distinction is the most useful thing in this file.
+#
 # `asset.` rather than `telemetry.` as the root: a trailer moves between sites and
 # is addressed as an asset, not as a fixture of a building.
 # -----------------------------------------------------------------------------
 - trigger:
     schedule:
-      cron: "*/2 * * * *"
+      cron: "*/10 * * * * *"
   action:
     nats:
       subject: "asset.TRL-1180.REEFER-1180.temperature"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","celsius":-18.9,"setpoint_c":-18.0,"probe":"return-air"}'
+      payload: '{"ts":"{@timestamp.iso}","celsius":{@random.float(-19.3,-18.4,1)},"setpoint_c":-18.0,"probe":"return-air"}'
 
 - trigger:
     schedule:
-      cron: "*/2 * * * *"
+      cron: "*/10 * * * * *"
   action:
     nats:
       subject: "asset.TRL-1184.REEFER-1184.temperature"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","celsius":1.7,"setpoint_c":2.0,"probe":"return-air"}'
+      payload: '{"ts":"{@timestamp.iso}","celsius":{@random.float(1.4,2.6,1)},"setpoint_c":2.0,"probe":"return-air"}'
 
 - trigger:
     schedule:
@@ -319,7 +479,7 @@
 # The instruction itself, twice an hour: the WMS re-asserting a setpoint on a
 # trailer about to be loaded. A `subscribe` operation on the thing type means the
 # THING listens here — something else publishes, and in this demo that something
-# is this rule.
+# is this rule. Fixed value, for the reason above.
 - trigger:
     schedule:
       cron: "9,39 * * * *"
@@ -336,54 +496,50 @@
 # their own and publish on their own subtrees, exactly like the probes above. A
 # demo with nothing but sensors in it quietly contradicts the platform's central
 # claim, which is that an application is a Thing.
+#
+# One rule now covers what took two: `{@random.choice(...)}` picks the event and
+# the site, `{@random.int(...)}` moves the order number and the line count. The
+# trace id stays `{@uuid7()}` — that is an identity, and `random.*` is fixture
+# data. Mixing them up is the single most likely misuse of these functions.
 # -----------------------------------------------------------------------------
 - trigger:
     schedule:
-      cron: "*/3 * * * *"
+      cron: "*/20 * * * * *"
   action:
     nats:
       subject: "app.wms.WMS-CONN-01.shipment"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","event":"picked","order":"SO-448120","site":"KC-DC1","lines":14,"trace":"{@uuid7()}"}'
+      payload: '{"ts":"{@timestamp.iso}","event":"{@random.choice(picked,packed,staged,loaded)}","order":"SO-{@random.int(448100,448199)}","site":"{@random.choice(KC-DC1,SGF-XD2)}","lines":{@random.int(2,26)},"trace":"{@uuid7()}"}'
 
 - trigger:
     schedule:
-      cron: "1-59/4 * * * *"
-  action:
-    nats:
-      subject: "app.wms.WMS-CONN-01.shipment"
-      mode: core
-      payload: '{"ts":"{@timestamp.iso}","event":"loaded","order":"SO-448119","site":"SGF-XD2","lines":6,"trace":"{@uuid7()}"}'
-
-- trigger:
-    schedule:
-      cron: "*/5 * * * *"
+      cron: "*/30 * * * * *"
   action:
     nats:
       subject: "app.rules.RULES-COLD-01.heartbeat"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","uptime":186400,"version":"1.9.0"}'
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(186400,186500)},"version":"1.9.0","rules":34}'
 
 # -----------------------------------------------------------------------------
 # GATEWAYS AND THE UNATTENDED SCREEN
 # -----------------------------------------------------------------------------
 - trigger:
     schedule:
-      cron: "*/5 * * * *"
+      cron: "*/30 * * * * *"
   action:
     nats:
       subject: "gateway.KC-DC1-MDF.GW-KC-01.heartbeat"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","uptime":2419200,"version":"0.4.0"}'
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(2419200,2419400)},"version":"0.4.0","load":{@random.float(0.10,0.85,2)}}'
 
 - trigger:
     schedule:
-      cron: "2-59/5 * * * *"
+      cron: "15,45 * * * * *"
   action:
     nats:
       subject: "gateway.SGF-XD2-MDF.GW-SGF-01.heartbeat"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","uptime":1209600,"version":"0.4.0"}'
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(1209600,1209800)},"version":"0.4.0","load":{@random.float(0.05,0.60,2)}}'
 
 # The dock display's only operation is a SUBSCRIBE. It renders what it is sent
 # and publishes nothing at all — which is why its thing type defaults to the
@@ -391,12 +547,12 @@
 # a blank screen above the dock doors.
 - trigger:
     schedule:
-      cron: "*/2 5-21 * * 1-6"
+      cron: "*/30 5-21 * * 1-6"
   action:
     nats:
       subject: "display.KC-DC1.DISP-KC-01.render"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","headline":"Doors 1-12","next_load":"SO-448120","dock":"D07","eta":"14:20"}'
+      payload: '{"ts":"{@timestamp.iso}","headline":"Doors 1-12","next_load":"SO-{@random.int(448100,448199)}","dock":"D{@random.int(1,12)}","eta":"{@random.choice(14:20,14:45,15:10,15:35)}"}'
 
 # =============================================================================
 # DIGITAL TWIN — reported state, and only reported state
@@ -418,6 +574,12 @@
 # the bucket exists. Publish these core and a missing bucket looks exactly like a
 # working demo with an empty screen.
 #
+# THESE STAY ON MINUTE CRONS, DELIBERATELY. A KV bucket keeps history —
+# `--history=10` is ten revisions per key — so a key rewritten every five seconds
+# has discarded everything older than the last minute by the time anyone opens
+# the KV browser. Sub-minute cron is available everywhere in this file; a KV key
+# is the clearest case for declining it.
+#
 # ONLY `twin` IS WRITTEN, NEVER `twin_desired`. One writer per bucket is the
 # whole safety property: `twin` flows edge→hub and the device owns it,
 # `twin_desired` flows hub→edge and the operator owns it. A single bucket written
@@ -434,7 +596,8 @@
 # =============================================================================
 
 # The two keys worth pairing a desired value against: setpoint ECHOES, which
-# converge exactly on an instruction.
+# converge exactly on an instruction. FIXED VALUES, deliberately — see the reefer
+# section for why an echo that wanders stops being an echo.
 - trigger:
     schedule:
       cron: "*/2 * * * *"
@@ -456,7 +619,9 @@
 # A whole object as a value. `twinDrift` compares a desired object as a PARTIAL
 # assertion — only the keys present in the desired value are checked — so an
 # assertion of `{"wan":"up"}` keeps holding the day this gateway starts reporting
-# a field nobody has heard of yet.
+# a field nobody has heard of yet. It is also why the moving `clients` count here
+# is harmless: assert the fields that are claims, leave the ones that are
+# measurements alone.
 - trigger:
     schedule:
       cron: "*/3 * * * *"
@@ -464,15 +629,16 @@
     nats:
       subject: "$KV.twin.thing.GW-KC-01.status"
       mode: jetstream
-      payload: '{"wan":"up","leaf":"connected","rules":34,"version":"0.4.0"}'
+      payload: '{"wan":"up","leaf":"connected","rules":34,"version":"0.4.0","clients":{@random.int(28,34)}}'
 
 # A MEASUREMENT in reported state. This is fine — `twin` is where last-known
 # reported state belongs, and a stat widget reading a last value rather than
 # subscribing to a feed is a legitimate thing to build. What is NOT fine is
-# pairing a desired value against this key: `temp = -18` desired against
-# `-18.6` reported differs forever, because it compares an instruction to a
-# continuous reading. If equality feels wrong for a key, the key is paired with a
-# measurement instead of an echo — fix the pairing, don't add a tolerance.
+# pairing a desired value against this key: `temp = -18` desired against `-18.6`
+# reported differs forever, because it compares an instruction to a continuous
+# reading. If equality feels wrong for a key, the key is paired with a measurement
+# instead of an echo — fix the pairing, don't add a tolerance. Now that the value
+# actually moves, that mistake is obvious in one screen rather than arguable.
 - trigger:
     schedule:
       cron: "*/2 * * * *"
@@ -480,4 +646,4 @@
     nats:
       subject: "$KV.twin.thing.TP-001.temp"
       mode: jetstream
-      payload: '-18.6'
+      payload: '{@random.float(-19.4,-17.2,1)}'

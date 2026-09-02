@@ -2,8 +2,9 @@
 # Galewind Energy — live wind farm and substation telemetry
 # =============================================================================
 # Companion to demo/rules/northwind/telemetry.yaml, which carries the long-form
-# notes on subject composition, the one-minute cron floor, static payloads, and
-# why publish mode is `core` here. Read that file first; this one assumes it.
+# notes on subject composition, why publish mode is `core` here, and what the
+# six-field cron and the `{@random.*}` functions are and are not for. Read that
+# file first; this one assumes it.
 #
 # Run this in its OWN rule-router process, authenticated into the GALEWIND NATS
 # account:
@@ -17,68 +18,30 @@
 # -----------------------------------------------------------------------------
 # TURBINE 114 — the signal worth charting
 #
-# Six phase-shifted rules walking a wind ramp: 5.8 m/s up to 11.2 and back, with
-# output following the cube law well enough to look right (a V112-3.0 rated at
-# 2800 kW). Point a chart at `turbine.T-114.TC-114.generation` with jsonPath
-# `$.kw`, and a second series at `$.wind_ms` if the widget takes two.
+# One rule, every five seconds, replacing six phase-shifted ones. Point a chart
+# at `turbine.T-114.TC-114.generation` with jsonPath `$.kw`, and a second series
+# at `$.wind_ms` if the widget takes two.
 #
-# The reason there are six rules rather than one is in the Northwind file: cron
-# floors at one minute and a rule's payload is fixed, so a single rule draws a
-# straight line. This is the one signal per file that gets the treatment.
+# READ THE TWO SERIES TOGETHER AND THE LIMIT OF THIS APPROACH IS VISIBLE. The old
+# six-rule block walked a wind ramp with output following the cube law, so kW and
+# wind_ms moved together the way they physically must. Here they are two
+# independent draws over plausible ranges, which means the pairing is wrong on
+# any given sample even though both series look right on their own.
+#
+# For a demo chart that is a fair trade for one rule instead of six. For anything
+# fitting a power curve it is not, and the fix is not a wider range — it is a
+# device, or a simulator that holds state. Templates have no arithmetic on
+# purpose; a value generator that could compute kW from wind is an expression
+# language, and that is a much larger and more permanent thing to own.
 # -----------------------------------------------------------------------------
 - trigger:
     schedule:
-      cron: "0-59/6 * * * *"
+      cron: "*/5 * * * * *"
   action:
     nats:
       subject: "turbine.T-114.TC-114.generation"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","kw":486.0,"wind_ms":5.8,"nacelle_deg":214.0,"rpm":9.1}'
-
-- trigger:
-    schedule:
-      cron: "1-59/6 * * * *"
-  action:
-    nats:
-      subject: "turbine.T-114.TC-114.generation"
-      mode: core
-      payload: '{"ts":"{@timestamp.iso}","kw":812.0,"wind_ms":7.1,"nacelle_deg":216.0,"rpm":11.4}'
-
-- trigger:
-    schedule:
-      cron: "2-59/6 * * * *"
-  action:
-    nats:
-      subject: "turbine.T-114.TC-114.generation"
-      mode: core
-      payload: '{"ts":"{@timestamp.iso}","kw":1544.0,"wind_ms":8.9,"nacelle_deg":219.0,"rpm":13.8}'
-
-- trigger:
-    schedule:
-      cron: "3-59/6 * * * *"
-  action:
-    nats:
-      subject: "turbine.T-114.TC-114.generation"
-      mode: core
-      payload: '{"ts":"{@timestamp.iso}","kw":2310.0,"wind_ms":10.4,"nacelle_deg":221.0,"rpm":15.2}'
-
-- trigger:
-    schedule:
-      cron: "4-59/6 * * * *"
-  action:
-    nats:
-      subject: "turbine.T-114.TC-114.generation"
-      mode: core
-      payload: '{"ts":"{@timestamp.iso}","kw":2742.0,"wind_ms":11.2,"nacelle_deg":220.0,"rpm":15.6}'
-
-- trigger:
-    schedule:
-      cron: "5-59/6 * * * *"
-  action:
-    nats:
-      subject: "turbine.T-114.TC-114.generation"
-      mode: core
-      payload: '{"ts":"{@timestamp.iso}","kw":1188.0,"wind_ms":8.0,"nacelle_deg":217.0,"rpm":12.6}'
+      payload: '{"ts":"{@timestamp.iso}","kw":{@random.float(486.0,2742.0,1)},"wind_ms":{@random.float(5.8,11.2,1)},"nacelle_deg":{@random.float(213.0,222.0,1)},"rpm":{@random.float(9.1,15.6,1)}}'
 
 # -----------------------------------------------------------------------------
 # THE REST OF THE FLEET
@@ -89,37 +52,95 @@
 # fastest way to see that `things.active` is a real control rather than a badge:
 # its NATS credential is revoked, so even a rule written for it here would be
 # refused by the server rather than quietly ignored.
+#
+# TC-207 is a Nordex N133-3.6 rated at 3200 kW against the Vestas V112-3.0's
+# 2800, which is why its band runs higher. The ranges in this file are per-model
+# rather than copied, because a fleet where every turbine tops out at the same
+# number is a fleet nobody will believe.
 # -----------------------------------------------------------------------------
 - trigger:
     schedule:
-      cron: "*/2 * * * *"
+      cron: "*/10 * * * * *"
   action:
     nats:
       subject: "turbine.T-118.TC-118.generation"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","kw":2104.0,"wind_ms":9.8,"nacelle_deg":218.0,"rpm":14.7}'
+      payload: '{"ts":"{@timestamp.iso}","kw":{@random.float(704.0,2698.0,1)},"wind_ms":{@random.float(6.2,11.0,1)},"nacelle_deg":{@random.float(214.0,223.0,1)},"rpm":{@random.float(10.2,15.1,1)}}'
 
 - trigger:
     schedule:
-      cron: "*/2 * * * *"
+      cron: "*/10 * * * * *"
   action:
     nats:
       subject: "turbine.T-207.TC-207.generation"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","kw":2896.0,"wind_ms":10.9,"nacelle_deg":203.0,"rpm":13.1}'
+      payload: '{"ts":"{@timestamp.iso}","kw":{@random.float(890.0,3104.0,1)},"wind_ms":{@random.float(6.6,11.9,1)},"nacelle_deg":{@random.float(198.0,209.0,1)},"rpm":{@random.float(8.8,13.4,1)}}'
 
 # The met mast: wind for the whole collection area, independent of any turbine's
 # own nacelle anemometer. It publishes the same `generation` document — a schema
 # is a message shape, not a device class, and reusing one across two device types
-# is normal rather than a shortcut.
+# is normal rather than a shortcut. Its `kw` and `rpm` are flat zeros because a
+# mast generates nothing, which is also a reminder that a shared schema does not
+# oblige every publisher to fill every field with something interesting.
 - trigger:
     schedule:
-      cron: "*/2 * * * *"
+      cron: "*/10 * * * * *"
   action:
     nats:
       subject: "telemetry.SUB-N1.MET-N1.generation"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","kw":0.0,"wind_ms":10.1,"nacelle_deg":218.0,"rpm":0.0}'
+      payload: '{"ts":"{@timestamp.iso}","kw":0.0,"wind_ms":{@random.float(6.1,12.4,1)},"nacelle_deg":{@random.float(211.0,224.0,1)},"rpm":0.0}'
+
+# -----------------------------------------------------------------------------
+# TURBINE ALARMS — the operation `turbine-ctl` declares and nothing used to send
+#
+# `publish_alarm` is on the turbine controller as well as the feeder relay, and
+# only the relay ever raised one. A fleet screen with no turbine-level faults on
+# it cannot show the difference between a substation problem and a machine
+# problem, which is most of what a wind operator looks at a fleet screen for.
+#
+# Raised and cleared, minute crons, same discipline as everywhere else: a raise
+# with no clear leaves a red badge that stops meaning anything.
+# -----------------------------------------------------------------------------
+- trigger:
+    schedule:
+      cron: "13 */3 * * *"
+      timezone: "America/Chicago"
+  action:
+    nats:
+      subject: "turbine.T-118.TC-118.alarm"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","code":"YAW-204","severity":"warning","active":true,"message":"Yaw misalignment above 8 degrees sustained"}'
+
+- trigger:
+    schedule:
+      cron: "29 */3 * * *"
+      timezone: "America/Chicago"
+  action:
+    nats:
+      subject: "turbine.T-118.TC-118.alarm"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","code":"YAW-204","severity":"warning","active":false,"message":"Yaw alignment recovered"}'
+
+- trigger:
+    schedule:
+      cron: "41 7,19 * * *"
+      timezone: "America/Chicago"
+  action:
+    nats:
+      subject: "turbine.T-207.TC-207.alarm"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","code":"GBX-118","severity":"critical","active":true,"message":"Gearbox oil temperature high - derating"}'
+
+- trigger:
+    schedule:
+      cron: "52 7,19 * * *"
+      timezone: "America/Chicago"
+  action:
+    nats:
+      subject: "turbine.T-207.TC-207.alarm"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","code":"GBX-118","severity":"critical","active":false,"message":"Gearbox oil temperature normal"}'
 
 # -----------------------------------------------------------------------------
 # CURTAILMENT — an instruction with an expiry, and an echo
@@ -132,6 +153,11 @@
 #
 # The wildlife curtailment below runs at dusk through the spring bat migration
 # window, which is a real practice rather than an invented demo scenario.
+#
+# NOTHING IN THIS SECTION IS RANDOM, and the reason is the same as the line-mode
+# section in the Ironbridge file: a ceiling is an assertion, and an echo that
+# wandered would stop being an echo. `{@random.choice(40,100)}` here would break
+# every desired/reported pairing in the Digital Twin screen below.
 # -----------------------------------------------------------------------------
 - trigger:
     schedule:
@@ -164,28 +190,50 @@
 
 # -----------------------------------------------------------------------------
 # SUBSTATION FEEDERS
+#
+# FR-003 and FR-004 are seeded on the same SUB-N1 / SUB-S2 round-robin as the
+# first two and were silent. A substation with one feeder on the screen cannot
+# show load being shifted between them, which is the main thing a feeder view is
+# read for.
 # -----------------------------------------------------------------------------
 - trigger:
     schedule:
-      cron: "*/2 * * * *"
+      cron: "*/10 * * * * *"
   action:
     nats:
       subject: "telemetry.SUB-N1.FR-001.feeder"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","amps":384.2,"kv":34.5,"feeder":"F01"}'
+      payload: '{"ts":"{@timestamp.iso}","amps":{@random.float(341.0,418.0,1)},"kv":{@random.float(34.3,34.7,1)},"feeder":"F01"}'
 
 - trigger:
     schedule:
-      cron: "*/3 * * * *"
+      cron: "*/15 * * * * *"
   action:
     nats:
       subject: "telemetry.SUB-S2.FR-002.feeder"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","amps":291.7,"kv":34.4,"feeder":"F02"}'
+      payload: '{"ts":"{@timestamp.iso}","amps":{@random.float(258.0,327.0,1)},"kv":{@random.float(34.2,34.6,1)},"feeder":"F02"}'
 
-# A protection alarm, raised and cleared. Same discipline as everywhere else in
-# these files: a raise with no clear leaves a red badge that stops meaning
-# anything by the time anyone looks at it.
+- trigger:
+    schedule:
+      cron: "*/20 * * * * *"
+  action:
+    nats:
+      subject: "telemetry.SUB-N1.FR-003.feeder"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","amps":{@random.float(184.0,241.0,1)},"kv":{@random.float(34.3,34.7,1)},"feeder":"F03"}'
+
+- trigger:
+    schedule:
+      cron: "*/20 * * * * *"
+  action:
+    nats:
+      subject: "telemetry.SUB-S2.FR-004.feeder"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","amps":{@random.float(96.0,148.0,1)},"kv":{@random.float(34.1,34.5,1)},"feeder":"F04"}'
+
+# A protection alarm, raised and cleared. Minute crons, for the reason given at
+# the turbine alarms above.
 - trigger:
     schedule:
       cron: "19 */4 * * *"
@@ -207,6 +255,69 @@
       payload: '{"ts":"{@timestamp.iso}","code":"50/51-F01","severity":"warning","active":false,"message":"Overcurrent pickup reset"}'
 
 # -----------------------------------------------------------------------------
+# HEARTBEATS
+#
+# turbine-ctl, feeder-relay and met-mast all declare publish_heartbeat and none
+# of them sent one. See the Northwind file for why that mattered.
+#
+# The two gateways are on cellular, so their `rssi_dbm` moves over a wider band
+# than a wired device's would — which is the point of the section below them.
+# -----------------------------------------------------------------------------
+- trigger:
+    schedule:
+      cron: "*/30 * * * * *"
+  action:
+    nats:
+      subject: "turbine.T-114.TC-114.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(4320000,4320200)},"scada_id":"N1-114"}'
+
+- trigger:
+    schedule:
+      cron: "*/30 * * * * *"
+  action:
+    nats:
+      subject: "turbine.T-118.TC-118.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(3888000,3888200)},"scada_id":"N1-118"}'
+
+- trigger:
+    schedule:
+      cron: "*/30 * * * * *"
+  action:
+    nats:
+      subject: "turbine.T-207.TC-207.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(1555200,1555400)},"scada_id":"S2-207"}'
+
+- trigger:
+    schedule:
+      cron: "*/45 * * * * *"
+  action:
+    nats:
+      subject: "telemetry.SUB-N1.FR-001.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(15552000,15552200)},"protocol":"dnp3"}'
+
+- trigger:
+    schedule:
+      cron: "*/45 * * * * *"
+  action:
+    nats:
+      subject: "telemetry.SUB-S2.FR-002.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(12960000,12960200)},"protocol":"iec61850"}'
+
+- trigger:
+    schedule:
+      cron: "*/45 * * * * *"
+  action:
+    nats:
+      subject: "telemetry.SUB-N1.MET-N1.heartbeat"
+      mode: core
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(7776000,7776200)},"height_m":80.0}'
+
+# -----------------------------------------------------------------------------
 # GATEWAYS ON CELLULAR — the reason these sites run leaf nodes
 #
 # Both substations are unmanned and backhauled over cellular. That is the whole
@@ -216,21 +327,21 @@
 # -----------------------------------------------------------------------------
 - trigger:
     schedule:
-      cron: "*/5 * * * *"
+      cron: "*/30 * * * * *"
   action:
     nats:
       subject: "gateway.SUB-N1-CAB.GW-N1-01.heartbeat"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","uptime":1814400}'
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(1814400,1814600)},"rssi_dbm":{@random.int(-97,-71)},"wan":"cellular"}'
 
 - trigger:
     schedule:
-      cron: "2-59/5 * * * *"
+      cron: "15,45 * * * * *"
   action:
     nats:
       subject: "gateway.SUB-S2.GW-S2-01.heartbeat"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","uptime":1209600}'
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(1209600,1209800)},"rssi_dbm":{@random.int(-101,-78)},"wan":"cellular"}'
 
 # -----------------------------------------------------------------------------
 # APPLICATIONS
@@ -243,23 +354,30 @@
 # -----------------------------------------------------------------------------
 - trigger:
     schedule:
-      cron: "*/5 * * * *"
+      cron: "*/30 * * * * *"
   action:
     nats:
       subject: "app.scada.SCADA-BR-01.heartbeat"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","uptime":7776000}'
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(7776000,7776200)},"tags":{@random.int(4180,4210)}}'
 
 - trigger:
     schedule:
-      cron: "1-59/5 * * * *"
+      cron: "15,45 * * * * *"
   action:
     nats:
       subject: "app.market.MARKET-01.heartbeat"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","uptime":604800}'
+      payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(604800,605000)},"iso":"ercot"}'
 
-# ERCOT dispatch instructions, every five minutes on the market interval.
+# ERCOT dispatch, on the market's five-minute interval. STILL A MINUTE CRON, and
+# this one is worth pausing on: the interval is not a sampling choice, it is what
+# the market actually settles on. Publishing it every five seconds because the
+# scheduler now can would misrepresent the ISO, not the demo.
+#
+# The negative price band is real — ERCOT west-zone nodes settle negative when
+# wind is high and transmission is constrained, and a dashboard that has never
+# seen a negative price will not be built to display one.
 - trigger:
     schedule:
       cron: "*/5 * * * *"
@@ -268,29 +386,20 @@
     nats:
       subject: "app.market.MARKET-01.dispatch"
       mode: core
-      payload: '{"ts":"{@timestamp.iso}","iso":"ercot","interval":"5min","node":"SWTWTR_ALL","mw":41.6,"price_mwh":28.44}'
-
-- trigger:
-    schedule:
-      cron: "2-59/5 * * * *"
-      timezone: "America/Chicago"
-  action:
-    nats:
-      subject: "app.market.MARKET-01.dispatch"
-      mode: core
-      payload: '{"ts":"{@timestamp.iso}","iso":"ercot","interval":"5min","node":"SWTWTR_ALL","mw":38.2,"price_mwh":-4.10}'
+      payload: '{"ts":"{@timestamp.iso}","iso":"ercot","interval":"5min","node":"SWTWTR_ALL","mw":{@random.float(21.4,52.8,1)},"price_mwh":{@random.float(-12.40,41.80,2)}}'
 
 # =============================================================================
 # DIGITAL TWIN — reported state only
 # =============================================================================
 # Requires the `twin` bucket to exist (console → NATS → KV Buckets → Initialize).
-# The full reasoning — why `$KV.{bucket}.{key}`, why `mode: jetstream`, and why
-# nothing here ever writes `twin_desired` — is in the Northwind file. Delete this
+# The full reasoning — why `$KV.{bucket}.{key}`, why `mode: jetstream`, why
+# nothing here ever writes `twin_desired`, and why these stay on minute crons
+# when everything above them got faster — is in the Northwind file. Delete this
 # section if you have not created the bucket.
 # =============================================================================
 
 # The curtailment ceiling in force. An echo, so equality is the right question
-# and a desired value paired against it means something actionable.
+# and a desired value paired against it means something actionable. Fixed.
 - trigger:
     schedule:
       cron: "*/3 * * * *"
@@ -316,4 +425,4 @@
     nats:
       subject: "$KV.twin.thing.GW-N1-01.status"
       mode: jetstream
-      payload: '{"wan":"cellular","rssi_dbm":-79,"leaf":"connected","version":"0.4.0"}'
+      payload: '{"wan":"cellular","rssi_dbm":{@random.int(-97,-71)},"leaf":"connected","version":"0.4.0"}'
