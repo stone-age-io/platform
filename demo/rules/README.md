@@ -9,17 +9,17 @@ These are [rule-router](https://github.com/stone-age-io) scheduler rules that pu
 that traffic on the bus, on the exact subjects the seeded things declare.
 
 ```
-northwind/telemetry.yaml    cold chain: probes, batteries, dock doors, reefers, WMS, twin state
-ironbridge/telemetry.yaml   plant: panel power, bearing vibration, cycles, alarms, OEE
-galewind/telemetry.yaml     wind: turbines, curtailment, feeders, ERCOT dispatch
+northwind/telemetry.yaml    cold chain: probes, batteries, dock doors, reefers, WMS, diagnostics, twin state
+ironbridge/telemetry.yaml   plant: panel power, bearing vibration, cycles, alarms, OEE, diagnostics
+galewind/telemetry.yaml     wind: turbines, curtailment, feeders, ERCOT dispatch, diagnostics
 ```
 
-Between them they speak for about **forty** of the seeded things, on **111**
-rules. The rest stay silent on purpose: inventory is recorded long before every
-device is commissioned, and a demo where all 120 reported would misrepresent both
-the platform and the work. It is the reason the Things list has an `active`
-filter, and the reason `stone_age_records` counts things *configured* rather than
-things alive.
+Between them they speak for about **forty** of the seeded things, on **124**
+rules — 111 on a schedule, and 13 that answer requests. The rest stay silent on
+purpose: inventory is recorded long before every device is commissioned, and a
+demo where all 120 reported would misrepresent both the platform and the work. It
+is the reason the Things list has an `active` filter, and the reason
+`stone_age_records` counts things *configured* rather than things alive.
 
 Every device type that declares `publish_heartbeat` now sends one. Until
 recently only gateways and applications did, which left the console unable to
@@ -54,7 +54,23 @@ one process — and two thirds of the rules then publish subjects the connection
 has no permission for, filling the log with authorization errors for rules that
 are perfectly correct.
 
-`features.scheduler: true` is the only feature these need.
+**Two features, not one.** These files used to need only
+`features.scheduler: true`. The diagnostics responders added since are NATS
+triggers, and it is `features.router` that starts the core-NATS subscriber which
+serves them:
+
+```yaml
+features:
+  router: true
+  scheduler: true
+  gateway: false
+```
+
+Leave `router` at the `false` that ships in `config/rule-scheduler.yaml` and the
+reply rules load without a word of complaint, subscribe to nothing, and every
+diagnostics request times out. Nothing in the log names the cause. Turning it on
+costs the schedule rules nothing — a rule-router with no JetStream-mode NATS
+trigger creates no consumers.
 
 ## The bus: use the platform's own embedded NATS
 
@@ -122,14 +138,98 @@ Point a dashboard widget at any of these:
 The top three fill in **under a minute** — they publish every five seconds.
 Nearly everything else moves too, on a ten- to forty-five-second cron.
 
+## Diagnostics: the half of the contract nothing publishes
+
+Six of the seeded thing types declare `reply_diagnostics` — a **`reply`**
+capability, which in this platform means precisely two permissions: the thing
+subscribes to its own `<subject_prefix>.diag` and publishes its answer to the
+requester's `_INBOX.>`. Nothing about that is periodic, so none of it appears on
+a chart and none of it can be written as a cron. Thirteen rules stand in for it,
+one per commissioned reefer, line controller, turbine and gateway:
+
+| Org | Subject | Answers for |
+|---|---|---|
+| northwind | `asset.TRL-1180.REEFER-1180.diag` | reefer: setpoint, supply/return, defrost, fuel |
+| northwind | `gateway.KC-DC1-MDF.GW-KC-01.diag` | gateway: leaf link, sync lag, disk, clients |
+| ironbridge | `line.LINE-A.LC-LINE-A.diag` | PLC: mode, scan time, I/O, faults |
+| galewind | `turbine.T-114.TC-114.diag` | turbine: curtail ceiling, rotor, gearbox temp |
+
+Ask from a shell:
+
+```bash
+nats req --creds console-dana.creds asset.TRL-1180.REEFER-1180.diag ''
+```
+
+…or from the console, which needs no shell and is the better demo: a
+**Publisher** widget on the subject has a **Request** button beside Publish that
+waits for the reply and renders it, and a **Button** widget set to `request`
+does the same in one click from a dashboard.
+
+Three things these rules do deliberately, all of them worth copying:
+
+- **No `conditions`.** A condition that does not match yields no matching rule
+  and therefore no `respond` action, and the requester learns only that it timed
+  out — indistinguishable from a dead device. An empty request body (`nats req
+  … ''`) is the first thing anyone sends, and a condition over request fields
+  would refuse exactly that. A diagnostics responder answers.
+- **Core transport, and no choice about it.** `reply: true` implies a core NATS
+  subscription and rule-router rejects `mode: jetstream` beside it: a reply goes
+  to an inbox belonging to a requester still waiting on it, which is at-most-once
+  by definition. No stream is needed and the startup warning about JetStream
+  subjects skips these.
+- **Assertions stay fixed.** The `setpoint_c`, `mode` and `curtail_percent`
+  fields in a reply carry the same values as the matching `.echo` rules and
+  `twin` keys. A diagnostics reply that disagreed with the echo about the
+  setpoint in force is a worse lie than no diagnostics at all — the same rule as
+  everywhere else in these files: random on measurements, never on assertions.
+
+**TC-211 is absent on purpose**, and it is the most useful rule in the section —
+the one that is not written. The seed marks that turbine inactive, which revokes
+its NATS credential and kills its tokens; a decommissioned turbine that still
+answered would contradict all three. Note what enforces the silence, though: the
+file declines to write the rule. rule-router holds a `console-operator`
+credential and could answer for TC-211 perfectly well. Revocation stops
+*TC-211's own* credential, which is the thing that matters.
+
+### What is NOT simulated, and why
+
+`request_inventory` (WMS-CONN-01) and `request_forecast` (SCADA-BR-01) are
+`request` operations — the mirror image of a reply: the thing *publishes* on the
+subject and waits on its own inbox. rule-router cannot play that side from a
+schedule. `request: true` on a NATS action is accepted **only on an HTTP
+trigger** (the HTTP↔NATS bridge), because a cron has nowhere to return an answer
+to. A scheduled plain publish to the subject would put a message on the wire that
+looks like a request with no inbox behind it, which teaches the wrong thing about
+request/reply, so neither is simulated.
+
+Worth a look while you are in there: both operations are declared
+`capability: "request"` and then described as things you *ask* — "Ask the WMS
+connector for on-hand inventory", "Ask the SCADA bridge for the current
+generation forecast" — and `wms-connector`'s own type description says it
+"answers inventory requests". Those are opposite directions, and the disagreement
+is invisible because the `application` NATS role publishes `app.>` and subscribes
+`>`, so both readings happen to be permitted. If they are meant as replies,
+`internal/demoseed/contract.go` needs the capability changed and the `application`
+role needs `_INBOX.>` added to its publish list — which
+`TestEveryThingTypeCanSpeakItsOwnContract` will insist on the moment the
+capability flips.
+
 ## What these files need from rule-router
 
-A build with **six-field cron** and the **`{@random.*}` template functions**. On
-an older one every rule fails to load, loudly, at startup — which is the right
-failure, because a silently ignored seconds field would publish sixty times
-slower than the files claim.
+A build with **six-field cron**, the **`{@random.*}` template functions**, and
+**`reply: true` triggers with a `respond` action**. On a build missing the first
+two, every rule fails to load, loudly, at startup — which is the right failure,
+because a silently ignored seconds field would publish sixty times slower than
+the files claim. The third fails at load too, if less obviously: a loader that
+does not know `respond` finds the rule has no action it recognises and refuses it
+with `rule must have exactly one action type`.
 
-Both are recent, and the files were rewritten around them. What that changed:
+That is failure at *load*. The one failure mode with no such warning is
+`features.router: false`, above — the rules are valid, so nothing objects; there
+is simply no subscriber.
+
+The first two are recent, and the files were rewritten around them. What that
+changed:
 
 **Cron takes an optional seconds field.** `*/5 * * * * *` is every five seconds.
 One second is the floor — cron cannot express less. A rule that fires faster than

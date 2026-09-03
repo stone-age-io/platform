@@ -496,6 +496,68 @@
       payload: '{"ts":"{@timestamp.iso}","uptime":{@random.int(5184000,5184200)},"load":{@random.float(0.15,0.72,2)}}'
 
 # =============================================================================
+# DIAGNOSTICS — a responder, not a schedule
+# =============================================================================
+# `reply_diagnostics` is a `reply` capability on line-controller and
+# edge-gateway: the thing subscribes to its own `<prefix>.diag` and answers on
+# the requester's inbox. Nothing fires on a cron, so nothing shows on a chart
+# until somebody asks.
+#
+# `features.router: true` MUST BE SET alongside `features.scheduler: true`, or
+# the core-NATS responder never starts, these rules load in silence and every
+# request times out. The full reasoning — why no `conditions`, why the transport
+# is core and cannot be jetstream, and how to test it from the console's
+# Publisher widget instead of a shell — is in the Northwind file.
+#
+#   nats req --creds console-marcus.creds line.LINE-A.LC-LINE-A.diag ''
+#
+# `mode` below is FIXED and matches each line's `.mode.echo` and its `twin` key:
+# run, run, changeover. A diagnostics reply that disagreed with the echo about
+# the mode in force would break the Digital Twin screen's whole claim, and it is
+# the same rule the line-mode section states — random on measurements, never on
+# assertions.
+# =============================================================================
+- trigger:
+    nats:
+      subject: "line.LINE-A.LC-LINE-A.diag"
+      reply: true
+  action:
+    respond:
+      payload: '{"ts":"{@timestamp.iso}","thing":"LC-LINE-A","plc":"Rockwell CompactLogix 5380","rack_slot":"1/0","uptime":{@random.int(2592000,2592200)},"mode":"run","scan_ms":{@random.int(8,14)},"io_ok":true,"faults":[],"cycles_today":{@random.int(310,430)}}'
+
+- trigger:
+    nats:
+      subject: "line.LINE-B.LC-LINE-B.diag"
+      reply: true
+  action:
+    respond:
+      payload: '{"ts":"{@timestamp.iso}","thing":"LC-LINE-B","plc":"Rockwell CompactLogix 5380","rack_slot":"1/0","uptime":{@random.int(2592000,2592200)},"mode":"run","scan_ms":{@random.int(9,16)},"io_ok":true,"faults":[],"cycles_today":{@random.int(280,395)}}'
+
+# Line C is in changeover, which is why its reply carries no cycle count worth
+# reading and a `mode` that differs from the other two. Ask all three in a row
+# from a Button widget and the fleet's state is legible in three clicks.
+- trigger:
+    nats:
+      subject: "line.LINE-C.LC-LINE-C.diag"
+      reply: true
+  action:
+    respond:
+      payload: '{"ts":"{@timestamp.iso}","thing":"LC-LINE-C","plc":"Siemens S7-1500","rack_slot":"0/1","uptime":{@random.int(1814400,1814600)},"mode":"changeover","scan_ms":{@random.int(11,19)},"io_ok":true,"faults":[],"cycles_today":0}'
+
+- trigger:
+    nats:
+      subject: "gateway.PIT-MCC1.GW-PIT-01.diag"
+      reply: true
+  action:
+    respond:
+      payload: '{"ts":"{@timestamp.iso}","thing":"GW-PIT-01","version":"0.4.0","uptime":{@random.int(5184000,5184200)},"load":{@random.float(0.15,0.72,2)},"wan":"up","wan_type":"fibre","leaf":"connected","leaf_lag_s":{@random.int(0,2)},"disk_free_pct":{@random.int(38,59)},"oee_pipeline":"running","clients":{@random.int(12,18)}}'
+
+# MES-CONN-01 declares `publish` and `request` and no `reply`, so it is not a
+# responder and nothing here answers for it. See the note at the end of the
+# Northwind diagnostics section for why a scheduler cannot stand in for the
+# requesting half of request/reply.
+
+# =============================================================================
 # DIGITAL TWIN — reported state only
 # =============================================================================
 # Requires the `twin` bucket to exist (console → NATS → KV Buckets → Initialize).

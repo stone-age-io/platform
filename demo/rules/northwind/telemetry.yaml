@@ -555,6 +555,114 @@
       payload: '{"ts":"{@timestamp.iso}","headline":"Doors 1-12","next_load":"SO-{@random.int(448100,448199)}","dock":"D{@random.int(1,12)}","eta":"{@random.choice(14:20,14:45,15:10,15:35)}"}'
 
 # =============================================================================
+# DIAGNOSTICS — the first rules in this file that nobody schedules
+# =============================================================================
+# Everything above is a `schedule` trigger: a cron fires, a payload goes out,
+# nobody asked. `reply_diagnostics` is the other half of the contract the seeded
+# inventory declares, and it inverts that. It is a `reply` CAPABILITY on the
+# thing type, which in this platform means exactly two permissions — the thing
+# SUBSCRIBES to its own `<prefix>.diag` and PUBLISHES the answer to the
+# requester's `_INBOX.>`. A responder has nothing to say until it is asked, so
+# there is no cron here and nothing appears on a chart. Point a Console widget at
+# these subjects and it stays empty until someone sends a request; that is the
+# rule working, not the rule broken.
+#
+# TURN ON `features.router`. This is the one thing that will bite you. The demo
+# has been running on `config/rule-scheduler.yaml`, whose features block is
+# `router: false, gateway: false, scheduler: true` — and `router` is what starts
+# the core-NATS responder that subscribes these subjects. With it off, the rules
+# below LOAD WITHOUT COMPLAINT, no subscription is ever established, and every
+# request times out with nothing in the log to say why. Both features on one
+# process:
+#
+#   features:
+#     router: true
+#     scheduler: true
+#
+# WHY THERE ARE NO `conditions` ON THESE RULES. A condition that does not match
+# produces no matching rule, and no matching rule means no `respond` action —
+# so the requester learns nothing except that it timed out, which is
+# indistinguishable from a dead device. `nats req <subject> ''` sends an empty
+# body, and any condition over request fields would refuse exactly the request a
+# person is most likely to send first. A diagnostics responder answers.
+#
+# TRANSPORT IS CORE, and it is not a choice. `reply: true` implies a core NATS
+# subscription and rule-router rejects `mode: jetstream` alongside it: a reply
+# goes to an inbox belonging to a requester who is still waiting, which is
+# at-most-once by definition. There is no stream to create for these subjects
+# and the startup warning about JetStream subjects deliberately skips them.
+#
+# TRY IT:
+#   nats req --creds console-dana.creds asset.TRL-1180.REEFER-1180.diag ''
+#
+# Or from the console, which is the better demo because it needs no shell: a
+# Publisher widget on the subject has a **Request** button beside Publish that
+# waits for the reply and renders it, and a Button widget set to `request` does
+# the same in one click on a dashboard.
+#
+# THE SAME RANDOM RULE APPLIES HERE. Measurements move; assertions do not.
+# `setpoint_c` below is fixed at the value the `.setpoint.echo` rules publish,
+# because a diagnostics reply that disagreed with the echo about the setpoint in
+# force would be a worse lie than no diagnostics at all.
+# =============================================================================
+
+# `requested_by` is read out of the REQUEST. A template variable that does not
+# resolve renders as an empty string, which is why it is quoted — send
+# `{"requested_by":"dana"}` and it comes back, send `''` and the field is `""`.
+# Nothing here depends on it, which is the point: the reply is well-formed
+# either way.
+- trigger:
+    nats:
+      subject: "asset.TRL-1180.REEFER-1180.diag"
+      reply: true
+  action:
+    respond:
+      payload: '{"ts":"{@timestamp.iso}","thing":"REEFER-1180","firmware":"3.4.1","uptime":{@random.int(432000,432200)},"engine_hrs":{@random.int(14820,14823)},"setpoint_c":-18.0,"supply_c":{@random.float(-20.4,-19.2,1)},"return_c":{@random.float(-19.3,-18.4,1)},"defrost":"{@random.choice(idle,pending)}","fuel_percent":{@random.int(58,74)},"alarms":[],"requested_by":"{requested_by}"}'
+
+- trigger:
+    nats:
+      subject: "asset.TRL-1184.REEFER-1184.diag"
+      reply: true
+  action:
+    respond:
+      payload: '{"ts":"{@timestamp.iso}","thing":"REEFER-1184","firmware":"3.4.1","uptime":{@random.int(259100,259300)},"engine_hrs":{@random.int(9310,9313)},"setpoint_c":2.0,"supply_c":{@random.float(0.4,1.6,1)},"return_c":{@random.float(1.4,2.6,1)},"defrost":"{@random.choice(idle,pending)}","fuel_percent":{@random.int(40,55)},"alarms":[],"requested_by":"{requested_by}"}'
+
+# The gateways answer on `gateway.{location}.{thing}.diag`, and what they report
+# is the box rather than the cargo: leaf-node link, sync lag, disk, connected
+# clients. This is the request a support engineer actually makes at 3am, and it
+# is worth noticing that it works over the bus with no inbound port, no SSH and
+# no VPN — the same property that makes `leaf-sync` viable on a cellular site.
+- trigger:
+    nats:
+      subject: "gateway.KC-DC1-MDF.GW-KC-01.diag"
+      reply: true
+  action:
+    respond:
+      payload: '{"ts":"{@timestamp.iso}","thing":"GW-KC-01","version":"0.4.0","uptime":{@random.int(2419200,2419400)},"load":{@random.float(0.10,0.85,2)},"wan":"up","wan_type":"fibre","leaf":"connected","leaf_lag_s":{@random.int(0,2)},"disk_free_pct":{@random.int(41,63)},"clients":{@random.int(28,34)},"rules":34}'
+
+- trigger:
+    nats:
+      subject: "gateway.SGF-XD2-MDF.GW-SGF-01.diag"
+      reply: true
+  action:
+    respond:
+      payload: '{"ts":"{@timestamp.iso}","thing":"GW-SGF-01","version":"0.4.0","uptime":{@random.int(1209600,1209800)},"load":{@random.float(0.05,0.60,2)},"wan":"up","wan_type":"cable","leaf":"connected","leaf_lag_s":{@random.int(0,3)},"disk_free_pct":{@random.int(55,71)},"clients":{@random.int(9,14)}}'
+
+# WHAT IS DELIBERATELY NOT HERE: `request_inventory` on WMS-CONN-01. A `request`
+# capability is the mirror image of a `reply` — the thing PUBLISHES on the
+# subject and waits on its own inbox — and rule-router cannot stand in for that
+# side from a schedule: `request: true` on a NATS action is accepted only on an
+# HTTP trigger (the HTTP↔NATS bridge), because a cron has nowhere to return an
+# answer to. A scheduled plain publish to the subject would put a message on the
+# wire that LOOKS like a request and has no inbox behind it, which teaches the
+# wrong thing about request/reply. Left unsimulated on purpose.
+#
+# Worth reading the operation itself while you are here: `request_inventory` is
+# declared with `capability: "request"` but described as "Ask the WMS connector
+# for on-hand inventory", and its thing type says the connector "answers
+# inventory requests". Those are opposite directions. See demo/rules/README.md.
+
+# =============================================================================
 # DIGITAL TWIN — reported state, and only reported state
 # =============================================================================
 # DELETE THIS SECTION IF YOU HAVE NOT CREATED THE BUCKETS. `twin` and

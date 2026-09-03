@@ -389,6 +389,91 @@
       payload: '{"ts":"{@timestamp.iso}","iso":"ercot","interval":"5min","node":"SWTWTR_ALL","mw":{@random.float(21.4,52.8,1)},"price_mwh":{@random.float(-12.40,41.80,2)}}'
 
 # =============================================================================
+# DIAGNOSTICS — a responder, not a schedule
+# =============================================================================
+# `reply_diagnostics` is a `reply` capability on turbine-ctl and edge-gateway:
+# the thing subscribes to its own `<prefix>.diag` and answers on the requester's
+# inbox. Nothing fires on a cron.
+#
+# `features.router: true` MUST BE SET alongside `features.scheduler: true`, or
+# the core-NATS responder never starts, these rules load in silence and every
+# request times out. The reasoning in full — no `conditions`, core transport
+# only, and how to ask from the console's Publisher widget rather than a shell —
+# is in the Northwind file.
+#
+#   nats req --creds console-sofia.creds turbine.T-114.TC-114.diag ''
+#
+# `curtail_percent` is FIXED at 100 to agree with `.curtail.echo` and with the
+# `twin` key. It is an assertion; the rotor speed and gearbox temperature beside
+# it are measurements. That split is the same one the curtailment section makes.
+#
+# ON A CELLULAR SITE THIS IS THE WHOLE ARGUMENT. Both substations are unmanned
+# and backhauled over cellular with no inbound port. A diagnostics request that
+# reaches the box over its own outbound NATS connection is the only remote hand
+# anyone has, and it keeps working through a WAN flap because the leaf node
+# keeps the site's own bus alive either side of it.
+# =============================================================================
+- trigger:
+    nats:
+      subject: "turbine.T-114.TC-114.diag"
+      reply: true
+  action:
+    respond:
+      payload: '{"ts":"{@timestamp.iso}","thing":"TC-114","make":"Vestas","model":"V112-3.0","scada_id":"N1-114","rated_kw":2800,"uptime":{@random.int(4320000,4320200)},"curtail_percent":100,"rotor_rpm":{@random.float(9.2,14.6,1)},"nacelle_deg":{@random.int(188,244)},"gearbox_c":{@random.float(58.4,71.2,1)},"alarms":[]}'
+
+- trigger:
+    nats:
+      subject: "turbine.T-118.TC-118.diag"
+      reply: true
+  action:
+    respond:
+      payload: '{"ts":"{@timestamp.iso}","thing":"TC-118","make":"Vestas","model":"V112-3.0","scada_id":"N1-118","rated_kw":2800,"uptime":{@random.int(3888000,3888200)},"curtail_percent":100,"rotor_rpm":{@random.float(8.8,14.1,1)},"nacelle_deg":{@random.int(181,239)},"gearbox_c":{@random.float(60.1,73.8,1)},"alarms":[]}'
+
+- trigger:
+    nats:
+      subject: "turbine.T-207.TC-207.diag"
+      reply: true
+  action:
+    respond:
+      payload: '{"ts":"{@timestamp.iso}","thing":"TC-207","make":"Nordex","model":"N133-3.6","scada_id":"S2-207","rated_kw":3200,"uptime":{@random.int(1555200,1555400)},"curtail_percent":100,"rotor_rpm":{@random.float(7.4,12.9,1)},"nacelle_deg":{@random.int(203,261)},"gearbox_c":{@random.float(55.7,68.9,1)},"alarms":[]}'
+
+# TC-211 IS ABSENT ON PURPOSE and it is the most useful rule in this section —
+# the one that is not written. The seed marks it inactive (gearbox replacement),
+# which sets `things.active = false`, kills its outstanding PocketBase tokens and
+# REVOKES its NATS credential. A decommissioned turbine that still answered a
+# diagnostics request would contradict all three at once.
+#
+# Say plainly what enforces the silence, though: it is this file declining to
+# write the rule, not NATS refusing the publish. rule-router holds a
+# console-operator credential and could answer for TC-211 perfectly well. What
+# the revocation actually stops is TC-211's OWN credential — the real device,
+# with its real `.creds`, is off the bus for good, because an account JWT's
+# revocation cutoff is permanent and re-enabling issues a fresh credential
+# instead of reviving the old one.
+
+# The two substation gateways.
+- trigger:
+    nats:
+      subject: "gateway.SUB-N1-CAB.GW-N1-01.diag"
+      reply: true
+  action:
+    respond:
+      payload: '{"ts":"{@timestamp.iso}","thing":"GW-N1-01","version":"0.4.0","uptime":{@random.int(1814400,1814600)},"load":{@random.float(0.12,0.68,2)},"wan":"cellular","rssi_dbm":{@random.int(-97,-71)},"apn":"iot.galewind","leaf":"connected","leaf_lag_s":{@random.int(0,6)},"disk_free_pct":{@random.int(44,66)},"clients":{@random.int(11,17)}}'
+
+- trigger:
+    nats:
+      subject: "gateway.SUB-S2.GW-S2-01.diag"
+      reply: true
+  action:
+    respond:
+      payload: '{"ts":"{@timestamp.iso}","thing":"GW-S2-01","version":"0.4.0","uptime":{@random.int(1209600,1209800)},"load":{@random.float(0.08,0.54,2)},"wan":"cellular","rssi_dbm":{@random.int(-101,-78)},"apn":"iot.galewind","leaf":"connected","leaf_lag_s":{@random.int(0,9)},"disk_free_pct":{@random.int(51,73)},"clients":{@random.int(8,13)}}'
+
+# SCADA-BR-01 declares `request_forecast`, not a reply, so nothing here answers
+# for it — and a scheduler cannot play the requesting half of request/reply. The
+# note at the end of the Northwind diagnostics section explains why, and flags
+# that this operation's declared direction and its own description disagree.
+
+# =============================================================================
 # DIGITAL TWIN — reported state only
 # =============================================================================
 # Requires the `twin` bucket to exist (console → NATS → KV Buckets → Initialize).
