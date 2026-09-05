@@ -7,6 +7,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import type { NatsUser, NatsAccount, NatsRole } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import RecordPicker from '@/components/common/RecordPicker.vue'
+import type { PickerOption } from '@/types/picker'
 
 const props = defineProps<{
   embedded?: boolean
@@ -82,9 +84,29 @@ function pbDateToInput(val?: string): string {
   return isNaN(d.getTime()) ? '' : format(d, "yyyy-MM-dd'T'HH:mm")
 }
 
-// Relation options
-const accounts = ref<NatsAccount[]>([])
+/**
+ * The account is not a choice. An organization has exactly one, provisioned with
+ * it -- `nats_accounts.createRule` is null, so nothing can create a second one
+ * through the API -- and which organization you are working in is already
+ * answered by the sidebar switcher, the same source `data.organization` uses on
+ * create below.
+ *
+ * As a dropdown it implied a decision that does not exist, and for a platform
+ * operator it was worse than useless: `nats_accounts.listRule`'s first branch is
+ * an unqualified `is_operator = true`, so the list held every tenant's account
+ * with nothing but a name to tell them apart. Filtering by the active org here
+ * fixes the display for both; the server-side half of that is tracked separately.
+ */
+const orgAccount = ref<NatsAccount | null>(null)
 const roles = ref<NatsRole[]>([])
+
+const roleOptions = computed<PickerOption[]>(() =>
+  roles.value.map(r => ({
+    id: r.id,
+    label: r.name,
+    sublabel: r.is_default ? 'Default' : undefined,
+  }))
+)
 
 // State
 const loading = ref(false)
@@ -98,23 +120,25 @@ async function loadOptions() {
   
   try {
     const [accountsResult, rolesResult] = await Promise.all([
-      pb.collection('nats_accounts').getFullList<NatsAccount>({ 
+      pb.collection('nats_accounts').getFullList<NatsAccount>({
         sort: 'name',
-        filter: 'active = true'
+        filter: pb.filter('active = true && organization = {:org}', {
+          org: authStore.currentOrgId,
+        }),
       }),
-      pb.collection('nats_roles').getFullList<NatsRole>({ 
+      pb.collection('nats_roles').getFullList<NatsRole>({
         sort: 'name'
       }),
     ])
-    
-    accounts.value = accountsResult
+
+    orgAccount.value = accountsResult[0] || null
     roles.value = rolesResult
-    
+
     // Auto-select defaults
     if (!isEdit.value) {
       const defaultRole = roles.value.find(r => r.is_default)
       if (defaultRole) formData.value.role_id = defaultRole.id
-      if (accounts.value.length === 1) formData.value.account_id = accounts.value[0].id
+      if (orgAccount.value) formData.value.account_id = orgAccount.value.id
     }
   } catch (err: any) {
     toast.error('Failed to load form options')
@@ -169,6 +193,13 @@ async function handleSubmit() {
   
   if (formData.value.password && formData.value.password !== formData.value.passwordConfirm) {
     toast.error('Passwords do not match')
+    return
+  }
+
+  // Nothing in this form can fix a missing account, so say so here rather than
+  // letting the create fail on a rule the operator cannot see.
+  if (!formData.value.account_id) {
+    toast.error('This organization has no NATS account yet')
     return
   }
 
@@ -357,27 +388,37 @@ onMounted(() => {
             <div class="space-y-4">
               <div class="form-control">
                 <label class="label">
-                  <span class="label-text">NATS Account *</span>
+                  <span class="label-text">NATS Account</span>
                 </label>
-                <select v-model="formData.account_id" class="select select-bordered" required>
-                  <option value="">Select an account</option>
-                  <option v-for="account in accounts" :key="account.id" :value="account.id">
-                    {{ account.name }}
-                  </option>
-                </select>
+                <div class="input input-bordered bg-base-200/50 flex items-center overflow-hidden">
+                  <span v-if="orgAccount" class="truncate">{{ orgAccount.name }}</span>
+                  <span
+                    v-else-if="formData.account_id"
+                    class="truncate font-mono text-xs text-base-content/60"
+                  >{{ formData.account_id }}</span>
+                  <span v-else class="text-sm text-base-content/50">
+                    No NATS account provisioned for this organization
+                  </span>
+                </div>
+                <label class="label">
+                  <span class="label-text-alt text-base-content/60">
+                    Every organization has one account. Switch organization to provision a
+                    user in a different one.
+                  </span>
+                </label>
               </div>
-              
+
               <div class="form-control">
                 <label class="label">
                   <span class="label-text">Role *</span>
                 </label>
-                <select v-model="formData.role_id" class="select select-bordered" required>
-                  <option value="">Select a role</option>
-                  <option v-for="role in roles" :key="role.id" :value="role.id">
-                    {{ role.name }}
-                    <span v-if="role.is_default"> (Default)</span>
-                  </option>
-                </select>
+                <RecordPicker
+                  v-model="formData.role_id"
+                  :options="roleOptions"
+                  title="Role"
+                  placeholder="Select a role"
+                  empty-text="No roles defined for this organization yet."
+                />
               </div>
             </div>
           </BaseCard>

@@ -7,6 +7,8 @@ import { useConfirm } from '@/composables/useConfirm'
 import { pb } from '@/utils/pb'
 import type { Membership, NatsUser, User, Organization } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import RecordPicker from '@/components/common/RecordPicker.vue'
+import type { PickerOption } from '@/types/picker'
 
 /**
  * Local interface that explicitly defines the fields we are expanding 
@@ -32,6 +34,10 @@ const { confirm } = useConfirm()
 const membership = ref<FullMemberMembership | null>(null)
 const natsUsers = ref<NatsUser[]>([])
 const loading = ref(true)
+
+const natsUserOptions = computed<PickerOption[]>(() =>
+  natsUsers.value.map(u => ({ id: u.id, label: u.nats_username }))
+)
 
 // The role being applied, or null. Tracked rather than a bare boolean so the
 // spinner lands on the button that was clicked -- with four roles, "spin on
@@ -98,10 +104,11 @@ async function updateRole(newRole: AssignableRole) {
   }
 }
 
-async function updateNatsIdentity(event: Event) {
-  const select = event.target as HTMLSelectElement
-  const natsUserId = select.value || null
-  
+// RecordPicker's model is `string | string[]` because it also does multi-select;
+// this one is single, so take the scalar form.
+async function updateNatsIdentity(selected: string | string[]) {
+  const natsUserId = (Array.isArray(selected) ? selected[0] : selected) || null
+
   if (!membership.value) return
   
   natsSaving.value = true
@@ -267,17 +274,17 @@ onMounted(loadData)
                   <span class="label-text font-bold text-base-content/50 uppercase text-xs">Linked NATS Identity</span>
                 </label>
                 <div class="relative">
-                  <select 
-                    class="select select-bordered font-mono text-sm w-full h-12"
-                    :value="membership.nats_user || ''"
-                    @change="updateNatsIdentity"
-                    :disabled="natsSaving || isSelf" 
-                  >
-                    <option value="">-- No Identity Linked --</option>
-                    <option v-for="u in natsUsers" :key="u.id" :value="u.id">
-                      {{ u.nats_username }}
-                    </option>
-                  </select>
+                  <RecordPicker
+                    :model-value="membership.nats_user || ''"
+                    :options="natsUserOptions"
+                    title="NATS identity"
+                    placeholder="-- No Identity Linked --"
+                    clearable
+                    clear-label="-- No Identity Linked --"
+                    empty-text="No NATS identities in this organization yet."
+                    :disabled="natsSaving || isSelf"
+                    @update:model-value="updateNatsIdentity"
+                  />
                   <div v-if="natsSaving" class="absolute right-10 top-3.5">
                      <span class="loading loading-spinner loading-xs text-primary"></span>
                   </div>

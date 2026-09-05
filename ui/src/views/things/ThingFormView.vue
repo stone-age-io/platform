@@ -11,12 +11,9 @@ import MetadataEditor from '@/components/common/MetadataEditor.vue'
 import NatsUserFormView from '@/views/nats/NatsUserFormView.vue'
 import NebulaHostFormView from '@/views/nebula/NebulaHostFormView.vue'
 import LocationFormView from '@/views/locations/LocationFormView.vue'
-
-// Define a local interface for the dropdown options
-interface LocationOption extends Location {
-  displayName: string
-  disabled?: boolean
-}
+import RecordPicker from '@/components/common/RecordPicker.vue'
+import { flattenLocationTree, type LocationNode } from '@/utils/locations'
+import type { PickerOption } from '@/types/picker'
 
 type ProvisionMode = 'auto' | 'link' | 'none'
 
@@ -98,7 +95,7 @@ const codeManuallyEdited = ref(false)
 
 // Relation options
 const thingTypes = ref<ThingType[]>([])
-const locations = ref<LocationOption[]>([])
+const locations = ref<LocationNode[]>([])
 const natsUsers = ref<NatsUser[]>([])
 const nebulaHosts = ref<NebulaHost[]>([])
 
@@ -106,6 +103,39 @@ const nebulaHosts = ref<NebulaHost[]>([])
 const natsRoles = ref<NatsRole[]>([])
 const nebulaNetworks = ref<NebulaNetwork[]>([])
 const orgNatsAccount = ref<NatsAccount | null>(null)
+
+const typeOptions = computed<PickerOption[]>(() =>
+  thingTypes.value.map(t => ({ id: t.id, label: t.name || 'Unnamed' }))
+)
+
+const locationOptions = computed<PickerOption[]>(() =>
+  locations.value.map(n => ({
+    id: n.id,
+    label: n.orphan ? `${n.name} (orphaned)` : n.name,
+    sublabel: n.path || undefined,
+    depth: n.depth,
+  }))
+)
+
+const natsUserOptions = computed<PickerOption[]>(() =>
+  natsUsers.value.map(u => ({ id: u.id, label: u.nats_username }))
+)
+
+const natsRoleOptions = computed<PickerOption[]>(() =>
+  natsRoles.value.map(r => ({
+    id: r.id,
+    label: r.name,
+    sublabel: r.is_default ? 'Default' : undefined,
+  }))
+)
+
+const nebulaHostOptions = computed<PickerOption[]>(() =>
+  nebulaHosts.value.map(h => ({ id: h.id, label: h.hostname, sublabel: h.overlay_ip }))
+)
+
+const nebulaNetworkOptions = computed<PickerOption[]>(() =>
+  nebulaNetworks.value.map(n => ({ id: n.id, label: n.name, sublabel: n.cidr_range }))
+)
 
 // State
 const loading = ref(false)
@@ -145,52 +175,6 @@ function onCodeInput() {
   codeManuallyEdited.value = true
 }
 
-/**
- * Helper: Sort locations into a hierarchy and return a flat list with indentation
- */
-function sortLocationsHierarchically(items: Location[]): LocationOption[] {
-  const result: LocationOption[] = []
-  const childrenMap = new Map<string, Location[]>()
-  const roots: Location[] = []
-
-  items.forEach(item => {
-    if (!item.parent) {
-      roots.push(item)
-    } else {
-      const list = childrenMap.get(item.parent) || []
-      list.push(item)
-      childrenMap.set(item.parent, list)
-    }
-  })
-
-  roots.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-
-  function traverse(node: Location, depth: number) {
-    const prefix = depth > 0 ? '\u00A0\u00A0\u00A0'.repeat(depth) + '\u2514 ' : ''
-    result.push({
-      ...node,
-      displayName: prefix + (node.name || 'Unnamed'),
-      disabled: false
-    })
-    const children = childrenMap.get(node.id) || []
-    children.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-    children.forEach(child => traverse(child, depth + 1))
-  }
-
-  roots.forEach(root => traverse(root, 0))
-
-  const processedIds = new Set(result.map(r => r.id))
-  const orphans = items.filter(i => !processedIds.has(i.id))
-  orphans.forEach(orphan => {
-    result.push({
-      ...orphan,
-      displayName: `[Orphan] ${orphan.name || 'Unnamed'}`,
-      disabled: false
-    })
-  })
-
-  return result
-}
 
 /**
  * Load form options
@@ -205,7 +189,7 @@ async function loadOptions() {
       pb.collection('locations').getFullList<Location>({ sort: 'name' }),
     ])
     thingTypes.value = typesRes
-    locations.value = sortLocationsHierarchically(locsRes)
+    locations.value = flattenLocationTree(locsRes)
 
     // Identity options are owner/admin-only reads. Fetching them as a member
     // returns their own personal NATS identity as the sole option (nats_users is
@@ -539,12 +523,15 @@ onMounted(() => {
                   <label class="label">
                     <span class="label-text">Type</span>
                   </label>
-                  <select v-model="formData.type" class="select select-bordered">
-                    <option value="">Select Type...</option>
-                    <option v-for="t in thingTypes" :key="t.id" :value="t.id">
-                      {{ t.name }}
-                    </option>
-                  </select>
+                  <RecordPicker
+                    v-model="formData.type"
+                    :options="typeOptions"
+                    title="Type"
+                    placeholder="Select Type..."
+                    clearable
+                    clear-label="No type"
+                    empty-text="No thing types defined yet."
+                  />
                   <!-- Type names are often terse codes. Anyone who can pick a type
                        can also read its description, so show it rather than making
                        them go and look the definition up. -->
@@ -558,27 +545,28 @@ onMounted(() => {
                 <label class="label">
                   <span class="label-text">Location</span>
                 </label>
-                <div class="flex gap-2">
-                  <select v-model="formData.location" class="select select-bordered flex-1 min-w-0 font-mono text-sm">
-                    <option value="">Select Location...</option>
-                    <option
-                      v-for="loc in locations"
-                      :key="loc.id"
-                      :value="loc.id"
-                      :disabled="loc.disabled"
+                <RecordPicker
+                  v-model="formData.location"
+                  :options="locationOptions"
+                  title="Location"
+                  placeholder="Select Location..."
+                  clearable
+                  clear-label="No location"
+                  empty-text="No locations yet."
+                >
+                  <!-- Quick-add lives in the panel rather than beside it: the
+                       moment you discover the location is missing is the moment
+                       you are looking at the list. -->
+                  <template #footer="{ close }">
+                    <button
+                      type="button"
+                      class="btn btn-sm btn-ghost w-full justify-start"
+                      @click="close(); showLocationModal = true"
                     >
-                      {{ loc.displayName }}
-                    </option>
-                  </select>
-                  <button
-                    type="button"
-                    class="btn btn-square btn-outline"
-                    @click="showLocationModal = true"
-                    title="Quick Add Location"
-                  >
-                    +
-                  </button>
-                </div>
+                      + New Location
+                    </button>
+                  </template>
+                </RecordPicker>
               </div>
 
               <!-- Email preview (create mode only) -->
@@ -662,12 +650,13 @@ onMounted(() => {
                   <label class="label">
                     <span class="label-text">Role *</span>
                   </label>
-                  <select v-model="autoNatsRoleId" class="select select-bordered" required>
-                    <option value="">Select a role...</option>
-                    <option v-for="role in natsRoles" :key="role.id" :value="role.id">
-                      {{ role.name }}{{ role.is_default ? ' (Default)' : '' }}
-                    </option>
-                  </select>
+                  <RecordPicker
+                    v-model="autoNatsRoleId"
+                    :options="natsRoleOptions"
+                    title="Role"
+                    placeholder="Select a role..."
+                    empty-text="No NATS roles defined for this organization yet."
+                  />
                 </div>
                 <div v-if="formData.code" class="bg-base-200 rounded-lg p-3 space-y-1">
                   <span class="text-xs text-base-content/50 uppercase block">Will Create</span>
@@ -689,22 +678,24 @@ onMounted(() => {
                 <label v-if="isEdit" class="label">
                   <span class="label-text">NATS User</span>
                 </label>
-                <div class="flex gap-2">
-                  <select v-model="formData.nats_user" class="select select-bordered font-mono flex-1 min-w-0">
-                    <option value="">None</option>
-                    <option v-for="user in natsUsers" :key="user.id" :value="user.id">
-                      {{ user.nats_username }}
-                    </option>
-                  </select>
-                  <button
-                    type="button"
-                    class="btn btn-square btn-outline"
-                    @click="showNatsModal = true"
-                    title="Quick Add NATS User"
-                  >
-                    +
-                  </button>
-                </div>
+                <RecordPicker
+                  v-model="formData.nats_user"
+                  :options="natsUserOptions"
+                  title="NATS user"
+                  placeholder="None"
+                  clearable
+                  empty-text="No NATS users in this organization yet."
+                >
+                  <template #footer="{ close }">
+                    <button
+                      type="button"
+                      class="btn btn-sm btn-ghost w-full justify-start"
+                      @click="close(); showNatsModal = true"
+                    >
+                      + New NATS User
+                    </button>
+                  </template>
+                </RecordPicker>
                 <label class="label">
                   <span class="label-text-alt">
                     Links this device to a specific NATS identity.
@@ -740,12 +731,13 @@ onMounted(() => {
                 <label class="label">
                   <span class="label-text">Network *</span>
                 </label>
-                <select v-model="autoNebulaNetworkId" class="select select-bordered" required>
-                  <option value="">Select a network...</option>
-                  <option v-for="net in nebulaNetworks" :key="net.id" :value="net.id">
-                    {{ net.name }} ({{ net.cidr_range }})
-                  </option>
-                </select>
+                <RecordPicker
+                  v-model="autoNebulaNetworkId"
+                  :options="nebulaNetworkOptions"
+                  title="Network"
+                  placeholder="Select a network..."
+                  empty-text="No Nebula networks defined yet."
+                />
               </div>
 
               <div class="form-control">
@@ -779,22 +771,24 @@ onMounted(() => {
                 <label v-if="isEdit" class="label">
                   <span class="label-text">Nebula Host</span>
                 </label>
-                <div class="flex gap-2">
-                  <select v-model="formData.nebula_host" class="select select-bordered font-mono flex-1 min-w-0">
-                    <option value="">None</option>
-                    <option v-for="host in nebulaHosts" :key="host.id" :value="host.id">
-                      {{ host.hostname }} ({{ host.overlay_ip }})
-                    </option>
-                  </select>
-                  <button
-                    type="button"
-                    class="btn btn-square btn-outline"
-                    @click="showNebulaModal = true"
-                    title="Quick Add Nebula Host"
-                  >
-                    +
-                  </button>
-                </div>
+                <RecordPicker
+                  v-model="formData.nebula_host"
+                  :options="nebulaHostOptions"
+                  title="Nebula host"
+                  placeholder="None"
+                  clearable
+                  empty-text="No Nebula hosts in this organization yet."
+                >
+                  <template #footer="{ close }">
+                    <button
+                      type="button"
+                      class="btn btn-sm btn-ghost w-full justify-start"
+                      @click="close(); showNebulaModal = true"
+                    >
+                      + New Nebula Host
+                    </button>
+                  </template>
+                </RecordPicker>
                 <label class="label">
                   <span class="label-text-alt">
                     Links this device to a Nebula VPN node.

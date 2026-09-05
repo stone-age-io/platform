@@ -6,6 +6,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import type { NebulaHost, NebulaNetwork } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import RecordPicker from '@/components/common/RecordPicker.vue'
+import type { PickerOption } from '@/types/picker'
 
 const props = defineProps<{
   embedded?: boolean
@@ -48,6 +50,10 @@ const formData = ref({
 
 // Relation options
 const networks = ref<NebulaNetwork[]>([])
+
+const networkOptions = computed<PickerOption[]>(() =>
+  networks.value.map(n => ({ id: n.id, label: n.name, sublabel: n.cidr_range }))
+)
 
 // State
 const loading = ref(false)
@@ -304,12 +310,13 @@ onMounted(() => {
                 <label class="label">
                   <span class="label-text">Network *</span>
                 </label>
-                <select v-model="formData.network_id" class="select select-bordered" required>
-                  <option value="">Select a network</option>
-                  <option v-for="net in networks" :key="net.id" :value="net.id">
-                    {{ net.name }} ({{ net.cidr_range }})
-                  </option>
-                </select>
+                <RecordPicker
+                  v-model="formData.network_id"
+                  :options="networkOptions"
+                  title="Network"
+                  placeholder="Select a network"
+                  empty-text="No Nebula networks defined yet."
+                />
               </div>
 
               <!-- Overlay IP (Required) -->

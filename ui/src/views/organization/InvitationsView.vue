@@ -12,6 +12,8 @@ import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 import ListPager from '@/components/ui/ListPager.vue'
+import RecordPicker from '@/components/common/RecordPicker.vue'
+import type { PickerOption } from '@/types/picker'
 
 const authStore = useAuthStore()
 const toast = useToast()
@@ -32,6 +34,13 @@ const {
 
 // All organizations (for operators to select from)
 const allOrganizations = ref<Organization[]>([])
+
+// `code` is the one globally-unique identifier in the ecosystem and what an
+// operator staring at two similarly-named tenants actually needs, so it is both
+// shown and searchable.
+const organizationOptions = computed<PickerOption[]>(() =>
+  allOrganizations.value.map(o => ({ id: o.id, label: o.name, sublabel: o.code }))
+)
 const loadingOrgs = ref(false)
 
 // Form state
@@ -312,21 +321,14 @@ onUnmounted(() => {
           <label class="label">
             <span class="label-text">Organization *</span>
           </label>
-          <select
+          <RecordPicker
             v-model="inviteForm.organization"
-            class="select select-bordered"
+            :options="organizationOptions"
+            title="Organization"
+            placeholder="Select organization..."
             :disabled="submitting || loadingOrgs"
-            required
-          >
-            <option value="" disabled>Select organization...</option>
-            <option
-              v-for="org in allOrganizations"
-              :key="org.id"
-              :value="org.id"
-            >
-              {{ org.name }}
-            </option>
-          </select>
+            empty-text="No organizations found."
+          />
           <label class="label">
             <span class="label-text-alt">
               As an operator, you can invite users to any organization

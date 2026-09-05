@@ -6,6 +6,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import type { NebulaNetwork, NebulaCA } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import RecordPicker from '@/components/common/RecordPicker.vue'
+import type { PickerOption } from '@/types/picker'
 
 const router = useRouter()
 const route = useRoute()
@@ -26,6 +28,10 @@ const formData = ref({
 
 // Relation options
 const cas = ref<NebulaCA[]>([])
+
+const caOptions = computed<PickerOption[]>(() =>
+  cas.value.map(ca => ({ id: ca.id, label: ca.name }))
+)
 
 // State
 const loading = ref(false)
@@ -225,12 +231,13 @@ onMounted(() => {
                 <label class="label">
                   <span class="label-text">Certificate Authority *</span>
                 </label>
-                <select v-model="formData.ca_id" class="select select-bordered" required>
-                  <option value="">Select a CA</option>
-                  <option v-for="ca in cas" :key="ca.id" :value="ca.id">
-                    {{ ca.name }}
-                  </option>
-                </select>
+                <RecordPicker
+                  v-model="formData.ca_id"
+                  :options="caOptions"
+                  title="Certificate authority"
+                  placeholder="Select a CA"
+                  empty-text="No certificate authorities yet."
+                />
                 <label class="label">
                   <span class="label-text-alt">
                     The CA used to sign certificates for this network.

@@ -26,6 +26,10 @@ export interface SuperUser extends AuthRecord {
 // Organization
 export interface Organization extends BaseRecord {
   name: string
+  // The ecosystem's namespace root (ADR 0002): optional, immutable, and the one
+  // globally-unique identifier -- unlike `name`, which is mutable. Present on the
+  // collection since the org-code migration; this interface had not caught up.
+  code?: string
   description?: string
   active: boolean
   owner: string // User ID

@@ -14,6 +14,8 @@ import { generateRandomPassword } from '@/utils/password'
 import { leafStatus, type LeafHeartbeat, type LeafStatusState } from '@/utils/leafStatus'
 import type { LeafNode, NatsUser, NatsRole, NebulaHost } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import RecordPicker from '@/components/common/RecordPicker.vue'
+import type { PickerOption } from '@/types/picker'
 import JsonViewer from '@/components/common/JsonViewer.vue'
 import LeafStatusBadge from '@/components/leaf_nodes/LeafStatusBadge.vue'
 
@@ -31,6 +33,14 @@ const nodeId = route.params.id as string
 const node = ref<LeafNode | null>(null)
 const natsUser = ref<NatsUser | null>(null)
 const roles = ref<NatsRole[]>([])
+
+const roleOptions = computed<PickerOption[]>(() =>
+  roles.value.map(r => ({
+    id: r.id,
+    label: r.name,
+    sublabel: r.is_default ? 'Default' : undefined,
+  }))
+)
 const loading = ref(true)
 const error = ref<string | null>(null)
 
@@ -501,11 +511,15 @@ leaf-sync run      # mirror config → local KV</pre>
                 <div v-if="canManage" class="mt-3 space-y-2">
                   <label class="text-xs uppercase text-base-content/50">Reassign role</label>
                   <div class="flex flex-col sm:flex-row gap-2">
-                    <select v-model="selectedRoleId" class="select select-bordered select-sm flex-1">
-                      <option v-for="role in roles" :key="role.id" :value="role.id">
-                        {{ role.name }}<span v-if="role.is_default"> (default)</span>
-                      </option>
-                    </select>
+                    <div class="flex-1 min-w-0">
+                      <RecordPicker
+                        v-model="selectedRoleId"
+                        :options="roleOptions"
+                        title="Role"
+                        placeholder="Select a role"
+                        empty-text="No NATS roles defined for this organization yet."
+                      />
+                    </div>
                     <button class="btn btn-sm btn-primary" :disabled="!roleDirty || savingRole" @click="applyRole">
                       <span v-if="savingRole" class="loading loading-spinner loading-xs"></span>
                       <span v-else>Apply</span>

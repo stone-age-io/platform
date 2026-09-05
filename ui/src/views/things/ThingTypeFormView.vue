@@ -8,6 +8,8 @@ import BaseCard from '@/components/ui/BaseCard.vue'
 import { DEFAULT_PREFIX } from '@/utils/subjectResolver'
 import ThingTypeOperationFormView from '@/views/things/ThingTypeOperationFormView.vue'
 import MetadataSchemaCard from '@/components/common/MetadataSchemaCard.vue'
+import RecordPicker from '@/components/common/RecordPicker.vue'
+import type { PickerOption } from '@/types/picker'
 import type { ThingTypeCapability, ThingTypeOperation } from '@/types/pocketbase'
 
 const router = useRouter()
@@ -36,6 +38,27 @@ const metadataSchema = ref<Record<string, any> | null>(null)
 const metadataSchemaCard = ref<InstanceType<typeof MetadataSchemaCard> | null>(null)
 
 const availableOperations = ref<ThingTypeOperation[]>([])
+
+const operationOptions = computed<PickerOption[]>(() =>
+  availableOperations.value.map(op => ({
+    id: op.id,
+    label: op.name,
+    sublabel: `${op.capability} · ${op.subject_suffix}`,
+  }))
+)
+
+/**
+ * Capabilities are four fixed values, so they get checkboxes rather than the
+ * picker: a filter box over four rows is theatre, and the native
+ * `<select multiple>` this replaced needed Ctrl/Cmd-click, which is
+ * undiscoverable and simply unavailable on a touchscreen.
+ */
+function toggleCapability(cap: ThingTypeCapability) {
+  const current = form.value.capabilities
+  form.value.capabilities = current.includes(cap)
+    ? current.filter(c => c !== cap)
+    : [...current, cap]
+}
 
 const showOperationModal = ref(false)
 
@@ -181,14 +204,21 @@ onMounted(async () => {
 
             <div class="form-control">
               <label class="label">Capabilities</label>
-              <select v-model="form.capabilities" multiple class="select select-bordered h-32">
-                <option v-for="cap in availableCapabilities" :key="cap" :value="cap">
-                  {{ cap }}
-                </option>
-              </select>
-              <label class="label">
-                <span class="label-text-alt">Hold Ctrl/Cmd to select multiple.</span>
-              </label>
+              <div class="space-y-2">
+                <label
+                  v-for="cap in availableCapabilities"
+                  :key="cap"
+                  class="flex items-center gap-3 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    class="checkbox checkbox-sm"
+                    :checked="form.capabilities.includes(cap)"
+                    @change="toggleCapability(cap)"
+                  />
+                  <code class="text-sm">{{ cap }}</code>
+                </label>
+              </div>
             </div>
           </div>
         </BaseCard>
@@ -197,24 +227,24 @@ onMounted(async () => {
       <BaseCard title="Operations">
         <div class="form-control">
           <label class="label">Operations</label>
-          <div class="flex gap-2">
-            <select v-model="form.operations" multiple class="select select-bordered flex-1 min-w-0 h-40">
-              <option v-for="op in availableOperations" :key="op.id" :value="op.id">
-                {{ op.name }} ({{ op.capability }}) &middot; {{ op.subject_suffix }}
-              </option>
-            </select>
-            <button
-              type="button"
-              class="btn btn-square btn-outline self-start"
-              @click="showOperationModal = true"
-              title="Quick Add Operation"
-            >
-              +
-            </button>
-          </div>
-          <label class="label">
-            <span class="label-text-alt">Hold Ctrl/Cmd to select multiple.</span>
-          </label>
+          <RecordPicker
+            v-model="form.operations"
+            :options="operationOptions"
+            title="Operations"
+            placeholder="Select operations..."
+            multiple
+            empty-text="No operations defined for this organization yet."
+          >
+            <template #footer="{ close }">
+              <button
+                type="button"
+                class="btn btn-sm btn-ghost w-full justify-start"
+                @click="close(); showOperationModal = true"
+              >
+                + New Operation
+              </button>
+            </template>
+          </RecordPicker>
         </div>
       </BaseCard>
 

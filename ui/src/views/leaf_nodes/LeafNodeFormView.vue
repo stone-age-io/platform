@@ -8,6 +8,9 @@ import { generateRandomPassword } from '@/utils/password'
 import type { LeafNode, Location, NebulaHost } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import NebulaHostFormView from '@/views/nebula/NebulaHostFormView.vue'
+import RecordPicker from '@/components/common/RecordPicker.vue'
+import { flattenLocationTree, type LocationNode } from '@/utils/locations'
+import type { PickerOption } from '@/types/picker'
 
 // Hard allowlist — must match the server-side rule grants + leaf-sync allowlist.
 const SYNCABLE_COLLECTIONS = [
@@ -41,8 +44,23 @@ const formData = ref({
 const codeManuallyEdited = ref(false)
 const domainManuallyEdited = ref(false)
 
-const locations = ref<Location[]>([])
+const locations = ref<LocationNode[]>([])
 const nebulaHosts = ref<NebulaHost[]>([])
+
+// This list used to render flat, so the same locations picked the same way looked
+// different here than on the Thing and Location forms.
+const locationOptions = computed<PickerOption[]>(() =>
+  locations.value.map(n => ({
+    id: n.id,
+    label: n.orphan ? `${n.name} (orphaned)` : n.name,
+    sublabel: n.path || undefined,
+    depth: n.depth,
+  }))
+)
+
+const nebulaHostOptions = computed<PickerOption[]>(() =>
+  nebulaHosts.value.map(h => ({ id: h.id, label: h.hostname, sublabel: h.overlay_ip }))
+)
 const loading = ref(false)
 const loadingOptions = ref(true)
 
@@ -91,7 +109,7 @@ async function loadOptions() {
       pb.collection('locations').getFullList<Location>({ sort: 'name' }),
       pb.collection('nebula_hosts').getFullList<NebulaHost>({ sort: 'hostname' }),
     ])
-    locations.value = locs
+    locations.value = flattenLocationTree(locs)
     nebulaHosts.value = hosts
   } catch {
     // Non-fatal — both location and nebula host are optional.
@@ -299,10 +317,14 @@ onMounted(() => {
 
               <div class="form-control">
                 <label class="label"><span class="label-text">Location</span></label>
-                <select v-model="formData.location" class="select select-bordered">
-                  <option value="">None</option>
-                  <option v-for="loc in locations" :key="loc.id" :value="loc.id">{{ loc.name }}</option>
-                </select>
+                <RecordPicker
+                  v-model="formData.location"
+                  :options="locationOptions"
+                  title="Location"
+                  placeholder="None"
+                  clearable
+                  empty-text="No locations yet."
+                />
               </div>
 
               <div v-if="!isEdit && formData.code" class="bg-base-200 rounded-lg p-3">
@@ -330,22 +352,24 @@ onMounted(() => {
           <BaseCard title="Nebula Connectivity">
             <div class="form-control">
               <label class="label"><span class="label-text">Nebula Host</span></label>
-              <div class="flex gap-2">
-                <select v-model="formData.nebula_host" class="select select-bordered font-mono flex-1 min-w-0">
-                  <option value="">None</option>
-                  <option v-for="host in nebulaHosts" :key="host.id" :value="host.id">
-                    {{ host.hostname }} ({{ host.overlay_ip }})
-                  </option>
-                </select>
-                <button
-                  type="button"
-                  class="btn btn-square btn-outline"
-                  @click="showNebulaModal = true"
-                  title="Quick Add Nebula Host"
-                >
-                  +
-                </button>
-              </div>
+              <RecordPicker
+                v-model="formData.nebula_host"
+                :options="nebulaHostOptions"
+                title="Nebula host"
+                placeholder="None"
+                clearable
+                empty-text="No Nebula hosts in this organization yet."
+              >
+                <template #footer="{ close }">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-ghost w-full justify-start"
+                    @click="close(); showNebulaModal = true"
+                  >
+                    + New Nebula Host
+                  </button>
+                </template>
+              </RecordPicker>
               <label class="label">
                 <span class="label-text-alt">Optional — links this edge to a Nebula VPN node for overlay connectivity.</span>
               </label>

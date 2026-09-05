@@ -9,6 +9,8 @@ import { useValidation } from '@/composables/useValidation'
 import { pb } from '@/utils/pb'
 import type { User, NatsUser } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import RecordPicker from '@/components/common/RecordPicker.vue'
+import type { PickerOption } from '@/types/picker'
 
 const authStore = useAuthStore()
 const uiStore = useUIStore()
@@ -31,6 +33,10 @@ const passwordLoading = ref(false)
 const newUrl = ref('')
 const availableIdentities = ref<NatsUser[]>([])
 const loadingIdentities = ref(false)
+
+const identityOptions = computed<PickerOption[]>(() =>
+  availableIdentities.value.map(u => ({ id: u.id, label: u.nats_username }))
+)
 
 // Where the URLs on screen actually came from. Three states, not two: with no
 // override AND nothing configured server-side, what is listed is the compiled-in
@@ -138,9 +144,10 @@ async function loadIdentities() {
   }
 }
 
-async function updateContextIdentity(event: Event) {
-  const select = event.target as HTMLSelectElement
-  const natsUserId = select.value || null
+// RecordPicker's model is `string | string[]` because it also does multi-select;
+// this one is single, so take the scalar form.
+async function updateContextIdentity(selected: string | string[]) {
+  const natsUserId = (Array.isArray(selected) ? selected[0] : selected) || null
 
   if (!authStore.currentMembership) return
 
@@ -316,18 +323,18 @@ watch(() => authStore.currentOrgId, loadIdentities)
               SuperUser God Mode active. Cannot bind identity. Join organization as member to configure.
             </div>
             
-            <select 
+            <RecordPicker
               v-else
-              class="select select-bordered font-mono text-sm" 
-              :value="authStore.currentMembership?.nats_user || ''"
-              @change="updateContextIdentity"
+              :model-value="authStore.currentMembership?.nats_user || ''"
+              :options="identityOptions"
+              title="NATS identity"
+              placeholder="-- No Identity Linked --"
+              clearable
+              clear-label="-- No Identity Linked --"
+              empty-text="No NATS identities available to you in this organization."
               :disabled="loadingIdentities"
-            >
-              <option value="">-- No Identity Linked --</option>
-              <option v-for="u in availableIdentities" :key="u.id" :value="u.id">
-                {{ u.nats_username }}
-              </option>
-            </select>
+              @update:model-value="updateContextIdentity"
+            />
           </div>
 
           <div class="divider text-xs opacity-50 font-bold">NATS Connection</div>

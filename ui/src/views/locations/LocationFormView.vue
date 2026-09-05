@@ -8,12 +8,9 @@ import { useToast } from '@/composables/useToast'
 import type { Location, LocationType } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import MetadataEditor from '@/components/common/MetadataEditor.vue'
-
-// Define a local interface for the dropdown options
-interface LocationOption extends Location {
-  displayName: string
-  disabled?: boolean
-}
+import RecordPicker from '@/components/common/RecordPicker.vue'
+import { flattenLocationTree, type LocationNode } from '@/utils/locations'
+import type { PickerOption } from '@/types/picker'
 
 const props = defineProps<{
   embedded?: boolean
@@ -53,7 +50,31 @@ const currentFloorplan = ref<string | null>(null)
 
 // Relation options
 const locationTypes = ref<LocationType[]>([])
-const parentLocations = ref<LocationOption[]>([])
+const parentLocations = ref<LocationNode[]>([])
+
+const typeOptions = computed<PickerOption[]>(() =>
+  locationTypes.value.map(t => ({ id: t.id, label: t.name || 'Unnamed' }))
+)
+
+/**
+ * Self AND everything below it are disabled rather than dropped: a greyed row
+ * says why, where a missing row just looks like the record vanished.
+ *
+ * The descendant half matters as much as the self check. Re-parenting a location
+ * under its own descendant makes a cycle, and `flattenLocationTree` can then
+ * reach neither end of it -- both fall out of the tree and reappear at the bottom
+ * flagged as orphans. That is recoverable rather than silent, but it is still a
+ * building that vanished from the picker, and no server rule prevents it.
+ */
+const parentOptions = computed<PickerOption[]>(() =>
+  parentLocations.value.map(n => ({
+    id: n.id,
+    label: n.orphan ? `${n.name} (orphaned)` : n.name,
+    sublabel: n.path || undefined,
+    depth: n.depth,
+    disabled: !!locationId && (n.id === locationId || n.ancestorIds.includes(locationId)),
+  }))
+)
 
 // Description of the selected location type, shown under the select.
 const selectedTypeHint = computed(() => {
@@ -72,65 +93,6 @@ const selectedTypeMetadataSchema = computed(() => {
 const loading = ref(false)
 const loadingOptions = ref(true)
 
-/**
- * Helper: Sort locations into a hierarchy and return a flat list with indentation
- */
-function sortLocationsHierarchically(items: Location[], currentId?: string): LocationOption[] {
-  const result: LocationOption[] = []
-  const childrenMap = new Map<string, Location[]>()
-  const roots: Location[] = []
-
-  // 1. Build Adjacency Map
-  items.forEach(item => {
-    if (!item.parent) {
-      roots.push(item)
-    } else {
-      const list = childrenMap.get(item.parent) || []
-      list.push(item)
-      childrenMap.set(item.parent, list)
-    }
-  })
-
-  // 2. Sort roots alphabetically (Handle possibly undefined name)
-  roots.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-
-  // 3. Recursive Traversal
-  function traverse(node: Location, depth: number) {
-    // Grug logic: Indent based on depth
-    // \u00A0 is non-breaking space
-    const prefix = depth > 0 ? '\u00A0\u00A0\u00A0'.repeat(depth) + '└ ' : ''
-    
-    result.push({
-      ...node,
-      displayName: prefix + (node.name || 'Unnamed'),
-      // Disable self to prevent circular parent
-      disabled: node.id === currentId
-    })
-
-    const children = childrenMap.get(node.id) || []
-    // Sort children alphabetically (Handle possibly undefined name)
-    children.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-    
-    children.forEach(child => traverse(child, depth + 1))
-  }
-
-  roots.forEach(root => traverse(root, 0))
-  
-  // 4. Handle Orphans (items whose parents were filtered out or don't exist)
-  // If we missed any items in the traversal (e.g. circular refs or missing parents), add them at the end
-  const processedIds = new Set(result.map(r => r.id))
-  const orphans = items.filter(i => !processedIds.has(i.id))
-  
-  orphans.forEach(orphan => {
-    result.push({
-      ...orphan,
-      displayName: `[Orphan] ${orphan.name || 'Unnamed'}`,
-      disabled: orphan.id === currentId
-    })
-  })
-
-  return result
-}
 
 /**
  * Load form options (types and parent locations)
@@ -145,10 +107,8 @@ async function loadOptions() {
     ])
     
     locationTypes.value = typesResult
-    
-    // Process hierarchy
-    parentLocations.value = sortLocationsHierarchically(locationsResult, locationId)
-    
+    parentLocations.value = flattenLocationTree(locationsResult)
+
   } catch (err: any) {
     toast.error('Failed to load form options')
   } finally {
@@ -411,12 +371,15 @@ onMounted(() => {
                 <label class="label">
                   <span class="label-text">Type</span>
                 </label>
-                <select v-model="formData.type" class="select select-bordered">
-                  <option value="">Select a type (optional)</option>
-                  <option v-for="type in locationTypes" :key="type.id" :value="type.id">
-                    {{ type.name }}
-                  </option>
-                </select>
+                <RecordPicker
+                  v-model="formData.type"
+                  :options="typeOptions"
+                  title="Type"
+                  placeholder="Select a type (optional)"
+                  clearable
+                  clear-label="No type"
+                  empty-text="No location types defined yet."
+                />
                 <!-- Same reasoning as the Thing form's type hint: anyone who can
                      pick a type can read its description. -->
                 <label v-if="selectedTypeHint" class="label">
@@ -429,17 +392,15 @@ onMounted(() => {
                 <label class="label">
                   <span class="label-text">Parent Location</span>
                 </label>
-                <select v-model="formData.parent" class="select select-bordered font-mono text-sm">
-                  <option value="">None (top level)</option>
-                  <option 
-                    v-for="location in parentLocations" 
-                    :key="location.id" 
-                    :value="location.id"
-                    :disabled="location.disabled"
-                  >
-                    {{ location.displayName }}
-                  </option>
-                </select>
+                <RecordPicker
+                  v-model="formData.parent"
+                  :options="parentOptions"
+                  title="Parent location"
+                  placeholder="None (top level)"
+                  clearable
+                  clear-label="None (top level)"
+                  empty-text="No other locations yet."
+                />
                 <label class="label">
                   <span class="label-text-alt">For hierarchical organization (e.g., Building > Floor > Room)</span>
                 </label>

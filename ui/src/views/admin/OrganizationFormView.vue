@@ -6,6 +6,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import type { User } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import RecordPicker from '@/components/common/RecordPicker.vue'
+import type { PickerOption } from '@/types/picker'
 import { generateRandomPassword } from '@/utils/password'
 
 const router = useRouter()
@@ -48,6 +50,10 @@ const existingRecord = ref<any>(null)
 const ownerMode = ref<'existing' | 'new'>('existing')
 const users = ref<User[]>([])
 const loadingUsers = ref(false)
+
+const userOptions = computed<PickerOption[]>(() =>
+  users.value.map(u => ({ id: u.id, label: u.email, sublabel: u.name || undefined }))
+)
 
 // New user form
 const newUserForm = ref({
@@ -389,17 +395,14 @@ onMounted(() => {
 
               <!-- Existing User Dropdown -->
               <div v-if="ownerMode === 'existing'">
-                <select
+                <RecordPicker
                   v-model="form.owner"
-                  class="select select-bordered w-full"
-                  required
+                  :options="userOptions"
+                  title="Owner"
+                  placeholder="Select owner..."
                   :disabled="loadingUsers || loading"
-                >
-                  <option value="" disabled>Select owner...</option>
-                  <option v-for="u in users" :key="u.id" :value="u.id">
-                    {{ u.email }}{{ u.name ? ` (${u.name})` : '' }}
-                  </option>
-                </select>
+                  empty-text="No users found."
+                />
                 <label class="label">
                   <span class="label-text-alt">The owner has full control over this organization</span>
                 </label>

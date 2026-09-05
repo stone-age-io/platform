@@ -5,6 +5,8 @@ import { pb } from '@/utils/pb'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import RecordPicker from '@/components/common/RecordPicker.vue'
+import type { PickerOption } from '@/types/picker'
 import MessageSchemaFormView from '@/views/things/MessageSchemaFormView.vue'
 import type { ThingTypeCapability, ThingTypeOperation, MessageSchema } from '@/types/pocketbase'
 
@@ -41,6 +43,10 @@ const availableSchemas = ref<MessageSchema[]>([])
 function schemaLabel(s: MessageSchema) {
   return `${s.namespace}/${s.name}@${s.version}`
 }
+
+const schemaOptions = computed<PickerOption[]>(() =>
+  availableSchemas.value.map(s => ({ id: s.id, label: schemaLabel(s), sublabel: s.description }))
+)
 
 async function loadOptions() {
   const orgId = authStore.currentOrgId
@@ -186,22 +192,25 @@ onMounted(async () => {
 
             <div class="form-control">
               <label class="label">Message Schema</label>
-              <div class="flex gap-2">
-                <select v-model="form.schema" class="select select-bordered flex-1 min-w-0">
-                  <option value="">— None —</option>
-                  <option v-for="s in availableSchemas" :key="s.id" :value="s.id">
-                    {{ schemaLabel(s) }}
-                  </option>
-                </select>
-                <button
-                  type="button"
-                  class="btn btn-square btn-outline"
-                  @click="showSchemaModal = true"
-                  title="Quick Add Message Schema"
-                >
-                  +
-                </button>
-              </div>
+              <RecordPicker
+                v-model="form.schema"
+                :options="schemaOptions"
+                title="Message schema"
+                placeholder="— None —"
+                clearable
+                clear-label="— None —"
+                empty-text="No message schemas defined yet."
+              >
+                <template #footer="{ close }">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-ghost w-full justify-start"
+                    @click="close(); showSchemaModal = true"
+                  >
+                    + New Message Schema
+                  </button>
+                </template>
+              </RecordPicker>
               <label class="label">
                 <span class="label-text-alt">JSON Schema describing this operation's payload.</span>
               </label>
