@@ -32,7 +32,12 @@ const emit = defineEmits<{
 
 const toast = useToast()
 
-const doc = ref<Record<string, any>>({})
+// The builder only recognises a node that says `type: 'object'`, so an empty or
+// reset document has to carry it — otherwise a blank schema is reported as one
+// using $ref/anyOf/deep nesting, which is that check's catch-all branch.
+const EMPTY_DOC = (): Record<string, any> => ({ type: 'object', properties: {} })
+
+const doc = ref<Record<string, any>>(EMPTY_DOC())
 const activeTab = ref<'form' | 'json'>('form')
 const jsonText = ref('')
 const jsonError = ref('')
@@ -48,7 +53,7 @@ watch(
   () => props.modelValue,
   (v) => {
     if (suppressNextWatch) { suppressNextWatch = false; return }
-    doc.value = v ? { ...v } : {}
+    doc.value = v ? { type: 'object', ...v } : EMPTY_DOC()
     if (activeTab.value !== 'json') refreshJson()
   },
   { immediate: true, deep: true },
@@ -72,7 +77,7 @@ function onJsonBlur() {
   const text = jsonText.value.trim()
   if (!text) {
     jsonError.value = ''
-    doc.value = {}
+    doc.value = EMPTY_DOC()
     return
   }
   try {
@@ -82,7 +87,9 @@ function onJsonBlur() {
       return
     }
     jsonError.value = ''
-    doc.value = parsed
+    // Fill in an omitted top-level type. A schema that names its own wins the
+    // spread, so this only affects one pasted without it.
+    doc.value = { type: 'object', ...parsed }
   } catch (err: any) {
     jsonError.value = err.message
   }
