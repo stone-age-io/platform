@@ -103,6 +103,10 @@ func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
 	natsOpts.DebounceInterval = time.Hour
 	natsOpts.PublishQueueInterval = time.Hour
 
+	// First, exactly as in main.go: a cross-tenant relation is refused before any
+	// library acts on the record.
+	hooks.RegisterRelationTenancy(app)
+
 	if err := pbtenancy.Setup(app, tenancyOpts); err != nil {
 		return nil, fmt.Errorf("tenancy setup: %w", err)
 	}

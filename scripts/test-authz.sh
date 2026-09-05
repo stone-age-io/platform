@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=150         # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=154         # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -951,6 +951,36 @@ OTHER_NATS=$(j "$RBODY" id)
 req POST "/org/things" "$TA" \
   "{\"name\":\"Cross Tenant\",\"code\":\"cross-1\",\"nats\":{\"mode\":\"link\",\"user_id\":\"$OTHER_NATS\"}}"
 expect "owner cannot link another org's NATS identity" 400 "$RCODE" "$RBODY"
+
+# The same question asked of the CRUD endpoints rather than the provisioning
+# route. nats_users.createRule pins the new record's own `organization` and says
+# nothing about `account_id`, and pb-nats signs the user JWT with whatever that
+# field names (internal/sync/manager.go, generateUserJWT) -- so without
+# hooks/relation_tenancy.go an owner could mint a working credential inside
+# another tenant's account. Only the account is wrong in these bodies; the role
+# is the caller's own, so a rejection cannot be blamed on it.
+req POST /collections/nats_users/records "$TA" \
+  "{\"email\":\"borrower@nats.test\",\"password\":\"Password123!\",\"passwordConfirm\":\"Password123!\",\"nats_username\":\"borrower\",\"account_id\":\"$OTHER_ACCT\",\"role_id\":\"$NROLE\",\"organization\":\"$ORG\",\"active\":true}"
+expect "owner cannot mint a NATS user against another org's account" 400 "$RCODE" "$RBODY"
+
+# The paired "can" on the same collection, without which the refusal above could
+# be a blanket denial passing for the wrong reason.
+req POST /collections/nats_users/records "$TA" \
+  "{\"email\":\"resident@nats.test\",\"password\":\"Password123!\",\"passwordConfirm\":\"Password123!\",\"nats_username\":\"resident\",\"account_id\":\"$ACCT\",\"role_id\":\"$NROLE\",\"organization\":\"$ORG\",\"active\":true}"
+expect "owner can mint a NATS user against its own org's account" 200 "$RCODE" "$RBODY"
+RESIDENT=$(j "$RBODY" id)
+
+# Re-pointing is the same hole through a different door: updateRule freezes
+# `organization` but leaves account_id free.
+req PATCH "/collections/nats_users/records/$RESIDENT" "$TA" "{\"account_id\":\"$OTHER_ACCT\"}"
+expect "owner cannot repoint a NATS user at another org's account" "400|404" "$RCODE" "$RBODY"
+
+# Unlike the immutable-code guard, this one is a model hook, so it binds the
+# superuser path too. A relation spanning two tenants is corrupt data whoever
+# writes it, and there is no dashboard workflow that needs the exemption.
+req POST /collections/nats_users/records "$SU" \
+  "{\"email\":\"su-borrower@nats.test\",\"password\":\"Password123!\",\"passwordConfirm\":\"Password123!\",\"nats_username\":\"su-borrower\",\"account_id\":\"$OTHER_ACCT\",\"role_id\":\"$NROLE\",\"organization\":\"$ORG\",\"active\":true}"
+expect "not even a superuser can cross tenants with a relation" 400 "$RCODE" "$RBODY"
 
 # Atomicity. An invalid `type` relation fails the Thing save AFTER the nats_users
 # record was created inside the transaction. PocketBase defers the

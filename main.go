@@ -308,6 +308,12 @@ func main() {
 		auditOptions.Retention = retention
 	}
 
+	// Registered ahead of the libraries so it runs first: a cross-tenant relation
+	// is rejected before pb-nats mints a JWT from it. A later rollback would undo
+	// the write either way, but there is no reason to sign anything for a record
+	// that is about to be refused.
+	hooks.RegisterRelationTenancy(app)
+
 	// Setup Libraries (Hooks & APIs)
 	if err := pbaudit.Setup(app, auditOptions); err != nil {
 		log.Fatalf("Failed to register audit setup: %v", err)
