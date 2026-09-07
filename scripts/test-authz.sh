@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=154         # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=155         # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -460,17 +460,43 @@ expect "dashboard cannot patch a thing's metadata (same payload)" "403|400|404" 
 # Rotation is a route, not a rule: it must permit a write to exactly one field
 # (`regenerate`), which a rule can only approximate with an :isset deny-list.
 #
+# Two separate traps here, and the second one cost a red CI run.
+#
 # Re-read creds IMMEDIATELY before rotating. An earlier check in section 8 PATCHes
 # publish_permissions on this same record, and pb-nats re-mints the JWT on any
 # API update whose JWT-relevant fields changed -- so comparing against a value
 # captured earlier would pass whether or not the route did anything.
+#
+# Then wait out the second before rotating. A re-mint reuses the stored seed
+# (pb-nats regenerateUserJWT clears jwt + creds_file and nothing else), so
+# creds_file changes only if the JWT bytes do -- and a user JWT is deterministic
+# apart from `iat`/`exp`, which are whole seconds: nats-io/jwt sets
+# `IssuedAt = time.Now().UTC().Unix()`, derives the id as a deliberately
+# "repeatable hash" of the claims, and signs with Ed25519, which is itself
+# deterministic. Two mints in the same wall-clock second are byte-identical.
+# Section 8's PATCH minted ~1s before this, so without the sleep this check is a
+# coin flip on where the second boundary happens to fall -- it passed for months
+# and then lost that flip on an unrelated commit (CI run 34085222361).
+sleep 2
 req GET "/collections/nats_users/records/$BOB_NATS" "$TB"
 ROT_BEFORE=$(j "$RBODY" creds_file)
 req POST "/me/nats-creds/rotate" "$TB" ""
 expect "member CAN rotate their own credentials" 200 "$RCODE" "$RBODY"
-sleep 1
+# No sleep needed before re-reading: pb-nats handles `regenerate` on the model
+# update hook, so the re-mint happens inside the same Save the route awaits.
 req GET "/collections/nats_users/records/$BOB_NATS" "$TB"
 ROT_AFTER=$(j "$RBODY" creds_file)
+
+# pb-nats clears the flag in that same save. It still being set is the exact
+# failure this section is named for, and unlike comparing credentials it cannot
+# be defeated by a clock -- so assert it in its own right rather than trusting
+# the byte comparison to catch a dead trigger.
+if [ "$(j "$RBODY" regenerate)" = "false" ]; then
+  ok "pb-nats consumed the regenerate flag (the trigger reached a model hook)"
+else
+  no "regenerate still set after rotation -- the route wrote the flag and nothing acted on it"
+fi
+
 if [ -n "$ROT_AFTER" ] && [ "$ROT_AFTER" != "$ROT_BEFORE" ]; then
   ok "rotation actually re-minted the credential"
 else

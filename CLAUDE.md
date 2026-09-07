@@ -795,6 +795,19 @@ Rules to follow when touching authorization:
   section earlier and an intervening `publish_permissions` PATCH re-minted the
   credential as a side effect. Side-effect assertions need a baseline read on the
   line above the call.
+- **A re-minted NATS credential is byte-identical within the same second, so a
+  "did it change" assertion is a race.** `regenerateUserJWT` reuses the stored
+  seed, and a user JWT is deterministic apart from `iat`/`exp` — whole seconds
+  (`nats-io/jwt` sets `IssuedAt = time.Now().UTC().Unix()`, hashes the claims into
+  the id with a deliberately "repeatable hash", and signs with Ed25519, which is
+  deterministic). Two mints in one wall-clock second produce the same
+  `creds_file`. `rotation actually re-minted the credential` therefore passed for
+  months and then failed on a commit that touched nothing near it, because the
+  preceding `publish_permissions` PATCH happened to land in the same second. The
+  suite now sleeps past the boundary AND asserts pb-nats cleared `regenerate`,
+  which is the same evidence without a clock in it. Prefer a side-effect
+  assertion that cannot be defeated by timestamp granularity; where the only
+  observable IS a timestamped artifact, separate the two events explicitly.
 
 UI side: the capability map lives in `ui/src/stores/auth.ts` (`can.*`); the router
 guards on `meta.requiresCapability` and the sidebar hides what a role can't reach.
