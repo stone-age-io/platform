@@ -6,6 +6,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import type { NatsAccountExport } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import ManagedRecordNotice from '@/components/common/ManagedRecordNotice.vue'
+import { isManagedExport } from '@/utils/managedExports'
 
 const router = useRouter()
 const route = useRoute()
@@ -16,6 +18,7 @@ const exportId = route.params.id as string | undefined
 const isEdit = computed(() => !!exportId)
 const loading = ref(false)
 const accountId = ref('')
+const managed = ref(false)
 
 const formData = ref({
   name: '',
@@ -47,6 +50,7 @@ async function loadExport() {
   loading.value = true
   try {
     const rec = await pb.collection('nats_account_exports').getOne<NatsAccountExport>(exportId)
+    managed.value = isManagedExport(rec.name)
     accountId.value = rec.account_id
     formData.value = {
       name: rec.name,
@@ -133,7 +137,14 @@ onMounted(async () => {
       <h1 class="text-3xl font-bold">{{ isEdit ? 'Edit Export' : 'Create Export' }}</h1>
     </div>
 
-    <form @submit.prevent="handleSubmit" class="space-y-6">
+    <template v-if="managed">
+      <ManagedRecordNotice kind="export" />
+      <router-link :to="`/nats/exports/${exportId}`" class="btn btn-primary">
+        View export
+      </router-link>
+    </template>
+
+    <form v-else @submit.prevent="handleSubmit" class="space-y-6">
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
 
         <div class="space-y-6">

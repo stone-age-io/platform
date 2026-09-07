@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
@@ -7,6 +7,8 @@ import { useConfirm } from '@/composables/useConfirm'
 import { formatDate } from '@/utils/format'
 import type { NatsAccountImport } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import ManagedRecordNotice from '@/components/common/ManagedRecordNotice.vue'
+import { isManagedImport } from '@/utils/managedExports'
 
 const router = useRouter()
 const route = useRoute()
@@ -17,6 +19,11 @@ const importRecord = ref<NatsAccountImport | null>(null)
 const loading = ref(true)
 const deleting = ref(false)
 const importId = route.params.id as string
+
+// Platform-provisioned: the Edit/Delete controls are hidden and the banner says
+// why. Not a permission -- the API rules still allow the write, it just gets
+// reconciled away on the next organization save.
+const managed = computed(() => isManagedImport(importRecord.value?.name))
 const showToken = ref(false)
 
 async function loadImport() {
@@ -90,12 +97,14 @@ onMounted(loadImport)
               {{ importRecord.type }}
             </span>
           </div>
-          <div class="flex gap-2 w-full sm:w-auto">
+          <div v-if="!managed" class="flex gap-2 w-full sm:w-auto">
             <router-link :to="`/nats/imports/${importRecord.id}/edit`" class="btn btn-primary flex-1 sm:flex-initial">Edit</router-link>
             <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial" :disabled="deleting">Delete</button>
           </div>
         </div>
       </div>
+
+      <ManagedRecordNotice v-if="managed" kind="import" />
 
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         <!-- Left Column -->

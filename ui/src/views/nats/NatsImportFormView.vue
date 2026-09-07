@@ -6,6 +6,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import type { NatsAccountImport } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import ManagedRecordNotice from '@/components/common/ManagedRecordNotice.vue'
+import { isManagedImport } from '@/utils/managedExports'
 
 const router = useRouter()
 const route = useRoute()
@@ -16,6 +18,7 @@ const importId = route.params.id as string | undefined
 const isEdit = computed(() => !!importId)
 const loading = ref(false)
 const accountId = ref('')
+const managed = ref(false)
 
 const formData = ref({
   name: '',
@@ -46,6 +49,7 @@ async function loadImport() {
   loading.value = true
   try {
     const rec = await pb.collection('nats_account_imports').getOne<NatsAccountImport>(importId)
+    managed.value = isManagedImport(rec.name)
     accountId.value = rec.account_id
     formData.value = {
       name: rec.name,
@@ -124,7 +128,14 @@ onMounted(async () => {
       <h1 class="text-3xl font-bold">{{ isEdit ? 'Edit Import' : 'Create Import' }}</h1>
     </div>
 
-    <form @submit.prevent="handleSubmit" class="space-y-6">
+    <template v-if="managed">
+      <ManagedRecordNotice kind="import" />
+      <router-link :to="`/nats/imports/${importId}`" class="btn btn-primary">
+        View import
+      </router-link>
+    </template>
+
+    <form v-else @submit.prevent="handleSubmit" class="space-y-6">
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
 
         <div class="space-y-6">

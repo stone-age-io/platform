@@ -12,6 +12,8 @@ import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 import ListPager from '@/components/ui/ListPager.vue'
+import ManagedRecordNotice from '@/components/common/ManagedRecordNotice.vue'
+import { isManagedExport } from '@/utils/managedExports'
 
 const router = useRouter()
 const toast = useToast()
@@ -214,7 +216,10 @@ onUnmounted(() => {
       >
         <template #cell-name="{ item }">
           <div>
-            <div class="font-medium">{{ item.name }}</div>
+            <div class="font-medium flex items-center gap-2">
+              {{ item.name }}
+              <ManagedRecordNotice v-if="isManagedExport(item.name)" kind="export" variant="inline" />
+            </div>
             <div v-if="item.description" :title="item.description" class="text-sm text-base-content/60 line-clamp-1">
               {{ item.description }}
             </div>
@@ -223,7 +228,10 @@ onUnmounted(() => {
 
         <template #card-name="{ item }">
           <div>
-            <div class="font-semibold text-base">{{ item.name }}</div>
+            <div class="font-semibold text-base flex items-center gap-2">
+              {{ item.name }}
+              <ManagedRecordNotice v-if="isManagedExport(item.name)" kind="export" variant="inline" />
+            </div>
             <div v-if="item.description" class="text-sm text-base-content/60 mt-1">
               {{ item.description }}
             </div>
@@ -246,18 +254,27 @@ onUnmounted(() => {
         <!-- Actions -->
         <template #actions="{ item }">
           <router-link
-            :to="`/nats/exports/${item.id}/edit`"
+            v-if="isManagedExport(item.name)"
+            :to="`/nats/exports/${item.id}`"
             class="btn btn-xs flex-1 sm:flex-initial"
           >
-            Edit
+            View
           </router-link>
-          <button
-            @click="handleDelete(item)"
-            class="btn btn-xs text-error flex-1 sm:flex-initial"
-            :disabled="deleting"
-          >
-            Delete
-          </button>
+          <template v-else>
+            <router-link
+              :to="`/nats/exports/${item.id}/edit`"
+              class="btn btn-xs flex-1 sm:flex-initial"
+            >
+              Edit
+            </router-link>
+            <button
+              @click="handleDelete(item)"
+              class="btn btn-xs text-error flex-1 sm:flex-initial"
+              :disabled="deleting"
+            >
+              Delete
+            </button>
+          </template>
         </template>
       </ResponsiveList>
 

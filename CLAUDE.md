@@ -291,6 +291,22 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
 9. **PWA** - Service worker, manifest, installable
 10. **Keyboard Shortcuts** - Configurable keyboard shortcuts with modal reference
 11. **Operator Org & Managed Orgs** - Bootstrap creates the platform operator's own org (`is_operator_org`) alongside the `$SYS` org (`is_system_org`); its NATS account is the hub for shared operator services (helpdesk etc.). Flagging a customer org `managed` provisions a stream export of `helpdesk.>` (configurable: `nats.managed_export_subject`) from its account plus a hub-side import remapped to `helpdesk.{organizations.code}.>` — the org prefix is baked into the signed account JWT, so event provenance is subject-based and unforgeable (`hooks/managed_org_exports.go`). That token was `org.Id` until ADR 0002 (see **Organization code** below); `hubImportName(org.Id)` still keys the import *record* by the immutable id, which is correct and should stay. `ensureManagedExports` is no longer create-if-missing: it `reconcile`s the desired fields on an existing import, because a create-only hook would have left a renamed org's signed import routing at the old token while the consumer's `helpdesk.*.tickets.>` wildcard masked the failure — traffic matches, and never arrives.
+
+    **Both records are READ-ONLY in the console**, recognised by name in
+    `ui/src/utils/managedExports.ts` — the same `account_id` + `name` identity
+    the reconciler looks them up by, so a hand-made record under that name is
+    adopted rather than falsely flagged. Reconciliation rewrites `subject`,
+    `type`, `description` (plus `account` and `local_subject` on the import) on
+    every org save, so an Edit button there is an invitation to make a change
+    that is silently undone; `token_req`/`advertise`/`allow_trace` are
+    create-only and WOULD persist, which is why the banner names the reverting
+    fields instead of claiming the record is frozen. Not a permission — the API
+    rules still allow the write. The export sits on the tenant's account and the
+    import on the operator hub's, so the two land on different screens for
+    different people. `hooks/managed_org_exports_test.go` reads the `.ts`
+    constant and asserts it against the names the hook actually creates: a
+    hand-copied literal is fine, a hand-copied literal going stale means the
+    console silently offers the Edit button again.
 12. **Edge / Leaf Nodes** - `leaf_nodes` auth collection (a "special thing" with one nats_user, server-provisioned). The `leaf-sync` agent runs on the edge, authenticates as the leaf node, and mirrors its org's config collections into a NATS leaf node's local JetStream KV. A leaf-node identity holds **no read grant on any `nats_*` or `nebula_*` collection**: `leaf-sync config` gets everything it needs from `GET /api/leaf/bootstrap`, which returns eight named fields (`domain`, `code`, `creds`, `account_jwt`, `account_pub`, `operator_jwt`, `sys_account_jwt`, `sys_account_pub`). `nats_system_operator` stays superuser-only; `GET /api/leaf/operator-jwt` remains as a superseded alias so upgrade order doesn't matter.
     - **A generated `nats-leaf.conf` must satisfy operator-mode validation, which no string assertion can check.** Two directives are mandatory and were both missing for months, so `leaf-sync config` produced a file `nats-server` refused to load — the failure was invisible because the only tests were `strings.Contains` over the output. (1) Every leaf remote needs an `account` key naming the local account; (2) `resolver_preload` needs the **`$SYS` account JWT** as well as the org's, because the operator JWT names a system account and `resolver: MEMORY` has nowhere to fetch it — without it the server dies with `error resolving system account: account missing` before JetStream starts. Preloading `$SYS`'s *account* JWT is public trust material and grants nothing; connecting as `$SYS` needs a `$SYS` **user** credential, which is never served. `TestBuildLeafConfIsAcceptedByNATSServer` now runs the real generator's output through `nats-server`'s own `ProcessConfigFile` + `NewServer` (no ports, no network) — keep it, and don't replace it with more `Contains` checks.
     - **`leaf-sync run --nats` runs the leaf node in-process** (`internal/leafsync/embedded.go`, reusing `internal/natsd`), off by default. Two consequences worth keeping: the server starts **before** PocketBase is touched, and a failed login then **retries** instead of exiting — exiting would take the bus down, and a supervisor cycling the pair through a WAN outage means devices reconnecting and JetStream recovering its store on a loop. Without `--nats` the old fail-fast behaviour stands, because the bus is another process. Cost: the binary goes ~12 MB → ~26 MB, since `nats-server` links in either way, plus ~3 MB for the Prometheus client behind `leaf-sync`'s `/metrics` (measured 25.8 → 28.9 MB). The Control Plane pays nothing for that second one — `slackhq/nebula` already linked `client_golang` in there. `leaf-sync` writes a best-effort liveness heartbeat into the hub's `leaf_status` KV (when `nats.hub_domain` is set); the UI reads it to show online/offline status on the leaf node list + detail views. Credentials are resettable by org Admins/Owners (collection `manageRule`) — `things` now carries the same `manageRule`, so a device's PocketBase password is recoverable too.
@@ -655,6 +671,20 @@ Rules to follow when touching authorization:
   `things` record is readable by any org member, so "linked but not visible to you"
   and "not linked" stay distinguishable without any rule change — three states, not
   two. Same rule as the twin markers: show what you actually know.
+- **pb-tenancy TERMINATES the `organizations` AfterCreateSuccess chain, so a
+  hook bound after `app.Bootstrap()` never runs.** Its handler is
+  `return autoCreateOwnerMembership(...)` with no `e.Next()`
+  (`pb-tenancy/internal/tenancy/hooks.go`; the comment on the hook below it
+  reads "FIXED: Added e.Next()", so one of the pair was fixed and this one was
+  missed). It is registered from `Setup`'s `OnBootstrap` callback rather than
+  from `Setup` itself, which puts it AFTER every `hooks.Register*` call — so
+  main.go is safe only because it binds before `app.Start()` bootstraps. Anything
+  binding later gets silence: no handler, no error, no log. This cost real time
+  — `RegisterManagedOrgExports` called on an already-bootstrapped test app
+  provisioned nothing, and a `Priority: -9999` bind was the only thing that
+  fired. `internal/testutil` therefore registers it in the harness, before
+  Bootstrap, exactly where main.go does; a test that needs an `organizations`
+  hook must do the same rather than binding on the app it is handed.
 - **pb-nats trigger fields only fire from a route if pb-nats watches them on the
   MODEL hook.** `regenerate`, `revoke`, `rotate_keys`, `add_signing_key` and
   `remove_signing_key` are all handled in `pb-nats internal/sync/manager.go`. Those
@@ -797,6 +827,7 @@ Keep it in step with the table above.
 - `internal/health/` - readiness engine shared by both binaries: check registry, background prober, and the unauthenticated NATS reachability (`DialInfo`) + operator-trust (`CheckCreds`) probes
 - `internal/metrics/` - Prometheus exposition shared by both binaries, plus the optional Bearer/Basic scrape token
 - `hooks/observability.go` + `hooks/readiness.go` + `hooks/metrics.go` - the Control Plane's `/api/ready` + `/metrics` routes, its checks, and its collectors
+- `ui/src/utils/managedExports.ts` - names the platform-provisioned export/import pair so the console can present them read-only; mirrors `managedExportName` in `hooks/managed_org_exports.go`, and `hooks/managed_org_exports_test.go` reads this file to keep the two honest
 - `internal/leafsync/observe.go` - the edge's own `/ready` + `/metrics`, reading the leaf's loopback monitoring port; the only place per-site health is actually visible
 - `cmd/leaf-sync/` + `internal/leafsync/` - Edge agent (config bootstrap + KV sync); see `cmd/leaf-sync/README.md`
 - `ui/src/stores/auth.ts` - Authentication and organization context

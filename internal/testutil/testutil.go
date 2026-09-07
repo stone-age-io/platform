@@ -127,6 +127,29 @@ func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
 		NatsMaxPayload:               1048576,
 		NebulaDefaultCAValidityYears: 5,
 	})
+	// Registered here rather than in the test that needs it, and the ORDER IS
+	// LOAD-BEARING -- it must be bound before app.Bootstrap() below.
+	//
+	// pb-tenancy defers its own hook registration to OnBootstrap (tenancy.go
+	// Setup -> tenancy.Initialize -> registerHooks), and its organizations
+	// AfterCreateSuccess handler is `return autoCreateOwnerMembership(...)` with
+	// no e.Next() -- so it TERMINATES the chain. Every handler on that event
+	// bound after Bootstrap therefore never runs, silently. A test that called
+	// RegisterManagedOrgExports on the app this function returns got no export,
+	// no import, and no error; a priority -9999 bind was the only thing that
+	// fired. main.go is safe because it binds before app.Start() bootstraps, and
+	// this harness is only equivalent to main.go if it does the same.
+	//
+	// Quiet for tests that do not care: syncManaged only provisions when
+	// organizations.managed is true, and its removal path is silent when there
+	// is nothing to remove.
+	hooks.RegisterManagedOrgExports(app, hooks.ManagedOrgExportsOptions{
+		OrgCollection:     tenancyOpts.OrganizationsCollection,
+		AccountCollection: natsOpts.AccountCollectionName,
+		ExportCollection:  natsOpts.ExportCollectionName,
+		ImportCollection:  natsOpts.ImportCollectionName,
+		ExportSubject:     "helpdesk.>", // main.go's default for nats.managed_export_subject
+	})
 	hooks.RegisterLeafNodeProvisioning(app, hooks.LeafNodeProvisioningOptions{
 		LeafNodeCollection:    "leaf_nodes",
 		NatsAccountCollection: natsOpts.AccountCollectionName,

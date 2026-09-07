@@ -202,6 +202,22 @@ and this file starts where the versioned releases do.
   `nats export --output ./nats-config/`; that advice was correct all along and now
   works as written.
 
+- **The managed organization's NATS export and import are read-only in the
+  console.** Flagging an org `managed` provisions a `helpdesk-events` export on
+  its account and a matching import on the operator hub, and `ensureManagedExports`
+  reconciles them on every save of that organization. The console offered Edit
+  and Delete on both, so a change to the subject was accepted, re-signed into the
+  account JWT by pb-nats, and then silently reverted on the next org save;
+  deleting one had it reappear.
+
+  Both now show a **Managed** badge with View instead of Edit or Delete, and a
+  banner naming the fields that actually get rewritten and pointing at the real
+  control — clearing `managed` on the organization, which removes the pair
+  together. Not a permission: an owner still has write access to the collection.
+  The banner names `subject`, `type` and `description` rather than claiming the
+  record is frozen, because `token_req`, `advertise` and `allow_trace` are
+  create-only and an edit to those would persist.
+
 - **Seeded `device` and `gateway` NATS roles could not carry the contracts their
   own thing types declare.** Four separate gaps, all invisible in the console —
   every screen renders correctly and the JWT signs cleanly; the permission is
