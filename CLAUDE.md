@@ -443,6 +443,32 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
       trust us" have different fixes. It reads `creds_file`, not the seed:
       that column is not one at-rest encryption covers, so no decryption code is
       duplicated from pb-nats.
+    - **Nebula certificate expiry is the one credential the Control Plane MAY
+      check, and the exception proves the rule.** Every other expiring secret
+      lives where this process cannot look; Nebula certificates it signed itself
+      and stores, expiry included, in its own database (`hooks/cert_expiry.go`).
+      Three decisions worth keeping: it **warns, never fails** — readiness
+      failing means "stop sending me traffic", so a lapsed *device* certificate
+      must not pull the console out of a load balancer (same shape as an
+      islanded edge warning); the metric is an **absolute Unix timestamp, not a
+      countdown** (`stone_age_certificate_expiry_seconds`), because a "days
+      remaining" gauge is stale the moment it is stored and every retained
+      sample drifts further from the truth — write the horizon into the alert
+      (`expiry - time() < 30*86400`) instead of freezing it into the exporter;
+      and it is the **soonest per kind, not one series per certificate**, since
+      per-host series would need an identifying label, which is a per-tenant
+      device inventory on an endpoint that is open by default. Host certificates
+      count `active = true` only — a decommissioned device's lapsed
+      certificate is not a fault. The check and the collector share one scan
+      function so a green tick can never sit beside a metric reporting an
+      expiry; `TestCertCheckAndMetricAgree` is what holds that.
+    - **`expires_at` cannot be set by a fixture — pb-nebula overwrites it.**
+      Its create hook signs the certificate and derives the column from
+      `validity_years` (an integer, so "expired last week" is not a state the
+      signing path can be asked for at all). A test that `Set`s it before
+      `Save` gets a healthy one-year expiry back and then "passes" against a
+      check reporting everything fine. `hooks/cert_expiry_test.go` writes the
+      column with SQL after create, and says why.
     - **The prober caches; the endpoint never runs checks.** A probe would
       otherwise trigger a NATS dial per request, and a slow check would read as
       unready and kill a healthy container. `OnRefresh` (every probe) feeds the
@@ -845,6 +871,7 @@ you, so pushing an absolute one would make the login form an open redirect (the
 - `internal/health/` - readiness engine shared by both binaries: check registry, background prober, and the unauthenticated NATS reachability (`DialInfo`) + operator-trust (`CheckCreds`) probes
 - `internal/metrics/` - Prometheus exposition shared by both binaries, plus the optional Bearer/Basic scrape token
 - `hooks/observability.go` + `hooks/readiness.go` + `hooks/metrics.go` - the Control Plane's `/api/ready` + `/metrics` routes, its checks, and its collectors
+- `hooks/cert_expiry.go` - the one scan behind both the `nebula_cert_expiry` check and the `stone_age_certificate*` metrics, so the two cannot disagree
 - `ui/src/utils/managedExports.ts` - names the platform-provisioned export/import pair so the console can present them read-only; mirrors `managedExportName` in `hooks/managed_org_exports.go`, and `hooks/managed_org_exports_test.go` reads this file to keep the two honest
 - `internal/leafsync/observe.go` - the edge's own `/ready` + `/metrics`, reading the leaf's loopback monitoring port; the only place per-site health is actually visible
 - `cmd/leaf-sync/` + `internal/leafsync/` - Edge agent (config bootstrap + KV sync); see `cmd/leaf-sync/README.md`

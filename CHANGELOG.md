@@ -175,6 +175,30 @@ and this file starts where the versioned releases do.
   `core.BaseApp.RecordQuery` — invisible to a long-lived server, which outlives
   every timer.
 
+- **Nebula certificate expiry is reported without anyone logging in.** The list
+  badges only helped someone already on the right screen, and a CA minted with a
+  ten-year validity lapses long after everyone who knew about it stopped
+  thinking about it — taking every host in the mesh with it, and taking away
+  the out-of-band path you would have used to fix it.
+
+  `GET /api/ready` gains a `nebula_cert_expiry` check, and `GET /metrics` gains
+  `stone_age_certificate_expiry_seconds{kind}` plus `stone_age_certificates`,
+  `_expired` and `_expiring` counts. Three decisions worth knowing: the check
+  **warns and never fails**, because readiness failing means "stop sending this
+  node traffic" and a lapsed *device* certificate is no reason to pull the
+  console out of a load balancer; the gauge is an **absolute Unix timestamp, not
+  a countdown**, so the horizon lives in the alert
+  (`expiry - time() < 30 * 86400`) rather than being frozen into the exporter
+  and going stale in every retained sample; and it reports the **soonest per
+  kind, not one series per certificate**, because a per-host series would need an
+  identifying label, which is a per-tenant device inventory on an endpoint that
+  is open by default. Host certificates count `active = true` rows only.
+
+  This is the one expiring credential the Control Plane can check first-hand —
+  it signed these certificates and stores them. The check and the collector share
+  one scan function, so a green tick can never sit beside a metric reporting an
+  expiry.
+
 ### Fixed
 
 - **`nats export --output` wrote nothing when combined with `--config`** (pb-nats

@@ -30,8 +30,9 @@ import (
 // logged-in user's own in-account credential) and exported by leaf-sync itself
 // on the edge. Alerting on this series as though it were availability would
 // produce an alert that can never fire.
-func registerPlatformMetrics(app *pocketbase.PocketBase, set *metrics.Set, opts ObservabilityOptions) {
+func registerPlatformMetrics(app core.App, set *metrics.Set, opts ObservabilityOptions) {
 	set.Registry.MustRegister(&dbCollector{app: app, opts: opts})
+	set.Registry.MustRegister(&certCollector{app: app, opts: opts})
 	if opts.EmbeddedNATS != nil {
 		set.Registry.MustRegister(&embeddedNATSCollector{server: opts.EmbeddedNATS})
 	}
@@ -120,7 +121,6 @@ func (c *dbCollector) Collect(ch chan<- prometheus.Metric) {
 		"leaf_nodes",
 		"thing_types",
 		"location_types",
-		"message_schemas",
 		c.opts.NatsAccountCollection,
 		c.opts.NatsUserCollection,
 		c.opts.NebulaHostCollection,
@@ -163,6 +163,87 @@ func databaseBytes(app core.App) (int64, bool) {
 		found = true
 	}
 	return total, found
+}
+
+// ------------------------------------------------------ certificate expiry
+
+// certCollector publishes when the Nebula certificates this platform signed
+// run out.
+//
+// A TIMESTAMP, NOT A COUNTDOWN. The gauge is the absolute expiry as Unix
+// seconds, which is the node_exporter convention and the only form that stays
+// correct between scrapes: a "days remaining" gauge is stale the moment it is
+// stored, and its recorded value drifts further from the truth the longer a
+// series is retained. Alert with the horizon written into the query --
+// `stone_age_certificate_expiry_seconds - time() < 30 * 86400` -- so the
+// threshold lives with the alert instead of being frozen into the exporter.
+//
+// THE EARLIEST, NOT ONE SERIES PER CERTIFICATE. One number per kind. A series
+// per host would be a time series per device, and it would have to be labelled
+// with something identifying to be useful -- which is a per-tenant device
+// inventory published on an endpoint that is open by default. The soonest
+// expiry is also the only one an alert wants: fix that one and the next becomes
+// the soonest.
+type certCollector struct {
+	app  core.App
+	opts ObservabilityOptions
+}
+
+var (
+	descCertExpiry = prometheus.NewDesc(
+		"stone_age_certificate_expiry_seconds",
+		"Unix timestamp at which the SOONEST-expiring Nebula certificate of this kind expires. "+
+			"Alert relative to time(), e.g. expiry - time() < 30*86400. Absent when no certificates of the kind exist.",
+		[]string{"kind"}, nil,
+	)
+	descCertExpired = prometheus.NewDesc(
+		"stone_age_certificates_expired",
+		"Nebula certificates of this kind whose expiry has passed. A host certificate here is a device that "+
+			"cannot join the overlay; a CA here invalidates every certificate under it.",
+		[]string{"kind"}, nil,
+	)
+	descCertExpiring = prometheus.NewDesc(
+		"stone_age_certificates_expiring",
+		"Nebula certificates of this kind expiring within the console's warning window, not counting ones already expired.",
+		[]string{"kind"}, nil,
+	)
+	descCertTotal = prometheus.NewDesc(
+		"stone_age_certificates",
+		"Nebula certificates of this kind that are in service. Host certificates count only active = true rows, "+
+			"since a decommissioned device's lapsed certificate is not a fault.",
+		[]string{"kind"}, nil,
+	)
+)
+
+func (c *certCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- descCertExpiry
+	ch <- descCertExpired
+	ch <- descCertExpiring
+	ch <- descCertTotal
+}
+
+func (c *certCollector) Collect(ch chan<- prometheus.Metric) {
+	sums, err := nebulaCertSummaries(c.app, c.opts, time.Now())
+	if err != nil {
+		// Emit nothing, exactly as dbCollector skips a collection it could not
+		// count. Zeros here would read as "no certificates are expiring",
+		// which is the reassuring version of "we could not look".
+		return
+	}
+	g := func(d *prometheus.Desc, v float64, kind string) {
+		ch <- prometheus.MustNewConstMetric(d, prometheus.GaugeValue, v, kind)
+	}
+	for _, s := range sums {
+		g(descCertTotal, float64(s.Total), s.Kind)
+		g(descCertExpired, float64(s.Expired), s.Kind)
+		g(descCertExpiring, float64(s.Expiring), s.Kind)
+		// Only when there is one. An absent series is a question Prometheus can
+		// answer with absent(); a zero timestamp is 1970, which every
+		// "expires soon" alert would fire on forever.
+		if !s.Earliest.IsZero() {
+			g(descCertExpiry, float64(s.Earliest.Unix()), s.Kind)
+		}
+	}
 }
 
 // ---------------------------------------------------------- embedded NATS

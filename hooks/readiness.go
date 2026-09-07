@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
 
 	"platform/internal/health"
@@ -26,7 +25,7 @@ const dialTimeout = 3 * time.Second
 // accident: the Control Plane holds the operator and $SYS, and has no
 // credential inside any organization's account, so per-site liveness is
 // deliberately absent from this list.
-func registerPlatformChecks(app *pocketbase.PocketBase, reg *health.Registry, opts ObservabilityOptions) {
+func registerPlatformChecks(app core.App, reg *health.Registry, opts ObservabilityOptions) {
 	reg.Register("database", func(ctx context.Context) health.Result {
 		var one int
 		err := app.DB().NewQuery("SELECT 1").Row(&one)
@@ -169,6 +168,61 @@ func registerPlatformChecks(app *pocketbase.PocketBase, reg *health.Registry, op
 			)
 		}
 		return health.OK("the NATS server trusts this platform's operator")
+	})
+
+	// Nebula certificates this process signed and stores. See hooks/cert_expiry.go
+	// for why the Control Plane may check these when it may not check a tenant's
+	// KV, and why an expiry warns rather than fails.
+	reg.Register("nebula_cert_expiry", func(ctx context.Context) health.Result {
+		sums, err := nebulaCertSummaries(app, opts, time.Now())
+		if err != nil {
+			return health.Skip(fmt.Sprintf("could not read certificate expiry: %v", err))
+		}
+
+		var total, expired, expiring, unreadable int
+		var earliest time.Time
+		for _, s := range sums {
+			total += s.Total
+			expired += s.Expired
+			expiring += s.Expiring
+			unreadable += s.NoExpiry
+			if !s.Earliest.IsZero() && (earliest.IsZero() || s.Earliest.Before(earliest)) {
+				earliest = s.Earliest
+			}
+		}
+
+		// No certificates at all means Nebula is not in use here, which is a
+		// check that did not apply rather than a clean bill of health. Skipped
+		// ranks below ok for exactly this reason.
+		if total == 0 {
+			return health.Skip("no Nebula certificates issued")
+		}
+
+		if expired > 0 {
+			return health.Warn(
+				fmt.Sprintf("%s expired (%d of %d certificates)", certExpiryPhrase(sums, func(s certSummary) int { return s.Expired }), expired, total),
+				"Re-issue them: a host with a lapsed certificate cannot join the overlay, and an expired CA "+
+					"invalidates every certificate under it. Raise validity_years when re-issuing so the next "+
+					"lapse is not on the same schedule.",
+			)
+		}
+		if expiring > 0 {
+			return health.Warn(
+				fmt.Sprintf("%s expiring within %d days (soonest %s)",
+					certExpiryPhrase(sums, func(s certSummary) int { return s.Expiring }),
+					int(certExpiryWindow.Hours()/24), earliest.UTC().Format(time.DateOnly)),
+				"Re-issue before the date above. Nebula certificates fail all at once and silently — "+
+					"nothing retries, and the devices simply stop appearing.",
+			)
+		}
+		if unreadable > 0 {
+			return health.Warn(
+				fmt.Sprintf("%d certificate(s) have no readable expiry date", unreadable),
+				"A certificate whose expires_at is empty is not one known to be valid. Re-issue it, "+
+					"or check whether it was created outside the normal provisioning path.",
+			)
+		}
+		return health.OK(fmt.Sprintf("%d valid, soonest expiry %s", total, earliest.UTC().Format(time.DateOnly)))
 	})
 
 	// Configuration warnings. Neither blocks serving, and both describe a

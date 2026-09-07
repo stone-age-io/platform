@@ -509,6 +509,7 @@ func main() {
 		NatsAccountCollection: natsOptions.AccountCollectionName,
 		NatsUserCollection:    natsOptions.UserCollectionName,
 		NebulaHostCollection:  nebulaOptions.HostCollectionName,
+		NebulaCACollection:    nebulaOptions.CACollectionName,
 		AuditCollection:       auditOptions.CollectionName,
 		NatsServerURL:         natsOptions.NATSServerURL,
 		NatsWebsocketURLs:     natsWebsocketURLs,

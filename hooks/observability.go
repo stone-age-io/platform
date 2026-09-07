@@ -25,6 +25,7 @@ type ObservabilityOptions struct {
 	NatsAccountCollection string
 	NatsUserCollection    string
 	NebulaHostCollection  string
+	NebulaCACollection    string
 	AuditCollection       string
 
 	// NatsServerURL is nats.server_url: the TCP address THIS process dials.
