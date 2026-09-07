@@ -162,11 +162,27 @@ const router = createRouter({
 // Vue Router 5 deprecates the next() callback (VUE_ROUTER_R0025) in favour of
 // returning the decision: a path string redirects, false aborts, and returning
 // nothing lets the navigation through.
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const authStore = useAuthStore()
 
+  // Wait for auth hydration before reading anything off the store.
+  //
+  // Installing the router starts the initial navigation immediately, so without
+  // this the FIRST guard run of a cold load raced main.ts's hydration: the token
+  // is in localStorage and `user` is set synchronously, so isAuthenticated
+  // passed -- but memberships arrive over the network, so every capability below
+  // read false and every gated route bounced to '/'. That made deep links and
+  // browser-refresh-on-any-gated-page silently land on the dashboard, while the
+  // sidebar (reading the same capabilities, a tick later) showed the very link
+  // that had just been refused.
+  //
+  // Memoized in the store, so this is free on every navigation after the first.
+  await authStore.initializeFromAuth()
+
   if (to.meta.requiresAuth !== false && !authStore.isAuthenticated) {
-    return '/login'
+    // Send them where they were going once they are signed in, rather than
+    // dropping them on the dashboard -- the whole point of a working deep link.
+    return to.fullPath === '/' ? '/login' : { path: '/login', query: { redirect: to.fullPath } }
   }
 
   // Dashboard users reach the Visualizer at '/' and their own settings, nothing

@@ -75,9 +75,23 @@ async function handleOAuthLogin(provider: string) {
 function redirectUser() {
   if (authStore.memberships.length === 0 && !authStore.isSuperAdmin) {
     router.push('/accept-invite')
-  } else {
-    router.push('/')
+    return
   }
+
+  // Honour ?redirect= from the router guard, so following a deep link while
+  // signed out lands where you were going instead of on the dashboard.
+  //
+  // Only a relative in-app path is accepted. A raw query value is attacker
+  // supplied -- it arrives in a URL someone can send you -- and pushing an
+  // absolute one would make this login form an open redirect. The '//' check
+  // is not redundant: '//evil.test/x' is protocol-relative, so a browser reads
+  // it as a host, not a path.
+  const target = route.query.redirect
+  if (typeof target === 'string' && target.startsWith('/') && !target.startsWith('//')) {
+    router.push(target)
+    return
+  }
+  router.push('/')
 }
 
 /**

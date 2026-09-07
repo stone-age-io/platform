@@ -774,6 +774,24 @@ UI side: the capability map lives in `ui/src/stores/auth.ts` (`can.*`); the rout
 guards on `meta.requiresCapability` and the sidebar hides what a role can't reach.
 Keep it in step with the table above.
 
+**The router guard MUST await `authStore.initializeFromAuth()` before reading a
+capability.** `app.use(router)` starts resolving the initial navigation the
+moment the router is installed — before main.go's next line even calls the
+hydration it deliberately awaits pre-mount. `user` is set synchronously, so
+`isAuthenticated` passed and nobody was bounced to `/login` (which is the bug
+main.ts's comment describes fixing), but `memberships` arrive over the network,
+so every capability read false on that first pass and **every gated route
+redirected to `/`**. The symptom is worth recognising: a deep link or a plain
+browser refresh lands on the dashboard while the sidebar — reading the same
+capabilities a tick later — cheerfully shows the link you were just refused.
+Hydration is memoized in the store so the guard and main.ts share one in-flight
+promise; that is deliberately not "call it earlier in main.ts", because an
+ordering convention between two files is exactly what broke. The guard also
+carries the intended path through as `?redirect=`, and `LoginView` accepts it
+only when it is a relative in-app path — it arrives in a URL someone can send
+you, so pushing an absolute one would make the login form an open redirect (the
+`//` case is not redundant: `//evil.test/x` is protocol-relative).
+
 ## Testing
 
 - `go test ./...` — Go unit tests (`internal/leafsync` has the bulk of them).

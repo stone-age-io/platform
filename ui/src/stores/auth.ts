@@ -87,7 +87,7 @@ export const useAuthStore = defineStore('auth', () => {
       //
       // This is NOT a read boundary and must not be mistaken for one. The read
       // rules on things, locations, thing_types, location_types,
-      // message_schemas and leaf_nodes are org-scoped with no role check, so
+      // thing_type_operations and leaf_nodes are org-scoped with no role check, so
       // every role in the org — `dashboard` included — can already read all of
       // it over the API. What this capability decides is which screens the
       // console navigates to. If a read ever needs to be a boundary, it has to
@@ -270,7 +270,34 @@ export const useAuthStore = defineStore('auth', () => {
     await loadContext()
   }
   
-  async function initializeFromAuth() {
+  // Hydration is memoized so the router guard and main.ts share ONE in-flight
+  // promise regardless of which asks first.
+  //
+  // THE BUG THIS FIXES: app.use(router) starts resolving the initial navigation
+  // as soon as the router is installed -- before main.ts gets to the next line
+  // and calls this. `user` is set synchronously below, so isAuthenticated was
+  // already true and nobody was bounced to /login (main.ts's comment describes
+  // fixing exactly that), but `memberships` needs a network round-trip, so
+  // every capability in `can` still read false. The guard therefore denied
+  // every capability-gated route on a cold load: deep links AND a plain browser
+  // refresh both landed on the dashboard, silently, with the sidebar happily
+  // showing the link you had just been refused.
+  //
+  // Memoized rather than "call it earlier in main.ts", because an ordering
+  // convention between two files is exactly what broke -- this cannot be got
+  // wrong by whoever edits main.ts next.
+  //
+  // No reset on logout: logout() clears pb.authStore, so a later await resolves
+  // instantly against an empty store and the guard sends you to /login, which
+  // is correct. login() populates the store itself and does not need this.
+  let hydration: Promise<void> | null = null
+
+  function initializeFromAuth(): Promise<void> {
+    hydration ??= hydrate()
+    return hydration
+  }
+
+  async function hydrate() {
     if (pb.authStore.isValid && pb.authStore.model) {
       user.value = pb.authStore.model as unknown as User
       isSuperAdmin.value = pb.authStore.model.collectionName === '_superusers'

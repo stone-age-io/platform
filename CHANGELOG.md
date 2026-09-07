@@ -255,6 +255,24 @@ and this file starts where the versioned releases do.
   All four were found by running the thing: four access-controllers against a
   `serve --nats` deployment, each authenticating as its own seeded Thing.
 
+- **Deep links and browser refresh worked on `/` and `/settings` only.**
+  `app.use(router)` starts resolving the initial navigation the moment the router
+  is installed — before `main.ts` reaches the auth hydration it deliberately
+  awaits before mounting. `user` is set synchronously from the stored token, so
+  `isAuthenticated` passed and nobody was sent to `/login`; `memberships` arrive
+  over the network, so **every capability read false on that first pass and every
+  capability-gated route redirected to the dashboard.** Clicking a sidebar link
+  worked, because by then the store was populated — which is what made this
+  look like anything other than a bug: the sidebar showed the link you had just
+  been refused.
+
+  Hydration is now memoized in the auth store and awaited by the guard.
+  Deliberately not "call it earlier in `main.ts`": an ordering convention between
+  two files is exactly what broke. The guard also carries the intended path
+  through as `?redirect=`, so following a deep link while signed out now lands
+  where you were going; `LoginView` accepts that value only when it is a
+  relative in-app path, since it arrives in a URL someone else can send you.
+
 ## [0.4.0] - 2026-08-30
 
 The organization code, and the two things that needed one. `organizations.code`
