@@ -126,7 +126,6 @@ const menuItems = computed(() => {
       children: [
         { label: 'Thing Types', path: '/things/types' },
         { label: 'Thing Operations', path: '/things/operations' },
-        { label: 'Message Schemas', path: '/things/schemas' },
         { label: 'Location Types', path: '/locations/types' },
       ]
     })
@@ -165,7 +164,7 @@ const menuItems = computed(() => {
 })
 
 // Paths that belong to the "Types" parent menu but don't literally contain "/types".
-const TYPES_CHILD_PATHS = ['/things/operations', '/things/schemas']
+const TYPES_CHILD_PATHS = ['/things/operations']
 
 const isUnderTypes = (p: string) =>
   p.includes('/types') || TYPES_CHILD_PATHS.some(cp => p.startsWith(cp))

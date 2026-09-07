@@ -78,7 +78,6 @@ func TestSeedPopulatesEveryCollectionItClaimsTo(t *testing.T) {
 		{"memberships", 13},
 		{"location_types", 13},
 		{"locations", 25},
-		{"message_schemas", 21},
 		{"thing_type_operations", 35},
 		{"thing_types", 22},
 		{"things", testThings},
@@ -571,17 +570,16 @@ func TestTheContractGraphIsWhole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	withSchema := 0
-	for _, op := range ops {
-		if id := op.GetString("schema"); id != "" {
-			if _, err := app.FindRecordById("message_schemas", id); err != nil {
-				t.Errorf("operation %q points at a missing schema", op.GetString("name"))
-			}
-			withSchema++
-		}
+	if len(ops) == 0 {
+		t.Fatal("no operations were seeded")
 	}
-	if withSchema == 0 {
-		t.Error("no operation is linked to a message schema")
+	// Every operation needs a subject suffix: it is the half of the subject the
+	// Publisher widget appends to its Thing Type's prefix, and an empty one
+	// resolves to a subject that silently addresses the prefix itself.
+	for _, op := range ops {
+		if op.GetString("subject_suffix") == "" {
+			t.Errorf("operation %q has no subject_suffix", op.GetString("name"))
+		}
 	}
 
 	types, err := app.FindAllRecords("thing_types")
@@ -590,9 +588,6 @@ func TestTheContractGraphIsWhole(t *testing.T) {
 	}
 	linked := 0
 	for _, tt := range types {
-		if tt.GetString("nats_role") == "" {
-			t.Errorf("thing type %q has no default NATS role", tt.GetString("code"))
-		}
 		if tt.GetString("subject_prefix") == "" {
 			t.Errorf("thing type %q has no subject prefix", tt.GetString("code"))
 		}
@@ -605,7 +600,7 @@ func TestTheContractGraphIsWhole(t *testing.T) {
 	}
 }
 
-// A thing type's default NATS role has to be able to carry that type's own
+// A thing type's intended NATS role has to be able to carry that type's own
 // contract. Nothing in this platform checks that at runtime: a role is a set of
 // subject patterns on one screen, a thing type is a subject prefix plus a list
 // of operations on another, and the credential minted from the pair is only
@@ -621,65 +616,89 @@ func TestTheContractGraphIsWhole(t *testing.T) {
 //
 // Both failures are invisible in the console. Every screen renders correctly and
 // the JWT signs cleanly; the permission is simply absent from it.
+//
+// WHY THIS READS FIXTURES AND NOT RECORDS. It used to resolve each type's role
+// through thing_types.nats_role. That column was dropped -- no hook, route, or
+// screen in the platform ever read it, so it was a copy of fixture data that
+// only this test consumed. The pairing itself is still worth asserting: it is
+// what an operator does by hand when minting a credential for a device of a
+// given type, and it is the closest thing here to deriving permissions from a
+// contract. So the pairing is read from ThingTypeFixture.Role, which is where it
+// was always authored, and the permissions from RoleTemplates, which seedNatsRoles
+// writes verbatim into every org. That makes this a check on the fixture data's
+// internal coherence, which is exactly what it was checking before, minus a
+// database round-trip that could only ever have echoed it back.
 func TestEveryThingTypeCanSpeakItsOwnContract(t *testing.T) {
-	app := shared
-
-	types, err := app.FindAllRecords("thing_types")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(types) == 0 {
-		t.Fatal("no thing types were seeded")
+	if len(demoseed.ThingTypeFixtures) == 0 {
+		t.Fatal("no thing type fixtures")
 	}
 
 	checked := 0
-	for _, tt := range types {
-		code := tt.GetString("code")
-
-		role, err := app.FindRecordById("nats_roles", tt.GetString("nats_role"))
-		if err != nil {
-			t.Fatalf("thing type %q: default role: %v", code, err)
+	for _, ttf := range demoseed.ThingTypeFixtures {
+		if ttf.Role == "" {
+			t.Errorf("thing type %q names no default NATS role", ttf.Code)
+			continue
 		}
-		var pub, sub []string
-		if err := role.UnmarshalJSONField("publish_permissions", &pub); err != nil {
-			t.Fatalf("role %q publish_permissions: %v", role.GetString("name"), err)
-		}
-		if err := role.UnmarshalJSONField("subscribe_permissions", &sub); err != nil {
-			t.Fatalf("role %q subscribe_permissions: %v", role.GetString("name"), err)
+		role := roleTemplateByName(ttf.Role)
+		if role == nil {
+			t.Errorf("thing type %q names role %q, which is not in roleTemplates", ttf.Code, ttf.Role)
+			continue
 		}
 
-		for _, opID := range tt.GetStringSlice("operations") {
-			op, err := app.FindRecordById("thing_type_operations", opID)
-			if err != nil {
-				t.Fatalf("thing type %q: operation %s: %v", code, opID, err)
+		for _, opName := range ttf.Operations {
+			op := operationFixtureByName(ttf.Org, opName)
+			if op == nil {
+				t.Errorf("thing type %q links operation %q, which is not in operations", ttf.Code, opName)
+				continue
 			}
-			subject := composeSubject(tt.GetString("subject_prefix"), op.GetString("subject_suffix"))
-			name := op.GetString("name")
+			subject := composeSubject(ttf.SubjectPrefix, op.SubjectSuffix)
 			checked++
 
 			// A responder needs the subject on subscribe and an inbox on publish;
 			// a requester needs the mirror image. Getting one half is the failure
 			// mode, because the half you have is the one that looks like it works.
-			switch op.GetString("capability") {
+			switch op.Capability {
 			case "publish":
-				requirePermission(t, code, name, "publish", subject, pub)
+				requirePermission(t, ttf.Code, opName, "publish", subject, role.Publish)
 			case "subscribe":
-				requirePermission(t, code, name, "subscribe", subject, sub)
+				requirePermission(t, ttf.Code, opName, "subscribe", subject, role.Subscribe)
 			case "reply":
-				requirePermission(t, code, name, "subscribe", subject, sub)
-				requirePermission(t, code, name, "publish", "_INBOX.abc123", pub)
+				requirePermission(t, ttf.Code, opName, "subscribe", subject, role.Subscribe)
+				requirePermission(t, ttf.Code, opName, "publish", "_INBOX.abc123", role.Publish)
 			case "request":
-				requirePermission(t, code, name, "publish", subject, pub)
-				requirePermission(t, code, name, "subscribe", "_INBOX.abc123", sub)
+				requirePermission(t, ttf.Code, opName, "publish", subject, role.Publish)
+				requirePermission(t, ttf.Code, opName, "subscribe", "_INBOX.abc123", role.Subscribe)
 			default:
-				t.Errorf("operation %q on %q has unknown capability %q",
-					name, code, op.GetString("capability"))
+				t.Errorf("operation %q on %q has unknown capability %q", opName, ttf.Code, op.Capability)
 			}
 		}
 	}
 	if checked == 0 {
 		t.Fatal("no thing type had any operation to check")
 	}
+}
+
+// roleTemplateByName finds a role template by name. RoleTemplates is one set
+// written into every org by seedNatsRoles, so the name alone identifies it.
+func roleTemplateByName(name string) *demoseed.RoleFixture {
+	for i := range demoseed.RoleTemplates {
+		if demoseed.RoleTemplates[i].Name == name {
+			return &demoseed.RoleTemplates[i]
+		}
+	}
+	return nil
+}
+
+// operationFixtureByName finds an operation within one org. Operation names are
+// unique per (organization, name) in the fixture set, matching the collection's
+// own unique index.
+func operationFixtureByName(org, name string) *demoseed.OperationFixture {
+	for i := range demoseed.OperationFixtures {
+		if demoseed.OperationFixtures[i].Org == org && demoseed.OperationFixtures[i].Name == name {
+			return &demoseed.OperationFixtures[i]
+		}
+	}
+	return nil
 }
 
 func requirePermission(t *testing.T, thingType, op, dir, subject string, patterns []string) {

@@ -107,7 +107,6 @@ type seeder struct {
 	roles     map[string]string // "<org>:<role name>" -> nats_roles id
 	locTypes  map[string]string // "<org>:<code>" -> location_types id
 	locations map[string]string // "<org>:<code>" -> locations id
-	schemas   map[string]string // schemaKey() -> message_schemas id
 	ops       map[string]string // "<org>:<name>" -> thing_type_operations id
 	thingType map[string]string // "<org>:<code>" -> thing_types id
 	things    map[string]string // "<org>:<code>" -> things id
@@ -132,7 +131,7 @@ func Run(app core.App, opts Options) (*Result, error) {
 
 		orgs: map[string]string{}, accounts: map[string]string{}, cas: map[string]string{},
 		networks: map[string]string{}, users: map[string]string{}, roles: map[string]string{},
-		locTypes: map[string]string{}, locations: map[string]string{}, schemas: map[string]string{},
+		locTypes: map[string]string{}, locations: map[string]string{},
 		ops: map[string]string{}, thingType: map[string]string{}, things: map[string]string{},
 	}
 
@@ -150,7 +149,6 @@ func Run(app core.App, opts Options) (*Result, error) {
 		{"memberships", s.seedMemberships},
 		{"location types", s.seedLocationTypes},
 		{"locations", s.seedLocations},
-		{"message schemas", s.seedMessageSchemas},
 		{"operations", s.seedOperations},
 		{"thing types", s.seedThingTypes},
 		{"overlay networks", s.seedNetworks},
@@ -529,46 +527,11 @@ func (s *seeder) seedLocations() error {
 	return nil
 }
 
-// ------------------------------------------------------------ message schemas
-
-func (s *seeder) seedMessageSchemas() error {
-	for _, sc := range messageSchemas {
-		orgID := s.orgs[sc.Org]
-		rec, _, err := s.ensure("message_schemas",
-			"organization = {:o} && namespace = {:ns} && name = {:n} && version = {:v}",
-			dbx.Params{"o": orgID, "ns": sc.Namespace, "n": sc.Name, "v": sc.Version},
-			func(r *core.Record) {
-				r.Set("organization", orgID)
-				r.Set("namespace", sc.Namespace)
-				r.Set("name", sc.Name)
-				r.Set("version", sc.Version)
-				r.Set("format", "json_schema")
-				r.Set("description", sc.Description)
-				r.Set("schema", sc.Schema)
-			})
-		if err != nil {
-			return err
-		}
-		s.schemas[schemaKey(sc.Org, sc.Namespace, sc.Name, sc.Version)] = rec.Id
-	}
-	return nil
-}
-
 // ----------------------------------------------------------------- operations
 
 func (s *seeder) seedOperations() error {
 	for _, op := range operations {
 		orgID := s.orgs[op.Org]
-
-		var schemaID string
-		if op.SchemaName != "" {
-			key := schemaKey(op.Org, op.SchemaNS, op.SchemaName, op.SchemaVersion)
-			id, ok := s.schemas[key]
-			if !ok {
-				return fmt.Errorf("operation %q references unknown schema %q", op.Name, key)
-			}
-			schemaID = id
-		}
 
 		rec, _, err := s.ensure("thing_type_operations", "organization = {:o} && name = {:n}",
 			dbx.Params{"o": orgID, "n": op.Name}, func(r *core.Record) {
@@ -577,9 +540,6 @@ func (s *seeder) seedOperations() error {
 				r.Set("capability", op.Capability)
 				r.Set("subject_suffix", op.SubjectSuffix)
 				r.Set("description", op.Description)
-				if schemaID != "" {
-					r.Set("schema", schemaID)
-				}
 			})
 		if err != nil {
 			return err

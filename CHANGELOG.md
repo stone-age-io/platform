@@ -11,7 +11,59 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+### Removed
+
+- **`message_schemas`, and the two dead fields on `thing_types`.** The Thing Type
+  "contract layer" was three collections; only two of them did anything. A
+  message schema was never validated against — there is no JSON Schema
+  validator anywhere in the platform, so an invalid schema document saved fine
+  and silently rendered zero fields — and its only reader was the Publisher
+  widget's payload form. It was mirrored into every edge node's local KV, where
+  `rule-router` and `agent` have no reference to it at all.
+
+  Gone with it: `thing_types.capabilities`, a hand-maintained union of its
+  operations' capabilities that nothing sorted, filtered or derived anything
+  from, and which could disagree with those operations with no warning
+  (`migrations/widen_capabilities.go` exists purely to have kept its vocabulary
+  in step — a data migration maintaining a cache with no readers); and
+  `thing_types.nats_role`, a relation read by zero lines of Go and zero lines of
+  TypeScript, added as the intended bridge from a contract to a NATS permission
+  set and never wired to one.
+
+  **`thing_type_operations` stays a collection.** Folding it into a JSON array on
+  `thing_types` was considered and rejected: an operation is a fixed four-key
+  shape, nothing validates a PocketBase JSON field, and adding a fifth key later
+  would move schema evolution from PocketBase to a hand-written data migration.
+  A fixed shape belongs in columns; a freeform document (`metadata_schema`)
+  belongs in JSON. Subject resolution — the one thing here that was earning its
+  keep — is untouched.
+
+- **The PocketBase widget.** A dashboard widget that listed collection records,
+  overlapping the inventory list views entirely and losing to them on
+  pagination, server-side search and sortable columns. Its distinctive use in the
+  config dropdown was `audit_logs`, which is operator-only, so it rendered empty
+  for every tenant. 17 widget types are now 16.
+
 ### Added
+
+- **"Infer from sample" on a type's inventory fields.** Paste one example record
+  as JSON on the Thing Type or Location Type form and every key becomes a typed
+  field to review. The helper came from `MessageSchemaFormView`; it was never
+  specific to that collection, so it moved to `ui/utils/inferSchema.ts` and
+  `MetadataSchemaCard` rather than being deleted with its old home.
+
+- **Two tests pinning what a schema migration can and cannot do.**
+  `migrations/field_removal_test.go` proves against the real importer that a
+  `schema.json` re-import with `deleteMissing=false` CANNOT remove a field — it
+  re-adds every live field the import did not carry by id — and that an explicit
+  `Fields.RemoveById` drops both the definition and the SQLite column. Every
+  `schema_update_*.go` in this repo is "re-import schema.json", so that gap
+  silently made a whole class of migration a no-op.
+  `migrations/drop_contract_layer_test.go` then runs the removal against a
+  database restored to the OLD schema, because a fresh one imports the thinned
+  `schema.json` and reaches the migration with nothing left to remove — a green
+  `migrate up` proves nothing about a removal. It also pins the step ordering:
+  PocketBase refuses to delete a collection while a relation still points at it.
 
 - **`demo-seed` — a deployment worth looking at, in one command.** A fresh
   bootstrap leaves an empty console, and most of what this platform does is only

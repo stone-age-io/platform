@@ -103,7 +103,7 @@ platform/
 │   │   │   ├── ui/         # Base UI primitives (BaseCard, ResponsiveList)
 │   │   │   ├── dashboard/  # Dashboard grid, widget containers, variables
 │   │   │   │   └── config/ # 23 widget configuration form components
-│   │   │   ├── widgets/    # 17 widget type components
+│   │   │   ├── widgets/    # 16 widget type components
 │   │   │   │   └── map/    # Map marker sub-components (detail, kv, publish, switch, text)
 │   │   │   ├── map/        # FloorPlanMap component
 │   │   │   ├── nats/       # NATS-specific components (KvDashboard)
@@ -281,7 +281,7 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
 ## Key Features
 
 1. **Authentication & Multi-Tenancy** - PocketBase auth, OAuth2, organization switching, RBAC
-2. **Dashboard/Visualizer** - Grid-based dashboards, 17 widget types, variable substitution
+2. **Dashboard/Visualizer** - Grid-based dashboards, 16 widget types, variable substitution
 3. **NATS Integration** - Account/User/Role provisioning, real-time WebSocket connection
 4. **Nebula Networks** - Certificate Authority, network, and host management
 5. **Resource Inventory** - Things and Locations with type definitions and metadata
@@ -578,7 +578,7 @@ Rules to follow when touching authorization:
   roles, two purposes — don't merge them to save an enum entry.
 - **Reads are org-scoped, not role-scoped, and that is deliberate.** Every read
   rule on `things`, `locations`, `thing_types`, `location_types`,
-  `message_schemas` and `leaf_nodes` is `organization = current_organization`
+  `thing_type_operations` and `leaf_nodes` is `organization = current_organization`
   with no role branch, so *every* role in an org — `dashboard` included — can
   `curl` the whole inventory. `viewer` therefore reads exactly what `member`
   reads; the difference between them is writes plus which screens
@@ -696,6 +696,25 @@ Rules to follow when touching authorization:
   `authRule: "active = true"` without the `UPDATE` in
   `schema_update_device_active_flag.go` would lock every already-provisioned
   device out of the API on deploy.
+- **A re-import cannot REMOVE a field, and no migration here could until 2026-09.**
+  `initial_schema.go` calls `ImportCollectionsByMarshaledJSON` with
+  `deleteMissing=false`, and in that mode `core.ImportCollections` walks the live
+  collection and re-adds every field the import did not carry by id
+  (`core/collection_import.go`). So deleting a field from `schema.json` and
+  re-importing logs its ✅ and changes nothing. Removal needs an explicit
+  `Fields.RemoveById` + `Save`, keyed on the ID rather than the name for the same
+  reason the importer is. `migrations/field_removal_test.go` pins both halves
+  against the real importer, and `schema_update_drop_message_schemas.go` is the
+  worked example — note that it deliberately does NOT re-import, since an import
+  placed after the removals would resurrect them in the same run. Step order
+  matters too: PocketBase refuses to delete a collection that still has relation
+  references pointing at it, so a relation INTO a doomed collection goes first.
+- **A removal migration cannot be tested by `migrate up`.** A fresh database
+  imports the already-thinned `schema.json`, so the migration reaches nothing to
+  remove and passes without touching anything. `drop_contract_layer_test.go`
+  restores the old shape first, through the real importer, from
+  `migrations/testdata/`. Any future field removal wants the same shape or its
+  green tick means nothing.
 - **A `schema.json` re-import silently keeps the LIVE field when a name matches
   and the id does not.** `core.ImportCollections` re-adds each existing field
   the import did not carry by id, and `FieldsList.add` then replaces the

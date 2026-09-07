@@ -21,7 +21,6 @@ export type WidgetType =
   | 'publisher'
   | 'status'
   | 'markdown'
-  | 'pocketbase'
   | 'scanner'
 
 export type DataSourceType = 'subscription' | 'consumer' | 'kv'
@@ -171,7 +170,7 @@ export interface PublisherWidgetConfig {
   timeout?: number
   // Thing Type Spec binding — when both are set, the widget resolves the
   // subject from the Thing's context and renders a form driven by the
-  // operation's linked message_schema instead of free-text JSON.
+  // operation's subject suffix, resolved against the Thing's context.
   thingId?: string
   thingTypeOperationId?: string
 }
@@ -196,16 +195,6 @@ export interface StatusWidgetConfig {
 
 export interface MarkdownWidgetConfig {
   content: string
-}
-
-// NEW: PocketBase Widget Config
-export interface PocketBaseWidgetConfig {
-  collection: string
-  filter?: string
-  sort?: string
-  limit?: number
-  refreshInterval?: number // in seconds
-  fields?: string // comma separated list
 }
 
 // --- Scanner Widget Config ---
@@ -436,7 +425,6 @@ export interface WidgetConfig {
   publisherConfig?: PublisherWidgetConfig
   statusConfig?: StatusWidgetConfig
   markdownConfig?: MarkdownWidgetConfig
-  pocketbaseConfig?: PocketBaseWidgetConfig
   kvtableConfig?: KvTableWidgetConfig
   streamtableConfig?: StreamTableWidgetConfig
   scannerConfig?: ScannerWidgetConfig
@@ -473,7 +461,6 @@ export const DEFAULT_WIDGET_SIZES: Record<WidgetType, { w: number; h: number }> 
   publisher: { w: 4, h: 4 },
   status: { w: 2, h: 2 },
   markdown: { w: 4, h: 4 },
-  pocketbase: { w: 6, h: 4 },
   kvtable: { w: 6, h: 4 },
   streamtable: { w: 6, h: 4 },
   scanner: { w: 4, h: 4 },
@@ -607,15 +594,6 @@ export function createDefaultWidget(type: WidgetType, position: { x: number; y: 
       base.title = '' // Empty title often looks better for static text
       base.markdownConfig = {
         content: '### Hello World\n\nThis is a **markdown** widget.\n\nYou can use variables like {{device_id}}.'
-      }
-      break
-    case 'pocketbase':
-      base.title = 'PocketBase Query'
-      base.pocketbaseConfig = {
-        collection: 'audit_logs',
-        limit: 10,
-        sort: '-created',
-        refreshInterval: 0
       }
       break
     case 'kvtable':

@@ -5,10 +5,17 @@ import { pb } from '@/utils/pb'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import BaseCard from '@/components/ui/BaseCard.vue'
-import RecordPicker from '@/components/common/RecordPicker.vue'
-import type { PickerOption } from '@/types/picker'
-import MessageSchemaFormView from '@/views/things/MessageSchemaFormView.vue'
-import type { ThingTypeCapability, ThingTypeOperation, MessageSchema } from '@/types/pocketbase'
+import type { ThingTypeCapability, ThingTypeOperation } from '@/types/pocketbase'
+
+// An operation is a verb a Thing Type declares: a name, what kind of exchange it
+// is, and the subject suffix it lands on. It used to carry a relation to a
+// message_schemas record describing its payload; that collection was dropped
+// (nothing validated against it, and only the Publisher widget's payload form
+// ever read it), so this form is now one card rather than two.
+//
+// Rendered both as a route and embedded in the Thing Type form's quick-add
+// modal, which is why `embedded` suppresses the heading and swaps navigation for
+// events.
 
 const props = defineProps<{
   embedded?: boolean
@@ -27,35 +34,15 @@ const toast = useToast()
 const id = route.params.id as string | undefined
 const isEdit = computed(() => !!id && !props.embedded)
 const loading = ref(false)
-const showSchemaModal = ref(false)
 
 const form = ref({
   name: '',
   capability: 'publish' as ThingTypeCapability,
   subject_suffix: '',
   description: '',
-  schema: '',
 })
 
 const availableCapabilities: ThingTypeCapability[] = ['publish', 'subscribe', 'request', 'reply']
-const availableSchemas = ref<MessageSchema[]>([])
-
-function schemaLabel(s: MessageSchema) {
-  return `${s.namespace}/${s.name}@${s.version}`
-}
-
-const schemaOptions = computed<PickerOption[]>(() =>
-  availableSchemas.value.map(s => ({ id: s.id, label: schemaLabel(s), sublabel: s.description }))
-)
-
-async function loadOptions() {
-  const orgId = authStore.currentOrgId
-  if (!orgId) { availableSchemas.value = []; return }
-  availableSchemas.value = await pb.collection('message_schemas').getFullList<MessageSchema>({
-    filter: `organization = "${orgId}"`,
-    sort: 'namespace,name,-version',
-  })
-}
 
 async function loadData() {
   if (!id || props.embedded) return
@@ -67,9 +54,8 @@ async function loadData() {
       capability: rec.capability,
       subject_suffix: rec.subject_suffix,
       description: rec.description || '',
-      schema: rec.schema || '',
     }
-  } catch (err: any) {
+  } catch {
     toast.error('Failed to load operation')
     router.push('/things/operations')
   } finally {
@@ -80,14 +66,13 @@ async function loadData() {
 async function submit() {
   loading.value = true
   try {
-    const payload = { ...form.value, schema: form.value.schema || null }
     let record: ThingTypeOperation
     if (isEdit.value) {
-      record = await pb.collection('thing_type_operations').update<ThingTypeOperation>(id!, payload)
+      record = await pb.collection('thing_type_operations').update<ThingTypeOperation>(id!, form.value)
       toast.success('Updated')
     } else {
       record = await pb.collection('thing_type_operations').create<ThingTypeOperation>({
-        ...payload,
+        ...form.value,
         organization: authStore.currentOrgId,
       })
       toast.success('Created')
@@ -113,20 +98,7 @@ function handleCancel() {
   }
 }
 
-function onSchemaCreated(record: MessageSchema) {
-  availableSchemas.value.push(record)
-  availableSchemas.value.sort((a, b) => {
-    const aKey = `${a.namespace}/${a.name}`
-    const bKey = `${b.namespace}/${b.name}`
-    if (aKey !== bKey) return aKey.localeCompare(bKey)
-    return b.version.localeCompare(a.version)
-  })
-  form.value.schema = record.id
-  showSchemaModal.value = false
-}
-
 onMounted(async () => {
-  await loadOptions()
   if (isEdit.value) await loadData()
 })
 </script>
@@ -144,80 +116,54 @@ onMounted(async () => {
     </div>
 
     <form @submit.prevent="submit" class="space-y-6">
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-        <BaseCard title="Identity">
-          <div class="space-y-4">
-            <div class="form-control">
-              <label class="label">Name *</label>
-              <input
-                v-model="form.name"
-                type="text"
-                class="input input-bordered font-mono"
-                required
-                pattern="[a-z0-9_]+"
-                placeholder="e.g. motion"
-              />
-              <label class="label"><span class="label-text-alt">Lowercase snake_case.</span></label>
-            </div>
-
-            <div class="form-control">
-              <label class="label">Capability *</label>
-              <select v-model="form.capability" class="select select-bordered" required>
-                <option v-for="cap in availableCapabilities" :key="cap" :value="cap">{{ cap }}</option>
-              </select>
-            </div>
-
-            <div class="form-control">
-              <label class="label">Description</label>
-              <textarea v-model="form.description" class="textarea textarea-bordered" rows="2"></textarea>
-            </div>
+      <BaseCard title="Operation">
+        <div class="space-y-4">
+          <div class="form-control">
+            <label class="label">Name *</label>
+            <input
+              v-model="form.name"
+              type="text"
+              class="input input-bordered font-mono"
+              required
+              pattern="[a-z0-9_]+"
+              placeholder="e.g. motion"
+            />
+            <label class="label"><span class="label-text-alt">Lowercase snake_case.</span></label>
           </div>
-        </BaseCard>
 
-        <BaseCard title="Subject & Schema">
-          <div class="space-y-4">
-            <div class="form-control">
-              <label class="label">Subject Suffix *</label>
-              <input
-                v-model="form.subject_suffix"
-                type="text"
-                class="input input-bordered font-mono"
-                required
-                placeholder="e.g. motion or cmd.ptz"
-              />
-              <label class="label">
-                <span class="label-text-alt">Appended to the Thing Type's subject prefix, separated by a dot.</span>
-              </label>
-            </div>
-
-            <div class="form-control">
-              <label class="label">Message Schema</label>
-              <RecordPicker
-                v-model="form.schema"
-                :options="schemaOptions"
-                title="Message schema"
-                placeholder="— None —"
-                clearable
-                clear-label="— None —"
-                empty-text="No message schemas defined yet."
-              >
-                <template #footer="{ close }">
-                  <button
-                    type="button"
-                    class="btn btn-sm btn-ghost w-full justify-start"
-                    @click="close(); showSchemaModal = true"
-                  >
-                    + New Message Schema
-                  </button>
-                </template>
-              </RecordPicker>
-              <label class="label">
-                <span class="label-text-alt">JSON Schema describing this operation's payload.</span>
-              </label>
-            </div>
+          <div class="form-control">
+            <label class="label">Capability *</label>
+            <select v-model="form.capability" class="select select-bordered" required>
+              <option v-for="cap in availableCapabilities" :key="cap" :value="cap">{{ cap }}</option>
+            </select>
+            <label class="label">
+              <span class="label-text-alt">
+                What kind of exchange this is. It is also what tells a request apart
+                from a reply on the same subject suffix.
+              </span>
+            </label>
           </div>
-        </BaseCard>
-      </div>
+
+          <div class="form-control">
+            <label class="label">Subject Suffix *</label>
+            <input
+              v-model="form.subject_suffix"
+              type="text"
+              class="input input-bordered font-mono"
+              required
+              placeholder="e.g. motion or cmd.ptz"
+            />
+            <label class="label">
+              <span class="label-text-alt">Appended to the Thing Type's subject prefix, separated by a dot.</span>
+            </label>
+          </div>
+
+          <div class="form-control">
+            <label class="label">Description</label>
+            <textarea v-model="form.description" class="textarea textarea-bordered" rows="2"></textarea>
+          </div>
+        </div>
+      </BaseCard>
 
       <div class="flex justify-end gap-2">
         <button type="button" class="btn btn-ghost" @click="handleCancel">Cancel</button>
@@ -227,18 +173,5 @@ onMounted(async () => {
         </button>
       </div>
     </form>
-
-    <dialog class="modal" :class="{ 'modal-open': showSchemaModal }">
-      <div class="modal-box w-11/12 max-w-3xl">
-        <div class="flex justify-between items-center mb-4">
-          <h3 class="font-bold text-lg">Quick Add Message Schema</h3>
-          <button class="btn btn-sm btn-circle btn-ghost" @click="showSchemaModal = false">&#x2715;</button>
-        </div>
-        <div v-if="showSchemaModal">
-          <MessageSchemaFormView :embedded="true" @success="onSchemaCreated" @cancel="showSchemaModal = false" />
-        </div>
-      </div>
-      <form method="dialog" class="modal-backdrop" @click="showSchemaModal = false"><button>close</button></form>
-    </dialog>
   </div>
 </template>

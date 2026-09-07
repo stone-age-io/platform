@@ -1,0 +1,201 @@
+[
+  {
+    "id": "pbc_1612162572",
+    "listRule": "// Users see their active organization's schemas; a leaf node mirrors its own organization's schemas.\n(@request.auth.collectionName = \"users\" && \norganization = @request.auth.current_organization) || \n(@request.auth.collectionName = \"leaf_nodes\" && organization = @request.auth.organization)",
+    "viewRule": "// Users see their active organization's schemas; a leaf node mirrors its own organization's schemas.\n(@request.auth.collectionName = \"users\" && \norganization = @request.auth.current_organization) || \n(@request.auth.collectionName = \"leaf_nodes\" && organization = @request.auth.organization)",
+    "createRule": "@request.auth.collectionName = \"users\" && \n@request.body.organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n (@request.auth.memberships_via_user.role ?= \"owner\" || @request.auth.memberships_via_user.role ?= \"admin\"))",
+    "updateRule": "organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n (@request.auth.memberships_via_user.role ?= \"owner\" || @request.auth.memberships_via_user.role ?= \"admin\")) && \n@request.body.organization:changed = false",
+    "deleteRule": "organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n (@request.auth.memberships_via_user.role ?= \"owner\" || @request.auth.memberships_via_user.role ?= \"admin\"))",
+    "name": "message_schemas",
+    "type": "base",
+    "fields": [
+      {
+        "autogeneratePattern": "[a-z0-9]{15}",
+        "hidden": false,
+        "id": "text3208210256",
+        "max": 15,
+        "min": 15,
+        "name": "id",
+        "pattern": "^[a-z0-9]+$",
+        "presentable": false,
+        "primaryKey": true,
+        "required": true,
+        "system": true,
+        "type": "text"
+      },
+      {
+        "cascadeDelete": false,
+        "collectionId": "pbc_2873630990",
+        "hidden": false,
+        "id": "relation_ms_org",
+        "maxSelect": 1,
+        "minSelect": 0,
+        "name": "organization",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "relation"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text_ms_namespace",
+        "max": 64,
+        "min": 1,
+        "name": "namespace",
+        "pattern": "^[a-z0-9_]+$",
+        "presentable": false,
+        "primaryKey": false,
+        "required": true,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text_ms_name",
+        "max": 64,
+        "min": 1,
+        "name": "name",
+        "pattern": "^[a-z0-9_]+$",
+        "presentable": true,
+        "primaryKey": false,
+        "required": true,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text_ms_version",
+        "max": 32,
+        "min": 1,
+        "name": "version",
+        "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+        "presentable": false,
+        "primaryKey": false,
+        "required": true,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "hidden": false,
+        "id": "select_ms_format",
+        "maxSelect": 1,
+        "name": "format",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "select",
+        "values": [
+          "json_schema"
+        ]
+      },
+      {
+        "hidden": false,
+        "id": "json_ms_schema",
+        "maxSize": 0,
+        "name": "schema",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "json"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text_ms_description",
+        "max": 0,
+        "min": 0,
+        "name": "description",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "hidden": false,
+        "id": "autodate_ms_created",
+        "name": "created",
+        "onCreate": true,
+        "onUpdate": false,
+        "presentable": false,
+        "system": false,
+        "type": "autodate"
+      },
+      {
+        "hidden": false,
+        "id": "autodate_ms_updated",
+        "name": "updated",
+        "onCreate": true,
+        "onUpdate": true,
+        "presentable": false,
+        "system": false,
+        "type": "autodate"
+      }
+    ],
+    "indexes": [
+      "CREATE UNIQUE INDEX idx_ms_identity ON message_schemas (organization, namespace, name, version)"
+    ],
+    "system": false
+  },
+  {
+    "id": "pbc_247972991",
+    "name": "thing_types",
+    "type": "base",
+    "fields": [
+      {
+        "hidden": false,
+        "id": "select490417661",
+        "maxSelect": 4,
+        "name": "capabilities",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "select",
+        "values": [
+          "publish",
+          "subscribe",
+          "request",
+          "reply"
+        ]
+      },
+      {
+        "cascadeDelete": false,
+        "collectionId": "pbc_3780300774",
+        "help": "",
+        "hidden": false,
+        "id": "relation_tt_nats_role",
+        "maxSelect": 1,
+        "minSelect": 0,
+        "name": "nats_role",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "relation"
+      }
+    ]
+  },
+  {
+    "id": "pbc_1722283898",
+    "name": "thing_type_operations",
+    "type": "base",
+    "fields": [
+      {
+        "cascadeDelete": false,
+        "collectionId": "pbc_1612162572",
+        "hidden": false,
+        "id": "relation_tto_schema",
+        "maxSelect": 1,
+        "minSelect": 0,
+        "name": "schema",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "relation"
+      }
+    ]
+  }
+]

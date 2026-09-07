@@ -1,6 +1,6 @@
 package demoseed
 
-// The contract layer and the NATS permission templates.
+// The Thing Type contract fixtures and the NATS permission templates.
 //
 // Subject prefixes use the reserved template variables from
 // ui/src/utils/subjectResolver.ts — {org}, {location}, {thing},
@@ -15,244 +15,26 @@ package demoseed
 // managed-org export, which adds exactly one such token on the way OUT of the
 // account and is the only place it belongs.
 
-// ------------------------------------------------------------ message schemas
-
-type schemaFixture struct {
-	Org, Namespace, Name, Version, Description string
-	Schema                                     map[string]any
-}
-
-// schemaKey is how a fixture refers to a schema from an operation, and how the
-// seeder keys them internally. It matches the composite leaf-sync mirrors these
-// records under (namespace__name__version).
-func schemaKey(org, namespace, name, version string) string {
-	return org + ":" + namespace + "__" + name + "__" + version
-}
-
-// A small catalogue, seeded into each org that references it. message_schemas is
-// org-scoped, so "shared" here means the same document is written per tenant —
-// which is the honest shape: nothing in the platform lets two orgs read one
-// schema record, and pretending otherwise in a demo would suggest a cross-tenant
-// read that does not exist.
-var messageSchemas = []schemaFixture{
-	// ---- northwind
-	{Org: "northwind", Namespace: "telemetry", Name: "temperature", Version: "1.0.0",
-		Description: "A single temperature reading from a probe or a reefer unit.",
-		Schema: objSchema(map[string]any{
-			"ts":         stamp("Sampled at"),
-			"celsius":    num("Temperature (C)"),
-			"setpoint_c": num("Active setpoint (C)"),
-			"probe":      str("Probe identifier"),
-		}, "ts", "celsius")},
-	{Org: "northwind", Namespace: "telemetry", Name: "battery", Version: "1.0.0",
-		Description: "Battery state for a wireless sensor.",
-		Schema: objSchema(map[string]any{
-			"ts":      stamp("Sampled at"),
-			"percent": intF("Charge (%)"),
-			"volts":   num("Terminal voltage"),
-		}, "ts", "percent")},
-	{Org: "northwind", Namespace: "event", Name: "door_state", Version: "1.0.0",
-		Description: "A dock or zone door changed state.",
-		Schema: objSchema(map[string]any{
-			"ts":       stamp("Observed at"),
-			"state":    enum("State", "open", "closed"),
-			"duration": intF("Seconds in previous state"),
-		}, "ts", "state")},
-	{Org: "northwind", Namespace: "command", Name: "setpoint", Version: "1.0.0",
-		Description: "Instruct a unit to adopt a temperature setpoint. Paired with an echo, not a measurement.",
-		Schema: objSchema(map[string]any{
-			"celsius":    num("Requested setpoint (C)"),
-			"issued_by":  str("Requesting identity"),
-			"expires_at": stamp("Ignore after"),
-		}, "celsius")},
-	{Org: "northwind", Namespace: "status", Name: "heartbeat", Version: "1.0.0",
-		Description: "Liveness beacon.",
-		Schema: objSchema(map[string]any{
-			"ts":     stamp("Sent at"),
-			"uptime": intF("Uptime (s)"),
-		}, "ts")},
-	// A second version of the same document, so the Message Schemas screen shows
-	// what versioning looks like before a reader has to create one.
-	{Org: "northwind", Namespace: "status", Name: "heartbeat", Version: "1.1.0",
-		Description: "Liveness beacon. Adds the reporting agent's build.",
-		Schema: objSchema(map[string]any{
-			"ts":      stamp("Sent at"),
-			"uptime":  intF("Uptime (s)"),
-			"version": str("Agent version"),
-		}, "ts")},
-
-	// ---- northwind: the access-control app's contract.
-	//
-	// stone-access is a sibling app running inside this same organization's NATS
-	// account, and these four documents describe what its controllers actually put
-	// on the bus. They are written down HERE, in the inventory, because that is
-	// what the contract layer is for: a consumer should be able to resolve where a
-	// participant speaks and what shape its messages take from data alone, without
-	// reading another repository's source. The shapes mirror
-	// access-control/internal/policy and its events projection.
-	{Org: "northwind", Namespace: "access", Name: "decision", Version: "1.0.0",
-		Description: "The outcome of a credential presentation at a door. `reason` is a stable code from access-control's policy package, not free text.",
-		Schema: objSchema(map[string]any{
-			"ts":         stamp("Decided at"),
-			"portal":     str("Portal code"),
-			"credential": str("Credential value presented"),
-			"user":       str("Cardholder name, when the credential resolved to one"),
-			"allow":      boolF("Granted"),
-			"reason":     str("Stable reason code, e.g. allow_grant / deny_schedule_closed"),
-			"source":     enum("Source", "nats", "osdp", "command", "badge"),
-		}, "ts", "portal", "allow", "reason")},
-
-	{Org: "northwind", Namespace: "access", Name: "alarm", Version: "1.0.0",
-		Description: "A door alarm: forced open, or held open past its threshold.",
-		Schema: objSchema(map[string]any{
-			"ts":     stamp("Raised at"),
-			"portal": str("Portal code"),
-			"alarm":  enum("Alarm", "forced", "held", "held_clear", "intrusion"),
-			"detail": str("Human-readable text"),
-		}, "ts", "portal", "alarm")},
-
-	{Org: "northwind", Namespace: "access", Name: "grant", Version: "1.0.0",
-		Description: "An operator-initiated momentary unlock. The door pops without a credential, and the resulting decision is stamped source=command so it stays distinguishable from a card read.",
-		Schema: objSchema(map[string]any{
-			"portal":    str("Portal code"),
-			"issued_by": str("Requesting operator"),
-			"seconds":   intF("Strike pulse (s)"),
-		}, "portal")},
-
-	{Org: "northwind", Namespace: "access", Name: "controller_health", Version: "1.0.0",
-		Description: "Controller liveness beat. Rides core NATS outside the audited .evt subtree, deliberately, so the events stream cannot capture it.",
-		Schema: objSchema(map[string]any{
-			"ts":      stamp("Sent at"),
-			"uptime":  intF("Uptime (s)"),
-			"portals": intF("Portals armed"),
-			"synced":  enum("Policy sync state", "synced", "cached", "loading"),
-			"version": str("Controller build"),
-		}, "ts")},
-
-	// ---- ironbridge
-	{Org: "ironbridge", Namespace: "telemetry", Name: "power", Version: "1.0.0",
-		Description: "Three-phase electrical measurement from a panel meter.",
-		Schema: objSchema(map[string]any{
-			"ts":         stamp("Sampled at"),
-			"kw":         num("Real power (kW)"),
-			"kvar":       num("Reactive power (kVAr)"),
-			"pf":         num("Power factor"),
-			"voltage_ll": num("Line-to-line volts"),
-		}, "ts", "kw")},
-	{Org: "ironbridge", Namespace: "telemetry", Name: "vibration", Version: "1.0.0",
-		Description: "Bearing vibration summary, already reduced on the device.",
-		Schema: objSchema(map[string]any{
-			"ts":        stamp("Sampled at"),
-			"rms_mm_s":  num("RMS velocity (mm/s)"),
-			"peak_mm_s": num("Peak velocity (mm/s)"),
-			"axis":      enum("Axis", "x", "y", "z"),
-		}, "ts", "rms_mm_s")},
-	{Org: "ironbridge", Namespace: "event", Name: "cycle", Version: "1.0.0",
-		Description: "One completed machine cycle. The unit of OEE.",
-		Schema: objSchema(map[string]any{
-			"ts":       stamp("Completed at"),
-			"seconds":  num("Cycle time (s)"),
-			"good":     boolF("Passed inspection"),
-			"part":     str("Part number"),
-			"operator": str("Operator badge"),
-		}, "ts", "seconds", "good")},
-	{Org: "ironbridge", Namespace: "event", Name: "alarm", Version: "1.0.0",
-		Description: "A machine or line alarm was raised or cleared.",
-		Schema: objSchema(map[string]any{
-			"ts":       stamp("Raised at"),
-			"code":     str("Alarm code"),
-			"severity": enum("Severity", "info", "warning", "critical"),
-			"active":   boolF("Still active"),
-			"message":  str("Human-readable text"),
-		}, "ts", "code", "severity", "active")},
-	{Org: "ironbridge", Namespace: "command", Name: "line_mode", Version: "1.0.0",
-		Description: "Instruct a line controller to change running mode.",
-		Schema: objSchema(map[string]any{
-			"mode":      enum("Mode", "run", "hold", "changeover", "maintenance"),
-			"issued_by": str("Requesting identity"),
-		}, "mode")},
-	{Org: "ironbridge", Namespace: "status", Name: "heartbeat", Version: "1.0.0",
-		Description: "Liveness beacon.",
-		Schema: objSchema(map[string]any{
-			"ts":     stamp("Sent at"),
-			"uptime": intF("Uptime (s)"),
-		}, "ts")},
-
-	// ---- galewind
-	{Org: "galewind", Namespace: "telemetry", Name: "generation", Version: "1.0.0",
-		Description: "Turbine output sample.",
-		Schema: objSchema(map[string]any{
-			"ts":          stamp("Sampled at"),
-			"kw":          num("Output (kW)"),
-			"wind_ms":     num("Wind speed (m/s)"),
-			"nacelle_deg": num("Nacelle bearing (deg)"),
-			"rpm":         num("Rotor speed (rpm)"),
-		}, "ts", "kw")},
-	{Org: "galewind", Namespace: "telemetry", Name: "feeder", Version: "1.0.0",
-		Description: "Substation feeder measurement.",
-		Schema: objSchema(map[string]any{
-			"ts":     stamp("Sampled at"),
-			"amps":   num("Current (A)"),
-			"kv":     num("Voltage (kV)"),
-			"feeder": str("Feeder identifier"),
-		}, "ts", "amps", "kv")},
-	{Org: "galewind", Namespace: "event", Name: "alarm", Version: "1.0.0",
-		Description: "A protection or plant alarm.",
-		Schema: objSchema(map[string]any{
-			"ts":       stamp("Raised at"),
-			"code":     str("Alarm code"),
-			"severity": enum("Severity", "info", "warning", "critical"),
-			"active":   boolF("Still active"),
-			"message":  str("Human-readable text"),
-		}, "ts", "code", "severity", "active")},
-	{Org: "galewind", Namespace: "command", Name: "curtail", Version: "1.0.0",
-		Description: "Curtail a turbine to a ceiling, expressed as a percentage of rating.",
-		Schema: objSchema(map[string]any{
-			"percent":    intF("Ceiling (% of rated)"),
-			"reason":     enum("Reason", "grid", "noise", "wildlife", "maintenance"),
-			"issued_by":  str("Requesting identity"),
-			"expires_at": stamp("Ignore after"),
-		}, "percent", "reason")},
-	{Org: "galewind", Namespace: "status", Name: "heartbeat", Version: "1.0.0",
-		Description: "Liveness beacon.",
-		Schema: objSchema(map[string]any{
-			"ts":     stamp("Sent at"),
-			"uptime": intF("Uptime (s)"),
-		}, "ts")},
-}
-
 // ----------------------------------------------------------------- operations
 
 type operationFixture struct {
 	Org, Name, Capability, SubjectSuffix, Description string
-
-	// SchemaNS/SchemaName/SchemaVersion name the message_schemas record to link,
-	// or are empty for an operation whose payload is not described. Both states
-	// exist on purpose: the console renders them differently, and an operator
-	// should see that a schema is optional.
-	SchemaNS, SchemaName, SchemaVersion string
 }
 
 var operations = []operationFixture{
 	// ---- northwind
 	{Org: "northwind", Name: "publish_temperature", Capability: "publish", SubjectSuffix: "temperature",
-		Description: "Periodic temperature sample.",
-		SchemaNS:    "telemetry", SchemaName: "temperature", SchemaVersion: "1.0.0"},
+		Description: "Periodic temperature sample."},
 	{Org: "northwind", Name: "publish_battery", Capability: "publish", SubjectSuffix: "battery",
-		Description: "Battery state, sent hourly and on change.",
-		SchemaNS:    "telemetry", SchemaName: "battery", SchemaVersion: "1.0.0"},
+		Description: "Battery state, sent hourly and on change."},
 	{Org: "northwind", Name: "publish_door", Capability: "publish", SubjectSuffix: "door",
-		Description: "Door open/closed transition.",
-		SchemaNS:    "event", SchemaName: "door_state", SchemaVersion: "1.0.0"},
+		Description: "Door open/closed transition."},
 	{Org: "northwind", Name: "publish_heartbeat", Capability: "publish", SubjectSuffix: "heartbeat",
-		Description: "Liveness beacon.",
-		SchemaNS:    "status", SchemaName: "heartbeat", SchemaVersion: "1.1.0"},
+		Description: "Liveness beacon."},
 	{Org: "northwind", Name: "subscribe_setpoint", Capability: "subscribe", SubjectSuffix: "setpoint",
-		Description: "Accept a new temperature setpoint.",
-		SchemaNS:    "command", SchemaName: "setpoint", SchemaVersion: "1.0.0"},
+		Description: "Accept a new temperature setpoint."},
 	{Org: "northwind", Name: "publish_setpoint_echo", Capability: "publish", SubjectSuffix: "setpoint.echo",
-		Description: "Echo the setpoint actually in force. This is the property a desired value should be paired with.",
-		SchemaNS:    "command", SchemaName: "setpoint", SchemaVersion: "1.0.0"},
+		Description: "Echo the setpoint actually in force. This is the property a desired value should be paired with."},
 	{Org: "northwind", Name: "reply_diagnostics", Capability: "reply", SubjectSuffix: "diag",
 		Description: "Answer an on-demand diagnostics request. Payload is device-specific and deliberately unschemad."},
 	{Org: "northwind", Name: "subscribe_render", Capability: "subscribe", SubjectSuffix: "render",
@@ -271,46 +53,35 @@ var operations = []operationFixture{
 	// the controller), while `.evt.tap` is the DECISION the controller emits. Two
 	// different messages, and only the second is audited.
 	{Org: "northwind", Name: "publish_access_decision", Capability: "publish", SubjectSuffix: "evt.tap",
-		Description: "The decision on a credential presentation.",
-		SchemaNS:    "access", SchemaName: "decision", SchemaVersion: "1.0.0"},
+		Description: "The decision on a credential presentation."},
 	{Org: "northwind", Name: "publish_access_alarm", Capability: "publish", SubjectSuffix: "evt.alarm",
-		Description: "Door forced or held open past its threshold.",
-		SchemaNS:    "access", SchemaName: "alarm", SchemaVersion: "1.0.0"},
+		Description: "Door forced or held open past its threshold."},
 	{Org: "northwind", Name: "publish_access_state", Capability: "publish", SubjectSuffix: "evt.state",
 		Description: "Effective-posture change on a portal."},
 	{Org: "northwind", Name: "subscribe_access_tap", Capability: "subscribe", SubjectSuffix: "tap",
 		Description: "A credential presentation arriving from a reader. The controller's input, not its output."},
 	{Org: "northwind", Name: "subscribe_access_grant", Capability: "subscribe", SubjectSuffix: "cmd.grant",
-		Description: "Operator-initiated momentary unlock.",
-		SchemaNS:    "access", SchemaName: "grant", SchemaVersion: "1.0.0"},
+		Description: "Operator-initiated momentary unlock."},
 	{Org: "northwind", Name: "subscribe_access_posture", Capability: "subscribe", SubjectSuffix: "cmd.posture",
 		Description: "Set or clear a runtime posture override on a portal."},
 	{Org: "northwind", Name: "publish_controller_heartbeat", Capability: "publish", SubjectSuffix: "heartbeat",
-		Description: "Controller liveness beat, outside the audited .evt subtree.",
-		SchemaNS:    "access", SchemaName: "controller_health", SchemaVersion: "1.0.0"},
+		Description: "Controller liveness beat, outside the audited .evt subtree."},
 
 	// ---- ironbridge
 	{Org: "ironbridge", Name: "publish_power", Capability: "publish", SubjectSuffix: "power",
-		Description: "Three-phase panel measurement, every 5s.",
-		SchemaNS:    "telemetry", SchemaName: "power", SchemaVersion: "1.0.0"},
+		Description: "Three-phase panel measurement, every 5s."},
 	{Org: "ironbridge", Name: "publish_vibration", Capability: "publish", SubjectSuffix: "vibration",
-		Description: "Reduced bearing vibration summary.",
-		SchemaNS:    "telemetry", SchemaName: "vibration", SchemaVersion: "1.0.0"},
+		Description: "Reduced bearing vibration summary."},
 	{Org: "ironbridge", Name: "publish_cycle", Capability: "publish", SubjectSuffix: "cycle",
-		Description: "One completed machine cycle.",
-		SchemaNS:    "event", SchemaName: "cycle", SchemaVersion: "1.0.0"},
+		Description: "One completed machine cycle."},
 	{Org: "ironbridge", Name: "publish_alarm", Capability: "publish", SubjectSuffix: "alarm",
-		Description: "Alarm raised or cleared.",
-		SchemaNS:    "event", SchemaName: "alarm", SchemaVersion: "1.0.0"},
+		Description: "Alarm raised or cleared."},
 	{Org: "ironbridge", Name: "publish_heartbeat", Capability: "publish", SubjectSuffix: "heartbeat",
-		Description: "Liveness beacon.",
-		SchemaNS:    "status", SchemaName: "heartbeat", SchemaVersion: "1.0.0"},
+		Description: "Liveness beacon."},
 	{Org: "ironbridge", Name: "subscribe_line_mode", Capability: "subscribe", SubjectSuffix: "mode",
-		Description: "Accept a line running-mode change.",
-		SchemaNS:    "command", SchemaName: "line_mode", SchemaVersion: "1.0.0"},
+		Description: "Accept a line running-mode change."},
 	{Org: "ironbridge", Name: "publish_line_mode_echo", Capability: "publish", SubjectSuffix: "mode.echo",
-		Description: "Echo the mode actually in force.",
-		SchemaNS:    "command", SchemaName: "line_mode", SchemaVersion: "1.0.0"},
+		Description: "Echo the mode actually in force."},
 	{Org: "ironbridge", Name: "reply_diagnostics", Capability: "reply", SubjectSuffix: "diag",
 		Description: "Answer an on-demand diagnostics request."},
 	{Org: "ironbridge", Name: "publish_oee", Capability: "publish", SubjectSuffix: "oee",
@@ -318,23 +89,17 @@ var operations = []operationFixture{
 
 	// ---- galewind
 	{Org: "galewind", Name: "publish_generation", Capability: "publish", SubjectSuffix: "generation",
-		Description: "Turbine output sample.",
-		SchemaNS:    "telemetry", SchemaName: "generation", SchemaVersion: "1.0.0"},
+		Description: "Turbine output sample."},
 	{Org: "galewind", Name: "publish_feeder", Capability: "publish", SubjectSuffix: "feeder",
-		Description: "Substation feeder measurement.",
-		SchemaNS:    "telemetry", SchemaName: "feeder", SchemaVersion: "1.0.0"},
+		Description: "Substation feeder measurement."},
 	{Org: "galewind", Name: "publish_alarm", Capability: "publish", SubjectSuffix: "alarm",
-		Description: "Protection or plant alarm.",
-		SchemaNS:    "event", SchemaName: "alarm", SchemaVersion: "1.0.0"},
+		Description: "Protection or plant alarm."},
 	{Org: "galewind", Name: "publish_heartbeat", Capability: "publish", SubjectSuffix: "heartbeat",
-		Description: "Liveness beacon.",
-		SchemaNS:    "status", SchemaName: "heartbeat", SchemaVersion: "1.0.0"},
+		Description: "Liveness beacon."},
 	{Org: "galewind", Name: "subscribe_curtail", Capability: "subscribe", SubjectSuffix: "curtail",
-		Description: "Accept a curtailment ceiling.",
-		SchemaNS:    "command", SchemaName: "curtail", SchemaVersion: "1.0.0"},
+		Description: "Accept a curtailment ceiling."},
 	{Org: "galewind", Name: "publish_curtail_echo", Capability: "publish", SubjectSuffix: "curtail.echo",
-		Description: "Echo the curtailment ceiling actually in force.",
-		SchemaNS:    "command", SchemaName: "curtail", SchemaVersion: "1.0.0"},
+		Description: "Echo the curtailment ceiling actually in force."},
 	{Org: "galewind", Name: "reply_diagnostics", Capability: "reply", SubjectSuffix: "diag",
 		Description: "Answer an on-demand diagnostics request."},
 	{Org: "galewind", Name: "request_forecast", Capability: "request", SubjectSuffix: "forecast",

@@ -6,7 +6,7 @@ import JsonViewer from './JsonViewer.vue'
 import { useToast } from '@/composables/useToast'
 
 // MetadataEditor — edits (or displays) a free-form `metadata` object with a
-// Form / JSON toggle, following the contract MessageSchemaFormView already
+// Form / JSON toggle, following the contract MetadataSchemaCard already
 // established for schema documents: the form is a convenience over the
 // document, the JSON view is always the escape hatch, and anything the form
 // cannot represent says so instead of silently dropping it.
@@ -281,7 +281,7 @@ function onJsonBlur() {
   }
 }
 
-// Same semantics as MessageSchemaFormView.switchTab: leaving JSON with a parse
+// Same semantics as MetadataSchemaCard.switchTab: leaving JSON with a parse
 // error is refused, because the alternative is discarding what the user typed.
 function switchTab(tab: 'form' | 'json') {
   if (tab === activeTab.value) return

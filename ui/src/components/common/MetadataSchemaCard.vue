@@ -4,15 +4,21 @@ import { ref, computed, watch } from 'vue'
 import { useToast } from '@/composables/useToast'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import SchemaBuilder from '@/components/things/SchemaBuilder.vue'
+import { inferSchema } from '@/utils/inferSchema'
 
 // MetadataSchemaCard — authors a type's `metadata_schema`: the JSON Schema
 // describing what is tracked about each record of that type. Used identically by
 // the thing type and location type forms, which is why it is a component rather
 // than a copy in each.
 //
-// Reuses SchemaBuilder + a JSON tab, the same pair MessageSchemaFormView uses,
-// because this IS a JSON Schema document — the only difference is where it is
-// stored and what reads it (MetadataEditor on the Thing/Location form).
+// Reuses SchemaBuilder + a JSON tab because this IS a JSON Schema document —
+// the only difference from any other is where it is stored and what reads it
+// (MetadataEditor on the Thing/Location form).
+//
+// "Infer from sample" came from MessageSchemaFormView, which was removed with
+// the message_schemas collection. It was never specific to that collection, and
+// pasting a sample beats hand-authoring a schema wherever one is written, so it
+// moved here rather than being deleted with its old home.
 //
 // Emits a normalised value: `{type: 'object', ...}` when there is at least one
 // property, or null when there are none. A builder with no properties yields
@@ -41,6 +47,11 @@ const doc = ref<Record<string, any>>(EMPTY_DOC())
 const activeTab = ref<'form' | 'json'>('form')
 const jsonText = ref('')
 const jsonError = ref('')
+
+// Infer-from-sample modal
+const showInferModal = ref(false)
+const sampleText = ref('')
+const sampleError = ref('')
 
 let suppressNextWatch = false
 
@@ -109,6 +120,35 @@ function switchTab(tab: 'form' | 'json') {
   activeTab.value = tab
 }
 
+function openInferModal() {
+  sampleText.value = ''
+  sampleError.value = ''
+  showInferModal.value = true
+}
+
+function applyInferred() {
+  let parsed: any
+  try {
+    parsed = JSON.parse(sampleText.value)
+  } catch (err: any) {
+    sampleError.value = err.message
+    return
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    sampleError.value = 'Paste a JSON object — one example record, not an array or a bare value.'
+    return
+  }
+
+  // REPLACES the document rather than merging into it. A merge would leave
+  // properties from the previous schema that the sample says nothing about,
+  // which is a schema nobody authored; the builder is right there for adding
+  // fields back.
+  doc.value = { type: 'object', ...inferSchema(parsed) }
+  refreshJson()
+  showInferModal.value = false
+  toast.success('Fields inferred from sample — review before saving')
+}
+
 // Called by the parent before submit, so a JSON tab left mid-edit is committed
 // (or the save refused) rather than silently ignored.
 function commit(): boolean {
@@ -138,19 +178,24 @@ defineExpose({ commit })
       </span>
     </p>
 
-    <div role="tablist" class="tabs tabs-bordered mb-4">
-      <a
-        role="tab"
-        class="tab"
-        :class="{ 'tab-active': activeTab === 'form' }"
-        @click="switchTab('form')"
-      >Form</a>
-      <a
-        role="tab"
-        class="tab"
-        :class="{ 'tab-active': activeTab === 'json' }"
-        @click="switchTab('json')"
-      >JSON</a>
+    <div class="flex items-end justify-between gap-2 mb-4">
+      <div role="tablist" class="tabs tabs-bordered">
+        <a
+          role="tab"
+          class="tab"
+          :class="{ 'tab-active': activeTab === 'form' }"
+          @click="switchTab('form')"
+        >Form</a>
+        <a
+          role="tab"
+          class="tab"
+          :class="{ 'tab-active': activeTab === 'json' }"
+          @click="switchTab('json')"
+        >JSON</a>
+      </div>
+      <button type="button" class="btn btn-xs btn-ghost" @click="openInferModal">
+        Infer from sample
+      </button>
     </div>
 
     <SchemaBuilder v-if="activeTab === 'form'" v-model="doc" />
@@ -167,5 +212,32 @@ defineExpose({ commit })
         <span class="label-text-alt text-error">{{ jsonError }}</span>
       </label>
     </div>
+
+    <dialog class="modal" :class="{ 'modal-open': showInferModal }">
+      <div class="modal-box">
+        <h3 class="font-bold text-lg mb-2">Infer from sample</h3>
+        <p class="text-sm text-base-content/70 mb-3">
+          Paste one example {{ noun }} as JSON. Every key becomes a field, and every
+          key present is marked required — a single sample cannot show which are
+          optional, so review the result before saving.
+        </p>
+        <textarea
+          v-model="sampleText"
+          class="textarea textarea-bordered font-mono text-xs w-full"
+          rows="10"
+          placeholder='{"asset_tag":"NW-0142","last_service":"2026-03-14","warranty_months":36}'
+        ></textarea>
+        <p v-if="sampleError" class="text-error text-xs mt-1">{{ sampleError }}</p>
+        <div class="modal-action">
+          <button type="button" class="btn btn-ghost" @click="showInferModal = false">Cancel</button>
+          <button type="button" class="btn btn-primary" :disabled="!sampleText.trim()" @click="applyInferred">
+            Replace fields
+          </button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop" @click="showInferModal = false">
+        <button>close</button>
+      </form>
+    </dialog>
   </BaseCard>
 </template>

@@ -37,20 +37,12 @@
       </div>
       <div v-if="boundMode" class="binding-hint">
         {{ boundOperation?.name }} · {{ boundOperation?.capability }}
-        <span v-if="boundSchema"> · schema {{ boundSchema.namespace }}/{{ boundSchema.name }}@{{ boundSchema.version }}</span>
       </div>
     </div>
 
     <!-- Middle: Payload Editor -->
     <div class="pub-body">
-      <JsonSchemaForm
-        v-if="boundSchemaDoc"
-        :schema="boundSchemaDoc"
-        :model-value="formModel"
-        @update:model-value="formModel = $event"
-      />
       <textarea
-        v-else
         ref="payloadInput"
         v-model="payload"
         class="payload-input"
@@ -104,9 +96,8 @@ import { useNatsStore } from '@/stores/nats'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useWidgetOperations } from '@/composables/useWidgetOperations'
 import ResponseModal from '@/components/common/ResponseModal.vue'
-import JsonSchemaForm from '@/components/common/JsonSchemaForm.vue'
 import type { WidgetConfig, PublisherHistoryItem } from '@/types/dashboard'
-import type { Thing, ThingType, ThingTypeOperation, MessageSchema, Location } from '@/types/pocketbase'
+import type { Thing, ThingType, ThingTypeOperation, Location } from '@/types/pocketbase'
 import { encodeString, decodeBytes } from '@/utils/encoding'
 import { resolveTemplate } from '@/utils/variables'
 import { join as joinSubject, resolveThing } from '@/utils/subjectResolver'
@@ -145,27 +136,18 @@ const responseLatency = ref(0)
 const cfg = computed(() => props.config.publisherConfig || {})
 const history = computed(() => cfg.value.history || [])
 
-// Thing Type Spec binding — when thingId + thingTypeOperationId are set,
-// the subject auto-resolves from Thing context and the payload renders as
-// a schema-driven form (if the operation has a linked message_schema).
+// Thing Type binding — when thingId + thingTypeOperationId are set, the subject
+// auto-resolves from the Thing's context against its type's prefix and the
+// operation's suffix. The payload stays free text: the operation used to carry a
+// message_schemas relation that rendered a typed form here, but that collection
+// never validated anything and was dropped, so the schema-driven payload went
+// with it.
 const boundOperation = ref<ThingTypeOperation | null>(null)
-const boundSchema = ref<MessageSchema | null>(null)
-const formModel = ref<Record<string, any>>({})
 
 const boundMode = computed(() => !!cfg.value.thingId && !!cfg.value.thingTypeOperationId)
-const boundSchemaDoc = computed(() => {
-  if (!boundMode.value || !boundSchema.value) return null
-  const raw = boundSchema.value.schema
-  return typeof raw === 'string' ? safeParseJson(raw) : raw
-})
-
-function safeParseJson(s: string): any {
-  try { return JSON.parse(s) } catch { return null }
-}
 
 async function loadBinding() {
   boundOperation.value = null
-  boundSchema.value = null
   if (!boundMode.value) return
   try {
     const [thing, op] = await Promise.all([
@@ -196,10 +178,6 @@ async function loadBinding() {
       }
     )
 
-    if (op.schema) {
-      boundSchema.value = await pb.collection('message_schemas').getOne<MessageSchema>(op.schema)
-    }
-    formModel.value = {}
   } catch (err) {
     console.warn('Publisher binding load failed', err)
   }
@@ -260,9 +238,7 @@ async function handleSend(mode: 'publish' | 'request') {
 
   // Resolve variables
   const finalSubject = resolveTemplate(subject.value, dashboardStore.currentVariableValues)
-  const rawPayload = boundSchemaDoc.value
-    ? JSON.stringify(formModel.value)
-    : payload.value
+  const rawPayload = payload.value
   const finalPayloadStr = resolveTemplate(rawPayload, dashboardStore.currentVariableValues)
   const data = encodeString(finalPayloadStr)
 
@@ -324,8 +300,6 @@ watch(
       await loadBinding()
     } else {
       boundOperation.value = null
-      boundSchema.value = null
-      formModel.value = {}
       subject.value = cfg.value.defaultSubject || ''
       payload.value = cfg.value.defaultPayload || ''
     }

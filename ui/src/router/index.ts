@@ -59,9 +59,6 @@ const routes: RouteRecordRaw[] = [
       { path: 'things/operations', name: 'ThingTypeOperations', component: () => import('@/views/things/ThingTypeOperationListView.vue'), meta: { requiresCapability: 'manageDefinitions' } },
       { path: 'things/operations/new', name: 'ThingTypeOperationNew', component: () => import('@/views/things/ThingTypeOperationFormView.vue'), meta: { requiresCapability: 'manageDefinitions' } },
       { path: 'things/operations/:id/edit', name: 'ThingTypeOperationEdit', component: () => import('@/views/things/ThingTypeOperationFormView.vue'), meta: { requiresCapability: 'manageDefinitions' } },
-      { path: 'things/schemas', name: 'MessageSchemas', component: () => import('@/views/things/MessageSchemaListView.vue'), meta: { requiresCapability: 'manageDefinitions' } },
-      { path: 'things/schemas/new', name: 'MessageSchemaNew', component: () => import('@/views/things/MessageSchemaFormView.vue'), meta: { requiresCapability: 'manageDefinitions' } },
-      { path: 'things/schemas/:id/edit', name: 'MessageSchemaEdit', component: () => import('@/views/things/MessageSchemaFormView.vue'), meta: { requiresCapability: 'manageDefinitions' } },
       // List and detail are viewInventory (member + viewer); the forms are
       // manageInventory. A viewer that types /things/x/edit lands back on '/'.
       { path: 'things', name: 'Things', component: () => import('@/views/things/ThingListView.vue'), meta: { requiresCapability: 'viewInventory' } },

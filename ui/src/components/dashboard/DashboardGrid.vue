@@ -152,7 +152,7 @@ function isTallWidget(widget: WidgetConfig): boolean {
 }
 
 function isDataTallWidget(widget: WidgetConfig): boolean {
-  return ['kvtable', 'pocketbase', 'map', 'scanner'].includes(widget.type)
+  return ['kvtable', 'map', 'scanner'].includes(widget.type)
 }
 
 const mobileWidgetLayout = computed(() => {

@@ -15,8 +15,7 @@ package demoseed
 // ---------------------------------------------------------------- shorthands
 
 // objSchema is a JSON Schema shorthand. The seeder only ever writes flat object
-// schemas, so these few helpers cover every metadata_schema and every
-// message_schemas.schema below.
+// schemas, so these few helpers cover every metadata_schema below.
 func objSchema(props map[string]any, required ...string) map[string]any {
 	s := map[string]any{"type": "object", "properties": props}
 	if len(required) > 0 {

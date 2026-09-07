@@ -68,6 +68,11 @@ export interface User extends AuthRecord {
 }
 
 // Thing Type
+//
+// A capability is a property of an OPERATION, not of a type: it distinguishes a
+// request from a reply on the same subject suffix. thing_types.capabilities used
+// to carry the union of its operations' capabilities as well, hand-maintained
+// and read by nothing, and was dropped with message_schemas.
 export type ThingTypeCapability = 'publish' | 'subscribe' | 'request' | 'reply'
 
 export interface ThingType extends BaseRecord {
@@ -75,7 +80,6 @@ export interface ThingType extends BaseRecord {
   name?: string
   description?: string
   code?: string
-  capabilities?: ThingTypeCapability[]
   subject_prefix?: string
   operations?: string[] // Thing Type Operation IDs
   // Optional JSON Schema describing the inventory fields tracked for this class
@@ -89,20 +93,6 @@ export interface ThingTypeOperation extends BaseRecord {
   name: string
   capability: ThingTypeCapability
   subject_suffix: string
-  description?: string
-  schema?: string // Message Schema ID
-}
-
-// Message Schema
-export type MessageSchemaFormat = 'json_schema'
-
-export interface MessageSchema extends BaseRecord {
-  organization?: string
-  namespace: string
-  name: string
-  version: string
-  format: MessageSchemaFormat
-  schema: Record<string, any> | string // JSON Schema document
   description?: string
 }
 

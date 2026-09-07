@@ -19,7 +19,6 @@ const SYNCABLE_COLLECTIONS = [
   'thing_types',
   'location_types',
   'thing_type_operations',
-  'message_schemas',
 ]
 
 const router = useRouter()

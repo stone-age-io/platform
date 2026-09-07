@@ -31,9 +31,21 @@ func TestResolveCollections(t *testing.T) {
 		{
 			name: "graph collections allowed",
 			leaf: pbclient.Record{"synced_collections": []any{
-				"thing_types", "thing_type_operations", "message_schemas",
+				"thing_types", "thing_type_operations",
 			}},
-			want: []string{"thing_types", "thing_type_operations", "message_schemas"},
+			want: []string{"thing_types", "thing_type_operations"},
+		},
+		{
+			// message_schemas was in the allowlist until the collection was
+			// dropped. A leaf node provisioned before that still carries the value
+			// in synced_collections until the migration prunes it, and the
+			// allowlist is what stops it being requested from a server that no
+			// longer serves it -- so this is a live case, not a historical one.
+			name: "a dropped collection is filtered out",
+			leaf: pbclient.Record{"synced_collections": []any{
+				"things", "message_schemas",
+			}},
+			want: []string{"things"},
 		},
 		{
 			name: "missing field",
@@ -144,9 +156,12 @@ func TestRecordKey(t *testing.T) {
 			want:    map[string]string{"rec0000000000008": "rec0000000000008"},
 		},
 		{
-			name:    "message_schema composite wins over code precedence",
+			// namespace and version no longer participate in the key at all: the
+			// composite branch went with message_schemas, so the name is now the
+			// last handle tried before the id fallback.
+			name:    "namespace and version are ignored; the name is the handle",
 			records: []pbclient.Record{{"id": "rec0000000000009", "namespace": "sensors", "name": "temp", "version": "1"}},
-			want:    map[string]string{"rec0000000000009": "sensors__temp__1"},
+			want:    map[string]string{"rec0000000000009": "temp"},
 		},
 	}
 	for _, c := range cases {

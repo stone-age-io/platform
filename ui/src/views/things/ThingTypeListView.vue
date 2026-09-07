@@ -66,7 +66,6 @@ const deleting = ref(false)
 const columns: Column<ThingType>[] = [
   { key: 'name', sortable: 'name', label: 'Name', mobileLabel: 'Name' },
   { key: 'code', sortable: 'code', width: '7rem', label: 'Code', mobileLabel: 'Code' },
-  { key: 'capabilities', label: 'Capabilities', mobileLabel: 'Caps' },
   { key: 'operations', label: 'Operations', mobileLabel: 'Ops' },
   { key: 'created', sortable: '-created', width: '8rem', label: 'Created', mobileLabel: 'Created', format: (val) => formatDate(val, 'PP') },
 ]
@@ -187,15 +186,6 @@ onUnmounted(() => {
         <template #cell-code="{ item }">
           <code v-if="item.code" class="bg-base-200 px-1 rounded text-xs">{{ item.code }}</code>
           <span v-else class="text-base-content/40">-</span>
-        </template>
-
-        <template #cell-capabilities="{ item }">
-          <div class="flex flex-wrap gap-1">
-            <span v-for="cap in item.capabilities" :key="cap" class="badge badge-sm badge-outline">
-              {{ cap }}
-            </span>
-            <span v-if="!item.capabilities?.length" class="text-base-content/40 text-xs">-</span>
-          </div>
         </template>
 
         <template #cell-operations="{ item }">

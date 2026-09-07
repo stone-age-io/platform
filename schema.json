@@ -974,7 +974,7 @@
     "viewRule": "// If a Thing is authenticating as itself (e.g. via SDK), it only sees its own record.\n// If a User is authenticating, they see all things belonging to their active organization.\n// A leaf node mirrors all things in its own organization.\n(@request.auth.collectionName = \"things\" && id = @request.auth.id) || \n(@request.auth.collectionName = \"users\" && organization = @request.auth.current_organization) || \n(@request.auth.collectionName = \"leaf_nodes\" && organization = @request.auth.organization)",
     "createRule": "// Only users (not things) can create records, in their own active organization.\n// Members may add inventory; only owner/admin may attach a NATS or Nebula\n// identity to it, or set the active flag.\n//\n// nats_user / nebula_host are owner/admin only: a Thing can read the credential\n//    of its own linked identity, so a member able to re-point those relations at a\n//    privileged identity and then authenticate as the Thing would have a\n//    credential-theft path.\n//\n// active is owner/admin only for the same reason delete is: taking a device off\n//    the network revokes its NATS identity (hooks/active_flag.go). Members create\n//    and edit inventory; disabling it is a management action.\n//\n// The member branch names the roles it admits. Restricting the FIELDS without\n//    naming the ROLE let `dashboard` -- the least privileged role, which has no inventory\n//    authority at all -- create and edit Things.\n@request.auth.collectionName = \"users\" &&\n@request.body.organization = @request.auth.current_organization &&\n(\n  // Owner/admin: may assign the NATS / Nebula identity links.\n  (@request.auth.memberships_via_user.organization ?= @request.auth.current_organization &&\n (@request.auth.memberships_via_user.role ?= \"owner\" || @request.auth.memberships_via_user.role ?= \"admin\"))\n  ||\n  // Member: inventory fields only (name, description, location, metadata,\n  // floorplan_position). Attaching an identity is an admin action.\n  ((@request.auth.memberships_via_user.organization ?= @request.auth.current_organization &&\n   (@request.auth.memberships_via_user.role ?= \"owner\" ||\n    @request.auth.memberships_via_user.role ?= \"admin\" ||\n    @request.auth.memberships_via_user.role ?= \"member\")) &&\n   @request.body.nats_user:changed = false &&\n   @request.body.nebula_host:changed = false &&\n   @request.body.active:changed = false)\n)",
     "updateRule": "// 1. Only users can update things.\n// 2. The thing must belong to the user's current organization.\n// 3. The organization field cannot be modified (no \"teleporting\" between orgs).\n// 4. nats_user / nebula_host are owner/admin only: a Thing can read the\n//    credential of its own linked identity, so a member able to re-point those\n//    relations at a privileged identity and then authenticate as the Thing would\n//    have a credential-theft path.\n// 5. active is owner/admin only for the same reason delete is: flipping it\n//    revokes the Thing's NATS identity and kills its outstanding auth tokens\n//    (hooks/active_flag.go). A member who could clear it could take any device in\n//    the organization off the network.\n// 6. The member branch names the roles it admits. Restricting the FIELDS without\n//    naming the ROLE let `dashboard` -- the least privileged role, which has no inventory\n//    authority at all -- create and edit Things.\n// 7. Freeze `code`: a sibling app resolves a ticket to this device by\n//    (organization, code), and the code may be printed on a label screwed to\n//    it. Changing it orphans every history that points here. Same term and\n//    the same reason as leaf_nodes.code -- see ADR 0002 in platform-docs.\n@request.auth.collectionName = \"users\" &&\norganization = @request.auth.current_organization &&\n@request.body.organization:changed = false &&\n@request.body.code:changed = false &&\n(\n  // Owner/admin: may assign the NATS / Nebula identity links.\n  (@request.auth.memberships_via_user.organization ?= @request.auth.current_organization &&\n (@request.auth.memberships_via_user.role ?= \"owner\" || @request.auth.memberships_via_user.role ?= \"admin\"))\n  ||\n  // Member: inventory fields only (name, description, location, metadata,\n  // floorplan_position). Attaching an identity is an admin action.\n  ((@request.auth.memberships_via_user.organization ?= @request.auth.current_organization &&\n   (@request.auth.memberships_via_user.role ?= \"owner\" ||\n    @request.auth.memberships_via_user.role ?= \"admin\" ||\n    @request.auth.memberships_via_user.role ?= \"member\")) &&\n   @request.body.nats_user:changed = false &&\n   @request.body.nebula_host:changed = false &&\n   @request.body.active:changed = false)\n)",
-    "deleteRule": "// Owner/admin only. `things` was the sole collection left with a member-level\n// delete -- locations, thing_types, location_types, message_schemas,\n// thing_type_operations, leaf_nodes, nats_roles and nebula_networks all gate it.\n//\n// Deleting a Thing is high-impact and not undoable from the UI: it orphans any\n// NATS or Nebula identity attached to it, and leaf-sync propagates the deletion\n// into every edge node local KV mirror. Members create and edit inventory;\n// removing it is a management action.\n@request.auth.collectionName = \"users\" &&\norganization = @request.auth.current_organization &&\n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization &&\n (@request.auth.memberships_via_user.role ?= \"owner\" || @request.auth.memberships_via_user.role ?= \"admin\"))",
+    "deleteRule": "// Owner/admin only. `things` was the sole collection left with a member-level\n// delete -- locations, thing_types, location_types,\n// thing_type_operations, leaf_nodes, nats_roles and nebula_networks all gate it.\n//\n// Deleting a Thing is high-impact and not undoable from the UI: it orphans any\n// NATS or Nebula identity attached to it, and leaf-sync propagates the deletion\n// into every edge node local KV mirror. Members create and edit inventory;\n// removing it is a management action.\n@request.auth.collectionName = \"users\" &&\norganization = @request.auth.current_organization &&\n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization &&\n (@request.auth.memberships_via_user.role ?= \"owner\" || @request.auth.memberships_via_user.role ?= \"admin\"))",
     "name": "things",
     "type": "auth",
     "fields": [
@@ -3593,22 +3593,6 @@
         "type": "text"
       },
       {
-        "hidden": false,
-        "id": "select490417661",
-        "maxSelect": 4,
-        "name": "capabilities",
-        "presentable": false,
-        "required": false,
-        "system": false,
-        "type": "select",
-        "values": [
-          "publish",
-          "subscribe",
-          "request",
-          "reply"
-        ]
-      },
-      {
         "autogeneratePattern": "",
         "hidden": false,
         "id": "text_subject_prefix",
@@ -3664,20 +3648,6 @@
         "presentable": false,
         "system": false,
         "type": "autodate"
-      },
-      {
-        "cascadeDelete": false,
-        "collectionId": "pbc_3780300774",
-        "help": "",
-        "hidden": false,
-        "id": "relation_tt_nats_role",
-        "maxSelect": 1,
-        "minSelect": 0,
-        "name": "nats_role",
-        "presentable": false,
-        "required": false,
-        "system": false,
-        "type": "relation"
       }
     ],
     "indexes": [
@@ -4167,19 +4137,6 @@
         "type": "text"
       },
       {
-        "cascadeDelete": false,
-        "collectionId": "pbc_1612162572",
-        "hidden": false,
-        "id": "relation_tto_schema",
-        "maxSelect": 1,
-        "minSelect": 0,
-        "name": "schema",
-        "presentable": false,
-        "required": false,
-        "system": false,
-        "type": "relation"
-      },
-      {
         "hidden": false,
         "id": "autodate_tto_created",
         "name": "created",
@@ -4202,148 +4159,6 @@
     ],
     "indexes": [
       "CREATE UNIQUE INDEX idx_tto_org_name_cap ON thing_type_operations (organization, name, capability)"
-    ],
-    "system": false
-  },
-  {
-    "id": "pbc_1612162572",
-    "listRule": "// Users see their active organization's schemas; a leaf node mirrors its own organization's schemas.\n(@request.auth.collectionName = \"users\" && \norganization = @request.auth.current_organization) || \n(@request.auth.collectionName = \"leaf_nodes\" && organization = @request.auth.organization)",
-    "viewRule": "// Users see their active organization's schemas; a leaf node mirrors its own organization's schemas.\n(@request.auth.collectionName = \"users\" && \norganization = @request.auth.current_organization) || \n(@request.auth.collectionName = \"leaf_nodes\" && organization = @request.auth.organization)",
-    "createRule": "@request.auth.collectionName = \"users\" && \n@request.body.organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n (@request.auth.memberships_via_user.role ?= \"owner\" || @request.auth.memberships_via_user.role ?= \"admin\"))",
-    "updateRule": "organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n (@request.auth.memberships_via_user.role ?= \"owner\" || @request.auth.memberships_via_user.role ?= \"admin\")) && \n@request.body.organization:changed = false",
-    "deleteRule": "organization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n (@request.auth.memberships_via_user.role ?= \"owner\" || @request.auth.memberships_via_user.role ?= \"admin\"))",
-    "name": "message_schemas",
-    "type": "base",
-    "fields": [
-      {
-        "autogeneratePattern": "[a-z0-9]{15}",
-        "hidden": false,
-        "id": "text3208210256",
-        "max": 15,
-        "min": 15,
-        "name": "id",
-        "pattern": "^[a-z0-9]+$",
-        "presentable": false,
-        "primaryKey": true,
-        "required": true,
-        "system": true,
-        "type": "text"
-      },
-      {
-        "cascadeDelete": false,
-        "collectionId": "pbc_2873630990",
-        "hidden": false,
-        "id": "relation_ms_org",
-        "maxSelect": 1,
-        "minSelect": 0,
-        "name": "organization",
-        "presentable": false,
-        "required": false,
-        "system": false,
-        "type": "relation"
-      },
-      {
-        "autogeneratePattern": "",
-        "hidden": false,
-        "id": "text_ms_namespace",
-        "max": 64,
-        "min": 1,
-        "name": "namespace",
-        "pattern": "^[a-z0-9_]+$",
-        "presentable": false,
-        "primaryKey": false,
-        "required": true,
-        "system": false,
-        "type": "text"
-      },
-      {
-        "autogeneratePattern": "",
-        "hidden": false,
-        "id": "text_ms_name",
-        "max": 64,
-        "min": 1,
-        "name": "name",
-        "pattern": "^[a-z0-9_]+$",
-        "presentable": true,
-        "primaryKey": false,
-        "required": true,
-        "system": false,
-        "type": "text"
-      },
-      {
-        "autogeneratePattern": "",
-        "hidden": false,
-        "id": "text_ms_version",
-        "max": 32,
-        "min": 1,
-        "name": "version",
-        "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
-        "presentable": false,
-        "primaryKey": false,
-        "required": true,
-        "system": false,
-        "type": "text"
-      },
-      {
-        "hidden": false,
-        "id": "select_ms_format",
-        "maxSelect": 1,
-        "name": "format",
-        "presentable": false,
-        "required": true,
-        "system": false,
-        "type": "select",
-        "values": [
-          "json_schema"
-        ]
-      },
-      {
-        "hidden": false,
-        "id": "json_ms_schema",
-        "maxSize": 0,
-        "name": "schema",
-        "presentable": false,
-        "required": true,
-        "system": false,
-        "type": "json"
-      },
-      {
-        "autogeneratePattern": "",
-        "hidden": false,
-        "id": "text_ms_description",
-        "max": 0,
-        "min": 0,
-        "name": "description",
-        "pattern": "",
-        "presentable": false,
-        "primaryKey": false,
-        "required": false,
-        "system": false,
-        "type": "text"
-      },
-      {
-        "hidden": false,
-        "id": "autodate_ms_created",
-        "name": "created",
-        "onCreate": true,
-        "onUpdate": false,
-        "presentable": false,
-        "system": false,
-        "type": "autodate"
-      },
-      {
-        "hidden": false,
-        "id": "autodate_ms_updated",
-        "name": "updated",
-        "onCreate": true,
-        "onUpdate": true,
-        "presentable": false,
-        "system": false,
-        "type": "autodate"
-      }
-    ],
-    "indexes": [
-      "CREATE UNIQUE INDEX idx_ms_identity ON message_schemas (organization, namespace, name, version)"
     ],
     "system": false
   },

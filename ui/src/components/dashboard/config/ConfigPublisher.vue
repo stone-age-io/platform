@@ -9,7 +9,7 @@
         </option>
       </select>
       <div class="help-text">
-        When selected, pick an operation below to auto-resolve the subject and render a schema-driven payload form.
+        When selected, pick an operation below to auto-resolve the subject from the Thing’s location, code and type.
       </div>
     </div>
 
@@ -54,7 +54,7 @@
         placeholder='{"key": "value"}'
       />
       <div class="help-text">
-        Initial payload. Ignored when the operation has a linked message schema.
+        Initial payload.
       </div>
     </div>
 

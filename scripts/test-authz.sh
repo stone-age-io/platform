@@ -273,9 +273,9 @@ expect "dashboard cannot create thing_types" "403|400|404" "$RCODE" "$RBODY"
 req POST /collections/invites/records "$TG" \
   "{\"email\":\"x@test.local\",\"organization\":\"$ORG\",\"role\":\"member\"}"
 expect "dashboard cannot invite users" "403|400|404" "$RCODE" "$RBODY"
-req POST /collections/message_schemas/records "$TG" \
-  "{\"namespace\":\"n\",\"name\":\"s\",\"version\":\"1.0.0\",\"organization\":\"$ORG\",\"schema\":{}}"
-expect "dashboard cannot create message_schemas" "403|400|404" "$RCODE" "$RBODY"
+req POST /collections/thing_type_operations/records "$TG" \
+  "{\"name\":\"dash_op\",\"capability\":\"publish\",\"subject_suffix\":\"x\",\"organization\":\"$ORG\"}"
+expect "dashboard cannot create thing_type_operations" "403|400|404" "$RCODE" "$RBODY"
 req POST /collections/thing_types/records "$TA" \
   "{\"name\":\"OwnerType\",\"code\":\"OT1\",\"organization\":\"$ORG\"}"
 expect "owner CAN still create thing_types" 200 "$RCODE" "$RBODY"

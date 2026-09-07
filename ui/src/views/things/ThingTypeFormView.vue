@@ -10,7 +10,7 @@ import ThingTypeOperationFormView from '@/views/things/ThingTypeOperationFormVie
 import MetadataSchemaCard from '@/components/common/MetadataSchemaCard.vue'
 import RecordPicker from '@/components/common/RecordPicker.vue'
 import type { PickerOption } from '@/types/picker'
-import type { ThingTypeCapability, ThingTypeOperation } from '@/types/pocketbase'
+import type { ThingTypeOperation } from '@/types/pocketbase'
 
 const router = useRouter()
 const route = useRoute()
@@ -25,12 +25,9 @@ const form = ref({
   name: '',
   description: '',
   code: '',
-  capabilities: [] as ThingTypeCapability[],
   subject_prefix: '',
   operations: [] as string[],
 })
-
-const availableCapabilities: ThingTypeCapability[] = ['publish', 'subscribe', 'request', 'reply']
 
 // Inventory metadata schema, authored by MetadataSchemaCard. Null means the type
 // declares no fields and the Thing form falls back to free-form key/value rows.
@@ -46,19 +43,6 @@ const operationOptions = computed<PickerOption[]>(() =>
     sublabel: `${op.capability} · ${op.subject_suffix}`,
   }))
 )
-
-/**
- * Capabilities are four fixed values, so they get checkboxes rather than the
- * picker: a filter box over four rows is theatre, and the native
- * `<select multiple>` this replaced needed Ctrl/Cmd-click, which is
- * undiscoverable and simply unavailable on a touchscreen.
- */
-function toggleCapability(cap: ThingTypeCapability) {
-  const current = form.value.capabilities
-  form.value.capabilities = current.includes(cap)
-    ? current.filter(c => c !== cap)
-    : [...current, cap]
-}
 
 const showOperationModal = ref(false)
 
@@ -96,7 +80,6 @@ async function loadData() {
       name: record.name,
       description: record.description,
       code: record.code,
-      capabilities: record.capabilities || [],
       subject_prefix: record.subject_prefix || '',
       operations: record.operations || [],
     }
@@ -202,24 +185,6 @@ onMounted(async () => {
               </p>
             </div>
 
-            <div class="form-control">
-              <label class="label">Capabilities</label>
-              <div class="space-y-2">
-                <label
-                  v-for="cap in availableCapabilities"
-                  :key="cap"
-                  class="flex items-center gap-3 cursor-pointer"
-                >
-                  <input
-                    type="checkbox"
-                    class="checkbox checkbox-sm"
-                    :checked="form.capabilities.includes(cap)"
-                    @change="toggleCapability(cap)"
-                  />
-                  <code class="text-sm">{{ cap }}</code>
-                </label>
-              </div>
-            </div>
           </div>
         </BaseCard>
       </div>

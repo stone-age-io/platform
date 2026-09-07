@@ -97,14 +97,6 @@ export interface WidgetFormState {
   // Markdown Widget
   markdownContent: string
 
-  // PocketBase Widget (NEW)
-  pbCollection: string
-  pbFilter: string
-  pbSort: string
-  pbFields: string
-  pbLimit: number
-  pbRefreshInterval: number
-
   // KV Table Widget
   kvTableBucket: string
   kvTableKeyPattern: string
@@ -212,14 +204,6 @@ export function createEmptyFormState(): WidgetFormState {
     statusStaleLabel: 'Stale',
     markdownContent: '', 
     
-    // PocketBase Defaults
-    pbCollection: '',
-    pbFilter: '',
-    pbSort: '-created',
-    pbFields: '',
-    pbLimit: 10,
-    pbRefreshInterval: 0,
-
     // Scanner Defaults
     scannerKvEnabled: true,
     scannerKvBucket: '',

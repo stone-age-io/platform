@@ -25,7 +25,6 @@ import ConfigConsole from '@/components/dashboard/config/ConfigConsole.vue'
 import ConfigPublisher from '@/components/dashboard/config/ConfigPublisher.vue'
 import ConfigStatus from '@/components/dashboard/config/ConfigStatus.vue'
 import ConfigMarkdown from '@/components/dashboard/config/ConfigMarkdown.vue'
-import ConfigPocketBase from '@/components/dashboard/config/ConfigPocketBase.vue'
 import ConfigKvTable from '@/components/dashboard/config/ConfigKvTable.vue'
 import ConfigStreamTable from '@/components/dashboard/config/ConfigStreamTable.vue'
 import ConfigScanner from '@/components/dashboard/config/ConfigScanner.vue'
@@ -69,7 +68,6 @@ const configComponents: Record<string, Component> = {
   publisher: ConfigPublisher,
   status: ConfigStatus,
   markdown: ConfigMarkdown,
-  pocketbase: ConfigPocketBase,
   kvtable: ConfigKvTable,
   streamtable: ConfigStreamTable,
   scanner: ConfigScanner,
@@ -762,34 +760,6 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
     },
   },
 
-  // --- pocketbase ---
-  pocketbase: {
-    hydrate(widget, state) {
-      if (widget.pocketbaseConfig) {
-        state.pbCollection = widget.pocketbaseConfig.collection
-        state.pbFilter = widget.pocketbaseConfig.filter || ''
-        state.pbSort = widget.pocketbaseConfig.sort || '-created'
-        state.pbFields = widget.pocketbaseConfig.fields || ''
-        state.pbLimit = widget.pocketbaseConfig.limit || 10
-        state.pbRefreshInterval = widget.pocketbaseConfig.refreshInterval || 0
-      }
-    },
-    validate(form, errors) {
-      if (!form.pbCollection) errors.pbCollection = 'Collection is required'
-    },
-    buildUpdates(form) {
-      return {
-        pocketbaseConfig: {
-          collection: form.pbCollection,
-          filter: form.pbFilter,
-          sort: form.pbSort,
-          fields: form.pbFields,
-          limit: form.pbLimit,
-          refreshInterval: form.pbRefreshInterval,
-        },
-      }
-    },
-  },
 }
 
 // ============================================================================
@@ -820,7 +790,7 @@ export function useWidgetForm(options: UseWidgetFormOptions) {
   const showDataSourceConfig = computed(() => {
     if (!widgetType.value) return false
     // Status, markdown, pocketbase, kvtable manage their own data source UI
-    if (widgetType.value === 'status' || widgetType.value === 'markdown' || widgetType.value === 'pocketbase' || widgetType.value === 'kvtable') return false
+    if (widgetType.value === 'status' || widgetType.value === 'markdown' || widgetType.value === 'kvtable') return false
     return STANDARD_DATA_SOURCE_TYPES.includes(widgetType.value)
   })
 
