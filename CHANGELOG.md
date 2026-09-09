@@ -130,6 +130,38 @@ and this file starts where the versioned releases do.
   `TotalPages: 1` and its comment pointed at pbclient, which only ever parsed a
   single page envelope.
 
+- **Decommissioning a device now closes the Nebula door too.**
+  `hooks/active_flag.go` refreshed the PocketBase token key and mirrored
+  `active` onto the linked `nats_user`, and touched `things.nebula_host` not at
+  all. A decommissioned device therefore kept valid overlay-network membership
+  until its certificate expired: the console door and the NATS door closed, the
+  mesh door stayed open. The flag is now mirrored onto `nebula_hosts` as well,
+  which is what pb-nebula writes into every other host's `pki.blocklist`.
+
+  The two cascades are independent. The previous code returned early when
+  `nats_user` was empty, which would have skipped the Nebula half entirely for
+  any device holding only a certificate.
+
+  Two properties of Nebula revocation are worth knowing rather than being
+  surprised by. It has **no CRL**, so revocation is a fingerprint carried in
+  every *peer's* config and takes effect when that config is redeployed and the
+  process reloads — the platform's job ends when the material it hands out
+  refuses the certificate, the same boundary as minting a NATS credential and
+  not policing what connects with it. And fingerprinting a certificate requires
+  the certificate to still be in the database, so **deactivate to revoke; do
+  not delete**. Deleting a host leaves its certificate trusted until expiry.
+
+  This needs a pb-nebula newer than v0.1.0. Against v0.1.0 the flag is mirrored
+  correctly and no blocklist is produced, so the platform half is inert but
+  harmless until the dependency is bumped.
+
+  `CLAUDE.md` also described this hook as setting `revoke` on the linked NATS
+  user. It never did, and the hook's own comment explains at length why it must
+  not: pb-nats treats `revoke` as "these credentials leaked", rotating the key
+  pair and handing back a *working* replacement, and it checks that flag before
+  the active edge and returns early — so setting both in one save silently
+  re-credentials the device you just disabled.
+
 ### Changed
 
 - **`observability.addr` defaults to `127.0.0.1:9100`** instead of empty. A

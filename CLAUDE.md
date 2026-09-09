@@ -489,7 +489,13 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
       in CI, so a malformed exposition would look fine and be unscrapeable —
       the same argument as `TestBuildLeafConfIsAcceptedByNATSServer`. The tests
       parse the output with Prometheus's own parser and run promlint over it.
-15. **Decommissioning a device** - `things.active` / `leaf_nodes.active`, owner/admin only. The flag is enforced in three places at once, because any one of them alone is a half-measure: the `authRule` (`active = true`) blocks new logins, `hooks/active_flag.go` refreshes `tokenKey` so tokens already issued die immediately, and the same hook sets `revoke` on the linked `nats_user` so the signed NATS credential stops working. Reactivating sets `regenerate`, issuing a fresh credential — the old `.creds` stays dead, because the account JWT's revocation cutoff is permanent. Distinct from a leaf node's heartbeat status, which reports whether the edge box *is* connected, not whether it *may* connect.
+15. **Decommissioning a device** - `things.active` / `leaf_nodes.active`, owner/admin only. The flag is enforced in **four** places at once, because any one alone is a half-measure: the `authRule` (`active = true`) blocks new logins; `hooks/active_flag.go` refreshes `tokenKey` so tokens already issued die immediately; the same hook mirrors `active` onto the linked `nats_user`, which is pb-nats's durable suspend switch, so the signed NATS credential stops working; and it mirrors `active` onto the linked `nebula_host`, which is what pb-nebula writes into every other host's `pki.blocklist`. Reactivating re-mints the NATS credential — the old `.creds` stays dead, because the account JWT's revocation cutoff is permanent.
+
+    **It mirrors `active`, not `revoke`.** In pb-nats `revoke` is the "these credentials leaked" button: it rotates the key pair and hands back a *working* replacement, leaving the user active. It is also checked before the active edge and returns early, so setting both in one save silently takes the revoke path — a deactivated Thing whose NATS identity is freshly re-issued and still publishing. The hook says so at length; this line used to say `revoke` and was simply wrong.
+
+    **The Nebula half takes effect on redeploy, not instantly.** Nebula has no CRL, so revocation is a fingerprint in every *peer's* config, applied when that config is redeployed and the process reloads (SIGHUP is enough). The platform's job ends when the material it hands out refuses the certificate — the same boundary as minting a NATS credential and not policing what connects with it. It also means **deactivate, do not delete**: fingerprinting a certificate requires the certificate to still be in the database, so deleting a host leaves it trusted until expiry. Requires pb-nebula newer than v0.1.0; against v0.1.0 the flag is mirrored and no blocklist is produced.
+
+    Distinct from a leaf node's heartbeat status, which reports whether the edge box *is* connected, not whether it *may* connect.
 
 16. **Organization code — the ecosystem's namespace root** (ADR 0002 in
     `platform-docs`). The rule is **ids for storage, codes for addressing**.
@@ -782,9 +788,14 @@ Rules to follow when touching authorization:
   and `leaf_nodes.active` exist only because `hooks/active_flag.go` gives them
   teeth — the flag, the token kill, and the NATS revoke are one operation. Do not
   add a status field to a device without deciding what enforces it.
-- **A device's real capability is its NATS credential, not its PocketBase
-  session.** Anything that takes a Thing or leaf node out of service has to reach
-  `nats_users`, or it has only closed the console door.
+- **A device's real capability is its credentials, not its PocketBase session.**
+  Anything that takes a Thing or leaf node out of service has to reach
+  `nats_users` **and** `nebula_hosts`, or it has only closed some of the doors.
+  This was a live gap until the Nebula half was added: the console door and the
+  NATS door closed while the overlay network stayed open until the certificate
+  expired. `hooks/active_flag.go` mirrors the flag to both, and the two cascades
+  are independent — a device may hold either identity, both, or neither, so
+  neither may short-circuit the other.
 - **Schema changes need a new `migrations/schema_update_*.go`** — editing
   `schema.json` alone reaches fresh databases only. **A new non-null column with
   a live rule over it needs a backfill in the same migration**: PocketBase bools

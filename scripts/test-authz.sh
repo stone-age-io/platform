@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=172         # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=175         # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -849,6 +849,24 @@ expect "an active thing CAN authenticate" 200 "$RCODE" "$RBODY"
 TT=$(j "$RBODY" token)
 [ -z "$TT" ] && die "thing login failed: $RBODY"
 
+# Link a Nebula host as well, so deactivation has both identities to reach. A
+# device that holds only a certificate is the case the cascade used to skip:
+# the hook returned early when nats_user was empty.
+#
+# The host is forced ACTIVE first, and that is asserted here rather than
+# assumed. PocketBase bools have no schema default and host_payload above does
+# not send the flag, so a minted host lands inactive -- which meant the
+# deactivation assertion below passed against a build with no Nebula cascade
+# at all. A check that cannot fail is worse than no check.
+req PATCH "/collections/things/records/$THING" "$SU" "{\"nebula_host\":\"$HOST\"}"
+THING_HOST=$(j "$RBODY" nebula_host)
+req PATCH "/collections/nebula_hosts/records/$HOST" "$SU" '{"active":true}'
+if [ "$THING_HOST" = "$HOST" ] && [ "$(j "$RBODY" active)" = "true" ]; then
+  ok "fixture: the thing holds an ACTIVE Nebula host as well as a NATS identity"
+else
+  no "fixture setup failed -- thing/nebula_host link or the host active flag is wrong"
+fi
+
 # Who may flip it. Same roles as delete: taking a device out of service revokes
 # its credential, so it is a management action, not inventory editing.
 req PATCH "/collections/things/records/$THING" "$TG" '{"active":false}'
@@ -879,6 +897,21 @@ else
   no "linked nats_user still active -- the NATS cascade did not fire"
 fi
 
+# Effect 4: the overlay-network certificate is revoked too. Nebula has no CRL,
+# so `active = false` on the host is what pb-nebula writes into every OTHER
+# host's pki.blocklist. Without this the console door and the NATS door closed
+# and the mesh door stayed open until the certificate expired on its own.
+#
+# This asserts the platform half -- the flag reaching nebula_hosts. Whether a
+# blocklist then appears in peer configs is pb-nebula behaviour and is tested
+# there, against Nebula's own CA pool.
+req GET "/collections/nebula_hosts/records/$HOST" "$SU"
+if [ "$(j "$RBODY" active)" = "false" ]; then
+  ok "deactivation revoked the thing's linked Nebula host"
+else
+  no "linked nebula_host still active -- a decommissioned device keeps mesh access"
+fi
+
 # Reactivation must issue a FRESH credential: the revocation cutoff in the
 # account JWT is permanent, so re-enabling without re-minting would leave a
 # device that looks enabled and cannot connect. Baseline is read on the line
@@ -897,6 +930,12 @@ if [ "$(j "$RBODY" active)" = "true" ] && [ -n "$(j "$RBODY" creds_file)" ] \
   ok "reactivation re-minted the NATS credential (old .creds stays revoked)"
 else
   no "nats_user not re-issued on reactivation -- device would look enabled and fail to connect"
+fi
+req GET "/collections/nebula_hosts/records/$HOST" "$SU"
+if [ "$(j "$RBODY" active)" = "true" ]; then
+  ok "reactivation put the Nebula host back on the mesh"
+else
+  no "nebula_host still inactive after reactivation -- it stays blocklisted by its peers"
 fi
 
 # things.manageRule. Without it, `password` on update requires `oldPassword`
