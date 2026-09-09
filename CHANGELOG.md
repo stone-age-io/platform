@@ -313,6 +313,35 @@ and this file starts where the versioned releases do.
 
 ### Changed
 
+- **A documentation truth pass**, in this repo and in `platform-docs`. The
+  headline feature list still sold message schemas — "versioned JSON Schema" —
+  which is the worst place for a stale claim, since a buyer demos the thing they
+  were sold. The widget table listed a **PocketBase** widget that has no
+  component behind it (sixteen types, none of them `pocketbase`), the role count
+  said four, the agent's binary was called `stone-age-agent` where its own
+  install snippet says `agent`, and this file said bootstrap is three commands
+  where it is four — `nats export` is required by `serve --nats` and cannot run
+  before `bootstrap`, which is why `docker-entrypoint.sh` does all four.
+
+  The authorization check count was wrong in two places and is now correct in
+  both. `README.md` also described operations as carrying "an optional schema"
+  and the console as having an infer-from-sample tool for it; both went with
+  `message_schemas`.
+
+  ADR 0002 was **amended rather than rewritten**, since an ADR records what was
+  decided: the org-code pattern now permits a leading digit, and the option that
+  would have reserved `system` and `operator` is marked as not what shipped.
+
+  Two claims a technical buyer would break are gone: "hundreds of clients using
+  a single deployment", which sat three pages from "the Control Plane scales
+  vertically" on a single-writer SQLite database, and an unsupportable
+  superlative about security that traditional platforms "simply cannot match".
+  Both are replaced with the mechanism, and with an explicit note that there are
+  no production deployments to quote figures from.
+
+  `demo-seed` is now in the getting-started guide, having been documented only
+  here despite being the fastest path from a fresh install to something legible.
+
 - **`observability.addr` defaults to `127.0.0.1:9100`** instead of empty. A
   stock edge box previously served neither `/ready` nor `/metrics`, so the one
   place per-site health is actually visible was off unless someone opted in —

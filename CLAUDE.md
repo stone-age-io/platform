@@ -138,12 +138,17 @@ npm run dev
 - PocketBase Admin: http://localhost:8090/_/
 
 ### Bootstrap (Initial Setup)
-Three commands, in this order — the order is load-bearing:
+Four commands, in this order — the order is load-bearing:
 ```bash
 ./stone-age superuser upsert admin@example.com 'password'   # PB superuser + NATS $SYS seed
 ./stone-age migrate up                                      # import schema.json
 ./stone-age bootstrap --email admin@example.com --org "System" --operator-org "816tech"
+./stone-age nats export --output ./nats-config/             # only for serve --nats
 ```
+The fourth is needed only by `serve --nats`, which reads the exported operator
+JWT and resolver config from disk — but it cannot run any earlier, because there
+is no operator in the database until `bootstrap` has run. `docker-entrypoint.sh`
+does all four in this order.
 `bootstrap` writes `is_operator` / `is_system_org` / `is_operator_org`, which only
 exist after the schema is imported. PocketBase silently drops writes to fields
 that don't exist, so running `bootstrap` first yields a platform with no operator;
@@ -914,7 +919,7 @@ you, so pushing an absolute one would make the login form an open redirect (the
   rather than string-matched, because nothing in CI scrapes it and a malformed
   body looks fine in a terminal.
 - `./scripts/test-authz.sh` — **run after any API-rule change in `schema.json`.**
-  Builds the binary, stands up a throwaway DB, and asserts 172 authorization
+  Builds the binary, stands up a throwaway DB, and asserts 175 authorization
   behaviours against a live server. The rules are the only tenancy enforcement
   in the platform and nothing else type-checks them. Add a check when you add a
   rule, and bump `EXPECTED_CHECKS`. Note PocketBase answers 404 (not 403) when an
