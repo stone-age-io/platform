@@ -910,6 +910,21 @@ you, so pushing an absolute one would make the login form an open redirect (the
 
 ## Testing
 
+- `cd ui && npm test` — Vitest. Pure logic only, node environment, no component
+  mounting except `ConfirmDialog`, where the DOM contract IS the subject. Covers
+  the five files `vue-tsc && vite build` cannot protect: `twinDrift`,
+  `useSubscriptionManager`, the `can` capability map, dashboard import/export,
+  and `createDefaultWidget`. A spec that needs a DOM opts in with
+  `// @vitest-environment jsdom` on its first line.
+- **`gofmt -l .` reports ~25 files on a Windows checkout, and they are all
+  fine.** `core.autocrlf` rewrites `.go` files to CRLF in the worktree while
+  `.gitattributes` (`*.go text eol=lf`) keeps the committed content LF, so gofmt
+  sees line endings git will never store. The CI gate is plain `gofmt -l .`, and
+  it passes because CI checks out LF. To check locally the way CI will, run it
+  against what git STORES rather than the worktree:
+  `git ls-files '*.go' | while read f; do git show ":$f" > /tmp/x.go; gofmt -l /tmp/x.go; done`.
+  Do not "fix" the files `gofmt -l .` lists here, and do not conclude the gate is
+  broken.
 - `go test ./...` — Go unit tests (`internal/leafsync` has the bulk of them).
   Two habits worth keeping: the readiness checks that touch NATS are tested
   against a **real operator-mode `nats-server`** built in the test (see
