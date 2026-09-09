@@ -1,29 +1,53 @@
 <template>
   <Teleport to="body">
     <div v-if="modelValue" class="confirm-overlay" @click.self="cancel">
-      <div class="confirm-dialog" :class="variantClass">
+      <!--
+        role="dialog" + aria-modal tell a screen reader this is a modal and that
+        the rest of the page is inert; aria-labelledby/describedby are what it
+        reads out on arrival. Without them this was an anonymous <div> standing
+        between the user and every destructive action in the product.
+
+        tabindex="-1" makes the container focusable so focus can land HERE on
+        open rather than on a button. That is deliberate for a confirm: nothing
+        is pre-selected, so Enter does not delete anything, and the first Tab
+        reaches Cancel because it comes first in the DOM.
+      -->
+      <div
+        ref="dialogEl"
+        class="confirm-dialog"
+        :class="variantClass"
+        role="dialog"
+        aria-modal="true"
+        :aria-labelledby="titleId"
+        :aria-describedby="messageId"
+        tabindex="-1"
+        @keydown="onKeydown"
+      >
         <div class="confirm-header">
-          <div class="confirm-icon">{{ icon }}</div>
-          <h3 class="confirm-title">{{ title }}</h3>
+          <!-- Decorative: the variant is already conveyed by the title and the
+               message, so announcing an emoji would just add noise. -->
+          <div class="confirm-icon" aria-hidden="true">{{ icon }}</div>
+          <h3 :id="titleId" class="confirm-title">{{ title }}</h3>
         </div>
-        
+
         <div class="confirm-body">
-          <p class="confirm-message">{{ message }}</p>
+          <p :id="messageId" class="confirm-message">{{ message }}</p>
           <p v-if="details" class="confirm-details">{{ details }}</p>
         </div>
-        
+
         <div class="confirm-actions">
-          <button 
+          <button
             class="btn-secondary"
+            type="button"
             @click="cancel"
           >
             {{ cancelText }}
           </button>
-          <button 
+          <button
             class="btn-confirm"
             :class="variantClass"
+            type="button"
             @click="confirm"
-            autofocus
           >
             {{ confirmText }}
           </button>
@@ -34,7 +58,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue'
 
 interface Props {
   modelValue: boolean
@@ -68,6 +92,92 @@ const icon = computed(() => {
 })
 
 const variantClass = computed(() => `variant-${props.variant}`)
+
+// Unique per instance, so two dialogs on a page cannot both claim the same
+// aria-labelledby target.
+const uid = useId()
+const titleId = `confirm-title-${uid}`
+const messageId = `confirm-message-${uid}`
+
+const dialogEl = ref<HTMLElement | null>(null)
+
+// What had focus before the dialog opened, so it can be given back. Without
+// this, dismissing a confirm drops focus to the top of the document and a
+// keyboard user has to tab back to wherever they were — which on a list view
+// means tabbing past every row.
+let previouslyFocused: HTMLElement | null = null
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
+// No visibility filtering, deliberately. Everything inside this dialog is
+// rendered by v-if and is on screen whenever the dialog exists, so there is
+// nothing hidden to skip — and the usual test for it, `offsetParent !== null`,
+// is wrong in two ways that matter: it reports null for anything inside a
+// position:fixed subtree in some engines, and it is null for EVERY element
+// under jsdom, which has no layout. Filtering on it silently emptied the list
+// and turned the trap into a no-op.
+function focusableElements(): HTMLElement[] {
+  if (!dialogEl.value) return []
+  return Array.from(dialogEl.value.querySelectorAll<HTMLElement>(FOCUSABLE))
+}
+
+// Escape cancels, and Tab is trapped inside the dialog.
+//
+// The trap is the part that makes aria-modal honest: it claims the rest of the
+// page is inert, and without trapping Tab focus walks straight out of the
+// dialog into a page the user cannot see, still able to activate whatever it
+// lands on.
+function onKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    cancel()
+    return
+  }
+  if (event.key !== 'Tab') return
+
+  const focusable = focusableElements()
+  if (focusable.length === 0) {
+    event.preventDefault()
+    return
+  }
+  const first = focusable[0]
+  const last = focusable[focusable.length - 1]
+  const active = document.activeElement
+
+  if (event.shiftKey && (active === first || active === dialogEl.value)) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && active === last) {
+    event.preventDefault()
+    first.focus()
+  }
+}
+
+watch(
+  () => props.modelValue,
+  async (open) => {
+    if (open) {
+      previouslyFocused = document.activeElement as HTMLElement | null
+      await nextTick()
+      // The container, not a button: see the template comment. Nothing is
+      // pre-selected, so Enter cannot confirm a destructive action by accident.
+      dialogEl.value?.focus()
+      return
+    }
+    restoreFocus()
+  },
+)
+
+function restoreFocus() {
+  const target = previouslyFocused
+  previouslyFocused = null
+  // Only if it is still in the document — the confirmed action may well have
+  // removed the row whose button opened this.
+  if (target && target.isConnected) target.focus()
+}
+
+onBeforeUnmount(restoreFocus)
 
 function confirm() {
   emit('confirm')
@@ -202,6 +312,31 @@ function cancel() {
 
 .btn-confirm.variant-info { background: oklch(var(--in)); }
 .btn-confirm.variant-info:hover { background: oklch(var(--in) / 0.8); }
+
+/* A keyboard user must be able to see which button they are about to press,
+   and this dialog is where that matters most. The container takes focus on
+   open and gets no ring, because it is not actionable. */
+.btn-secondary:focus-visible,
+.btn-confirm:focus-visible {
+  outline: 2px solid oklch(var(--bc));
+  outline-offset: 2px;
+}
+
+.confirm-dialog:focus {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confirm-overlay,
+  .confirm-dialog {
+    animation: none;
+  }
+
+  .btn-secondary,
+  .btn-confirm {
+    transition: none;
+  }
+}
 
 /* Mobile adjustments */
 @media (max-width: 600px) {

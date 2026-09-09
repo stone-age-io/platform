@@ -63,6 +63,30 @@ and this file starts where the versioned releases do.
 
 ### Fixed
 
+- **`ConfirmDialog` is now an actual dialog.** It is the gate in front of every
+  destructive action in the console — deleting a Thing, revoking a credential,
+  decommissioning a device — and it was a plain `<div>`: no `role="dialog"`, no
+  `aria-modal`, no labelling, no Escape handler, no focus trap, and `autofocus`
+  on the **destructive** button, so Enter on a dialog nobody had read deleted the
+  thing.
+
+  It now announces itself as a modal, labels and describes itself from the title
+  and message it already renders, hides the decorative emoji from assistive
+  technology, cancels on Escape, traps Tab, and returns focus to whatever opened
+  it — tolerating that element being gone, since the confirmed action has often
+  removed the row whose button opened the dialog. Focus lands on the dialog
+  container rather than a button, so nothing is pre-selected and Enter cannot
+  confirm by accident; the first Tab reaches Cancel because it comes first in the
+  DOM. Also a visible `:focus-visible` ring on the buttons, and the animations
+  respect `prefers-reduced-motion`.
+
+  Fourteen tests cover it, and they are the one place in this suite that mounts
+  a component — what is under test there *is* the DOM contract. Writing them
+  caught a bug in the implementation: the focus trap filtered candidates on
+  `offsetParent !== null`, which is null for every element under jsdom and for
+  anything inside a `position: fixed` subtree in some engines, so the trap was
+  silently a no-op.
+
 - **`leaf-sync` no longer goes deaf when the local NATS server restarts.**
   `nats.Connect` was called with no reconnect options, so nats.go's defaults
   applied: 60 attempts at 2s, after which the connection is **closed
