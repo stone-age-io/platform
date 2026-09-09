@@ -61,7 +61,39 @@ and this file starts where the versioned releases do.
   operator-gated, so nothing regresses.
 
 
+### Fixed
+
+- **`leaf-sync` no longer goes deaf when the local NATS server restarts.**
+  `nats.Connect` was called with no reconnect options, so nats.go's defaults
+  applied: 60 attempts at 2s, after which the connection is **closed
+  permanently**. `Run` loops until its context is cancelled, so about two
+  minutes after the local bus went away the agent became a zombie — the ticker
+  kept firing, every KV write failed, the heartbeat failed, the twin relay
+  failed, and nothing ever reconnected or exited for a supervisor to act on.
+
+  This landed on the default topology (a separately supervised `nats-server`)
+  and on the documented setup flow, where `leaf-sync config` writes
+  `nats-leaf.conf` and the next step restarts the server that reads it. An
+  islanded site is precisely when the agent has to keep trying, so the
+  connection now retries indefinitely, with disconnect, reconnect and
+  closed handlers so the state is visible in the log rather than silent.
+
+  The **initial** dial still fails fast, deliberately and unchanged: without
+  `--nats` the bus is a separate process that should already be running, and a
+  hard error at startup is how an operator learns the creds path or URL is
+  wrong. The options now live in a named function so
+  `TestLocalConnectRetriesForever` can assert the invariant that was missing —
+  it fails against the previous behaviour with `MaxReconnect = 60`.
+
 ### Changed
+
+- **`observability.addr` defaults to `127.0.0.1:9100`** instead of empty. A
+  stock edge box previously served neither `/ready` nor `/metrics`, so the one
+  place per-site health is actually visible was off unless someone opted in —
+  which is why the `nats_local` check that would have caught the reconnect bug
+  above had no consumer. Binding was already non-fatal by design, so if the
+  port is taken (node_exporter's default is the same one) leaf-sync logs a
+  warning and carries on syncing. Set it to `""` to serve neither.
 
 - `scripts/test-authz.sh` covers 172 behaviours, up from 155. The new checks
   exercise the blank-context read path on both the user and leaf-node branches,

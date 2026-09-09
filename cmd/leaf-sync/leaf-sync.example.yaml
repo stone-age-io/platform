@@ -93,7 +93,11 @@ twin:
 # metrics_token: empty means open. When set, accepted as `Authorization: Bearer
 # <token>` or as HTTP Basic with any username and the token as the password.
 observability:
-  addr: ""                  # e.g. 127.0.0.1:9100, or 0.0.0.0:9100 to scrape remotely
+  addr: "127.0.0.1:9100"    # 0.0.0.0:9100 to scrape remotely; "" serves neither.
+                            # Loopback is the default because this is the only
+                            # place per-site health is visible. If the port is
+                            # taken (node_exporter uses it too) leaf-sync logs
+                            # and carries on -- binding is never fatal.
   metrics_token: ""
   interval: 15s
 

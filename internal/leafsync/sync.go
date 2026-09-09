@@ -35,6 +35,45 @@ var allowedCollections = map[string]bool{
 
 const listPageSize = 500 // PocketBase per-page maximum
 
+// localConnectOptions builds the dial options for the leaf's local NATS server.
+//
+// MaxReconnects(-1) is the load-bearing one, and it is a function rather than
+// an inline argument list so a test can assert it is still there. nats.go
+// defaults to 60 attempts at 2s and then CLOSES the connection permanently --
+// but Run loops until its context is cancelled, so leaf-sync turned into a
+// zombie roughly two minutes after the local server went away: the ticker kept
+// firing, every KV Put failed, the heartbeat failed, the twin relay failed, and
+// nothing ever reconnected or exited for a supervisor to notice. Restarting the
+// local bus is a routine, documented act -- `leaf-sync config` writes
+// nats-leaf.conf and the README then has you restart the server that reads it
+// -- so surviving it is table stakes, and an islanded site is precisely when
+// the agent must keep trying.
+//
+// The INITIAL dial still fails fast, deliberately, and that asymmetry is the
+// point: without --nats the bus is a separate process that should already be
+// up, and a hard error at startup is how an operator learns the creds path or
+// URL is wrong. Only an already-established connection retries forever.
+func localConnectOptions(cfg *Config) []nats.Option {
+	return []nats.Option{
+		nats.UserCredentials(cfg.CredsFile),
+		nats.Name("leaf-sync"),
+		nats.MaxReconnects(-1),
+		nats.ReconnectWait(2 * time.Second),
+		nats.DisconnectErrHandler(func(_ *nats.Conn, err error) {
+			log.Printf("⚠️ leaf-sync: disconnected from local NATS: %v (retrying indefinitely)", err)
+		}),
+		nats.ReconnectHandler(func(c *nats.Conn) {
+			log.Printf("leaf-sync: reconnected to local NATS at %s", c.ConnectedUrl())
+		}),
+		nats.ClosedHandler(func(_ *nats.Conn) {
+			// Unreachable while MaxReconnects is -1 unless something calls
+			// Close(), which is Run's deferred shutdown. If it ever fires for
+			// another reason, say so rather than spinning in silence.
+			log.Printf("⚠️ leaf-sync: local NATS connection closed permanently; no further syncs can succeed")
+		}),
+	}
+}
+
 // Run authenticates to PocketBase as the leaf node, connects to the local leaf,
 // and reconciles the configured collections into local KV on an interval until
 // ctx is cancelled (e.g. on SIGINT/SIGTERM).
@@ -68,10 +107,9 @@ func Run(ctx context.Context, cfg *Config) error {
 		log.Printf("leaf-sync: mirroring %v every %s", collections, cfg.SyncInterval)
 	}
 
-	nc, err := nats.Connect(cfg.LocalNatsURL,
-		nats.UserCredentials(cfg.CredsFile),
-		nats.Name("leaf-sync"),
-	)
+	// The initial dial fails fast; an established connection then retries
+	// forever. See localConnectOptions for why that split matters.
+	nc, err := nats.Connect(cfg.LocalNatsURL, localConnectOptions(cfg)...)
 	if err != nil {
 		return fmt.Errorf("connect to local NATS (%s): %w", cfg.LocalNatsURL, err)
 	}
