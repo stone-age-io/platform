@@ -283,6 +283,34 @@ and this file starts where the versioned releases do.
   the bug was invisible partly because nothing could construct a
   `core.RequestEvent` to test it.
 
+- **A second widget-defaults function was silently reverting the first.**
+  `createWidget` called `createDefaultWidget` and then `applyWidgetDefaults`,
+  which ran afterwards and won every conflict — so the newer defaults in
+  `types/dashboard.ts` were being overwritten by an older copy that had drifted:
+  `kvtable` lost its reported-state twin bucket for an empty one (making the
+  `TWIN_BUCKET` import and its "reads reported state" comment dead), and
+  `button`, `switch` and `slider` lost their `cmd.thing.*` / `twin_desired`
+  subjects for older placeholders. It also had no `scanner` case at all — 15
+  branches for 16 types — surviving only because the other function ran first.
+
+  `createDefaultWidget` is now the only source. The titles and `$.value` JSON
+  paths the second function contributed were carried across, so what a new
+  widget gets is unchanged apart from the reverted values being restored; net
+  −94 lines. The file also carried a literal `// ... rest of file unchanged ...`
+  placeholder, which went with it.
+
+- **`configComponents` is typed `Record<WidgetType, Component>`.** It was
+  `Record<string, Component>`, so a widget type with no config component was a
+  modal that opened onto nothing — no error anywhere, at build time or runtime.
+  It is now a compile error, verified by removing an entry and watching
+  `vue-tsc` report `TS2741: Property 'scanner' is missing`.
+
+- **`WIDGET_TYPES` is a runtime list, with `WidgetType` derived from it.** The
+  union existed only at compile time, so nothing could iterate the types and
+  every "is every type handled" question needed a second, hand-maintained copy
+  of the list. `Record<WidgetType, …>` still fails to compile when a type is
+  missing, and tests can now walk all sixteen.
+
 ### Changed
 
 - **`observability.addr` defaults to `127.0.0.1:9100`** instead of empty. A
@@ -357,6 +385,15 @@ and this file starts where the versioned releases do.
   for every tenant. 17 widget types are now 16.
 
 ### Added
+
+- **A frontend test runner.** Vitest, Node environment, no component mounting —
+  the highest-risk logic in the console is pure (widget defaults, the capability
+  map, dashboard import/export, twin drift) and all of it was previously
+  unguarded, since `vue-tsc && vite build` stays green while any of it is wrong.
+  `npm test` runs it, and CI runs it before the bundle so a logic regression
+  fails fast. The first suite pins `createDefaultWidget` across all sixteen
+  widget types, which is what made the defaults merge above safe to attempt.
+
 
 - **"Infer from sample" on a type's inventory fields.** Paste one example record
   as JSON on the Thing Type or Location Type form and every key becomes a typed

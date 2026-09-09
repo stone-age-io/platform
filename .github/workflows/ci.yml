@@ -90,6 +90,15 @@ jobs:
           check typescript 6
           check maplibre-gl 5
 
+      # Pure-logic unit tests: widget defaults, the capability map, twin drift.
+      # No DOM and no component mounting -- all of it is reachable without one,
+      # and  stays green while any of it is wrong, which
+      # is the gap this closes. Runs before the build so a logic regression
+      # fails fast rather than after a 16-second bundle.
+      - name: Frontend unit tests
+        working-directory: ui
+        run: npm test
+
       # vue-tsc, then vite build into ../pb_public. The Go build below embeds
       # the result, so this step is a dependency and not just a check.
       - name: Build the console

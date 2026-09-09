@@ -54,7 +54,12 @@ export interface UseWidgetFormOptions {
 // COMPONENT MAPPING
 // ============================================================================
 
-const configComponents: Record<string, Component> = {
+// Record<WidgetType, …> rather than Record<string, …>, which is the whole
+// point: a widget type with no config component here is a compile error instead
+// of a config modal that opens onto nothing. Nothing in this console renders an
+// error for a missing entry — the modal just comes up empty — and there is no
+// runtime check anywhere, so the type is the only thing that can catch it.
+const configComponents: Record<WidgetType, Component> = {
   text: ConfigText,
   chart: ConfigChart,
   stat: ConfigStat,
