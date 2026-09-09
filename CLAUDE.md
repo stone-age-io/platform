@@ -701,6 +701,27 @@ Rules to follow when touching authorization:
   identity that owns them needs them (the browser's NATS connection and the admin
   download button). The read rules restrict *which rows* a caller sees. Do not add
   `hidden: true` to them — it breaks both and buys nothing.
+- **At-rest encryption covers minting keys, not issued credentials, and that is
+  deliberate.** `encryption_key` protects the operator seed, account seeds and
+  signing keys, and the Nebula CA key. It does NOT protect `creds_file` or
+  `config_yaml`, and cannot usefully: a `.creds` file *contains* the user seed
+  (pb-nats `jwt.FormatUserConfig`), Nebula requires the host key inline, and
+  `ui/src/stores/nats.ts` reads `creds_file` from the API to open the browser's
+  own NATS connection — a browser can never hold the key. Encrypting the column
+  would therefore force a decrypting route plus changes in the edge agent and
+  five UI call sites, and `pb-nats`'s `EncryptField`/`DecryptField` live in
+  `internal/`, so the platform cannot even call them without the library
+  exporting a primitive. `migrations/schema_update_credential_scoping.go`
+  reached the same conclusion for `hidden: true`.
+
+  What that buys is worth knowing precisely: a stolen database with the key held
+  elsewhere yields **no ability to mint new identities** and **every existing
+  credential**. Rotating the NATS side is central and cheap (`regenerate`, and
+  the account JWT's revocation cutoff is permanent); rotating the Nebula side
+  needs re-issue plus a blocklist entry in every peer plus redelivery, because
+  there is no CRL. Don't "fix" this by encrypting the column; state the boundary
+  and let disk encryption, encrypted backups and single-tenant deployments carry
+  the at-rest threat. See SECURITY.md.
 - **A leaf node reads nothing in `nats_*` or `nebula_*`.** `leaf-sync config` gets
   its creds, the account JWT, and the operator JWT from `GET /api/leaf/bootstrap`
   (`hooks/leaf_node_routes.go`), which reads those records with the app's own

@@ -54,6 +54,12 @@ nats:
   # characters when set; empty disables encryption. Prefer providing this via
   # env var (STONE_AGE_NATS_ENCRYPTION_KEY) rather than committing the key.
   # Losing the key means losing access to encrypted records.
+  #
+  # Covers the operator seed and the account seeds/signing keys — the material
+  # needed to MINT identities. It does not cover creds_file, which contains the
+  # user seed by construction and is read straight from the API by the browser
+  # to open its own NATS connection. See SECURITY.md for what a stolen database
+  # does and does not yield.
   encryption_key: ""
 
 nebula:

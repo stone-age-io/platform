@@ -56,6 +56,37 @@ host config). What protects them is *which rows* a caller can see. A report that
 one of these fields is "exposed" needs to show a caller reading a row that is not
 theirs.
 
+**At-rest encryption covers minting keys, not issued credentials.** With
+`nats.encryption_key` and `nebula.encryption_key` set, the operator seed, the
+account seeds and signing keys, and the Nebula CA private key are encrypted in
+the database. `nats_users.creds_file` and `nebula_hosts.config_yaml` are **not**,
+and cannot usefully be: a `.creds` file *contains* the user seed by construction
+(`jwt.FormatUserConfig`), and Nebula's PKI requires the host key inline. The
+browser also reads `creds_file` straight from the API to open its own NATS
+connection, and a browser can never hold the encryption key — so encrypting that
+column would force every read through a server-side decrypting route.
+
+So the boundary a stolen `pb_data/data.db` runs into, with the key held
+separately, is this: the attacker **cannot mint new identities** — no operator
+seed, no account signing keys, no CA key — but **does** obtain every existing
+NATS credential and every overlay host config. That is the line the feature
+actually defends, and it is worth stating because the two halves have very
+different remediation costs:
+
+- **NATS**: rotate. Set `regenerate` on each `nats_users` row; the revocation
+  cutoff in the account JWT is permanent, so the old `.creds` stays dead.
+  Central, scriptable, and delivery already exists (`GET /api/leaf/bootstrap`,
+  the console download).
+- **Nebula**: re-issue *and* blocklist *and* redeliver. There is no CRL, so a
+  revoked certificate is a fingerprint in every peer's `pki.blocklist`, applied
+  when that peer's config is redeployed. This is the expensive half.
+
+Treat a `pb_data` compromise as requiring both. The controls that actually
+address it are operational rather than cryptographic — full-disk encryption on
+the host, encrypted backups, and for tenants who need the blast radius to be
+zero by construction, a dedicated single-tenant deployment with its own
+database, operator seed and CA.
+
 ## Out of scope
 
 - Anything requiring PocketBase superuser access. A superuser bypasses every API

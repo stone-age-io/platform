@@ -210,6 +210,28 @@ and this file starts where the versioned releases do.
   `UNIQUE (organization, code)` index then rejects on a later run — a seeder
   failing for a reason with no visible connection to the outage that caused it.
 
+- **The at-rest encryption boundary is now stated instead of implied.**
+  `nats.encryption_key` / `nebula.encryption_key` protect the material needed to
+  *mint* identities — the operator seed, account seeds and signing keys, the
+  Nebula CA key. They do not protect `nats_users.creds_file` or
+  `nebula_hosts.config_yaml`, and cannot usefully: a `.creds` file *contains* the
+  user seed by construction, Nebula requires the host key inline, and the browser
+  reads `creds_file` straight from the API to open its own NATS connection — so
+  encrypting that column would force every read through a decrypting route.
+
+  So a stolen `pb_data/data.db`, with the key held separately, yields **no
+  ability to mint new identities** and **every existing credential**. That is the
+  line the feature defends, and the two halves cost very different amounts to
+  remediate: the NATS side is a central, scriptable `regenerate` with a permanent
+  revocation cutoff; the Nebula side has no CRL, so it needs re-issue plus a
+  blocklist entry in every peer plus redelivery.
+
+  No code changes beyond the `encryption_at_rest` readiness check, which reported
+  a bare "enabled for NATS and Nebula" — accurate about the config and misleading
+  about the guarantee. It now names what it covers. The at-rest threat is
+  answered by disk encryption, encrypted backups, and single-tenant deployments,
+  which is where `SECURITY.md` now points.
+
 ### Changed
 
 - **`observability.addr` defaults to `127.0.0.1:9100`** instead of empty. A
