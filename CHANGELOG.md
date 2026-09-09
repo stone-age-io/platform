@@ -175,9 +175,9 @@ and this file starts where the versioned releases do.
   the certificate to still be in the database, so **deactivate to revoke; do
   not delete**. Deleting a host leaves its certificate trusted until expiry.
 
-  This needs a pb-nebula newer than v0.1.0. Against v0.1.0 the flag is mirrored
-  correctly and no blocklist is produced, so the platform half is inert but
-  harmless until the dependency is bumped.
+  This needs pb-nebula v0.2.0, which is now pinned (see **Changed** below).
+  Against v0.1.0 the flag was mirrored correctly and no blocklist was ever
+  produced, so the platform half was inert but harmless.
 
   `CLAUDE.md` also described this hook as setting `revoke` on the linked NATS
   user. It never did, and the hook's own comment explains at length why it must
@@ -336,6 +336,24 @@ and this file starts where the versioned releases do.
   missing, and tests can now walk all sixteen.
 
 ### Changed
+
+- **pb-nebula bumped to v0.2.0**, which is what makes the Nebula half of
+  decommissioning above actually do something. Against v0.1.0 `active` was
+  mirrored onto `nebula_hosts` correctly and no `pki.blocklist` was ever
+  produced, so that half was inert. No platform code changed: pb-nebula's
+  `options.go`, `nebula.go` and `errors.go` are untouched between the two tags
+  and the whole feature lives under its `internal/`, so this is a go.mod bump.
+
+  It does change one behaviour that is not the platform's own. A `nebula_hosts`
+  record created **without** an `active` field now lands active, because
+  pb-nebula forces the flag on create — PocketBase bools have no schema default,
+  and an inactive host is one whose certificate every peer blocklists, so a host
+  born inactive would be refused by the whole network from the moment it was
+  signed. Nothing in this platform relied on the old behaviour: both
+  `POST /api/org/things` and the console's Nebula host form always sent
+  `active` explicitly. `scripts/test-authz.sh` now pins the contract anyway
+  (176 checks), because it is a dependency's guarantee rather than one of our
+  rules, and a downgrade would otherwise be silent.
 
 - **A documentation truth pass**, in this repo and in `platform-docs`. The
   headline feature list still sold message schemas — "versioned JSON Schema" —

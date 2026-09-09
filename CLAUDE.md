@@ -498,7 +498,7 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
 
     **It mirrors `active`, not `revoke`.** In pb-nats `revoke` is the "these credentials leaked" button: it rotates the key pair and hands back a *working* replacement, leaving the user active. It is also checked before the active edge and returns early, so setting both in one save silently takes the revoke path — a deactivated Thing whose NATS identity is freshly re-issued and still publishing. The hook says so at length; this line used to say `revoke` and was simply wrong.
 
-    **The Nebula half takes effect on redeploy, not instantly.** Nebula has no CRL, so revocation is a fingerprint in every *peer's* config, applied when that config is redeployed and the process reloads (SIGHUP is enough). The platform's job ends when the material it hands out refuses the certificate — the same boundary as minting a NATS credential and not policing what connects with it. It also means **deactivate, do not delete**: fingerprinting a certificate requires the certificate to still be in the database, so deleting a host leaves it trusted until expiry. Requires pb-nebula newer than v0.1.0; against v0.1.0 the flag is mirrored and no blocklist is produced.
+    **The Nebula half takes effect on redeploy, not instantly.** Nebula has no CRL, so revocation is a fingerprint in every *peer's* config, applied when that config is redeployed and the process reloads (SIGHUP is enough). The platform's job ends when the material it hands out refuses the certificate — the same boundary as minting a NATS credential and not policing what connects with it. It also means **deactivate, do not delete**: fingerprinting a certificate requires the certificate to still be in the database, so deleting a host leaves it trusted until expiry. Requires pb-nebula v0.2.0, which go.mod pins; against v0.1.0 the flag was mirrored and no blocklist was produced. A `nebula_hosts` record created without an `active` field lands ACTIVE from v0.2.0 on, because a host born inactive is one every peer blocklists at birth -- `scripts/test-authz.sh` pins that dependency contract.
 
     Distinct from a leaf node's heartbeat status, which reports whether the edge box *is* connected, not whether it *may* connect.
 
@@ -934,7 +934,7 @@ you, so pushing an absolute one would make the login form an open redirect (the
   rather than string-matched, because nothing in CI scrapes it and a malformed
   body looks fine in a terminal.
 - `./scripts/test-authz.sh` — **run after any API-rule change in `schema.json`.**
-  Builds the binary, stands up a throwaway DB, and asserts 175 authorization
+  Builds the binary, stands up a throwaway DB, and asserts 176 authorization
   behaviours against a live server. The rules are the only tenancy enforcement
   in the platform and nothing else type-checks them. Add a check when you add a
   rule, and bump `EXPECTED_CHECKS`. Note PocketBase answers 404 (not 403) when an

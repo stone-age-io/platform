@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=175         # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=176         # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -413,6 +413,21 @@ expect "member cannot mint a Nebula host identity" "403|400|404" "$RCODE" "$RBOD
 req POST /collections/nebula_hosts/records "$TA" "$(host_payload owner-host 10.42.0.12)"
 expect "owner CAN mint a Nebula host (same payload)" 200 "$RCODE" "$RBODY"
 HOST=$(j "$RBODY" id)
+
+# A minted host must be born ACTIVE, and that is a DEPENDENCY contract rather
+# than a platform rule -- which is why it is asserted here. host_payload above
+# never sends `active`, PocketBase bools have no schema default, and pb-nebula
+# writes an inactive host's certificate fingerprint into every peer's
+# pki.blocklist. So a host that landed inactive would be refused by the whole
+# network from the moment its certificate was signed: `POST /api/org/things`
+# would provision devices that can never join the mesh, and nothing in the
+# platform would report a fault. pb-nebula >= v0.2.0 forces the flag on create;
+# this check is what notices if that is reverted or the dependency downgraded.
+if [ "$(j "$RBODY" active)" = "true" ]; then
+  ok "a minted Nebula host is born active (inactive means blocklisted at birth)"
+else
+  no "minted Nebula host landed inactive -- every peer will blocklist its certificate"
+fi
 req GET "/collections/nebula_hosts/records/$HOST" "$TB"
 expect "member cannot read a host's config_yaml (it embeds the private key)" "403|400|404" "$RCODE" "$RBODY"
 
@@ -854,10 +869,13 @@ TT=$(j "$RBODY" token)
 # the hook returned early when nats_user was empty.
 #
 # The host is forced ACTIVE first, and that is asserted here rather than
-# assumed. PocketBase bools have no schema default and host_payload above does
-# not send the flag, so a minted host lands inactive -- which meant the
-# deactivation assertion below passed against a build with no Nebula cascade
-# at all. A check that cannot fail is worse than no check.
+# assumed. Section 8 now pins that pb-nebula mints hosts active, but this
+# fixture deliberately does not lean on that: the deactivation assertion below
+# is only meaningful if the host was active on the line immediately before it,
+# and it once passed against a build with no Nebula cascade at all -- because
+# host_payload omits the flag and PocketBase bools have no schema default, so
+# the host was already inactive and there was nothing for the cascade to change.
+# A check that cannot fail is worse than no check.
 req PATCH "/collections/things/records/$THING" "$SU" "{\"nebula_host\":\"$HOST\"}"
 THING_HOST=$(j "$RBODY" nebula_host)
 req PATCH "/collections/nebula_hosts/records/$HOST" "$SU" '{"active":true}'
