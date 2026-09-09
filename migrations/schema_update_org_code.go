@@ -29,7 +29,7 @@ import (
 // The index is PARTIAL, matching the five that schema_update_unique_org_code.go
 // added. Not a hedge: it is what makes this one migration instead of two. A
 // column cannot be backfilled before it exists, and a total unique index cannot
-// be imported over existing rows that have no code, because SQLite treats '' as
+// be imported over existing rows that have no code, because SQLite treats an empty string as
 // a value rather than as NULL. A partial index imports cleanly at any backfill
 // state, and hooks.RegisterOrgCode makes blanks unreachable from here forward.
 //

@@ -232,6 +232,42 @@ and this file starts where the versioned releases do.
   answered by disk encryption, encrypted backups, and single-tenant deployments,
   which is where `SECURITY.md` now points.
 
+- **CI now runs the checks that already existed.** `scripts/check-sort-fields.sh`
+  was written, worked, and was called by nothing — guarding a failure mode that
+  had already killed the Members and Invitations screens for every caller, since
+  an unknown `sort` field is a 400 raised before any rule is evaluated, names no
+  field, and fails for superusers too. It runs on every pull request now.
+
+- **The pinned-major guard covers `maplibre-gl`.** It checked Tailwind, daisyUI
+  and TypeScript, and omitted the one of the four whose failure is completely
+  silent: v6 splits its tile-parsing worker out of the bundle and resolves it as
+  a sibling file that Vite never emits, so nothing throws, nothing reaches the
+  console, and the map renders as a flat sheet of theme colour that reads as a
+  design choice.
+
+- **`gofmt` is now a gate, which it could not previously be.** Two migrations
+  carried `''` inside a doc comment, and gofmt rewrites that into a typographic
+  quote — so running it would have corrupted the comment's meaning, which is why
+  the project's notes said not to add this check. Those comments were reworded to
+  avoid the construct rather than accepting the rewrite, and an import ordering
+  slip in `observe_test.go` was fixed, so every tracked Go file is clean and the
+  gate is safe.
+
+- **`go test -count=1`**, because `setup-go` caches the build cache between runs
+  and a cached pass is a memory of a result from some other commit. Plus
+  `go mod tidy -diff`, which was clean and unguarded.
+
+- **A guard on the `pb_public/index.html` placeholder.** It is tracked so
+  `go build` can satisfy its `//go:embed` on a fresh clone with no Node
+  installed, and `npm run build` overwrites it — so a stray `git commit -a`
+  silently commits the built console into the placeholder's slot, and the next
+  fresh clone embeds a stale hashed-asset reference. Checked before the build
+  step, since afterwards the file legitimately differs.
+
+- **`HEALTHCHECK` honours `STONE_AGE_HTTP_PORT`.** It hardcoded 8090 while
+  `docker-entrypoint.sh` made the port configurable, so setting that variable
+  produced a permanently unhealthy container that was serving correctly.
+
 ### Changed
 
 - **`observability.addr` defaults to `127.0.0.1:9100`** instead of empty. A

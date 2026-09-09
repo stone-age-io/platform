@@ -24,6 +24,21 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # pb_public/index.html is a tracked PLACEHOLDER, so that `go build`
+      # can satisfy its //go:embed on a fresh clone with no Node installed.
+      # `npm run build` below overwrites it, which means a stray `git commit
+      # -a` silently commits the built console into the placeholder's slot --
+      # and the next fresh clone then embeds a stale hashed-asset reference
+      # and serves a blank page. Checked here, before the build, because
+      # after it the file legitimately differs.
+      - name: pb_public is still the placeholder, not built output
+        run: |
+          if ! grep -q "Placeholder\." pb_public/index.html; then
+            echo "::error file=pb_public/index.html::This is built output, not the tracked placeholder. Restore it with: git checkout pb_public/index.html"
+            exit 1
+          fi
+          echo "ok  pb_public/index.html is the placeholder"
+
       # ---------------------------------------------------------------- frontend
       - uses: actions/setup-node@v7
         with:
@@ -37,8 +52,8 @@ jobs:
         working-directory: ui
         run: npm ci
 
-      # Two dependencies in ui/package.json are deliberately held back, and the
-      # reasons are written down at the top of ui/tailwind.config.js and in
+      # Four dependencies in ui/package.json are deliberately held back, and
+      # the reasons are written down at the top of ui/tailwind.config.js and in
       # CLAUDE.md. Neither has any other guard: there is no frontend test
       # runner, so `vue-tsc && vite build` stays green while the console renders
       # wrong. That is exactly why the check is here.
@@ -50,6 +65,14 @@ jobs:
       #   TypeScript 6 -> TS 7 is the native port and drops the ./lib/tsc
       #     subpath that vue-tsc resolves at startup, so `npm run build` dies
       #     before it type-checks anything.
+      #   maplibre-gl 5 -> v6 splits its tile-parsing worker out of the bundle
+      #     and resolves it as a sibling file, which after Vite hashes the
+      #     chunk points at an asset the build never emits. NOTHING throws and
+      #     nothing reaches the console: the style still loads and its
+      #     background layer still paints, so water, roads and labels all
+      #     vanish together and the map reads as a flat sheet of theme colour
+      #     -- a design choice rather than a failure. This is the pin with the
+      #     least visible failure mode and it was the one not checked here.
       - name: Assert the deliberately pinned majors
         working-directory: ui
         run: |
@@ -65,6 +88,7 @@ jobs:
           check tailwindcss 3
           check daisyui 4
           check typescript 6
+          check maplibre-gl 5
 
       # vue-tsc, then vite build into ../pb_public. The Go build below embeds
       # the result, so this step is a dependency and not just a check.
@@ -81,8 +105,36 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      # Every tracked .go file is gofmt-clean as of this commit. It was not
+      # before: two migrations carried '' inside a doc comment, which gofmt
+      # rewrites into a typographic quote -- so running it would have
+      # corrupted the comment's meaning, and the note in CLAUDE.md said not to
+      # add this gate. Those comments were reworded to avoid the construct
+      # rather than accepting the rewrite, so the gate is now safe. Keep
+      # apostrophes out of Go doc comments that also contain a quoted string.
+      - name: Formatting
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt would rewrite these files:"; echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Module hygiene
+        run: go mod tidy -diff
+
+      # -count=1 defeats the test cache. setup-go caches the build cache
+      # between runs, and a cached PASS is not a result -- it is a memory of
+      # one, from a commit that may not be this one.
+      #
+      # -race is worth adding and is deliberately not here yet: it needs cgo,
+      # which the machine this was written on does not have, so it could not
+      # be verified locally and an unverified gate that fails on somebody
+      # else's pull request is worse than a missing one. It is a one-word
+      # change once someone can run it: this package concurrently drives an
+      # embedded NATS server, a KV relay and a background prober.
       - name: Test
-        run: go test ./...
+        run: go test -count=1 ./...
 
       - name: Build
         run: go build ./...
@@ -93,6 +145,15 @@ jobs:
       # go, curl and node -- all present above. This is the step that matters.
       - name: Authorization rules
         run: ./scripts/test-authz.sh
+
+      # An unknown `sort` field is a 400 before any rule is evaluated, and the
+      # message the browser gets names no field -- it fails for superusers
+      # too, so it never looks like authorization. That killed the Members and
+      # Invitations screens for every caller once already. This script asks a
+      # real server about every `sortable:` term in the console, needs the
+      # same go/curl/node as the step above, and until now nothing ran it.
+      - name: Sortable columns resolve
+        run: ./scripts/check-sort-fields.sh
 
       # ---------------------------------------------------------------- image
       # Nothing built the image outside the release workflow until now, so the
