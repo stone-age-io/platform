@@ -138,12 +138,17 @@ npm run dev
 - PocketBase Admin: http://localhost:8090/_/
 
 ### Bootstrap (Initial Setup)
-Three commands, in this order — the order is load-bearing:
+Four commands, in this order — the order is load-bearing:
 ```bash
 ./stone-age superuser upsert admin@example.com 'password'   # PB superuser + NATS $SYS seed
 ./stone-age migrate up                                      # import schema.json
 ./stone-age bootstrap --email admin@example.com --org "System" --operator-org "816tech"
+./stone-age nats export --output ./nats-config/             # only for serve --nats
 ```
+The fourth is needed only by `serve --nats`, which reads the exported operator
+JWT and resolver config from disk — but it cannot run any earlier, because there
+is no operator in the database until `bootstrap` has run. `docker-entrypoint.sh`
+does all four in this order.
 `bootstrap` writes `is_operator` / `is_system_org` / `is_operator_org`, which only
 exist after the schema is imported. PocketBase silently drops writes to fields
 that don't exist, so running `bootstrap` first yields a platform with no operator;
@@ -489,7 +494,13 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
       in CI, so a malformed exposition would look fine and be unscrapeable —
       the same argument as `TestBuildLeafConfIsAcceptedByNATSServer`. The tests
       parse the output with Prometheus's own parser and run promlint over it.
-15. **Decommissioning a device** - `things.active` / `leaf_nodes.active`, owner/admin only. The flag is enforced in three places at once, because any one of them alone is a half-measure: the `authRule` (`active = true`) blocks new logins, `hooks/active_flag.go` refreshes `tokenKey` so tokens already issued die immediately, and the same hook sets `revoke` on the linked `nats_user` so the signed NATS credential stops working. Reactivating sets `regenerate`, issuing a fresh credential — the old `.creds` stays dead, because the account JWT's revocation cutoff is permanent. Distinct from a leaf node's heartbeat status, which reports whether the edge box *is* connected, not whether it *may* connect.
+15. **Decommissioning a device** - `things.active` / `leaf_nodes.active`, owner/admin only. The flag is enforced in **four** places at once, because any one alone is a half-measure: the `authRule` (`active = true`) blocks new logins; `hooks/active_flag.go` refreshes `tokenKey` so tokens already issued die immediately; the same hook mirrors `active` onto the linked `nats_user`, which is pb-nats's durable suspend switch, so the signed NATS credential stops working; and it mirrors `active` onto the linked `nebula_host`, which is what pb-nebula writes into every other host's `pki.blocklist`. Reactivating re-mints the NATS credential — the old `.creds` stays dead, because the account JWT's revocation cutoff is permanent.
+
+    **It mirrors `active`, not `revoke`.** In pb-nats `revoke` is the "these credentials leaked" button: it rotates the key pair and hands back a *working* replacement, leaving the user active. It is also checked before the active edge and returns early, so setting both in one save silently takes the revoke path — a deactivated Thing whose NATS identity is freshly re-issued and still publishing. The hook says so at length; this line used to say `revoke` and was simply wrong.
+
+    **The Nebula half takes effect on redeploy, not instantly.** Nebula has no CRL, so revocation is a fingerprint in every *peer's* config, applied when that config is redeployed and the process reloads (SIGHUP is enough). The platform's job ends when the material it hands out refuses the certificate — the same boundary as minting a NATS credential and not policing what connects with it. It also means **deactivate, do not delete**: fingerprinting a certificate requires the certificate to still be in the database, so deleting a host leaves it trusted until expiry. Requires pb-nebula v0.2.0, which go.mod pins; against v0.1.0 the flag was mirrored and no blocklist was produced. A `nebula_hosts` record created without an `active` field lands ACTIVE from v0.2.0 on, because a host born inactive is one every peer blocklists at birth -- `scripts/test-authz.sh` pins that dependency contract.
+
+    Distinct from a leaf node's heartbeat status, which reports whether the edge box *is* connected, not whether it *may* connect.
 
 16. **Organization code — the ecosystem's namespace root** (ADR 0002 in
     `platform-docs`). The rule is **ids for storage, codes for addressing**.
@@ -595,7 +606,9 @@ is that an owner cannot leave their own organization (`ui/src/stores/auth.ts`).
 Editing the **organization record itself is a platform-operator action, not an
 owner one**: it carries the tenancy flags (`managed`, `is_operator_org`,
 `is_system_org`) and drives NATS account and Nebula CA provisioning, so no
-tenant role has an update path to it.
+tenant role has an update path to it — and, since
+`schema_update_tenancy_sentinel.go`, no delete path either: deleting an
+organization blanks rather than cascades, orphaning its entire inventory.
 
 Rules to follow when touching authorization:
 
@@ -609,7 +622,44 @@ Rules to follow when touching authorization:
   had no role check at all — so `dashboard` satisfied both and could write
   inventory. A branch that constrains *what* may be written still has to say *who*
   may write it. Every write branch names its roles.
-- **Keep a zero-authority role in the test matrix.** Both bugs above were caught
+- **An empty string is a valid match, so a blank scope is a wildcard.** The
+  third costume of the same bug, and the one no role audit could have caught:
+  every inventory read rule was `organization = @request.auth.current_organization`,
+  both sides are TEXT defaulting to `''`, and in PocketBase `'' = ''` is true. A
+  record with a blank `organization` was therefore readable by any caller whose
+  own context was blank — no rule mis-written, no role bypassed, two sentinels
+  comparing equal. Both halves were ordinary product states: deleting an
+  organization blanks `organization` on the 16 relations into it that are
+  non-cascade AND non-required (PocketBase blanks rather than deletes, via
+  `SaveNoValidate`), and `hooks/membership_lifecycle.go` blanks
+  `current_organization` on the way out of an org. The leaf branches had the
+  identical hole on `@request.auth.organization`, which is blankable for the
+  same reason. Fixed in `migrations/schema_update_tenancy_sentinel.go` by
+  requiring a non-blank context **and** a correlated membership — the membership
+  clause is the load-bearing half, because `memberships.organization` is
+  required and cascade so it can never be `''`, which kills the sentinel by
+  construction rather than by a comparison someone may later tidy away. Note
+  every *write* rule already had that clause, which is exactly why only the
+  reads were exposed. **The review question is not "does this rule name the
+  right roles" but "what does this rule do when both sides are the zero
+  value."**
+- **`current_organization` is the read boundary, so guard every path that
+  writes it.** `users.updateRule` froze it to organizations the caller holds a
+  membership in; `users.createRule` did not mention it, so an invited registrant
+  could name any organization id at signup and then read that tenant. The create
+  branch is anonymous and cannot check membership even in principle, so it
+  refuses the field outright and accept-invite fills it in afterwards. A field
+  that scopes reads needs a guard on *create* as well as update.
+- **Do not put an apostrophe in a rule comment.** PocketBase tokenizes quote
+  characters in the rule string before `//` comments are stripped, so one stray
+  apostrophe re-pairs every quote after it: a later `''` literal then opens a
+  string that nothing closes, and the whole collection fails to import with
+  `invalid quoted text`. This cost a debugging cycle — the rule looked correct
+  and the failure named a fragment of the expression rather than the comment.
+  Several existing comments contain apostrophes and are harmless only because
+  no string literal follows them. Write "the organization" rather than
+  "the org's".
+- **Keep a zero-authority role in the test matrix.** The two role bugs above were caught
   by the same thing: a role that holds no capability at all, used as the probe in
   `scripts/test-authz.sh`. `dashboard` is that role. Don't "simplify" the suite by
   testing denials with `member` — a role with *some* authority cannot prove an
@@ -620,8 +670,9 @@ Rules to follow when touching authorization:
   roles, two purposes — don't merge them to save an enum entry.
 - **Reads are org-scoped, not role-scoped, and that is deliberate.** Every read
   rule on `things`, `locations`, `thing_types`, `location_types`,
-  `thing_type_operations` and `leaf_nodes` is `organization = current_organization`
-  with no role branch, so *every* role in an org — `dashboard` included — can
+  `thing_type_operations` and `leaf_nodes` scopes on the active organization plus
+  a correlated membership in it (see the sentinel bullet above), with no ROLE
+  branch, so *every* role in an org — `dashboard` included — can
   `curl` the whole inventory. `viewer` therefore reads exactly what `member`
   reads; the difference between them is writes plus which screens
   `ui/src/router/index.ts` navigates to. Do not describe the console's
@@ -655,6 +706,27 @@ Rules to follow when touching authorization:
   identity that owns them needs them (the browser's NATS connection and the admin
   download button). The read rules restrict *which rows* a caller sees. Do not add
   `hidden: true` to them — it breaks both and buys nothing.
+- **At-rest encryption covers minting keys, not issued credentials, and that is
+  deliberate.** `encryption_key` protects the operator seed, account seeds and
+  signing keys, and the Nebula CA key. It does NOT protect `creds_file` or
+  `config_yaml`, and cannot usefully: a `.creds` file *contains* the user seed
+  (pb-nats `jwt.FormatUserConfig`), Nebula requires the host key inline, and
+  `ui/src/stores/nats.ts` reads `creds_file` from the API to open the browser's
+  own NATS connection — a browser can never hold the key. Encrypting the column
+  would therefore force a decrypting route plus changes in the edge agent and
+  five UI call sites, and `pb-nats`'s `EncryptField`/`DecryptField` live in
+  `internal/`, so the platform cannot even call them without the library
+  exporting a primitive. `migrations/schema_update_credential_scoping.go`
+  reached the same conclusion for `hidden: true`.
+
+  What that buys is worth knowing precisely: a stolen database with the key held
+  elsewhere yields **no ability to mint new identities** and **every existing
+  credential**. Rotating the NATS side is central and cheap (`regenerate`, and
+  the account JWT's revocation cutoff is permanent); rotating the Nebula side
+  needs re-issue plus a blocklist entry in every peer plus redelivery, because
+  there is no CRL. Don't "fix" this by encrypting the column; state the boundary
+  and let disk encryption, encrypted backups and single-tenant deployments carry
+  the at-rest threat. See SECURITY.md.
 - **A leaf node reads nothing in `nats_*` or `nebula_*`.** `leaf-sync config` gets
   its creds, the account JWT, and the operator JWT from `GET /api/leaf/bootstrap`
   (`hooks/leaf_node_routes.go`), which reads those records with the app's own
@@ -742,9 +814,14 @@ Rules to follow when touching authorization:
   and `leaf_nodes.active` exist only because `hooks/active_flag.go` gives them
   teeth — the flag, the token kill, and the NATS revoke are one operation. Do not
   add a status field to a device without deciding what enforces it.
-- **A device's real capability is its NATS credential, not its PocketBase
-  session.** Anything that takes a Thing or leaf node out of service has to reach
-  `nats_users`, or it has only closed the console door.
+- **A device's real capability is its credentials, not its PocketBase session.**
+  Anything that takes a Thing or leaf node out of service has to reach
+  `nats_users` **and** `nebula_hosts`, or it has only closed some of the doors.
+  This was a live gap until the Nebula half was added: the console door and the
+  NATS door closed while the overlay network stayed open until the certificate
+  expired. `hooks/active_flag.go` mirrors the flag to both, and the two cascades
+  are independent — a device may hold either identity, both, or neither, so
+  neither may short-circuit the other.
 - **Schema changes need a new `migrations/schema_update_*.go`** — editing
   `schema.json` alone reaches fresh databases only. **A new non-null column with
   a live rule over it needs a backfill in the same migration**: PocketBase bools
@@ -833,6 +910,21 @@ you, so pushing an absolute one would make the login form an open redirect (the
 
 ## Testing
 
+- `cd ui && npm test` — Vitest. Pure logic only, node environment, no component
+  mounting except `ConfirmDialog`, where the DOM contract IS the subject. Covers
+  the five files `vue-tsc && vite build` cannot protect: `twinDrift`,
+  `useSubscriptionManager`, the `can` capability map, dashboard import/export,
+  and `createDefaultWidget`. A spec that needs a DOM opts in with
+  `// @vitest-environment jsdom` on its first line.
+- **`gofmt -l .` reports ~25 files on a Windows checkout, and they are all
+  fine.** `core.autocrlf` rewrites `.go` files to CRLF in the worktree while
+  `.gitattributes` (`*.go text eol=lf`) keeps the committed content LF, so gofmt
+  sees line endings git will never store. The CI gate is plain `gofmt -l .`, and
+  it passes because CI checks out LF. To check locally the way CI will, run it
+  against what git STORES rather than the worktree:
+  `git ls-files '*.go' | while read f; do git show ":$f" > /tmp/x.go; gofmt -l /tmp/x.go; done`.
+  Do not "fix" the files `gofmt -l .` lists here, and do not conclude the gate is
+  broken.
 - `go test ./...` — Go unit tests (`internal/leafsync` has the bulk of them).
   Two habits worth keeping: the readiness checks that touch NATS are tested
   against a **real operator-mode `nats-server`** built in the test (see
@@ -842,7 +934,7 @@ you, so pushing an absolute one would make the login form an open redirect (the
   rather than string-matched, because nothing in CI scrapes it and a malformed
   body looks fine in a terminal.
 - `./scripts/test-authz.sh` — **run after any API-rule change in `schema.json`.**
-  Builds the binary, stands up a throwaway DB, and asserts 150 authorization
+  Builds the binary, stands up a throwaway DB, and asserts 176 authorization
   behaviours against a live server. The rules are the only tenancy enforcement
   in the platform and nothing else type-checks them. Add a check when you add a
   rule, and bump `EXPECTED_CHECKS`. Note PocketBase answers 404 (not 403) when an

@@ -373,9 +373,10 @@ func main() {
 	// new logins; this invalidates outstanding tokens and revokes the device's
 	// NATS identity, which is where its real capability lives.
 	hooks.RegisterActiveFlag(app, hooks.ActiveFlagOptions{
-		ThingCollection:    "things",
-		LeafNodeCollection: "leaf_nodes",
-		NatsUserCollection: natsOptions.UserCollectionName,
+		ThingCollection:      "things",
+		LeafNodeCollection:   "leaf_nodes",
+		NatsUserCollection:   natsOptions.UserCollectionName,
+		NebulaHostCollection: nebulaOptions.HostCollectionName,
 	})
 
 	// Closes a departing member's tenant context. The inventory read rules trust

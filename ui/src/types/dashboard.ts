@@ -4,24 +4,35 @@ import { TWIN_BUCKET, TWIN_DESIRED_BUCKET } from '@/utils/twin'
 
 /**
  * Widget Types
+ *
+ * ONE list, at runtime, with the type derived from it — rather than a bare
+ * string union. Adding a widget type means editing several places that are not
+ * compiler-checked (a component switch, the palette, a handful of `string[]`
+ * membership tests), and a union alone cannot be iterated, so nothing could
+ * assert "every type is handled" without a hand-maintained second copy of the
+ * list. This makes the list itself the source: `Record<WidgetType, …>` still
+ * fails to compile when a type is missing, and a test can now walk every type.
  */
-export type WidgetType =
-  | 'chart'
-  | 'text'
-  | 'button'
-  | 'kv'
-  | 'kvtable'
-  | 'streamtable'
-  | 'switch'
-  | 'slider'
-  | 'stat'
-  | 'gauge'
-  | 'map'
-  | 'console'
-  | 'publisher'
-  | 'status'
-  | 'markdown'
-  | 'scanner'
+export const WIDGET_TYPES = [
+  'chart',
+  'text',
+  'button',
+  'kv',
+  'kvtable',
+  'streamtable',
+  'switch',
+  'slider',
+  'stat',
+  'gauge',
+  'map',
+  'console',
+  'publisher',
+  'status',
+  'markdown',
+  'scanner',
+] as const
+
+export type WidgetType = (typeof WIDGET_TYPES)[number]
 
 export type DataSourceType = 'subscription' | 'consumer' | 'kv'
 export type ChartType = 'line' | 'bar' | 'pie' | 'gauge'
@@ -488,9 +499,13 @@ export function createDefaultWidget(type: WidgetType, position: { x: number; y: 
   
   switch (type) {
     case 'chart':
+      base.title = 'Chart Widget'
+      base.jsonPath = '$.value'
       base.chartConfig = { chartType: 'line' }
       break
     case 'text':
+      base.title = 'Text Widget'
+      base.jsonPath = '$.value'
       base.textConfig = { fontSize: 24, thresholds: [] }
       break
     case 'button':
@@ -501,8 +516,10 @@ export function createDefaultWidget(type: WidgetType, position: { x: number; y: 
         actionType: 'publish',
         timeout: 1000
       }
+      base.title = 'Button Widget'
       break
     case 'kv':
+      base.title = 'KV Widget'
       base.kvConfig = { displayFormat: 'json', thresholds: [] }
       break
     case 'switch':
@@ -518,6 +535,7 @@ export function createDefaultWidget(type: WidgetType, position: { x: number; y: 
         offPayload: { state: 'off' },
         labels: { on: 'ON', off: 'OFF' }
       }
+      base.title = 'Switch Control'
       break
     case 'slider':
       base.sliderConfig = {
@@ -530,8 +548,11 @@ export function createDefaultWidget(type: WidgetType, position: { x: number; y: 
         valueTemplate: '{{value}}',
         unit: '%'
       }
+      base.title = 'Slider Control'
       break
     case 'stat':
+      base.title = 'Stat Card'
+      base.jsonPath = '$.value'
       base.dataSource = { type: 'subscription', subject: 'metrics.value' }
       base.statConfig = {
         unit: '',
@@ -541,6 +562,8 @@ export function createDefaultWidget(type: WidgetType, position: { x: number; y: 
       }
       break
     case 'gauge':
+      base.title = 'Gauge Meter'
+      base.jsonPath = '$.value'
       base.dataSource = { type: 'subscription', subject: 'sensor.value' }
       base.gaugeConfig = {
         min: 0,
@@ -554,6 +577,7 @@ export function createDefaultWidget(type: WidgetType, position: { x: number; y: 
       }
       break
     case 'map':
+      base.title = 'Map Widget'
       base.mapConfig = {
         center: { lat: 39.8283, lon: -98.5795 },
         zoom: 4,
@@ -561,9 +585,13 @@ export function createDefaultWidget(type: WidgetType, position: { x: number; y: 
       }
       break
     case 'console':
+      base.title = 'Console Stream'
       base.dataSource = { type: 'subscription', subject: '>', subjects: ['>'] }
       base.consoleConfig = { fontSize: 12, showTimestamp: true }
-      base.buffer.maxCount = 100
+      // 200, matching streamtable. The 100 here was overridden by a second
+      // defaults function that ran afterwards, so 200 is what a console widget
+      // has actually had.
+      base.buffer.maxCount = 200
       break
     case 'publisher':
       base.title = 'Publisher'

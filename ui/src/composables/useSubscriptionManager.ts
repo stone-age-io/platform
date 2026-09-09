@@ -370,7 +370,10 @@ export function useSubscriptionManager() {
     stats.subscriptionErrors = 0
   }
 
-  function extractJsonPath(data: any, path: string): any {
+  // `path` is optional because every caller's is: WidgetListener.jsonPath is
+  // optional, and a widget bound to a whole payload has none. The body already
+  // handled undefined; only the signature disagreed.
+  function extractJsonPath(data: any, path?: string): any {
     if (!path || path === '$') return data
     try { return JSONPath({ path, json: data, wrap: false }) } catch { return null }
   }

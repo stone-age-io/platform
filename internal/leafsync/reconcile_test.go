@@ -27,7 +27,9 @@ func (f *fakeLister) List(_ context.Context, _ string, page, perPage int, _ stri
 	if f.err != nil {
 		return nil, f.err
 	}
-	// Single page is enough for these tests; pagination is covered in pbclient.
+	// Single page is enough for these tests. Multi-page walks are covered by
+	// pagedLister in pagination_test.go -- pbclient only parses one page envelope
+	// and never walked pages, so this comment used to point at nothing.
 	return &pbclient.ListResult{
 		Page:       page,
 		PerPage:    perPage,

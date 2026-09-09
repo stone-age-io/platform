@@ -10,11 +10,11 @@ import (
 // schema_update_authz_hardening re-imports the embedded schema.json so existing
 // deployments pick up tightened authorization rules:
 //
-//   - things / nats_users / nebula_hosts deleteRule: was "@request.auth.id != ''",
+//   - things / nats_users / nebula_hosts deleteRule: was any authenticated caller,
 //     which let ANY authenticated identity (any org's user, or a thing/identity
 //     auth record) delete ANY record cross-tenant. Now scoped to the caller's
 //     active organization, mirroring each collection's updateRule.
-//   - audit_logs list/view: was "@request.auth.id != ''", exposing every tenant's
+//   - audit_logs list/view: was any authenticated caller, exposing every tenant's
 //     audit trail (including before/after change payloads) to any authenticated
 //     identity. The collection has no organization field, so reads are now
 //     restricted to operators.

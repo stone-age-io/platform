@@ -126,6 +126,6 @@ EXPOSE 8090 4222 9222
 # fixed by a restart, and an orchestrator configured to restart on unhealthy
 # would loop instead of surfacing the actual problem.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
-  CMD wget -q -O /dev/null http://127.0.0.1:8090/api/ready || exit 1
+  CMD wget -q -O /dev/null "http://127.0.0.1:${STONE_AGE_HTTP_PORT:-8090}/api/ready" || exit 1
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

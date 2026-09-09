@@ -154,108 +154,17 @@ export function useWidgetOperations() {
 
   function createWidget(type: WidgetType) {
     const position = { x: 0, y: 100 }
+    // createDefaultWidget is the ONLY source of a new widget's defaults.
+    // A second applyWidgetDefaults used to run here and win on every
+    // conflict, which quietly reverted the newer values above -- kvtable
+    // lost its reported-state twin bucket, and button, switch and slider
+    // lost the cmd.thing/twin_desired subjects for older placeholders.
     const widget = createDefaultWidget(type, position)
-    applyWidgetDefaults(widget, type)
     dashboardStore.addWidget(widget)
     if (natsStore.isConnected && needsSubscription(type, widget)) {
       subscribeWidget(widget.id)
     }
     return widget
-  }
-
-  function applyWidgetDefaults(widget: WidgetConfig, type: WidgetType) {
-    // ... rest of file unchanged ...
-    switch (type) {
-      case 'text':
-        widget.title = 'Text Widget'
-        widget.dataSource = { type: 'subscription', subject: 'test.subject' }
-        widget.jsonPath = '$.value'
-        break
-      case 'chart':
-        widget.title = 'Chart Widget'
-        widget.dataSource = { type: 'subscription', subject: 'test.subject' }
-        widget.jsonPath = '$.value'
-        widget.chartConfig = { chartType: 'line' }
-        break
-      case 'button':
-        widget.title = 'Button Widget'
-        widget.buttonConfig = { label: 'Send', publishSubject: 'button.clicked', payload: '{"val": 1}' }
-        break
-      case 'kv':
-        widget.title = 'KV Widget'
-        widget.dataSource = { type: 'kv', kvBucket: 'my-bucket', kvKey: 'my-key' }
-        break
-      case 'switch':
-        widget.title = 'Switch Control'
-        break
-      case 'slider':
-        widget.title = 'Slider Control'
-        break
-      case 'stat':
-        widget.title = 'Stat Card'
-        widget.dataSource = { type: 'subscription', subject: 'metrics.value' }
-        widget.jsonPath = '$.value'
-        break
-      case 'gauge':
-        widget.title = 'Gauge Meter'
-        widget.dataSource = { type: 'subscription', subject: 'sensor.value' }
-        widget.jsonPath = '$.value'
-        break
-      case 'map':
-        widget.title = 'Map Widget'
-        widget.mapConfig = { center: { lat: 39.8283, lon: -98.5795 }, zoom: 4, markers: [] }
-        break
-      case 'console':
-        widget.title = 'Console Stream'
-        widget.dataSource = { type: 'subscription', subject: '>', subjects: ['>'] }
-        widget.consoleConfig = { fontSize: 12, showTimestamp: true }
-        widget.buffer.maxCount = 200
-        break
-      case 'publisher':
-        widget.title = 'Publisher'
-        widget.publisherConfig = { defaultSubject: 'test.subject', defaultPayload: '{\n  "action": "test"\n}', history: [], timeout: 2000 }
-        break
-      case 'status':
-        widget.title = 'Status'
-        widget.dataSource = { type: 'subscription', subject: 'service.status' }
-        widget.statusConfig = {
-          mappings: [
-            { id: '1', value: 'online', color: 'var(--color-success)', label: 'Online', blink: false },
-            { id: '2', value: 'error', color: 'var(--color-error)', label: 'Error', blink: true }
-          ],
-          defaultColor: 'var(--color-info)', defaultLabel: 'Unknown', showStale: true, stalenessThreshold: 60000, staleColor: 'var(--muted)', staleLabel: 'Stale'
-        }
-        break
-      case 'markdown':
-        widget.title = ''
-        widget.dataSource = { type: 'subscription', subject: '' }
-        widget.markdownConfig = { content: '### Hello World\n\nThis is a **markdown** widget.\n\nYou can use variables like {{device_id}}.' }
-        break
-      case 'kvtable':
-        widget.title = 'KV Table'
-        widget.kvtableConfig = {
-          kvBucket: '',
-          keyPattern: '>',
-          columns: [
-            { id: 'col_1', label: 'Key', path: '__key_suffix__', format: 'text' }
-          ],
-          defaultSortDirection: 'desc',
-          maxRows: 500
-        }
-        break
-      case 'streamtable':
-        widget.title = 'Stream Table'
-        widget.dataSource = { type: 'subscription', subjects: [] }
-        widget.buffer.maxCount = 200
-        widget.streamtableConfig = {
-          columns: [
-            { id: 'col_subject',   label: 'Subject', path: '__subject__',   format: 'text' },
-            { id: 'col_timestamp', label: 'Time',    path: '__timestamp__', format: 'relative-time' },
-          ],
-          defaultSortDirection: 'desc',
-        }
-        break
-    }
   }
 
   function deleteWidget(widgetId: string) {

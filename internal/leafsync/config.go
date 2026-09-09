@@ -99,7 +99,14 @@ func LoadConfig(path string) (*Config, error) {
 	// empty because it is not a deployment choice on a config this tool
 	// generated — it is the address of the file's own monitoring port.
 	v.SetDefault("nats.monitor_url", "http://127.0.0.1:8222")
-	v.SetDefault("observability.addr", "")
+	// Loopback by default. This used to be empty, which meant a stock edge box
+	// published no /ready and no /metrics at all -- so the one place per-site
+	// health is actually visible was off unless someone opted in, and the
+	// nats_local check that would have caught a dead local bus had no consumer.
+	// Binding is never fatal (see observe.go): if something else already holds
+	// the port -- node_exporter's default is this one -- it logs and syncing
+	// continues, so the worst case of this default is a warning line.
+	v.SetDefault("observability.addr", "127.0.0.1:9100")
 	v.SetDefault("observability.metrics_token", "")
 	v.SetDefault("observability.interval", "15s")
 

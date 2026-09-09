@@ -248,7 +248,11 @@ func registerPlatformChecks(app core.App, reg *health.Registry, opts Observabili
 		}
 		switch len(off) {
 		case 0:
-			return health.OK("enabled for NATS and Nebula")
+			// Deliberately says what it covers. "enabled" on its own reads as
+			// "credentials are encrypted at rest", which is not what this buys:
+			// creds_file and config_yaml are plaintext by construction. See
+			// SECURITY.md.
+			return health.OK("enabled for NATS and Nebula (minting keys; issued credentials are plaintext by construction)")
 		case 2:
 			return health.Warn(
 				"disabled: NATS seeds and Nebula private keys are stored in plaintext",

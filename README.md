@@ -164,14 +164,15 @@ content. Scanning happens inside an app (the `scanner` widget here, `/staff/scan
 in the helpdesk); nothing ever fetches the decoded string as a destination.
 
 **The contract layer.** Declarative device contracts describing *where* a
-participant speaks and *what shape* its messages take, so a consumer can resolve
-both from data alone:
+participant speaks, so a consumer can resolve its subjects from data alone:
 
 - **Thing Types** (`thing_types`) define a subject prefix and a set of operations.
 - **Operations** (`thing_type_operations`) declare a capability (`publish` /
-  `subscribe` / `request` / `reply`), a subject suffix, and an optional schema.
-- **Message Schemas** (`message_schemas`) are versioned JSON Schema documents.
-  The console has a visual builder and an infer-from-sample tool.
+  `subscribe` / `request` / `reply`) and a subject suffix.
+
+Payload *shape* is deliberately not described. A `message_schemas` collection
+held a JSON Schema per operation and was dropped: nothing validated against it,
+so an invalid schema document saved cleanly and rendered zero fields.
 
 **Edge sites.** Each is a `leaf_nodes` record — a special kind of thing, with one
 server-provisioned NATS user. The separate [`leaf-sync`](./cmd/leaf-sync/README.md)

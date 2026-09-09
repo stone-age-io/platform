@@ -50,6 +50,12 @@ type fakeTwinKV struct {
 	puts    []string
 	deletes []string
 	getErr  error
+
+	// writeErr makes Put and Delete fail, modelling an unreachable hub.
+	// writeFails counts attempts it rejected, so a test can wait for a real
+	// failure instead of guessing at timing.
+	writeErr   error
+	writeFails int
 }
 
 func newFakeTwinKV(seed map[string][]byte) *fakeTwinKV {
@@ -74,6 +80,12 @@ func (f *fakeTwinKV) Get(_ context.Context, key string) (jetstream.KeyValueEntry
 
 func (f *fakeTwinKV) Put(_ context.Context, key string, value []byte) (uint64, error) {
 	f.mu.Lock()
+	if f.writeErr != nil {
+		err := f.writeErr
+		f.writeFails++
+		f.mu.Unlock()
+		return 0, err
+	}
 	f.puts = append(f.puts, key)
 	f.store[key] = value
 	f.rev++
@@ -85,6 +97,12 @@ func (f *fakeTwinKV) Put(_ context.Context, key string, value []byte) (uint64, e
 
 func (f *fakeTwinKV) Delete(_ context.Context, key string, _ ...jetstream.KVDeleteOpt) error {
 	f.mu.Lock()
+	if f.writeErr != nil {
+		err := f.writeErr
+		f.writeFails++
+		f.mu.Unlock()
+		return err
+	}
 	f.deletes = append(f.deletes, key)
 	delete(f.store, key)
 	f.rev++
@@ -329,9 +347,10 @@ func TestRelayRestartIsIdempotent(t *testing.T) {
 	}
 }
 
-// Edge writes made while the relay was down reach the hub on restart — the
-// WatchAll replay is the resync, so there is no catch-up path of our own to get
-// wrong. Hub-side keys the edge has never heard of are left alone: the relay is
+// Edge writes made while the relay was down reach the hub on restart, via the
+// WatchAll replay. That covers a relay RESTART; a relay that stays up while the
+// HUB is down is a different path, and is covered by the pending-set tests in
+// twin_retry_test.go. Hub-side keys the edge has never heard of are left alone: the relay is
 // an upsert of what this site knows, not a reconcile of the whole bucket, so one
 // site cannot purge another's state.
 func TestRelayConvergesAfterPartitionWithoutPurgingOtherSites(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/router"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"platform/internal/metrics"
@@ -99,7 +100,7 @@ func (c *dbCollector) Collect(ch chan<- prometheus.Metric) {
 	// a legitimate value here ("no leaf nodes configured"), so emitting it on
 	// failure would turn a broken query into a confident wrong answer — and an
 	// alert on `== 0` would fire for the wrong reason. The absent series plus
-	// stone_age_collector_errors_total says what actually happened.
+	// stone_age_collector_errors says what actually happened.
 	count := func(collection string, desc *prometheus.Desc, labels []string, exprs ...dbx.Expression) {
 		if collection == "" {
 			return
@@ -417,15 +418,35 @@ func routePattern(re *core.RequestEvent) string {
 // denied create, so "how many 404s" is a question about authorization, traffic
 // and genuinely missing records all at once. The class is what an alert wants;
 // the audit log and the access log have the specifics.
+// A status of 0 means the response was never written: a handler returned an
+// error and the router's ErrorHandler runs AFTER the middleware chain unwinds,
+// so the tracked status is still unset when this sees it. Resolving that error
+// the way the router does is the only way to bucket it correctly.
+//
+// It used to return "5xx" for every such case, which made this metric actively
+// misleading rather than merely coarse: EVERY API-rule rejection arrives here
+// as an error with no written status — 400 on a denied create, 404 on a denied
+// update, 401/403 from RequireAuth — so ordinary authorization traffic was
+// counted as server errors. The 4xx bucket sat near-empty and a 5xx alert fired
+// on a healthy platform doing its job.
+//
+// router.ToApiError is exactly what ErrorHandler calls before WriteHeader
+// (tools/router/router.go), so this reports the status the client actually got;
+// PocketBase's own request logging resolves it the same way in
+// apis/middlewares.go.
 func statusClass(re *core.RequestEvent, err error) string {
-	status := re.Status()
+	return statusClassFor(re.Status(), err)
+}
+
+// statusClassFor is the whole decision, split out so it can be tested without
+// constructing a core.RequestEvent. The bug it now encodes was invisible
+// precisely because nothing could assert on it.
+func statusClassFor(status int, err error) string {
 	if status == 0 {
-		// The response was never written — an error short-circuited the chain
-		// before the status was set.
-		if err != nil {
-			return "5xx"
+		if err == nil {
+			return "unknown"
 		}
-		return "unknown"
+		status = router.ToApiError(err).Status
 	}
 	return strconv.Itoa(status/100) + "xx"
 }

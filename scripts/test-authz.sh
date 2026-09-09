@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=155         # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=176         # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -413,6 +413,21 @@ expect "member cannot mint a Nebula host identity" "403|400|404" "$RCODE" "$RBOD
 req POST /collections/nebula_hosts/records "$TA" "$(host_payload owner-host 10.42.0.12)"
 expect "owner CAN mint a Nebula host (same payload)" 200 "$RCODE" "$RBODY"
 HOST=$(j "$RBODY" id)
+
+# A minted host must be born ACTIVE, and that is a DEPENDENCY contract rather
+# than a platform rule -- which is why it is asserted here. host_payload above
+# never sends `active`, PocketBase bools have no schema default, and pb-nebula
+# writes an inactive host's certificate fingerprint into every peer's
+# pki.blocklist. So a host that landed inactive would be refused by the whole
+# network from the moment its certificate was signed: `POST /api/org/things`
+# would provision devices that can never join the mesh, and nothing in the
+# platform would report a fault. pb-nebula >= v0.2.0 forces the flag on create;
+# this check is what notices if that is reverted or the dependency downgraded.
+if [ "$(j "$RBODY" active)" = "true" ]; then
+  ok "a minted Nebula host is born active (inactive means blocklisted at birth)"
+else
+  no "minted Nebula host landed inactive -- every peer will blocklist its certificate"
+fi
 req GET "/collections/nebula_hosts/records/$HOST" "$TB"
 expect "member cannot read a host's config_yaml (it embeds the private key)" "403|400|404" "$RCODE" "$RBODY"
 
@@ -849,6 +864,27 @@ expect "an active thing CAN authenticate" 200 "$RCODE" "$RBODY"
 TT=$(j "$RBODY" token)
 [ -z "$TT" ] && die "thing login failed: $RBODY"
 
+# Link a Nebula host as well, so deactivation has both identities to reach. A
+# device that holds only a certificate is the case the cascade used to skip:
+# the hook returned early when nats_user was empty.
+#
+# The host is forced ACTIVE first, and that is asserted here rather than
+# assumed. Section 8 now pins that pb-nebula mints hosts active, but this
+# fixture deliberately does not lean on that: the deactivation assertion below
+# is only meaningful if the host was active on the line immediately before it,
+# and it once passed against a build with no Nebula cascade at all -- because
+# host_payload omits the flag and PocketBase bools have no schema default, so
+# the host was already inactive and there was nothing for the cascade to change.
+# A check that cannot fail is worse than no check.
+req PATCH "/collections/things/records/$THING" "$SU" "{\"nebula_host\":\"$HOST\"}"
+THING_HOST=$(j "$RBODY" nebula_host)
+req PATCH "/collections/nebula_hosts/records/$HOST" "$SU" '{"active":true}'
+if [ "$THING_HOST" = "$HOST" ] && [ "$(j "$RBODY" active)" = "true" ]; then
+  ok "fixture: the thing holds an ACTIVE Nebula host as well as a NATS identity"
+else
+  no "fixture setup failed -- thing/nebula_host link or the host active flag is wrong"
+fi
+
 # Who may flip it. Same roles as delete: taking a device out of service revokes
 # its credential, so it is a management action, not inventory editing.
 req PATCH "/collections/things/records/$THING" "$TG" '{"active":false}'
@@ -879,6 +915,21 @@ else
   no "linked nats_user still active -- the NATS cascade did not fire"
 fi
 
+# Effect 4: the overlay-network certificate is revoked too. Nebula has no CRL,
+# so `active = false` on the host is what pb-nebula writes into every OTHER
+# host's pki.blocklist. Without this the console door and the NATS door closed
+# and the mesh door stayed open until the certificate expired on its own.
+#
+# This asserts the platform half -- the flag reaching nebula_hosts. Whether a
+# blocklist then appears in peer configs is pb-nebula behaviour and is tested
+# there, against Nebula's own CA pool.
+req GET "/collections/nebula_hosts/records/$HOST" "$SU"
+if [ "$(j "$RBODY" active)" = "false" ]; then
+  ok "deactivation revoked the thing's linked Nebula host"
+else
+  no "linked nebula_host still active -- a decommissioned device keeps mesh access"
+fi
+
 # Reactivation must issue a FRESH credential: the revocation cutoff in the
 # account JWT is permanent, so re-enabling without re-minting would leave a
 # device that looks enabled and cannot connect. Baseline is read on the line
@@ -897,6 +948,12 @@ if [ "$(j "$RBODY" active)" = "true" ] && [ -n "$(j "$RBODY" creds_file)" ] \
   ok "reactivation re-minted the NATS credential (old .creds stays revoked)"
 else
   no "nats_user not re-issued on reactivation -- device would look enabled and fail to connect"
+fi
+req GET "/collections/nebula_hosts/records/$HOST" "$SU"
+if [ "$(j "$RBODY" active)" = "true" ]; then
+  ok "reactivation put the Nebula host back on the mesh"
+else
+  no "nebula_host still inactive after reactivation -- it stays blocklisted by its peers"
 fi
 
 # things.manageRule. Without it, `password` on update requires `oldPassword`
@@ -1151,6 +1208,167 @@ fi
 # scraped. metrics.token closes it; this asserts the default, not a rule.
 RAWCODE=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/metrics")
 expect "metrics are scrapeable without a session (metrics.token is unset here)" 200 "$RAWCODE" ""
+
+echo ""
+echo "=== 20. a blank organization is not a tenancy match ==="
+# Every inventory read rule scoped on `organization = @request.auth.
+# current_organization`. Both sides are TEXT defaulting to an empty string, and
+# in PocketBase an empty string equals an empty string -- so an orphaned record
+# was readable by anyone whose own context was blank. Neither state was exotic:
+# deleting an organization blanks `organization` on 16 non-cascade relations,
+# and hooks/membership_lifecycle.go blanks `current_organization` on the way out
+# of an org.
+#
+# ORPHAN is a dedicated record that stays blank for the whole section. An
+# earlier draft blanked and then restored the shared THING fixture, which left
+# the leaf-node checks below with nothing orphaned to find -- so they passed
+# against the unfixed rules too. A check that cannot fail is worse than no
+# check, so the orphan is separate and permanent.
+req POST /collections/things/records "$SU" \
+  "{\"email\":\"orphan@test.local\",\"password\":\"Password123!\",\"passwordConfirm\":\"Password123!\",\"emailVisibility\":true,\"name\":\"Orphan Thing\",\"code\":\"ORPH\",\"organization\":\"$ORG\"}"
+ORPHAN=$(j "$RBODY" id)
+[ -z "$ORPHAN" ] && die "orphan thing create failed: $RBODY"
+req PATCH "/collections/things/records/$ORPHAN" "$SU" '{"organization":""}'
+if [ -z "$(j "$RBODY" organization)" ]; then
+  ok "fixture: a thing now has a blank organization (what an org delete leaves behind)"
+else
+  no "fixture setup failed -- could not blank the orphan organization"
+fi
+
+# A user who is authenticated but sits in no organization: a fresh invitee
+# before acceptance, or anyone just removed from a tenant.
+DRIFT=$(mkuser drifter@test.local)
+[ -z "$DRIFT" ] && die "drifter create failed: $RBODY"
+TD=$(login drifter@test.local)
+[ -z "$TD" ] && die "drifter login failed: $RBODY"
+
+req GET "/collections/things/records" "$TD"
+DRIFT_THINGS=$(jn "$RBODY" 'o.items ? o.items.length : "err"')
+if [ "$DRIFT_THINGS" = "0" ] || [[ "$RCODE" =~ ^(403|404)$ ]]; then
+  ok "blank-context user sees no things (got ${DRIFT_THINGS:-$RCODE})"
+else
+  no "blank-context user read $DRIFT_THINGS thing(s) -- the sentinel still matches"
+fi
+req GET "/collections/nats_accounts/records" "$TD"
+DRIFT_ACCTS=$(jn "$RBODY" 'o.items ? o.items.length : "err"')
+if [ "$DRIFT_ACCTS" = "0" ] || [[ "$RCODE" =~ ^(403|404)$ ]]; then
+  ok "blank-context user sees no nats_accounts (got ${DRIFT_ACCTS:-$RCODE})"
+else
+  no "blank-context user read $DRIFT_ACCTS nats_account(s) -- account JWTs are exposed"
+fi
+
+# Pair the denials with an allow on the same collection, or a blanket refusal
+# would pass both of the above.
+req GET "/collections/things/records" "$TA"
+OWNER_THINGS=$(jn "$RBODY" 'o.items ? o.items.length : "err"')
+if [ "$OWNER_THINGS" != "0" ] && [ "$OWNER_THINGS" != "err" ]; then
+  ok "owner with a real context still reads her own inventory ($OWNER_THINGS row(s))"
+else
+  no "owner reads nothing -- the guard is too tight (got ${OWNER_THINGS:-$RCODE})"
+fi
+# ...and the orphan is not in what she reads, because it belongs to nobody now.
+if grep -q "\"$ORPHAN\"" <<<"$RBODY"; then
+  no "the owner can see the orphaned record -- a blank organization matched a real one"
+else
+  ok "the orphan is invisible to the owner too (it belongs to no organization)"
+fi
+
+# The collapse had a second door: leaf_nodes.organization is itself non-cascade
+# and non-required, so an org delete blanks it too, and the leaf branch compares
+# it against the record's own blank column. ORPHAN is still blank here.
+req PATCH "/collections/leaf_nodes/records/$LEAF" "$SU" '{"organization":""}'
+req GET "/collections/things/records" "$TL"
+LEAF_ORPHAN=$(jn "$RBODY" 'o.items ? o.items.length : "err"')
+if [ "$LEAF_ORPHAN" = "0" ] || [[ "$RCODE" =~ ^(403|404)$ ]]; then
+  ok "leaf node with a blanked organization mirrors nothing (got ${LEAF_ORPHAN:-$RCODE})"
+else
+  no "blank-org leaf node read $LEAF_ORPHAN thing(s) -- the leaf branch still collapses"
+fi
+req PATCH "/collections/leaf_nodes/records/$LEAF" "$SU" "{\"organization\":\"$ORG\"}"
+req GET "/collections/things/records" "$TL"
+LEAF_OK=$(jn "$RBODY" 'o.items ? o.items.length : "err"')
+if [ "$LEAF_OK" != "0" ] && [ "$LEAF_OK" != "err" ]; then
+  ok "leaf node with its organization restored mirrors again ($LEAF_OK row(s))"
+else
+  no "restored leaf node mirrors nothing -- the guard broke normal edge sync"
+fi
+echo ""
+echo "=== 20b. cross-tenant reads (the class the suite never covered) ==="
+# Eve's token appeared exactly once in this file before, for a write. Every
+# read denial across a tenant boundary was untested -- which is the class both
+# halves of the sentinel bug fell into.
+req POST /collections/things/records "$SU" \
+  "{\"email\":\"thing2@other.local\",\"password\":\"Password123!\",\"passwordConfirm\":\"Password123!\",\"emailVisibility\":true,\"name\":\"Other Thing\",\"code\":\"TH2\",\"organization\":\"$ORG2\"}"
+THING2=$(j "$RBODY" id)
+[ -z "$THING2" ] && die "second-org thing create failed: $RBODY"
+
+req GET "/collections/things/records?perPage=200" "$TE"
+if grep -q "\"$THING\"" <<<"$RBODY"; then
+  no "another tenant's owner can read this org's thing"
+else
+  ok "another tenant's owner cannot see this org's thing"
+fi
+if grep -q "\"$THING2\"" <<<"$RBODY"; then
+  ok "...and CAN see her own org's thing (so the deny is scoping, not a refusal)"
+else
+  no "eve cannot read her own org's thing -- the read rule is broken, not strict"
+fi
+req GET "/collections/things/records/$THING" "$TE"
+expect "another tenant's owner cannot view this org's thing by id" "403|404" "$RCODE" "$RBODY"
+
+echo ""
+echo "=== 20c. current_organization is not settable at registration ==="
+# users.updateRule froze this field to orgs you hold a membership in; the create
+# rule guarded only is_operator and the invite email match. An invited
+# registrant could therefore name any organization's id and then read its
+# inventory, because the read rules scope on exactly this field.
+req POST /collections/invites/records "$TA" \
+  "{\"email\":\"injector@test.local\",\"organization\":\"$ORG\",\"role\":\"member\"}"
+expect "owner can invite the registrant used below" 200 "$RCODE" "$RBODY"
+req POST /collections/users/records "" \
+  "{\"email\":\"injector@test.local\",\"password\":\"Password123!\",\"passwordConfirm\":\"Password123!\",\"name\":\"Injector\",\"emailVisibility\":true,\"current_organization\":\"$ORG2\"}"
+expect "invited signup cannot name an organization it has no membership in" "403|400|404" "$RCODE" "$RBODY"
+req POST /collections/users/records "" \
+  '{"email":"injector@test.local","password":"Password123!","passwordConfirm":"Password123!","name":"Injector","emailVisibility":true}'
+expect "the same signup WITHOUT current_organization still works" 200 "$RCODE" "$RBODY"
+
+echo ""
+echo "=== 20d. an admin token, and deleting an organization ==="
+# Every owner/admin rule in this suite was proven for `owner` only -- an
+# allowlist that had lost its "admin" term would have passed all of them.
+# A dedicated fixture. Section 17 deletes bob's membership and clears his
+# organization context, so reusing him here would fail for a reason that has
+# nothing to do with the rule under test -- which is the same trap as capturing
+# a baseline too early.
+ADM=$(mkuser admin2@test.local)
+[ -z "$ADM" ] && die "admin user create failed: $RBODY"
+req POST /collections/memberships/records "$SU" \
+  "{\"user\":\"$ADM\",\"organization\":\"$ORG\",\"role\":\"admin\"}"
+[ -z "$(j "$RBODY" id)" ] && die "admin membership create failed: $RBODY"
+req PATCH "/collections/users/records/$ADM" "$SU" "{\"current_organization\":\"$ORG\"}"
+TADM=$(login admin2@test.local)
+[ -z "$TADM" ] && die "admin login failed: $RBODY"
+req POST /collections/thing_types/records "$TADM" \
+  "{\"name\":\"AdminType\",\"code\":\"AT1\",\"organization\":\"$ORG\"}"
+expect "admin (not just owner) CAN create thing_types" 200 "$RCODE" "$RBODY"
+req POST /collections/nats_roles/records "$TADM" \
+  "{\"name\":\"admin-role\",\"organization\":\"$ORG\",\"publish_permissions\":[\"a.>\"],\"subscribe_permissions\":[\"a.>\"]}"
+expect "admin CAN create a nats_role" 200 "$RCODE" "$RBODY"
+
+# Deleting an organization blanks 16 non-cascade relations rather than removing
+# the rows, which is what manufactured the orphan above. It is an operator
+# action, matching updateRule; a disposable org keeps the fixtures intact.
+req POST /collections/organizations/records "$SU" \
+  "{\"name\":\"DisposableOrg\",\"owner\":\"$ALICE\",\"active\":true}"
+ORG3=$(j "$RBODY" id)
+[ -z "$ORG3" ] && die "disposable org create failed: $RBODY"
+sleep 2   # let its account/CA provisioning settle before deleting it
+req DELETE "/collections/organizations/records/$ORG3" "$TA"
+expect "an org owner cannot delete the organization record" "403|400|404" "$RCODE" "$RBODY"
+req DELETE "/collections/organizations/records/$ORG3" "$SU"
+expect "an operator CAN delete it (so the deny is a role check, not a broken rule)" "200|204" "$RCODE" "$RBODY"
+req PATCH "/collections/users/records/$ALICE" "$SU" "{\"current_organization\":\"$ORG\"}"
+
 # ----------------------------------------------------------------------- result
 
 TOTAL=$((PASS + FAIL))

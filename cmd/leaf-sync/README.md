@@ -55,7 +55,7 @@ working directory or `/etc/leaf-sync/`.
 | `nats.monitor_url` | | The leaf's own monitoring endpoint, the `http:` line `config` writes (default `http://127.0.0.1:8222`). Loopback and unauthenticated by design — how the edge reads its own server without a `$SYS` credential. Empty disables the checks and metrics that need it. |
 | `output.dir` | | Where `config` writes files (default `.`). |
 | `sync.interval` | | Full-reconcile cadence (default `30s`). |
-| `observability.addr` | | Serve `/ready` + `/metrics` here (default empty = not served; the checks still run and still log). |
+| `observability.addr` | `127.0.0.1:9100` | Serve `/ready` + `/metrics` here. Loopback by default; use `0.0.0.0:9100` to scrape remotely, or `""` to serve neither (the checks still run and still log). A port already in use is logged, never fatal. |
 | `observability.metrics_token` | | Closes `/metrics`; accepted as Bearer or Basic-with-any-username (default empty = open). |
 | `observability.interval` | | How often the readiness checks run (default `15s`). |
 | `twin.enabled` | | Turn on [twin sync](#twin-sync-data-plane) (default `false`). Requires `nats.hub_domain`. |

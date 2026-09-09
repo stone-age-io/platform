@@ -11,7 +11,418 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+### Security
+
+- **A blank organization no longer matches a blank organization context.** Every
+  inventory read rule scoped on `organization = @request.auth.current_organization`.
+  Both sides are TEXT columns whose zero value is the empty string, and in
+  PocketBase an empty string equals an empty string — so a record with a blank
+  `organization` was readable by any authenticated caller whose own context was
+  also blank. No role check was bypassed and no rule was mis-written; two
+  sentinels compared equal.
+
+  Both halves were reachable through ordinary use. `organizations.deleteRule`
+  permitted `owner = @request.auth.id`, and 16 of the 18 relations pointing at
+  `organizations` are non-cascade *and* non-required — PocketBase blanks those
+  rather than deleting the rows — so an owner deleting their organization
+  orphaned every thing, location, type, leaf node, `nats_account` and
+  `nebula_ca` at `organization = ''`. On the other side,
+  `hooks/membership_lifecycle.go` blanks `current_organization` deliberately
+  when a membership is removed, and it is also the default for a freshly
+  registered invitee before acceptance. Chained, a deleted tenant's whole
+  inventory, its NATS account record and its Nebula CA certificate became
+  readable by a user sitting in the blank-context state in any other tenant.
+
+  Signed credentials were never exposed: `nats_users` and `nebula_hosts` require
+  a correlated membership with an owner/admin role, and `memberships.organization`
+  is required and cascade so it can never be blank. That is the row-scoping
+  design holding.
+
+  The eight affected read rules now require a non-blank context **and** a
+  correlated membership in the organization being claimed — the same clause
+  every *write* rule already carried, which is why only the reads were exposed.
+  The `leaf_nodes` branches needed the identical treatment on
+  `@request.auth.organization`, which an organization delete blanks for the same
+  reason: a leaf node whose organization was deleted would otherwise have
+  matched every orphaned record on the platform. Reads remain org-scoped rather
+  than role-scoped, which is deliberate and unchanged.
+
+- **`current_organization` is no longer settable at registration.**
+  `users.updateRule` froze the field to organizations the caller holds a
+  membership in; `users.createRule` did not mention it, so an invited registrant
+  could name any organization id at signup and then read that tenant's
+  inventory, because the read rules scope on exactly that field. The anonymous
+  create branch cannot check membership even in principle, so it now refuses the
+  field; `accept-invite` fills it in from the invite once the account exists.
+
+- **Deleting an organization is a platform-operator action.** It was available to
+  the organization's owner, which is what manufactured the orphaned records
+  above. Every console route that touches this collection was already
+  operator-gated, so nothing regresses.
+
+
+### Fixed
+
+- **`ConfirmDialog` is now an actual dialog.** It is the gate in front of every
+  destructive action in the console — deleting a Thing, revoking a credential,
+  decommissioning a device — and it was a plain `<div>`: no `role="dialog"`, no
+  `aria-modal`, no labelling, no Escape handler, no focus trap, and `autofocus`
+  on the **destructive** button, so Enter on a dialog nobody had read deleted the
+  thing.
+
+  It now announces itself as a modal, labels and describes itself from the title
+  and message it already renders, hides the decorative emoji from assistive
+  technology, cancels on Escape, traps Tab, and returns focus to whatever opened
+  it — tolerating that element being gone, since the confirmed action has often
+  removed the row whose button opened the dialog. Focus lands on the dialog
+  container rather than a button, so nothing is pre-selected and Enter cannot
+  confirm by accident; the first Tab reaches Cancel because it comes first in the
+  DOM. Also a visible `:focus-visible` ring on the buttons, and the animations
+  respect `prefers-reduced-motion`.
+
+  Fourteen tests cover it, and they are the one place in this suite that mounts
+  a component — what is under test there *is* the DOM contract. Writing them
+  caught a bug in the implementation: the focus trap filtered candidates on
+  `offsetParent !== null`, which is null for every element under jsdom and for
+  anything inside a `position: fixed` subtree in some engines, so the trap was
+  silently a no-op.
+
+- **`leaf-sync` no longer goes deaf when the local NATS server restarts.**
+  `nats.Connect` was called with no reconnect options, so nats.go's defaults
+  applied: 60 attempts at 2s, after which the connection is **closed
+  permanently**. `Run` loops until its context is cancelled, so about two
+  minutes after the local bus went away the agent became a zombie — the ticker
+  kept firing, every KV write failed, the heartbeat failed, the twin relay
+  failed, and nothing ever reconnected or exited for a supervisor to act on.
+
+  This landed on the default topology (a separately supervised `nats-server`)
+  and on the documented setup flow, where `leaf-sync config` writes
+  `nats-leaf.conf` and the next step restarts the server that reads it. An
+  islanded site is precisely when the agent has to keep trying, so the
+  connection now retries indefinitely, with disconnect, reconnect and
+  closed handlers so the state is visible in the log rather than silent.
+
+  The **initial** dial still fails fast, deliberately and unchanged: without
+  `--nats` the bus is a separate process that should already be running, and a
+  hard error at startup is how an operator learns the creds path or URL is
+  wrong. The options now live in a named function so
+  `TestLocalConnectRetriesForever` can assert the invariant that was missing —
+  it fails against the previous behaviour with `MaxReconnect = 60`.
+
+- **The twin relay now retries a failed hub write instead of dropping it.** A
+  failed write was logged and discarded, on the stated grounds that the key
+  would be "re-offered by the next watcher restart's replay". It was not: the
+  watcher runs on the *local* bucket, which does not die when the hub or the WAN
+  does, and the supervisor only restarts the pump when the *watcher* fails. So a
+  reported value that changed during an outage, failed its hub write, and then
+  never changed again was absent from the hub **permanently and silently** — in
+  the one direction the platform takes responsibility for delivering.
+
+  Failed keys are now held and retried on a ticker. The value is re-read from
+  the local bucket at retry time rather than remembered from the failed
+  attempt, so a retry can never write a stale reading over a newer one; a key
+  deleted locally during the outage is relayed as a delete. Holding and retrying
+  is deliberately preferred over returning an error and letting the supervisor
+  replay: one key the hub will never accept would otherwise tear down the
+  watcher on every replay and block every other key behind it, forever.
+
+  The existing partition test only ever covered convergence via a relay
+  *restart*, which is the path that always worked. `twin_retry_test.go` drives a
+  live relay against a failing destination, and waits on an observed write
+  failure rather than a timer — an earlier version cleared the fault on a poll
+  and passed against a deliberately broken build without the retry path running
+  at all.
+
+- **A short fetch no longer purges the edge mirror.** `syncCollection` paged
+  without a sort order, so a record inserted or deleted between two page
+  requests could shift the window and make the walk skip a record — and the
+  deletion pass then read that record's absence as an upstream delete and
+  removed it from the edge. The existing empty-fetch guard only caught a *total*
+  failure; a partial walk is the dangerous case, because one record short of a
+  400-record collection silently deletes one live config row.
+
+  Two changes: `pbclient.List` now requests `sort=id`, because a paginated walk
+  without a stable total order is wrong for any caller and the hazard belongs to
+  pagination rather than to one use of it; and the walk compares what it
+  collected against the `totalItems` it was promised, skipping the purge when it
+  came up short. A record legitimately deleted mid-walk also trips this, which
+  is a false positive worth having — the purge waits one cycle, which is the
+  safe direction to be wrong in. Records the short walk *did* return are still
+  upserted; only the deletion pass is skipped.
+
+  Multi-page reconcile had no test at all: the existing fake always reported
+  `TotalPages: 1` and its comment pointed at pbclient, which only ever parsed a
+  single page envelope.
+
+- **Decommissioning a device now closes the Nebula door too.**
+  `hooks/active_flag.go` refreshed the PocketBase token key and mirrored
+  `active` onto the linked `nats_user`, and touched `things.nebula_host` not at
+  all. A decommissioned device therefore kept valid overlay-network membership
+  until its certificate expired: the console door and the NATS door closed, the
+  mesh door stayed open. The flag is now mirrored onto `nebula_hosts` as well,
+  which is what pb-nebula writes into every other host's `pki.blocklist`.
+
+  The two cascades are independent. The previous code returned early when
+  `nats_user` was empty, which would have skipped the Nebula half entirely for
+  any device holding only a certificate.
+
+  Two properties of Nebula revocation are worth knowing rather than being
+  surprised by. It has **no CRL**, so revocation is a fingerprint carried in
+  every *peer's* config and takes effect when that config is redeployed and the
+  process reloads — the platform's job ends when the material it hands out
+  refuses the certificate, the same boundary as minting a NATS credential and
+  not policing what connects with it. And fingerprinting a certificate requires
+  the certificate to still be in the database, so **deactivate to revoke; do
+  not delete**. Deleting a host leaves its certificate trusted until expiry.
+
+  This needs pb-nebula v0.2.0, which is now pinned (see **Changed** below).
+  Against v0.1.0 the flag was mirrored correctly and no blocklist was ever
+  produced, so the platform half was inert but harmless.
+
+  `CLAUDE.md` also described this hook as setting `revoke` on the linked NATS
+  user. It never did, and the hook's own comment explains at length why it must
+  not: pb-nats treats `revoke` as "these credentials leaked", rotating the key
+  pair and handing back a *working* replacement, and it checks that flag before
+  the active edge and returns early — so setting both in one save silently
+  re-credentials the device you just disabled.
+
+- **The test harness now agrees with the binary about what a write does.**
+  `internal/testutil` bound 5 of the 13 hooks `main.go` registers, while its own
+  comment insisted the ordering was "equivalent to main.go". The two missing
+  record hooks were not neutral: `RegisterActiveFlag` forces `active = true` on
+  every `things`/`leaf_nodes` create (PocketBase bools have no schema default and
+  the authRule is `active = true`), so a test could create an inactive device and
+  assert on it happily while the real binary overwrote the flag.
+
+  That is precisely what had happened. `demo-seed` asked for decommissioned
+  Things at create time, the harness allowed it, and `./stone-age demo-seed` on a
+  real install produced **zero** inactive devices — with the fixture-count tests
+  passing throughout. Binding the hook made the existing test fail immediately
+  with "no inactive things — the decommissioned state is unrepresented".
+
+  The six route registrars and `RegisterObservability` are still not bound, now
+  with the reason written down: they bind only `OnServe`, and this harness never
+  serves. Every hook that changes what a *write* does is bound; nothing that only
+  answers HTTP is.
+
+- **`demo-seed` produces decommissioned devices again, and revokes them
+  properly.** Two bugs, one call site. Deactivation moved from create-time (where
+  the hook overwrote it) to an update, which is the only edge
+  `hooks/active_flag.go` triggers on. And the seeder no longer reaches into the
+  `nats_users` record to set `revoke` alongside `active = false`: pb-nats checks
+  `revoke` first and returns early, so the suspend branch never ran — and
+  `revoke` means "these credentials leaked", rotating the key pair and writing
+  back a fresh **working** creds file. Every "decommissioned" demo Thing was
+  therefore holding a live NATS credential, which is the exact failure
+  `active_flag.go` warns about at length.
+
+  The record is re-read before the flip, which is load-bearing: a record created
+  in memory and saved carries an empty `Original()` snapshot, so `active` reads
+  false on both sides, the hook sees no edge, and nothing cascades.
+
+  `TestDecommissionedThingsHaveTheirCredentialRevoked` now asserts the *effect*
+  rather than the flag — the user's public key appearing in the owning account's
+  revocation list, plus the linked Nebula host being inactive. It previously
+  checked only the field the seeder had just written itself, so it could not tell
+  "pb-nats suspended the user" from "pb-nats did nothing", and it called
+  `t.Skip` when there were no inactive things — so during the bug it did not run
+  at all.
+
+- **`ensure` no longer treats a database error as "record not found".** A
+  transient failure created a duplicate of a record that already existed; for
+  `things` that means a second row with the same code, which the
+  `UNIQUE (organization, code)` index then rejects on a later run — a seeder
+  failing for a reason with no visible connection to the outage that caused it.
+
+- **The at-rest encryption boundary is now stated instead of implied.**
+  `nats.encryption_key` / `nebula.encryption_key` protect the material needed to
+  *mint* identities — the operator seed, account seeds and signing keys, the
+  Nebula CA key. They do not protect `nats_users.creds_file` or
+  `nebula_hosts.config_yaml`, and cannot usefully: a `.creds` file *contains* the
+  user seed by construction, Nebula requires the host key inline, and the browser
+  reads `creds_file` straight from the API to open its own NATS connection — so
+  encrypting that column would force every read through a decrypting route.
+
+  So a stolen `pb_data/data.db`, with the key held separately, yields **no
+  ability to mint new identities** and **every existing credential**. That is the
+  line the feature defends, and the two halves cost very different amounts to
+  remediate: the NATS side is a central, scriptable `regenerate` with a permanent
+  revocation cutoff; the Nebula side has no CRL, so it needs re-issue plus a
+  blocklist entry in every peer plus redelivery.
+
+  No code changes beyond the `encryption_at_rest` readiness check, which reported
+  a bare "enabled for NATS and Nebula" — accurate about the config and misleading
+  about the guarantee. It now names what it covers. The at-rest threat is
+  answered by disk encryption, encrypted backups, and single-tenant deployments,
+  which is where `SECURITY.md` now points.
+
+- **CI now runs the checks that already existed.** `scripts/check-sort-fields.sh`
+  was written, worked, and was called by nothing — guarding a failure mode that
+  had already killed the Members and Invitations screens for every caller, since
+  an unknown `sort` field is a 400 raised before any rule is evaluated, names no
+  field, and fails for superusers too. It runs on every pull request now.
+
+- **The pinned-major guard covers `maplibre-gl`.** It checked Tailwind, daisyUI
+  and TypeScript, and omitted the one of the four whose failure is completely
+  silent: v6 splits its tile-parsing worker out of the bundle and resolves it as
+  a sibling file that Vite never emits, so nothing throws, nothing reaches the
+  console, and the map renders as a flat sheet of theme colour that reads as a
+  design choice.
+
+- **`gofmt` is now a gate, which it could not previously be.** Two migrations
+  carried `''` inside a doc comment, and gofmt rewrites that into a typographic
+  quote — so running it would have corrupted the comment's meaning, which is why
+  the project's notes said not to add this check. Those comments were reworded to
+  avoid the construct rather than accepting the rewrite, and an import ordering
+  slip in `observe_test.go` was fixed, so every tracked Go file is clean and the
+  gate is safe.
+
+- **`go test -count=1`**, because `setup-go` caches the build cache between runs
+  and a cached pass is a memory of a result from some other commit. Plus
+  `go mod tidy -diff`, which was clean and unguarded.
+
+- **A guard on the `pb_public/index.html` placeholder.** It is tracked so
+  `go build` can satisfy its `//go:embed` on a fresh clone with no Node
+  installed, and `npm run build` overwrites it — so a stray `git commit -a`
+  silently commits the built console into the placeholder's slot, and the next
+  fresh clone embeds a stale hashed-asset reference. Checked before the build
+  step, since afterwards the file legitimately differs.
+
+- **`HEALTHCHECK` honours `STONE_AGE_HTTP_PORT`.** It hardcoded 8090 while
+  `docker-entrypoint.sh` made the port configurable, so setting that variable
+  produced a permanently unhealthy container that was serving correctly.
+
+- **Every API-rule rejection was counted as a server error.**
+  `stone_age_http_requests_total` bucketed by status class, and PocketBase's
+  router runs its error handler *after* the middleware chain unwinds — so a
+  handler that returns an error leaves the tracked status at 0 when the metrics
+  middleware sees it. That case returned `5xx`, and *every* authorization
+  rejection arrives that way: 400 on a denied create, 404 on a denied update,
+  401/403 from `RequireAuth`. The 4xx bucket sat near-empty while a `5xx` alert
+  fired on a platform doing exactly its job. The status is now resolved through
+  `router.ToApiError`, which is what the error handler itself calls before
+  writing the header.
+
+  Split into a pure `statusClassFor(status, err)` so it can be asserted at all —
+  the bug was invisible partly because nothing could construct a
+  `core.RequestEvent` to test it.
+
+- **A second widget-defaults function was silently reverting the first.**
+  `createWidget` called `createDefaultWidget` and then `applyWidgetDefaults`,
+  which ran afterwards and won every conflict — so the newer defaults in
+  `types/dashboard.ts` were being overwritten by an older copy that had drifted:
+  `kvtable` lost its reported-state twin bucket for an empty one (making the
+  `TWIN_BUCKET` import and its "reads reported state" comment dead), and
+  `button`, `switch` and `slider` lost their `cmd.thing.*` / `twin_desired`
+  subjects for older placeholders. It also had no `scanner` case at all — 15
+  branches for 16 types — surviving only because the other function ran first.
+
+  `createDefaultWidget` is now the only source. The titles and `$.value` JSON
+  paths the second function contributed were carried across, so what a new
+  widget gets is unchanged apart from the reverted values being restored; net
+  −94 lines. The file also carried a literal `// ... rest of file unchanged ...`
+  placeholder, which went with it.
+
+- **`configComponents` is typed `Record<WidgetType, Component>`.** It was
+  `Record<string, Component>`, so a widget type with no config component was a
+  modal that opened onto nothing — no error anywhere, at build time or runtime.
+  It is now a compile error, verified by removing an entry and watching
+  `vue-tsc` report `TS2741: Property 'scanner' is missing`.
+
+- **`WIDGET_TYPES` is a runtime list, with `WidgetType` derived from it.** The
+  union existed only at compile time, so nothing could iterate the types and
+  every "is every type handled" question needed a second, hand-maintained copy
+  of the list. `Record<WidgetType, …>` still fails to compile when a type is
+  missing, and tests can now walk all sixteen.
+
+### Changed
+
+- **pb-nebula bumped to v0.2.0**, which is what makes the Nebula half of
+  decommissioning above actually do something. Against v0.1.0 `active` was
+  mirrored onto `nebula_hosts` correctly and no `pki.blocklist` was ever
+  produced, so that half was inert. No platform code changed: pb-nebula's
+  `options.go`, `nebula.go` and `errors.go` are untouched between the two tags
+  and the whole feature lives under its `internal/`, so this is a go.mod bump.
+
+  It does change one behaviour that is not the platform's own. A `nebula_hosts`
+  record created **without** an `active` field now lands active, because
+  pb-nebula forces the flag on create — PocketBase bools have no schema default,
+  and an inactive host is one whose certificate every peer blocklists, so a host
+  born inactive would be refused by the whole network from the moment it was
+  signed. Nothing in this platform relied on the old behaviour: both
+  `POST /api/org/things` and the console's Nebula host form always sent
+  `active` explicitly. `scripts/test-authz.sh` now pins the contract anyway
+  (176 checks), because it is a dependency's guarantee rather than one of our
+  rules, and a downgrade would otherwise be silent.
+
+- **A documentation truth pass**, in this repo and in `platform-docs`. The
+  headline feature list still sold message schemas — "versioned JSON Schema" —
+  which is the worst place for a stale claim, since a buyer demos the thing they
+  were sold. The widget table listed a **PocketBase** widget that has no
+  component behind it (sixteen types, none of them `pocketbase`), the role count
+  said four, the agent's binary was called `stone-age-agent` where its own
+  install snippet says `agent`, and this file said bootstrap is three commands
+  where it is four — `nats export` is required by `serve --nats` and cannot run
+  before `bootstrap`, which is why `docker-entrypoint.sh` does all four.
+
+  The authorization check count was wrong in two places and is now correct in
+  both. `README.md` also described operations as carrying "an optional schema"
+  and the console as having an infer-from-sample tool for it; both went with
+  `message_schemas`.
+
+  ADR 0002 was **amended rather than rewritten**, since an ADR records what was
+  decided: the org-code pattern now permits a leading digit, and the option that
+  would have reserved `system` and `operator` is marked as not what shipped.
+
+  Two claims a technical buyer would break are gone: "hundreds of clients using
+  a single deployment", which sat three pages from "the Control Plane scales
+  vertically" on a single-writer SQLite database, and an unsupportable
+  superlative about security that traditional platforms "simply cannot match".
+  Both are replaced with the mechanism, and with an explicit note that there are
+  no production deployments to quote figures from.
+
+  `demo-seed` is now in the getting-started guide, having been documented only
+  here despite being the fastest path from a fresh install to something legible.
+
+- **`observability.addr` defaults to `127.0.0.1:9100`** instead of empty. A
+  stock edge box previously served neither `/ready` nor `/metrics`, so the one
+  place per-site health is actually visible was off unless someone opted in —
+  which is why the `nats_local` check that would have caught the reconnect bug
+  above had no consumer. Binding was already non-fatal by design, so if the
+  port is taken (node_exporter's default is the same one) leaf-sync logs a
+  warning and carries on syncing. Set it to `""` to serve neither.
+
+- `scripts/test-authz.sh` covers 172 behaviours, up from 155. The new checks
+  exercise the blank-context read path on both the user and leaf-node branches,
+  cross-tenant *reads* (previously almost untested — the suite used the
+  second-tenant token exactly once, for a write), registration-time
+  `current_organization` injection, and organization deletion. They were each
+  verified to fail against the pre-fix rules, not merely to pass against the
+  fixed ones. The suite now also exercises an **admin** token: every
+  owner/admin rule in the platform had been proven for `owner` only, so an
+  allowlist that had lost its `admin` term would have passed the entire suite.
+
 ### Removed
+
+- **`migrations/widen_capabilities.go`, which could never have run.** Migrations
+  sort by filename, so `schema_update_drop_message_schemas.go` — which removes
+  `thing_types.capabilities` — runs before `widen_capabilities.go`, which
+  rewrites it. `GetStringSlice("capabilities")` was empty for every row on fresh
+  and upgraded databases alike, forever, and `remapCapabilities` was dead code. A
+  file whose stated job is impossible is worse than no file: it is the
+  counter-example to the migration discipline the rest of the package documents
+  carefully.
+
+- **Two dead writes in the demo seeder.** `seedThingTypes` still set
+  `capabilities` and `nats_role` on `thing_types`, both of which were dropped
+  with the contract layer — and PocketBase silently discards a write to a field
+  that does not exist, so this looked like it was seeding data nobody could find.
+  The `Capabilities` fixture field went with them (23 initializers). The role
+  *lookup* stays as a fixture check, because `roleForThingType` still uses
+  `tt.Role` to pick the identity for each device of that type, and a fixture
+  naming a role that does not exist should fail there rather than at the first
+  device.
+
 
 - **`message_schemas`, and the two dead fields on `thing_types`.** The Thing Type
   "contract layer" was three collections; only two of them did anything. A
@@ -45,6 +456,45 @@ and this file starts where the versioned releases do.
   for every tenant. 17 widget types are now 16.
 
 ### Added
+
+- **126 frontend unit tests**, across the five places most dangerous to change
+  blind. All pure logic, no component mounting:
+
+  - **`twinDrift`** — twenty lines the documentation spends several hundred words
+    specifying: subset semantics for objects, exact for arrays and scalars, and
+    no operators, ever. None of it was pinned, and the function is typed
+    `(any, any)`, so a well-meaning change to make a range work would have
+    compiled, passed the build, and quietly redefined what every desired value
+    on every deployment means. One test asserts that an operator-shaped desired
+    value is compared as a plain value — if it ever starts passing, someone has
+    begun building a rules engine inside a KV browser.
+  - **`useSubscriptionManager`** — the module singleton every live value flows
+    through, previously untested: refcounted listeners, a shared key per core
+    subject, and close-on-last-leave. Driven by a fake connection.
+  - **The `can` map** — the console's entire authorization surface, mirrored from
+    `schema.json` by hand with nothing checking the mirror. The full 5×8
+    role/capability matrix from `CLAUDE.md`, transcribed, plus the fail-closed
+    cases: no membership is `null` rather than a role, a membership in a
+    *different* organization grants nothing, and `dashboard` holds nothing at
+    all.
+  - **Dashboard import/export** — a round trip, new ids on import, the storage
+    location stripped, malformed entries skipped rather than thrown, and the
+    limit enforced *before* anything is written. The `replace` strategy clears
+    every local dashboard first, so a partial import is how a user loses work.
+  - **`createDefaultWidget`** — all sixteen types (added with the runner).
+
+  Two real defects fell out of writing them: `extractJsonPath` was typed
+  `path: string` while every caller passes a possibly-undefined `jsonPath`, and
+  the `manageDefinitions` comment still listed message schemas.
+
+- **A frontend test runner.** Vitest, Node environment, no component mounting —
+  the highest-risk logic in the console is pure (widget defaults, the capability
+  map, dashboard import/export, twin drift) and all of it was previously
+  unguarded, since `vue-tsc && vite build` stays green while any of it is wrong.
+  `npm test` runs it, and CI runs it before the bundle so a logic regression
+  fails fast. The first suite pins `createDefaultWidget` across all sixteen
+  widget types, which is what made the defaults merge above safe to attempt.
+
 
 - **"Infer from sample" on a type's inventory fields.** Paste one example record
   as JSON on the Thing Type or Location Type form and every key becomes a typed
