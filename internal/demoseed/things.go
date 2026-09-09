@@ -64,7 +64,7 @@ func (s *seeder) thing(t thingFixture) error {
 		}
 	}
 
-	_, _, err = s.ensure("things", "organization = {:o} && code = {:c}",
+	thing, _, err := s.ensure("things", "organization = {:o} && code = {:c}",
 		dbx.Params{"o": orgID, "c": t.Code}, func(r *core.Record) {
 			r.Set("organization", orgID)
 			r.Set("code", t.Code)
@@ -74,8 +74,8 @@ func (s *seeder) thing(t thingFixture) error {
 			r.Set("location", locID)
 			// The console used to omit this and every Thing it created was
 			// locked out by things.authRule. Set explicitly for the same reason
-			// the route sets it.
-			r.Set("active", !t.Inactive)
+			// the route sets it. Always true: deactivation is an update, below.
+			r.Set("active", true)
 			r.Set("email", fmt.Sprintf("%s@%s.thing.local", t.Code, t.Org))
 			r.Set("emailVisibility", true)
 			r.SetPassword(secret(16))
@@ -91,13 +91,47 @@ func (s *seeder) thing(t thingFixture) error {
 		return err
 	}
 
-	// A decommissioned Thing is only decommissioned if its NATS identity is
-	// revoked too — the flag on its own closes the console door and leaves the
-	// device publishing. hooks/active_flag.go does this on the true->false flip,
-	// which a create never is, so the seeder states it directly.
+	// Decommissioning is an UPDATE, and it goes THROUGH hooks/active_flag.go
+	// rather than around it. Two separate bugs lived in the previous version.
+	//
+	// First, `active: false` at create time was silently overwritten. That hook
+	// forces `active = true` on create, because PocketBase bools have no schema
+	// default and things.authRule is `active = true` — so a Thing created
+	// without the field would be locked out of its own API. The seeder asked for
+	// inactive Things, the hook said otherwise, and `stone-age demo-seed`
+	// produced ZERO decommissioned devices on a real install. Nothing caught it
+	// because internal/testutil did not bind that hook, so the harness and the
+	// binary disagreed about what a create does.
+	//
+	// Second, the seeder reached into the nats_users record and set `revoke`
+	// alongside `active = false`. pb-nats checks `revoke` FIRST and returns
+	// early, so the suspend branch never ran — and revoke means "these
+	// credentials leaked": it rotates the key pair and writes back a fresh
+	// WORKING creds_file. Every "decommissioned" demo Thing therefore held a
+	// live NATS credential, which is the precise failure hooks/active_flag.go
+	// documents at length and warns against.
+	//
+	// The true->false flip on the Thing does all of it in one place: the token
+	// key is refreshed, the linked NATS identity is suspended, and the linked
+	// Nebula host is blocklisted. Guarded on the current value so re-running the
+	// seeder does not re-flip an already-decommissioned device.
+	// The record is RE-READ first, and that is load-bearing rather than tidy.
+	// hooks/active_flag.go is edge-triggered on Original().GetBool("active"),
+	// and a record that was just created in memory and saved carries an empty
+	// original snapshot — so `active` reads as false on both sides of the
+	// comparison, the hook sees no edge, and returns without cascading. Loading
+	// the record back gives it a real prior state, which is also what an
+	// operator editing it in the console produces.
 	if t.Inactive {
-		if err := s.revokeNatsUser(natsUserID); err != nil {
-			return err
+		fresh, err := s.app.FindRecordById("things", thing.Id)
+		if err != nil {
+			return fmt.Errorf("reload thing %s before deactivating: %w", t.Code, err)
+		}
+		if fresh.GetBool("active") {
+			fresh.Set("active", false)
+			if err := s.app.Save(fresh); err != nil {
+				return fmt.Errorf("deactivate thing %s: %w", t.Code, err)
+			}
 		}
 	}
 	return nil
@@ -114,28 +148,6 @@ func roleForThingType(org, code string) string {
 		}
 	}
 	return ""
-}
-
-// revokeNatsUser sets the revoke trigger pb-nats acts on. It adds the public key
-// to the account's revocation list and re-signs the account JWT; `active = false`
-// on the nats_users record alone is read by nothing and disconnects nobody.
-func (s *seeder) revokeNatsUser(id string) error {
-	rec, err := s.app.FindRecordById("nats_users", id)
-	if err != nil {
-		return err
-	}
-	// pb-nats clears the flag as it handles it, so a set flag means it has not
-	// been processed yet and a clear one means either "already done" or "never
-	// asked". Checking `active` instead would re-trigger on every run.
-	if !rec.GetBool("active") {
-		return nil
-	}
-	rec.Set("revoke", true)
-	rec.Set("active", false)
-	if err := s.app.Save(rec); err != nil {
-		return fmt.Errorf("revoke nats user %s: %w", id, err)
-	}
-	return nil
 }
 
 // ------------------------------------------------------------- generated bulk

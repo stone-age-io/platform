@@ -162,6 +162,54 @@ and this file starts where the versioned releases do.
   the active edge and returns early — so setting both in one save silently
   re-credentials the device you just disabled.
 
+- **The test harness now agrees with the binary about what a write does.**
+  `internal/testutil` bound 5 of the 13 hooks `main.go` registers, while its own
+  comment insisted the ordering was "equivalent to main.go". The two missing
+  record hooks were not neutral: `RegisterActiveFlag` forces `active = true` on
+  every `things`/`leaf_nodes` create (PocketBase bools have no schema default and
+  the authRule is `active = true`), so a test could create an inactive device and
+  assert on it happily while the real binary overwrote the flag.
+
+  That is precisely what had happened. `demo-seed` asked for decommissioned
+  Things at create time, the harness allowed it, and `./stone-age demo-seed` on a
+  real install produced **zero** inactive devices — with the fixture-count tests
+  passing throughout. Binding the hook made the existing test fail immediately
+  with "no inactive things — the decommissioned state is unrepresented".
+
+  The six route registrars and `RegisterObservability` are still not bound, now
+  with the reason written down: they bind only `OnServe`, and this harness never
+  serves. Every hook that changes what a *write* does is bound; nothing that only
+  answers HTTP is.
+
+- **`demo-seed` produces decommissioned devices again, and revokes them
+  properly.** Two bugs, one call site. Deactivation moved from create-time (where
+  the hook overwrote it) to an update, which is the only edge
+  `hooks/active_flag.go` triggers on. And the seeder no longer reaches into the
+  `nats_users` record to set `revoke` alongside `active = false`: pb-nats checks
+  `revoke` first and returns early, so the suspend branch never ran — and
+  `revoke` means "these credentials leaked", rotating the key pair and writing
+  back a fresh **working** creds file. Every "decommissioned" demo Thing was
+  therefore holding a live NATS credential, which is the exact failure
+  `active_flag.go` warns about at length.
+
+  The record is re-read before the flip, which is load-bearing: a record created
+  in memory and saved carries an empty `Original()` snapshot, so `active` reads
+  false on both sides, the hook sees no edge, and nothing cascades.
+
+  `TestDecommissionedThingsHaveTheirCredentialRevoked` now asserts the *effect*
+  rather than the flag — the user's public key appearing in the owning account's
+  revocation list, plus the linked Nebula host being inactive. It previously
+  checked only the field the seeder had just written itself, so it could not tell
+  "pb-nats suspended the user" from "pb-nats did nothing", and it called
+  `t.Skip` when there were no inactive things — so during the bug it did not run
+  at all.
+
+- **`ensure` no longer treats a database error as "record not found".** A
+  transient failure created a duplicate of a record that already existed; for
+  `things` that means a second row with the same code, which the
+  `UNIQUE (organization, code)` index then rejects on a later run — a seeder
+  failing for a reason with no visible connection to the outage that caused it.
+
 ### Changed
 
 - **`observability.addr` defaults to `127.0.0.1:9100`** instead of empty. A

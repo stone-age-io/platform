@@ -157,6 +157,47 @@ func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
 		NatsRoleCollection:    natsOpts.RoleCollectionName,
 	})
 
+	// These two were missing, and their absence was not neutral -- it made the
+	// harness DISAGREE with production about what a write does.
+	//
+	// RegisterActiveFlag forces `active = true` on every things/leaf_nodes
+	// CREATE, because PocketBase bools have no schema default and the authRule is
+	// `active = true`. Without it bound here, a test could create an inactive
+	// device and assert on it happily while the real binary overwrote the flag --
+	// which is exactly what happened: internal/demoseed asked for inactive Things
+	// at create time, the harness let it, and `stone-age demo-seed` on a real
+	// install produced none.
+	//
+	// RegisterMembershipLifecycle clears a departing member's
+	// current_organization, which the inventory read rules scope on.
+	hooks.RegisterActiveFlag(app, hooks.ActiveFlagOptions{
+		ThingCollection:      "things",
+		LeafNodeCollection:   "leaf_nodes",
+		NatsUserCollection:   natsOpts.UserCollectionName,
+		NebulaHostCollection: nebulaOpts.HostCollectionName,
+	})
+	hooks.RegisterMembershipLifecycle(app, hooks.MembershipLifecycleOptions{
+		MembershipCollection: tenancyOpts.MembershipsCollection,
+		UserCollection:       "users",
+	})
+
+	// DELIBERATELY NOT REGISTERED, and this is the harness's actual boundary
+	// rather than an oversight:
+	//
+	//   RegisterLeafNodeRoutes, RegisterCredentialRoutes,
+	//   RegisterNatsAccountRoutes, RegisterThingRoutes,
+	//   RegisterClientConfigRoutes, RegisterObservability
+	//
+	// Every one of those binds ONLY app.OnServe (observability also OnTerminate),
+	// and this harness never serves -- it does record CRUD against a bootstrapped
+	// app. Binding them would add no behaviour, so a test that needs to exercise
+	// a route has to stand up a served app or use scripts/test-authz.sh, which is
+	// what that script exists for. Observability would additionally start a
+	// background prober that dials NATS, which no test has.
+	//
+	// So: every hook that changes what a WRITE does is bound here; nothing that
+	// only answers HTTP is. Say which of those two a new registrar is before
+	// deciding it belongs.
 	if err := app.Bootstrap(); err != nil {
 		return nil, fmt.Errorf("bootstrap: %w", err)
 	}

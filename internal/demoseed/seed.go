@@ -29,7 +29,9 @@ package demoseed
 
 import (
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	mathrand "math/rand"
 	"sort"
@@ -170,9 +172,19 @@ func Run(app core.App, opts Options) (*Result, error) {
 // new, so hand-edits to demo data survive a re-run — someone who renames a Thing
 // to try something out does not have it silently reverted by the next seed.
 func (s *seeder) ensure(collection, filter string, params dbx.Params, fill func(*core.Record)) (*core.Record, bool, error) {
-	if existing, err := s.app.FindFirstRecordByFilter(collection, filter, params); err == nil && existing != nil {
+	// A genuine database error must not be read as "not found". Treating every
+	// error that way makes a transient failure create a duplicate of a record
+	// that already exists — and for `things` that means a second Thing with the
+	// same code, which the UNIQUE (organization, code) index would then reject
+	// on a later run, so the seeder starts failing for a reason with no visible
+	// connection to the outage that caused it.
+	existing, err := s.app.FindFirstRecordByFilter(collection, filter, params)
+	switch {
+	case err == nil && existing != nil:
 		s.res.mark(collection, false)
 		return existing, false, nil
+	case err != nil && !errors.Is(err, sql.ErrNoRows):
+		return nil, false, fmt.Errorf("look up existing %s: %w", collection, err)
 	}
 	col, err := s.app.FindCollectionByNameOrId(collection)
 	if err != nil {

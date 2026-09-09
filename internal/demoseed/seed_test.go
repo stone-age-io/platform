@@ -196,8 +196,17 @@ func TestEveryActiveThingCanActuallyAuthenticate(t *testing.T) {
 	}
 }
 
-// A Thing's real capability is its NATS credential. Deactivating one has to
-// reach nats_users, or it has only closed the console door.
+// A Thing's real capability is its credentials. Deactivating one has to reach
+// nats_users and nebula_hosts, or it has only closed the console door.
+//
+// This asserts the EFFECT, not the flag. `active = false` on a nats_users
+// record is read by nothing in JWT generation -- pb-nats's suspend path is
+// what disconnects anyone, by adding the user's public key to the OWNING
+// ACCOUNT's revocation list and re-signing the account JWT. That list is the
+// durable evidence, and it is not a field the seeder writes, so it cannot pass
+// by accident. The previous version checked only the flag the seeder had just
+// set itself, which could not tell "pb-nats suspended the user" from "pb-nats
+// did nothing".
 func TestDecommissionedThingsHaveTheirCredentialRevoked(t *testing.T) {
 	app := shared
 
@@ -206,17 +215,51 @@ func TestDecommissionedThingsHaveTheirCredentialRevoked(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(inactive) == 0 {
-		t.Skip("no inactive things to check")
+		// Deliberately not t.Skip. This test opted out silently for as long as
+		// the seeder produced no decommissioned devices at all -- which it did,
+		// because hooks/active_flag.go forces active=true on create and the
+		// harness did not bind that hook. A test that skips when its subject is
+		// missing cannot report that its subject is missing.
+		t.Fatal("no decommissioned things, so this assertion never ran: the seeder produced none")
 	}
+
 	for _, thing := range inactive {
+		code := thing.GetString("code")
+
 		u, err := app.FindRecordById("nats_users", thing.GetString("nats_user"))
 		if err != nil {
-			t.Errorf("thing %q: %v", thing.GetString("code"), err)
+			t.Errorf("thing %q: %v", code, err)
 			continue
 		}
 		if u.GetBool("active") {
-			t.Errorf("thing %q is decommissioned but its NATS identity is still active",
-				thing.GetString("code"))
+			t.Errorf("thing %q is decommissioned but its NATS identity is still active", code)
+		}
+
+		pubKey := u.GetString("public_key")
+		if pubKey == "" {
+			t.Errorf("thing %q: its NATS identity has no public key to revoke", code)
+			continue
+		}
+		acct, err := app.FindRecordById("nats_accounts", u.GetString("account_id"))
+		if err != nil {
+			t.Errorf("thing %q: cannot load the owning NATS account: %v", code, err)
+			continue
+		}
+		if !strings.Contains(acct.GetString("revocations"), pubKey) {
+			t.Errorf("thing %q is decommissioned but its public key is absent from account %q's "+
+				"revocation list -- the credential still works", code, acct.GetString("name"))
+		}
+
+		// The Nebula half. Not every Thing has a host; the ones that do must be
+		// blocklisted, or a decommissioned device keeps overlay-network access
+		// until its certificate expires.
+		if hostID := thing.GetString("nebula_host"); hostID != "" {
+			h, err := app.FindRecordById("nebula_hosts", hostID)
+			if err != nil {
+				t.Errorf("thing %q: cannot load its Nebula host: %v", code, err)
+			} else if h.GetBool("active") {
+				t.Errorf("thing %q is decommissioned but its Nebula host is still active", code)
+			}
 		}
 	}
 }
