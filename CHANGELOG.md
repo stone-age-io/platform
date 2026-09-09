@@ -415,6 +415,36 @@ and this file starts where the versioned releases do.
 
 ### Added
 
+- **126 frontend unit tests**, across the five places most dangerous to change
+  blind. All pure logic, no component mounting:
+
+  - **`twinDrift`** — twenty lines the documentation spends several hundred words
+    specifying: subset semantics for objects, exact for arrays and scalars, and
+    no operators, ever. None of it was pinned, and the function is typed
+    `(any, any)`, so a well-meaning change to make a range work would have
+    compiled, passed the build, and quietly redefined what every desired value
+    on every deployment means. One test asserts that an operator-shaped desired
+    value is compared as a plain value — if it ever starts passing, someone has
+    begun building a rules engine inside a KV browser.
+  - **`useSubscriptionManager`** — the module singleton every live value flows
+    through, previously untested: refcounted listeners, a shared key per core
+    subject, and close-on-last-leave. Driven by a fake connection.
+  - **The `can` map** — the console's entire authorization surface, mirrored from
+    `schema.json` by hand with nothing checking the mirror. The full 5×8
+    role/capability matrix from `CLAUDE.md`, transcribed, plus the fail-closed
+    cases: no membership is `null` rather than a role, a membership in a
+    *different* organization grants nothing, and `dashboard` holds nothing at
+    all.
+  - **Dashboard import/export** — a round trip, new ids on import, the storage
+    location stripped, malformed entries skipped rather than thrown, and the
+    limit enforced *before* anything is written. The `replace` strategy clears
+    every local dashboard first, so a partial import is how a user loses work.
+  - **`createDefaultWidget`** — all sixteen types (added with the runner).
+
+  Two real defects fell out of writing them: `extractJsonPath` was typed
+  `path: string` while every caller passes a possibly-undefined `jsonPath`, and
+  the `manageDefinitions` comment still listed message schemas.
+
 - **A frontend test runner.** Vitest, Node environment, no component mounting —
   the highest-risk logic in the console is pure (widget defaults, the capability
   map, dashboard import/export, twin drift) and all of it was previously

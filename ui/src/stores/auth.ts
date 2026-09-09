@@ -76,7 +76,7 @@ export const useAuthStore = defineStore('auth', () => {
       // NATS identities/roles/exports/imports, Nebula CA/networks/hosts. These
       // records mint signed credentials, so they are owner/admin only.
       manageInfrastructure: isAdmin,
-      // Thing types, thing operations, message schemas, location types.
+      // Thing types, thing operations, location types.
       manageDefinitions: isAdmin,
       // Edge nodes.
       manageLeafNodes: isAdmin,
