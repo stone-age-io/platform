@@ -126,7 +126,6 @@ const (
 type thingTypeFixture struct {
 	Org, Code, Name, Description string
 	SubjectPrefix                string
-	Capabilities                 []string
 	Operations                   []string // operation names, within the same org
 	Role                         string   // nats_roles name to default to
 	Kind                         thingKind
@@ -144,7 +143,6 @@ var thingTypes = []thingTypeFixture{
 	{Org: "northwind", Code: "temp-probe", Name: "Temperature Probe", Kind: kindDevice,
 		Description:   "Wireless probe reporting one temperature and its own battery.",
 		SubjectPrefix: "telemetry.{location}.{thing}",
-		Capabilities:  []string{"publish"},
 		Operations:    []string{"publish_temperature", "publish_battery", "publish_heartbeat"},
 		Role:          "device",
 		Schema: objSchema(map[string]any{
@@ -159,7 +157,6 @@ var thingTypes = []thingTypeFixture{
 	{Org: "northwind", Code: "door-sensor", Name: "Dock Door Sensor", Kind: kindDevice,
 		Description:   "Magnetic contact on a dock or zone door.",
 		SubjectPrefix: "event.{location}.{thing}",
-		Capabilities:  []string{"publish"},
 		Operations:    []string{"publish_door", "publish_battery", "publish_heartbeat"},
 		Role:          "device",
 		Schema: objSchema(map[string]any{
@@ -173,7 +170,6 @@ var thingTypes = []thingTypeFixture{
 	{Org: "northwind", Code: "reefer-unit", Name: "Reefer Controller", Kind: kindDevice,
 		Description:   "Trailer refrigeration controller. Takes a setpoint and echoes the one in force.",
 		SubjectPrefix: "asset.{location}.{thing}",
-		Capabilities:  []string{"publish", "subscribe", "reply"},
 		Operations: []string{"publish_temperature", "subscribe_setpoint",
 			"publish_setpoint_echo", "reply_diagnostics", "publish_heartbeat"},
 		Role: "device",
@@ -187,7 +183,6 @@ var thingTypes = []thingTypeFixture{
 	{Org: "northwind", Code: "edge-gateway", Name: "Edge Gateway", Kind: kindGateway,
 		Description:   "Site aggregator. Runs the leaf node and rule-router.",
 		SubjectPrefix: "gateway.{location}.{thing}",
-		Capabilities:  []string{"publish", "subscribe", "reply"},
 		Operations:    []string{"publish_heartbeat", "reply_diagnostics"},
 		Role:          "gateway",
 		Schema: objSchema(map[string]any{
@@ -200,7 +195,6 @@ var thingTypes = []thingTypeFixture{
 	{Org: "northwind", Code: "wms-connector", Name: "WMS Connector", Kind: kindApp,
 		Description:   "Software participant. Lifts shipment events out of the warehouse management system and answers inventory requests.",
 		SubjectPrefix: "app.wms.{thing}",
-		Capabilities:  []string{"publish", "reply"},
 		Operations:    []string{"publish_shipment", "request_inventory"},
 		Role:          "application",
 		Schema: objSchema(map[string]any{
@@ -212,7 +206,6 @@ var thingTypes = []thingTypeFixture{
 	{Org: "northwind", Code: "coldchain-rules", Name: "Cold Chain Rule Engine", Kind: kindApp,
 		Description:   "A rule-router instance watching the temperature stream and raising excursions.",
 		SubjectPrefix: "app.rules.{thing}",
-		Capabilities:  []string{"publish", "subscribe"},
 		Operations:    []string{"publish_heartbeat"},
 		Role:          "application",
 		Schema: objSchema(map[string]any{
@@ -234,7 +227,6 @@ var thingTypes = []thingTypeFixture{
 	{Org: "northwind", Code: "access-controller", Name: "Access Controller", Kind: kindGateway,
 		Description:   "A stone-access edge controller. Decides credential presentations locally against a mirrored policy graph, and keeps deciding when the WAN is down.",
 		SubjectPrefix: "acc.{location}.ctrl.{thing}",
-		Capabilities:  []string{"publish", "subscribe"},
 		Operations:    []string{"publish_controller_heartbeat", "publish_access_state"},
 		Role:          "gateway",
 		Schema: objSchema(map[string]any{
@@ -249,7 +241,6 @@ var thingTypes = []thingTypeFixture{
 	{Org: "northwind", Code: "access-door", Name: "Access-Controlled Door", Kind: kindDevice,
 		Description:   "A door with a reader, a strike or maglock, and door-position monitoring. Its code is the portal code in stone-access.",
 		SubjectPrefix: "acc.{location}.door.{thing}",
-		Capabilities:  []string{"publish", "subscribe"},
 		Operations: []string{"publish_access_decision", "publish_access_alarm", "publish_access_state",
 			"subscribe_access_tap", "subscribe_access_grant", "subscribe_access_posture"},
 		Role: "device",
@@ -265,7 +256,6 @@ var thingTypes = []thingTypeFixture{
 	{Org: "northwind", Code: "access-gate", Name: "Access-Controlled Gate", Kind: kindDevice,
 		Description:   "A vehicle gate on the same controller as the doors, with a much longer held-open threshold.",
 		SubjectPrefix: "acc.{location}.gate.{thing}",
-		Capabilities:  []string{"publish", "subscribe"},
 		Operations: []string{"publish_access_decision", "publish_access_alarm",
 			"subscribe_access_tap", "subscribe_access_grant"},
 		Role: "device",
@@ -280,7 +270,6 @@ var thingTypes = []thingTypeFixture{
 	{Org: "northwind", Code: "dock-display", Name: "Dock Display", Kind: kindAppliance,
 		Description:   "Unattended screen above a dock door. Subscribes only.",
 		SubjectPrefix: "display.{location}.{thing}",
-		Capabilities:  []string{"subscribe"},
 		Operations:    []string{"subscribe_render"},
 		Role:          "console-readonly",
 		Schema: objSchema(map[string]any{
@@ -292,7 +281,6 @@ var thingTypes = []thingTypeFixture{
 	{Org: "ironbridge", Code: "power-meter", Name: "Panel Power Meter", Kind: kindDevice,
 		Description:   "Three-phase meter on a distribution panel.",
 		SubjectPrefix: "telemetry.{location}.{thing}",
-		Capabilities:  []string{"publish"},
 		Operations:    []string{"publish_power", "publish_heartbeat"},
 		Role:          "device",
 		Schema: objSchema(map[string]any{
@@ -306,7 +294,6 @@ var thingTypes = []thingTypeFixture{
 	{Org: "ironbridge", Code: "vib-sensor", Name: "Vibration Sensor", Kind: kindDevice,
 		Description:   "Bearing vibration monitor. Reduces on-device and publishes a summary.",
 		SubjectPrefix: "telemetry.{location}.{thing}",
-		Capabilities:  []string{"publish"},
 		Operations:    []string{"publish_vibration", "publish_heartbeat"},
 		Role:          "device",
 		Schema: objSchema(map[string]any{
@@ -320,7 +307,6 @@ var thingTypes = []thingTypeFixture{
 	{Org: "ironbridge", Code: "line-controller", Name: "Line Controller", Kind: kindDevice,
 		Description:   "PLC front-end for one production line. Counts cycles, raises alarms, takes a mode.",
 		SubjectPrefix: "line.{location}.{thing}",
-		Capabilities:  []string{"publish", "subscribe", "reply"},
 		Operations: []string{"publish_cycle", "publish_alarm", "subscribe_line_mode",
 			"publish_line_mode_echo", "reply_diagnostics", "publish_heartbeat"},
 		Role: "device",
@@ -333,7 +319,6 @@ var thingTypes = []thingTypeFixture{
 	{Org: "ironbridge", Code: "edge-gateway", Name: "Edge Gateway", Kind: kindGateway,
 		Description:   "Plant aggregator. Runs the leaf node and rule-router.",
 		SubjectPrefix: "gateway.{location}.{thing}",
-		Capabilities:  []string{"publish", "subscribe", "reply"},
 		Operations:    []string{"publish_heartbeat", "reply_diagnostics"},
 		Role:          "gateway",
 		Schema: objSchema(map[string]any{
@@ -346,7 +331,6 @@ var thingTypes = []thingTypeFixture{
 	{Org: "ironbridge", Code: "oee-analytics", Name: "OEE Analytics", Kind: kindApp,
 		Description:   "Stream processor. Windows the cycle stream into rolling availability, performance and quality.",
 		SubjectPrefix: "app.oee.{thing}",
-		Capabilities:  []string{"publish", "subscribe"},
 		Operations:    []string{"publish_oee", "publish_heartbeat"},
 		Role:          "application",
 		Schema: objSchema(map[string]any{
@@ -358,7 +342,6 @@ var thingTypes = []thingTypeFixture{
 	{Org: "ironbridge", Code: "mes-connector", Name: "MES Connector", Kind: kindApp,
 		Description:   "Software participant bridging the manufacturing execution system.",
 		SubjectPrefix: "app.mes.{thing}",
-		Capabilities:  []string{"publish", "request"},
 		Operations:    []string{"publish_heartbeat"},
 		Role:          "application",
 		Schema: objSchema(map[string]any{
@@ -370,7 +353,6 @@ var thingTypes = []thingTypeFixture{
 	{Org: "galewind", Code: "turbine-ctl", Name: "Turbine Controller", Kind: kindDevice,
 		Description:   "Per-turbine controller. Reports generation and accepts a curtailment ceiling.",
 		SubjectPrefix: "turbine.{location}.{thing}",
-		Capabilities:  []string{"publish", "subscribe", "reply"},
 		Operations: []string{"publish_generation", "publish_alarm", "subscribe_curtail",
 			"publish_curtail_echo", "reply_diagnostics", "publish_heartbeat"},
 		Role: "device",
@@ -385,7 +367,6 @@ var thingTypes = []thingTypeFixture{
 	{Org: "galewind", Code: "feeder-relay", Name: "Feeder Protection Relay", Kind: kindDevice,
 		Description:   "Substation feeder relay reporting measurements and protection events.",
 		SubjectPrefix: "telemetry.{location}.{thing}",
-		Capabilities:  []string{"publish"},
 		Operations:    []string{"publish_feeder", "publish_alarm", "publish_heartbeat"},
 		Role:          "device",
 		Schema: objSchema(map[string]any{
@@ -400,7 +381,6 @@ var thingTypes = []thingTypeFixture{
 	{Org: "galewind", Code: "met-mast", Name: "Met Mast", Kind: kindDevice,
 		Description:   "Meteorological mast. Wind speed and bearing for the whole collection area.",
 		SubjectPrefix: "telemetry.{location}.{thing}",
-		Capabilities:  []string{"publish"},
 		Operations:    []string{"publish_generation", "publish_heartbeat"},
 		Role:          "device",
 		Schema: objSchema(map[string]any{
@@ -411,7 +391,6 @@ var thingTypes = []thingTypeFixture{
 	{Org: "galewind", Code: "edge-gateway", Name: "Edge Gateway", Kind: kindGateway,
 		Description:   "Substation aggregator on cellular backhaul. Runs the leaf node so the site survives a WAN outage.",
 		SubjectPrefix: "gateway.{location}.{thing}",
-		Capabilities:  []string{"publish", "subscribe", "reply"},
 		Operations:    []string{"publish_heartbeat", "reply_diagnostics"},
 		Role:          "gateway",
 		Schema: objSchema(map[string]any{
@@ -425,7 +404,6 @@ var thingTypes = []thingTypeFixture{
 	{Org: "galewind", Code: "scada-bridge", Name: "SCADA Bridge", Kind: kindApp,
 		Description:   "Software participant translating between the historian and the bus.",
 		SubjectPrefix: "app.scada.{thing}",
-		Capabilities:  []string{"publish", "subscribe", "reply"},
 		Operations:    []string{"request_forecast", "publish_heartbeat"},
 		Role:          "application",
 		Schema: objSchema(map[string]any{
@@ -436,7 +414,6 @@ var thingTypes = []thingTypeFixture{
 	{Org: "galewind", Code: "market-feed", Name: "ISO Market Feed", Kind: kindApp,
 		Description:   "Software participant publishing dispatch instructions from the ISO.",
 		SubjectPrefix: "app.market.{thing}",
-		Capabilities:  []string{"publish"},
 		Operations:    []string{"publish_dispatch", "publish_heartbeat"},
 		Role:          "application",
 		Schema: objSchema(map[string]any{
@@ -447,7 +424,6 @@ var thingTypes = []thingTypeFixture{
 	{Org: "galewind", Code: "ops-wallboard", Name: "Operations Wallboard", Kind: kindAppliance,
 		Description:   "Unattended screen in the operations centre. Subscribes only.",
 		SubjectPrefix: "display.{location}.{thing}",
-		Capabilities:  []string{"subscribe"},
 		Operations:    []string{},
 		Role:          "console-readonly",
 		Schema: objSchema(map[string]any{

@@ -576,8 +576,12 @@ func (s *seeder) seedThingTypes() error {
 			opIDs = append(opIDs, id)
 		}
 
-		roleID, ok := s.roles[tt.Org+":"+tt.Role]
-		if !ok {
+		// Validated, not stored. thing_types.nats_role was dropped with the rest
+		// of the contract layer, but the fixture still names a role because
+		// roleForThingType uses it to pick the identity for each THING of this
+		// type -- so a fixture naming a role that does not exist should still
+		// fail here rather than at the first device.
+		if _, ok := s.roles[tt.Org+":"+tt.Role]; !ok {
 			return fmt.Errorf("thing type %q references unknown NATS role %q", tt.Code, tt.Role)
 		}
 
@@ -588,9 +592,7 @@ func (s *seeder) seedThingTypes() error {
 				r.Set("name", tt.Name)
 				r.Set("description", tt.Description)
 				r.Set("subject_prefix", tt.SubjectPrefix)
-				r.Set("capabilities", tt.Capabilities)
 				r.Set("operations", opIDs)
-				r.Set("nats_role", roleID)
 				if tt.Schema != nil {
 					r.Set("metadata_schema", tt.Schema)
 				}

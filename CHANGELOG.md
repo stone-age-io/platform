@@ -268,6 +268,21 @@ and this file starts where the versioned releases do.
   `docker-entrypoint.sh` made the port configurable, so setting that variable
   produced a permanently unhealthy container that was serving correctly.
 
+- **Every API-rule rejection was counted as a server error.**
+  `stone_age_http_requests_total` bucketed by status class, and PocketBase's
+  router runs its error handler *after* the middleware chain unwinds — so a
+  handler that returns an error leaves the tracked status at 0 when the metrics
+  middleware sees it. That case returned `5xx`, and *every* authorization
+  rejection arrives that way: 400 on a denied create, 404 on a denied update,
+  401/403 from `RequireAuth`. The 4xx bucket sat near-empty while a `5xx` alert
+  fired on a platform doing exactly its job. The status is now resolved through
+  `router.ToApiError`, which is what the error handler itself calls before
+  writing the header.
+
+  Split into a pure `statusClassFor(status, err)` so it can be asserted at all —
+  the bug was invisible partly because nothing could construct a
+  `core.RequestEvent` to test it.
+
 ### Changed
 
 - **`observability.addr` defaults to `127.0.0.1:9100`** instead of empty. A
@@ -289,6 +304,26 @@ and this file starts where the versioned releases do.
   allowlist that had lost its `admin` term would have passed the entire suite.
 
 ### Removed
+
+- **`migrations/widen_capabilities.go`, which could never have run.** Migrations
+  sort by filename, so `schema_update_drop_message_schemas.go` — which removes
+  `thing_types.capabilities` — runs before `widen_capabilities.go`, which
+  rewrites it. `GetStringSlice("capabilities")` was empty for every row on fresh
+  and upgraded databases alike, forever, and `remapCapabilities` was dead code. A
+  file whose stated job is impossible is worse than no file: it is the
+  counter-example to the migration discipline the rest of the package documents
+  carefully.
+
+- **Two dead writes in the demo seeder.** `seedThingTypes` still set
+  `capabilities` and `nats_role` on `thing_types`, both of which were dropped
+  with the contract layer — and PocketBase silently discards a write to a field
+  that does not exist, so this looked like it was seeding data nobody could find.
+  The `Capabilities` fixture field went with them (23 initializers). The role
+  *lookup* stays as a fixture check, because `roleForThingType` still uses
+  `tt.Role` to pick the identity for each device of that type, and a fixture
+  naming a role that does not exist should fail there rather than at the first
+  device.
+
 
 - **`message_schemas`, and the two dead fields on `thing_types`.** The Thing Type
   "contract layer" was three collections; only two of them did anything. A
