@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=155         # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=172         # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -1151,6 +1151,167 @@ fi
 # scraped. metrics.token closes it; this asserts the default, not a rule.
 RAWCODE=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/metrics")
 expect "metrics are scrapeable without a session (metrics.token is unset here)" 200 "$RAWCODE" ""
+
+echo ""
+echo "=== 20. a blank organization is not a tenancy match ==="
+# Every inventory read rule scoped on `organization = @request.auth.
+# current_organization`. Both sides are TEXT defaulting to an empty string, and
+# in PocketBase an empty string equals an empty string -- so an orphaned record
+# was readable by anyone whose own context was blank. Neither state was exotic:
+# deleting an organization blanks `organization` on 16 non-cascade relations,
+# and hooks/membership_lifecycle.go blanks `current_organization` on the way out
+# of an org.
+#
+# ORPHAN is a dedicated record that stays blank for the whole section. An
+# earlier draft blanked and then restored the shared THING fixture, which left
+# the leaf-node checks below with nothing orphaned to find -- so they passed
+# against the unfixed rules too. A check that cannot fail is worse than no
+# check, so the orphan is separate and permanent.
+req POST /collections/things/records "$SU" \
+  "{\"email\":\"orphan@test.local\",\"password\":\"Password123!\",\"passwordConfirm\":\"Password123!\",\"emailVisibility\":true,\"name\":\"Orphan Thing\",\"code\":\"ORPH\",\"organization\":\"$ORG\"}"
+ORPHAN=$(j "$RBODY" id)
+[ -z "$ORPHAN" ] && die "orphan thing create failed: $RBODY"
+req PATCH "/collections/things/records/$ORPHAN" "$SU" '{"organization":""}'
+if [ -z "$(j "$RBODY" organization)" ]; then
+  ok "fixture: a thing now has a blank organization (what an org delete leaves behind)"
+else
+  no "fixture setup failed -- could not blank the orphan organization"
+fi
+
+# A user who is authenticated but sits in no organization: a fresh invitee
+# before acceptance, or anyone just removed from a tenant.
+DRIFT=$(mkuser drifter@test.local)
+[ -z "$DRIFT" ] && die "drifter create failed: $RBODY"
+TD=$(login drifter@test.local)
+[ -z "$TD" ] && die "drifter login failed: $RBODY"
+
+req GET "/collections/things/records" "$TD"
+DRIFT_THINGS=$(jn "$RBODY" 'o.items ? o.items.length : "err"')
+if [ "$DRIFT_THINGS" = "0" ] || [[ "$RCODE" =~ ^(403|404)$ ]]; then
+  ok "blank-context user sees no things (got ${DRIFT_THINGS:-$RCODE})"
+else
+  no "blank-context user read $DRIFT_THINGS thing(s) -- the sentinel still matches"
+fi
+req GET "/collections/nats_accounts/records" "$TD"
+DRIFT_ACCTS=$(jn "$RBODY" 'o.items ? o.items.length : "err"')
+if [ "$DRIFT_ACCTS" = "0" ] || [[ "$RCODE" =~ ^(403|404)$ ]]; then
+  ok "blank-context user sees no nats_accounts (got ${DRIFT_ACCTS:-$RCODE})"
+else
+  no "blank-context user read $DRIFT_ACCTS nats_account(s) -- account JWTs are exposed"
+fi
+
+# Pair the denials with an allow on the same collection, or a blanket refusal
+# would pass both of the above.
+req GET "/collections/things/records" "$TA"
+OWNER_THINGS=$(jn "$RBODY" 'o.items ? o.items.length : "err"')
+if [ "$OWNER_THINGS" != "0" ] && [ "$OWNER_THINGS" != "err" ]; then
+  ok "owner with a real context still reads her own inventory ($OWNER_THINGS row(s))"
+else
+  no "owner reads nothing -- the guard is too tight (got ${OWNER_THINGS:-$RCODE})"
+fi
+# ...and the orphan is not in what she reads, because it belongs to nobody now.
+if grep -q "\"$ORPHAN\"" <<<"$RBODY"; then
+  no "the owner can see the orphaned record -- a blank organization matched a real one"
+else
+  ok "the orphan is invisible to the owner too (it belongs to no organization)"
+fi
+
+# The collapse had a second door: leaf_nodes.organization is itself non-cascade
+# and non-required, so an org delete blanks it too, and the leaf branch compares
+# it against the record's own blank column. ORPHAN is still blank here.
+req PATCH "/collections/leaf_nodes/records/$LEAF" "$SU" '{"organization":""}'
+req GET "/collections/things/records" "$TL"
+LEAF_ORPHAN=$(jn "$RBODY" 'o.items ? o.items.length : "err"')
+if [ "$LEAF_ORPHAN" = "0" ] || [[ "$RCODE" =~ ^(403|404)$ ]]; then
+  ok "leaf node with a blanked organization mirrors nothing (got ${LEAF_ORPHAN:-$RCODE})"
+else
+  no "blank-org leaf node read $LEAF_ORPHAN thing(s) -- the leaf branch still collapses"
+fi
+req PATCH "/collections/leaf_nodes/records/$LEAF" "$SU" "{\"organization\":\"$ORG\"}"
+req GET "/collections/things/records" "$TL"
+LEAF_OK=$(jn "$RBODY" 'o.items ? o.items.length : "err"')
+if [ "$LEAF_OK" != "0" ] && [ "$LEAF_OK" != "err" ]; then
+  ok "leaf node with its organization restored mirrors again ($LEAF_OK row(s))"
+else
+  no "restored leaf node mirrors nothing -- the guard broke normal edge sync"
+fi
+echo ""
+echo "=== 20b. cross-tenant reads (the class the suite never covered) ==="
+# Eve's token appeared exactly once in this file before, for a write. Every
+# read denial across a tenant boundary was untested -- which is the class both
+# halves of the sentinel bug fell into.
+req POST /collections/things/records "$SU" \
+  "{\"email\":\"thing2@other.local\",\"password\":\"Password123!\",\"passwordConfirm\":\"Password123!\",\"emailVisibility\":true,\"name\":\"Other Thing\",\"code\":\"TH2\",\"organization\":\"$ORG2\"}"
+THING2=$(j "$RBODY" id)
+[ -z "$THING2" ] && die "second-org thing create failed: $RBODY"
+
+req GET "/collections/things/records?perPage=200" "$TE"
+if grep -q "\"$THING\"" <<<"$RBODY"; then
+  no "another tenant's owner can read this org's thing"
+else
+  ok "another tenant's owner cannot see this org's thing"
+fi
+if grep -q "\"$THING2\"" <<<"$RBODY"; then
+  ok "...and CAN see her own org's thing (so the deny is scoping, not a refusal)"
+else
+  no "eve cannot read her own org's thing -- the read rule is broken, not strict"
+fi
+req GET "/collections/things/records/$THING" "$TE"
+expect "another tenant's owner cannot view this org's thing by id" "403|404" "$RCODE" "$RBODY"
+
+echo ""
+echo "=== 20c. current_organization is not settable at registration ==="
+# users.updateRule froze this field to orgs you hold a membership in; the create
+# rule guarded only is_operator and the invite email match. An invited
+# registrant could therefore name any organization's id and then read its
+# inventory, because the read rules scope on exactly this field.
+req POST /collections/invites/records "$TA" \
+  "{\"email\":\"injector@test.local\",\"organization\":\"$ORG\",\"role\":\"member\"}"
+expect "owner can invite the registrant used below" 200 "$RCODE" "$RBODY"
+req POST /collections/users/records "" \
+  "{\"email\":\"injector@test.local\",\"password\":\"Password123!\",\"passwordConfirm\":\"Password123!\",\"name\":\"Injector\",\"emailVisibility\":true,\"current_organization\":\"$ORG2\"}"
+expect "invited signup cannot name an organization it has no membership in" "403|400|404" "$RCODE" "$RBODY"
+req POST /collections/users/records "" \
+  '{"email":"injector@test.local","password":"Password123!","passwordConfirm":"Password123!","name":"Injector","emailVisibility":true}'
+expect "the same signup WITHOUT current_organization still works" 200 "$RCODE" "$RBODY"
+
+echo ""
+echo "=== 20d. an admin token, and deleting an organization ==="
+# Every owner/admin rule in this suite was proven for `owner` only -- an
+# allowlist that had lost its "admin" term would have passed all of them.
+# A dedicated fixture. Section 17 deletes bob's membership and clears his
+# organization context, so reusing him here would fail for a reason that has
+# nothing to do with the rule under test -- which is the same trap as capturing
+# a baseline too early.
+ADM=$(mkuser admin2@test.local)
+[ -z "$ADM" ] && die "admin user create failed: $RBODY"
+req POST /collections/memberships/records "$SU" \
+  "{\"user\":\"$ADM\",\"organization\":\"$ORG\",\"role\":\"admin\"}"
+[ -z "$(j "$RBODY" id)" ] && die "admin membership create failed: $RBODY"
+req PATCH "/collections/users/records/$ADM" "$SU" "{\"current_organization\":\"$ORG\"}"
+TADM=$(login admin2@test.local)
+[ -z "$TADM" ] && die "admin login failed: $RBODY"
+req POST /collections/thing_types/records "$TADM" \
+  "{\"name\":\"AdminType\",\"code\":\"AT1\",\"organization\":\"$ORG\"}"
+expect "admin (not just owner) CAN create thing_types" 200 "$RCODE" "$RBODY"
+req POST /collections/nats_roles/records "$TADM" \
+  "{\"name\":\"admin-role\",\"organization\":\"$ORG\",\"publish_permissions\":[\"a.>\"],\"subscribe_permissions\":[\"a.>\"]}"
+expect "admin CAN create a nats_role" 200 "$RCODE" "$RBODY"
+
+# Deleting an organization blanks 16 non-cascade relations rather than removing
+# the rows, which is what manufactured the orphan above. It is an operator
+# action, matching updateRule; a disposable org keeps the fixtures intact.
+req POST /collections/organizations/records "$SU" \
+  "{\"name\":\"DisposableOrg\",\"owner\":\"$ALICE\",\"active\":true}"
+ORG3=$(j "$RBODY" id)
+[ -z "$ORG3" ] && die "disposable org create failed: $RBODY"
+sleep 2   # let its account/CA provisioning settle before deleting it
+req DELETE "/collections/organizations/records/$ORG3" "$TA"
+expect "an org owner cannot delete the organization record" "403|400|404" "$RCODE" "$RBODY"
+req DELETE "/collections/organizations/records/$ORG3" "$SU"
+expect "an operator CAN delete it (so the deny is a role check, not a broken rule)" "200|204" "$RCODE" "$RBODY"
+req PATCH "/collections/users/records/$ALICE" "$SU" "{\"current_organization\":\"$ORG\"}"
+
 # ----------------------------------------------------------------------- result
 
 TOTAL=$((PASS + FAIL))

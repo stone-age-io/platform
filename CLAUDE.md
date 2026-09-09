@@ -595,7 +595,9 @@ is that an owner cannot leave their own organization (`ui/src/stores/auth.ts`).
 Editing the **organization record itself is a platform-operator action, not an
 owner one**: it carries the tenancy flags (`managed`, `is_operator_org`,
 `is_system_org`) and drives NATS account and Nebula CA provisioning, so no
-tenant role has an update path to it.
+tenant role has an update path to it — and, since
+`schema_update_tenancy_sentinel.go`, no delete path either: deleting an
+organization blanks rather than cascades, orphaning its entire inventory.
 
 Rules to follow when touching authorization:
 
@@ -609,7 +611,44 @@ Rules to follow when touching authorization:
   had no role check at all — so `dashboard` satisfied both and could write
   inventory. A branch that constrains *what* may be written still has to say *who*
   may write it. Every write branch names its roles.
-- **Keep a zero-authority role in the test matrix.** Both bugs above were caught
+- **An empty string is a valid match, so a blank scope is a wildcard.** The
+  third costume of the same bug, and the one no role audit could have caught:
+  every inventory read rule was `organization = @request.auth.current_organization`,
+  both sides are TEXT defaulting to `''`, and in PocketBase `'' = ''` is true. A
+  record with a blank `organization` was therefore readable by any caller whose
+  own context was blank — no rule mis-written, no role bypassed, two sentinels
+  comparing equal. Both halves were ordinary product states: deleting an
+  organization blanks `organization` on the 16 relations into it that are
+  non-cascade AND non-required (PocketBase blanks rather than deletes, via
+  `SaveNoValidate`), and `hooks/membership_lifecycle.go` blanks
+  `current_organization` on the way out of an org. The leaf branches had the
+  identical hole on `@request.auth.organization`, which is blankable for the
+  same reason. Fixed in `migrations/schema_update_tenancy_sentinel.go` by
+  requiring a non-blank context **and** a correlated membership — the membership
+  clause is the load-bearing half, because `memberships.organization` is
+  required and cascade so it can never be `''`, which kills the sentinel by
+  construction rather than by a comparison someone may later tidy away. Note
+  every *write* rule already had that clause, which is exactly why only the
+  reads were exposed. **The review question is not "does this rule name the
+  right roles" but "what does this rule do when both sides are the zero
+  value."**
+- **`current_organization` is the read boundary, so guard every path that
+  writes it.** `users.updateRule` froze it to organizations the caller holds a
+  membership in; `users.createRule` did not mention it, so an invited registrant
+  could name any organization id at signup and then read that tenant. The create
+  branch is anonymous and cannot check membership even in principle, so it
+  refuses the field outright and accept-invite fills it in afterwards. A field
+  that scopes reads needs a guard on *create* as well as update.
+- **Do not put an apostrophe in a rule comment.** PocketBase tokenizes quote
+  characters in the rule string before `//` comments are stripped, so one stray
+  apostrophe re-pairs every quote after it: a later `''` literal then opens a
+  string that nothing closes, and the whole collection fails to import with
+  `invalid quoted text`. This cost a debugging cycle — the rule looked correct
+  and the failure named a fragment of the expression rather than the comment.
+  Several existing comments contain apostrophes and are harmless only because
+  no string literal follows them. Write "the organization" rather than
+  "the org's".
+- **Keep a zero-authority role in the test matrix.** The two role bugs above were caught
   by the same thing: a role that holds no capability at all, used as the probe in
   `scripts/test-authz.sh`. `dashboard` is that role. Don't "simplify" the suite by
   testing denials with `member` — a role with *some* authority cannot prove an
@@ -620,8 +659,9 @@ Rules to follow when touching authorization:
   roles, two purposes — don't merge them to save an enum entry.
 - **Reads are org-scoped, not role-scoped, and that is deliberate.** Every read
   rule on `things`, `locations`, `thing_types`, `location_types`,
-  `thing_type_operations` and `leaf_nodes` is `organization = current_organization`
-  with no role branch, so *every* role in an org — `dashboard` included — can
+  `thing_type_operations` and `leaf_nodes` scopes on the active organization plus
+  a correlated membership in it (see the sentinel bullet above), with no ROLE
+  branch, so *every* role in an org — `dashboard` included — can
   `curl` the whole inventory. `viewer` therefore reads exactly what `member`
   reads; the difference between them is writes plus which screens
   `ui/src/router/index.ts` navigates to. Do not describe the console's
@@ -842,7 +882,7 @@ you, so pushing an absolute one would make the login form an open redirect (the
   rather than string-matched, because nothing in CI scrapes it and a malformed
   body looks fine in a terminal.
 - `./scripts/test-authz.sh` — **run after any API-rule change in `schema.json`.**
-  Builds the binary, stands up a throwaway DB, and asserts 150 authorization
+  Builds the binary, stands up a throwaway DB, and asserts 172 authorization
   behaviours against a live server. The rules are the only tenancy enforcement
   in the platform and nothing else type-checks them. Add a check when you add a
   rule, and bump `EXPECTED_CHECKS`. Note PocketBase answers 404 (not 403) when an

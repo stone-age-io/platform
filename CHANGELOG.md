@@ -11,6 +11,68 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+### Security
+
+- **A blank organization no longer matches a blank organization context.** Every
+  inventory read rule scoped on `organization = @request.auth.current_organization`.
+  Both sides are TEXT columns whose zero value is the empty string, and in
+  PocketBase an empty string equals an empty string — so a record with a blank
+  `organization` was readable by any authenticated caller whose own context was
+  also blank. No role check was bypassed and no rule was mis-written; two
+  sentinels compared equal.
+
+  Both halves were reachable through ordinary use. `organizations.deleteRule`
+  permitted `owner = @request.auth.id`, and 16 of the 18 relations pointing at
+  `organizations` are non-cascade *and* non-required — PocketBase blanks those
+  rather than deleting the rows — so an owner deleting their organization
+  orphaned every thing, location, type, leaf node, `nats_account` and
+  `nebula_ca` at `organization = ''`. On the other side,
+  `hooks/membership_lifecycle.go` blanks `current_organization` deliberately
+  when a membership is removed, and it is also the default for a freshly
+  registered invitee before acceptance. Chained, a deleted tenant's whole
+  inventory, its NATS account record and its Nebula CA certificate became
+  readable by a user sitting in the blank-context state in any other tenant.
+
+  Signed credentials were never exposed: `nats_users` and `nebula_hosts` require
+  a correlated membership with an owner/admin role, and `memberships.organization`
+  is required and cascade so it can never be blank. That is the row-scoping
+  design holding.
+
+  The eight affected read rules now require a non-blank context **and** a
+  correlated membership in the organization being claimed — the same clause
+  every *write* rule already carried, which is why only the reads were exposed.
+  The `leaf_nodes` branches needed the identical treatment on
+  `@request.auth.organization`, which an organization delete blanks for the same
+  reason: a leaf node whose organization was deleted would otherwise have
+  matched every orphaned record on the platform. Reads remain org-scoped rather
+  than role-scoped, which is deliberate and unchanged.
+
+- **`current_organization` is no longer settable at registration.**
+  `users.updateRule` froze the field to organizations the caller holds a
+  membership in; `users.createRule` did not mention it, so an invited registrant
+  could name any organization id at signup and then read that tenant's
+  inventory, because the read rules scope on exactly that field. The anonymous
+  create branch cannot check membership even in principle, so it now refuses the
+  field; `accept-invite` fills it in from the invite once the account exists.
+
+- **Deleting an organization is a platform-operator action.** It was available to
+  the organization's owner, which is what manufactured the orphaned records
+  above. Every console route that touches this collection was already
+  operator-gated, so nothing regresses.
+
+
+### Changed
+
+- `scripts/test-authz.sh` covers 172 behaviours, up from 155. The new checks
+  exercise the blank-context read path on both the user and leaf-node branches,
+  cross-tenant *reads* (previously almost untested — the suite used the
+  second-tenant token exactly once, for a write), registration-time
+  `current_organization` injection, and organization deletion. They were each
+  verified to fail against the pre-fix rules, not merely to pass against the
+  fixed ones. The suite now also exercises an **admin** token: every
+  owner/admin rule in the platform had been proven for `owner` only, so an
+  allowlist that had lost its `admin` term would have passed the entire suite.
+
 ### Removed
 
 - **`message_schemas`, and the two dead fields on `thing_types`.** The Thing Type
