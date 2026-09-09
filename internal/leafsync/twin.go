@@ -124,9 +124,29 @@ func relayEntry(ctx context.Context, dst twinSide, key string, val []byte, op je
 	return true, nil
 }
 
+// twinRetryInterval is how often pumpReported re-offers keys whose relay to the
+// hub failed. A var, not a const, so a test can shrink it -- the retry path is
+// the whole point of the pending set and a 30s wait would make it untestable.
+var twinRetryInterval = 30 * time.Second
+
 // pumpReported watches the edge's `twin` bucket and copies every change to the
 // hub's. Returns when ctx is cancelled (nil) or the watcher fails (error, for
 // the supervisor to back off and restart).
+//
+// Keys whose relay fails are held and retried, which is not a refinement but
+// the only thing making this direction reliable at all. The previous version
+// logged a failed write and dropped it, on the stated grounds that "a key
+// missed here is re-offered by the next watcher restart's replay" -- and it was
+// not. This watcher is on the LOCAL bucket, which does not die when the hub or
+// the WAN does, and superviseReportedPump only restarts the pump when the
+// WATCHER fails. So a value that changed during an outage, failed its hub
+// write, and then never changed again was absent from the hub permanently and
+// silently, in the one direction the platform takes responsibility for
+// delivering.
+//
+// Retrying beats returning an error and letting the supervisor replay: a single
+// key the hub will never accept would otherwise tear down the watcher on every
+// replay and block every other key behind it, forever.
 func pumpReported(ctx context.Context, src, dst twinSide) error {
 	w, err := src.WatchAll(ctx)
 	if err != nil {
@@ -134,28 +154,80 @@ func pumpReported(ctx context.Context, src, dst twinSide) error {
 	}
 	defer func() { _ = w.Stop() }()
 
+	// One entry per key currently failing, so this is bounded by the size of the
+	// bucket rather than by the length of the outage.
+	pending := make(map[string]struct{})
+	retry := time.NewTicker(twinRetryInterval)
+	defer retry.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
+		case <-retry.C:
+			retryPending(ctx, src, dst, pending)
 		case e, ok := <-w.Updates():
 			if !ok {
 				return errors.New("watcher closed")
 			}
 			// WatchAll sends a nil entry to mark the end of the initial replay.
-			// That replay is also the resync: after a WAN outage it walks every
-			// current value, so the two sides converge with no catch-up path of
-			// our own to get wrong.
+			// That replay covers everything present when the pump starts; the
+			// pending set above covers everything that fails afterwards.
 			if e == nil {
 				continue
 			}
 			if _, err := relayEntry(ctx, dst, e.Key(), e.Value(), e.Operation()); err != nil {
-				// Fail-soft, like the rest of this agent: log and keep the
-				// stream moving. A key missed here is re-offered by the next
-				// watcher restart's replay.
-				log.Printf("⚠️ leaf-sync: twin relay: %v", err)
+				// Fail-soft, like the rest of this agent: log, keep the stream
+				// moving, and come back to this key on the retry tick.
+				log.Printf("⚠️ leaf-sync: twin relay: %v (will retry)", err)
+				pending[e.Key()] = struct{}{}
+				continue
+			}
+			delete(pending, e.Key())
+		}
+	}
+}
+
+// retryPending re-offers each key whose relay failed earlier.
+//
+// The value is re-read from the local bucket rather than remembered from the
+// failed attempt, so a retry can never write a stale value over a newer one --
+// the device may have reported twice more while the hub was unreachable, and
+// only the current value is worth sending. A key deleted locally in the
+// meantime is relayed as a delete, which is the same tombstone-not-absence
+// distinction relayEntry already makes.
+func retryPending(ctx context.Context, src, dst twinSide, pending map[string]struct{}) {
+	if len(pending) == 0 {
+		return
+	}
+
+	before := len(pending)
+	for key := range pending {
+		if ctx.Err() != nil {
+			return
+		}
+
+		cur, err := src.Get(ctx, key)
+		switch {
+		case errors.Is(err, jetstream.ErrKeyNotFound):
+			if _, err := relayEntry(ctx, dst, key, nil, jetstream.KeyValueDelete); err != nil {
+				continue // hub still unhappy; leave it pending
+			}
+		case err != nil:
+			continue // cannot read locally right now; try again next tick
+		default:
+			if _, err := relayEntry(ctx, dst, key, cur.Value(), cur.Operation()); err != nil {
+				continue
 			}
 		}
+		delete(pending, key)
+	}
+
+	if recovered := before - len(pending); recovered > 0 {
+		log.Printf("leaf-sync: twin relay caught up on %d key(s)", recovered)
+	}
+	if len(pending) > 0 {
+		log.Printf("⚠️ leaf-sync: twin relay still behind on %d key(s)", len(pending))
 	}
 }
 

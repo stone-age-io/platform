@@ -138,6 +138,15 @@ func (c *Client) List(ctx context.Context, collection string, page, perPage int,
 	if filter != "" {
 		q.Set("filter", filter)
 	}
+	// A stable order is not optional for a paginated walk. PocketBase does not
+	// promise one, so a record inserted or deleted between two page requests can
+	// shift the window and make a page skip a record entirely -- and the caller
+	// that walks these pages then treats the missing record as deleted upstream
+	// and purges it from the edge mirror. `id` is unique, immutable and indexed,
+	// so it is the cheapest total order available. Set here rather than left to
+	// each caller because the hazard belongs to pagination itself, not to any
+	// particular use of it.
+	q.Set("sort", "id")
 	b, err := c.get(ctx, "/api/collections/"+url.PathEscape(collection)+"/records", q)
 	if err != nil {
 		return nil, err

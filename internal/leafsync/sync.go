@@ -306,10 +306,14 @@ func syncCollection(ctx context.Context, pb recordLister, kv kvBucket, cache *sy
 	// `code`, which is optional and non-unique in the schema, so we must see
 	// every record to detect duplicate codes before choosing keys.
 	var records []pbclient.Record
+	expected := -1 // totalItems as of the first page; -1 until we have seen one
 	for page := 1; ; page++ {
 		res, err := pb.List(ctx, col, page, listPageSize, "")
 		if err != nil {
 			return 0, err
+		}
+		if expected < 0 {
+			expected = res.TotalItems
 		}
 		records = append(records, res.Items...)
 		if res.TotalPages == 0 || res.Page >= res.TotalPages {
@@ -323,6 +327,28 @@ func syncCollection(ctx context.Context, pb recordLister, kv kvBucket, cache *sy
 	if len(records) == 0 && len(existing) > 0 {
 		log.Printf("⚠️ leaf-sync: %q returned 0 records but %d keys exist locally; skipping purge this cycle", col, len(existing))
 		return 0, nil
+	}
+
+	// Short-fetch guard, the same argument one step further in. The empty case
+	// above only catches a total failure; a PARTIAL walk is the dangerous one,
+	// because every record it failed to see looks exactly like a record that was
+	// deleted upstream, and the purge below would remove it from the edge. One
+	// record short of a 400-record collection silently deletes one live config
+	// row; the stable sort added in pbclient makes this rare, but paging is not
+	// atomic and totalItems is already on the wire, so there is no reason to
+	// infer deletion from a walk we know was incomplete.
+	//
+	// A record deleted mid-walk also lands here (fewer items than the first
+	// page promised). That is a false positive and it is fine: the purge simply
+	// waits for the next cycle, which is the safe direction to be wrong in.
+	//
+	// Only the purge is skipped. Whatever the walk DID return is still upserted,
+	// because a partial fetch is not a reason to stop delivering the records in
+	// hand -- it is only a reason not to infer deletion from their absence.
+	skipPurge := false
+	if expected > 0 && len(records) < expected {
+		log.Printf("⚠️ leaf-sync: %q returned %d of %d records; upserting those and skipping the purge this cycle", col, len(records), expected)
+		skipPurge = true
 	}
 
 	// Count candidate handles so a code shared by two records falls back to id.
@@ -393,14 +419,18 @@ func syncCollection(ctx context.Context, pb recordLister, kv kvBucket, cache *sy
 
 	// Reconcile deletions: remove KV keys whose record no longer exists upstream.
 	// Safe even when writes failed above — `desired` comes from the fetch, so a
-	// key absent from it genuinely has no record behind it any more.
-	for _, k := range keysToDelete(existing, desired) {
-		if err := kv.Delete(ctx, k); err != nil {
-			log.Printf("leaf-sync: kv delete %s/%s: %v", col, k, err)
-			failed++
-			continue
+	// key absent from it genuinely has no record behind it any more. Unless the
+	// fetch itself was short, in which case `desired` is incomplete and absence
+	// proves nothing (see the short-fetch guard above).
+	if !skipPurge {
+		for _, k := range keysToDelete(existing, desired) {
+			if err := kv.Delete(ctx, k); err != nil {
+				log.Printf("leaf-sync: kv delete %s/%s: %v", col, k, err)
+				failed++
+				continue
+			}
+			cache.forget(col, k) // key is gone; re-Put it if a record ever reuses it
 		}
-		cache.forget(col, k) // key is gone; re-Put it if a record ever reuses it
 	}
 
 	// Surface partial failure so the heartbeat reports this collection as errored

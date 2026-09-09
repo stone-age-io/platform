@@ -85,6 +85,51 @@ and this file starts where the versioned releases do.
   `TestLocalConnectRetriesForever` can assert the invariant that was missing —
   it fails against the previous behaviour with `MaxReconnect = 60`.
 
+- **The twin relay now retries a failed hub write instead of dropping it.** A
+  failed write was logged and discarded, on the stated grounds that the key
+  would be "re-offered by the next watcher restart's replay". It was not: the
+  watcher runs on the *local* bucket, which does not die when the hub or the WAN
+  does, and the supervisor only restarts the pump when the *watcher* fails. So a
+  reported value that changed during an outage, failed its hub write, and then
+  never changed again was absent from the hub **permanently and silently** — in
+  the one direction the platform takes responsibility for delivering.
+
+  Failed keys are now held and retried on a ticker. The value is re-read from
+  the local bucket at retry time rather than remembered from the failed
+  attempt, so a retry can never write a stale reading over a newer one; a key
+  deleted locally during the outage is relayed as a delete. Holding and retrying
+  is deliberately preferred over returning an error and letting the supervisor
+  replay: one key the hub will never accept would otherwise tear down the
+  watcher on every replay and block every other key behind it, forever.
+
+  The existing partition test only ever covered convergence via a relay
+  *restart*, which is the path that always worked. `twin_retry_test.go` drives a
+  live relay against a failing destination, and waits on an observed write
+  failure rather than a timer — an earlier version cleared the fault on a poll
+  and passed against a deliberately broken build without the retry path running
+  at all.
+
+- **A short fetch no longer purges the edge mirror.** `syncCollection` paged
+  without a sort order, so a record inserted or deleted between two page
+  requests could shift the window and make the walk skip a record — and the
+  deletion pass then read that record's absence as an upstream delete and
+  removed it from the edge. The existing empty-fetch guard only caught a *total*
+  failure; a partial walk is the dangerous case, because one record short of a
+  400-record collection silently deletes one live config row.
+
+  Two changes: `pbclient.List` now requests `sort=id`, because a paginated walk
+  without a stable total order is wrong for any caller and the hazard belongs to
+  pagination rather than to one use of it; and the walk compares what it
+  collected against the `totalItems` it was promised, skipping the purge when it
+  came up short. A record legitimately deleted mid-walk also trips this, which
+  is a false positive worth having — the purge waits one cycle, which is the
+  safe direction to be wrong in. Records the short walk *did* return are still
+  upserted; only the deletion pass is skipped.
+
+  Multi-page reconcile had no test at all: the existing fake always reported
+  `TotalPages: 1` and its comment pointed at pbclient, which only ever parsed a
+  single page envelope.
+
 ### Changed
 
 - **`observability.addr` defaults to `127.0.0.1:9100`** instead of empty. A
