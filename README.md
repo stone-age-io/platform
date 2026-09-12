@@ -106,6 +106,16 @@ command). Every one of those codes is also a record in
 both and a door in one app and a Thing in the other are the same door — which is
 what `organizations.code` and the per-org code namespace are *for*.
 
+The same tenant carries the **tool crib estate**: three self-service checkout
+kiosks, a virtual timeclock terminal, and the controller that aggregates them,
+with their own contract layer (`kiosk.{thing}`, sixteen operations across the
+event / command / heartbeat / sighting families). These codes are also `kiosks`
+rows in [kiosk](https://github.com/skeeeon/kiosk), whose `kiosk-controller
+demo-seed --confirm` builds the matching estate at the same three sites. Note the
+prefix has no `{location}` segment where the access one does: a kiosk's own code
+is the routing token, because the controller's event stream binds `kiosk.*.event.>`
+and its commands address `kiosk.<code>.command.<name>`.
+
 `--confirm` is required and is the whole safety mechanism: this ships in the
 binary you run in production, and the command writes real signed credentials.
 

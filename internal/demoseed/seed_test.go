@@ -451,11 +451,11 @@ func TestThingsSpanDevicesGatewaysAndApplications(t *testing.T) {
 	kinds := map[string]bool{}
 	for _, thing := range all {
 		switch byID[thing.GetString("type")] {
-		case "wms-connector", "coldchain-rules", "oee-analytics", "mes-connector", "scada-bridge", "market-feed":
+		case "wms-connector", "coldchain-rules", "kiosk-controller", "oee-analytics", "mes-connector", "scada-bridge", "market-feed":
 			kinds["application"] = true
-		case "edge-gateway", "access-controller":
+		case "edge-gateway", "access-controller", "tool-kiosk":
 			kinds["gateway"] = true
-		case "dock-display", "ops-wallboard":
+		case "dock-display", "timeclock-terminal", "ops-wallboard":
 			kinds["appliance"] = true
 		default:
 			kinds["device"] = true
@@ -562,6 +562,100 @@ func TestAccessSubjectPrefixesMatchTheWireFormat(t *testing.T) {
 		}
 		if got := tt.GetString("subject_prefix"); got != tc.want {
 			t.Errorf("%s subject_prefix = %q, want %q", tc.code, got, tc.want)
+		}
+	}
+}
+
+// The kiosk join, and the mirror of the stone-access one above.
+//
+// Every code here is also a `kiosks` row in the KIOSK repository, seeded from
+// its own internal/demoseed/data.go. Two Go modules cannot import each other's
+// fixtures, so this list IS the contract on this side.
+//
+// The ports are asserted for a duller reason that costs an afternoon when it is
+// wrong: the whole demo estate runs on ONE host, every node binds its own port,
+// and two fixtures agreeing on 8102 produces a second kiosk that dies at startup
+// with an address-in-use error while the first one carries on looking healthy.
+func TestTheKioskEstateIsPresentAndJoinable(t *testing.T) {
+	app := shared
+
+	org, err := app.FindFirstRecordByFilter("organizations", "code = 'northwind'", nil)
+	if err != nil {
+		t.Fatalf("northwind org: %v", err)
+	}
+
+	typeOf := map[string]string{}
+	types, err := app.FindAllRecords("thing_types", dbx.NewExp("organization = {:o}", dbx.Params{"o": org.Id}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range types {
+		typeOf[tt.Id] = tt.GetString("code")
+	}
+
+	want := []struct {
+		code, thingType string
+		port            float64 // 0 = this thing binds no port
+	}{
+		{"KC-DC1-CRIB", "tool-kiosk", 8101},
+		{"KC-DC1-DOCK", "tool-kiosk", 8102},
+		{"SGF-XD2-CRIB", "tool-kiosk", 8103},
+		{"KC-OFFICE-TC", "timeclock-terminal", 8092},
+		{"KIOSK-CTRL-01", "kiosk-controller", 0},
+	}
+
+	seenPort := map[float64]string{}
+	for _, w := range want {
+		thing, err := app.FindFirstRecordByFilter("things",
+			"organization = {:o} && code = {:c}", dbx.Params{"o": org.Id, "c": w.code})
+		if err != nil || thing == nil {
+			t.Errorf("no Thing with code %q in northwind — the kiosk join is broken", w.code)
+			continue
+		}
+		if got := typeOf[thing.GetString("type")]; got != w.thingType {
+			t.Errorf("Thing %q has type %q, want %q", w.code, got, w.thingType)
+		}
+		// Unlike a door, every participant in this estate is a computer an
+		// administrator has to be able to reach when the bus is unhappy.
+		if thing.GetString("nebula_host") == "" {
+			t.Errorf("%q has no Nebula host; every kiosk node is a mini-PC with its own database", w.code)
+		}
+
+		var meta map[string]any
+		if err := thing.UnmarshalJSONField("metadata", &meta); err != nil {
+			t.Errorf("%q metadata: %v", w.code, err)
+			continue
+		}
+		if w.port == 0 {
+			continue
+		}
+		got, _ := meta["port"].(float64)
+		if got != w.port {
+			t.Errorf("%q binds port %v, want %v", w.code, got, w.port)
+		}
+		if other, dup := seenPort[got]; dup {
+			t.Errorf("%q and %q both bind port %v; they share a host", w.code, other, got)
+		}
+		seenPort[got] = w.code
+	}
+}
+
+// A kiosk's subject prefix has to compose to what a kiosk actually publishes on:
+// kiosk.{kiosk_code}.{family}.{...}, with NO location segment. The stone-access
+// types carry one and these must not — a kiosk's own code is the routing token,
+// and the controller's stream binds `kiosk.*.event.>` against exactly that shape.
+// Adding {location} would render a plausible subject on the Thing Type screen
+// that nothing publishes on and nothing listens to.
+func TestKioskSubjectPrefixesMatchTheWireFormat(t *testing.T) {
+	app := shared
+
+	for _, code := range []string{"tool-kiosk", "timeclock-terminal"} {
+		tt, err := app.FindFirstRecordByFilter("thing_types", "code = {:c}", dbx.Params{"c": code})
+		if err != nil {
+			t.Fatalf("thing type %q: %v", code, err)
+		}
+		if got := tt.GetString("subject_prefix"); got != "kiosk.{thing}" {
+			t.Errorf("%s subject_prefix = %q, want %q", code, got, "kiosk.{thing}")
 		}
 	}
 }
@@ -839,5 +933,90 @@ func TestGatewayRoleCanRunAnEdgeService(t *testing.T) {
 		} {
 			requirePermission(t, "gateway role", "edge service", "publish", subject, pub)
 		}
+	}
+}
+
+// The kiosk controller's three permissions, and the reason this test has to
+// exist at all.
+//
+// TestEveryThingTypeCanSpeakItsOwnContract derives what a type needs from the
+// operations it declares. The `kiosk-controller` type declares NONE, and that is
+// correct rather than lazy: every subject it touches belongs to some other
+// Thing. It requests on each kiosk's command subtree, subscribes their
+// heartbeats, consumes their events through the stream, and writes the catalogue
+// into KV. An operation's suffix composes against its OWN type's prefix, so any
+// entry would render `app.kiosk.<code>.…`, a subject nothing publishes on.
+//
+// So the derivation has nothing to work with here, and this is the only thing
+// standing between that type and a credential that cannot do its job.
+//
+//	kiosk.>     request a command at a node, and receive its events. Missing:
+//	            every remote admin action times out and renders as "kiosk
+//	            offline", which sends an operator to check the kiosk.
+//	$JS.API.>   bind the event stream and the KV buckets.
+//	$KV.>       WRITE a KV value. Missing: the controller starts, serves its
+//	            console, aggregates every event the fleet sends — and ships no
+//	            catalogue at all, so the kiosks stock nothing and the failure
+//	            reads as a kiosk-side bug.
+//
+// Subscribe is `>` on this role, so reading is never the half that breaks. The
+// gap is always on publish, which is the half that looks like it works.
+func TestApplicationRoleCanRunTheKioskController(t *testing.T) {
+	app := shared
+
+	roles, err := app.FindAllRecords("nats_roles", dbx.NewExp("name = 'application'"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(roles) == 0 {
+		t.Fatal("application role was not seeded")
+	}
+	for _, r := range roles {
+		var pub []string
+		if err := r.UnmarshalJSONField("publish_permissions", &pub); err != nil {
+			t.Fatalf("publish_permissions: %v", err)
+		}
+		for _, subject := range []string{
+			"kiosk.KC-DC1-CRIB.command.inventory.adjust", // drive a node
+			"$JS.API.STREAM.INFO.KIOSK_EVENTS",           // bind the ledger stream
+			"$KV.catalog_items.KC-DC1-CRIB.HT-1010",      // fan the catalogue out
+		} {
+			requirePermission(t, "application role", "kiosk controller", "publish", subject, pub)
+		}
+	}
+}
+
+// The kiosk's own side of that pair. A node publishes on its subtree and
+// subscribes its command subtree and its sightings, all under `kiosk.>` — which
+// the gateway role carried for no one until the kiosk estate arrived, and which
+// a node silently cannot do without: its ledger commits locally and publishes
+// into a permissions violation, so the kiosk looks healthy and the controller
+// stays empty.
+func TestGatewayRoleCanRunAKioskNode(t *testing.T) {
+	app := shared
+
+	roles, err := app.FindAllRecords("nats_roles", dbx.NewExp("name = 'gateway'"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(roles) == 0 {
+		t.Fatal("gateway role was not seeded")
+	}
+	for _, r := range roles {
+		var pub, sub []string
+		if err := r.UnmarshalJSONField("publish_permissions", &pub); err != nil {
+			t.Fatalf("publish_permissions: %v", err)
+		}
+		if err := r.UnmarshalJSONField("subscribe_permissions", &sub); err != nil {
+			t.Fatalf("subscribe_permissions: %v", err)
+		}
+		requirePermission(t, "gateway role", "kiosk node", "publish",
+			"kiosk.KC-DC1-CRIB.event.transaction.complete", pub)
+		requirePermission(t, "gateway role", "kiosk node", "publish",
+			"kiosk.KC-DC1-CRIB.heartbeat", pub)
+		requirePermission(t, "gateway role", "kiosk node", "subscribe",
+			"kiosk.KC-DC1-CRIB.command.inventory.adjust", sub)
+		requirePermission(t, "gateway role", "kiosk node", "subscribe",
+			"kiosk.KC-DC1-CRIB.sighting.raw", sub)
 	}
 }

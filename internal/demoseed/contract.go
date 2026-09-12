@@ -67,6 +67,61 @@ var operations = []operationFixture{
 	{Org: "northwind", Name: "publish_controller_heartbeat", Capability: "publish", SubjectSuffix: "heartbeat",
 		Description: "Controller liveness beat, outside the audited .evt subtree."},
 
+	// ---- northwind: the tool crib (the kiosk app).
+	//
+	// The suffixes are the real ones from kiosk/internal/events/subjects.go. The
+	// grammar there is <prefix>.<kiosk_code>.<family>.<...>, and the FAMILY
+	// segment is what decides transport: the controller's JetStream stream binds
+	// `kiosk.*.event.>` and nothing else, so commands, heartbeats and sightings
+	// are outside the stream by construction rather than by an exclusion list.
+	// Every suffix below therefore leads with its family, and naming a new
+	// `event.` subject is what makes it durable.
+	//
+	// Three item actions rather than one `event.item.>`: the last token is the
+	// line's action, a publish operation resolves to a subject something actually
+	// publishes ON, and a wildcard there is not one. `admin_close` is absent from
+	// that trio on purpose — an admin close writes an admin_close LINE locally but
+	// publishes only `event.checkout.admin_close`, which is what lets a report
+	// separate "the worker brought it back" from "an admin wrote it off".
+	{Org: "northwind", Name: "publish_kiosk_transaction", Capability: "publish", SubjectSuffix: "event.transaction.complete",
+		Description: "A committed transaction. The ledger's unit of record, and the only event that registers a kiosk in the fleet."},
+	{Org: "northwind", Name: "publish_kiosk_checkout", Capability: "publish", SubjectSuffix: "event.item.checkout",
+		Description: "One line: a tool taken out."},
+	{Org: "northwind", Name: "publish_kiosk_return", Capability: "publish", SubjectSuffix: "event.item.return",
+		Description: "One line: a tool brought back."},
+	{Org: "northwind", Name: "publish_kiosk_consume", Capability: "publish", SubjectSuffix: "event.item.consume",
+		Description: "One line: a consumable drawn down. Never becomes an open checkout."},
+	{Org: "northwind", Name: "publish_kiosk_admin_close", Capability: "publish", SubjectSuffix: "event.checkout.admin_close",
+		Description: "An admin wrote off an open checkout as lost or damaged. One per row closed."},
+	{Org: "northwind", Name: "publish_kiosk_inventory", Capability: "publish", SubjectSuffix: "event.inventory.adjust",
+		Description: "A stock count changed by hand rather than by a transaction. Carries the adjustment id the controller dedupes on."},
+	{Org: "northwind", Name: "publish_kiosk_instance", Capability: "publish", SubjectSuffix: "event.instance.lifecycle",
+		Description: "A serialized unit was created or changed status: in_service, maintenance, retired."},
+	{Org: "northwind", Name: "publish_kiosk_punch", Capability: "publish", SubjectSuffix: "event.timeclock.punch",
+		Description: "An accepted clock-in or clock-out. Kiosks are the only writers of the punch ledger."},
+	{Org: "northwind", Name: "publish_kiosk_receipt", Capability: "publish", SubjectSuffix: "event.receipt.transaction",
+		Description: "Rendering context for a transaction receipt. The kiosk supplies the facts; the controller owns the template and the SMTP."},
+	{Org: "northwind", Name: "publish_kiosk_lowstock", Capability: "publish", SubjectSuffix: "event.alert.lowstock",
+		Description: "A SKU crossed its reorder threshold. The kiosk owns the detection because the kiosk owns the count."},
+	{Org: "northwind", Name: "publish_kiosk_maintenance", Capability: "publish", SubjectSuffix: "event.alert.maintenance",
+		Description: "A return routed one or more units into maintenance. Batched one per transaction."},
+	{Org: "northwind", Name: "publish_kiosk_integrity", Capability: "publish", SubjectSuffix: "event.integrity.rebuild",
+		Description: "An operator rebuilt the open-checkouts view from the ledger. Rare, destructive, and worth auditing."},
+	{Org: "northwind", Name: "publish_kiosk_rfid_read", Capability: "publish", SubjectSuffix: "event.scan.rfid.observed",
+		Description: "Every EPC seen in one RFID read window. Observability only — nothing projects it today."},
+	{Org: "northwind", Name: "publish_kiosk_heartbeat", Capability: "publish", SubjectSuffix: "heartbeat",
+		Description: "45s liveness beat, outside the stream. Last-write-wins on purpose: durability here would hide the very signal it carries."},
+	// A wildcard suffix, and the one place it is right. This is a SUBSCRIPTION
+	// pattern, not a publish target: the kiosk subscribes its whole command
+	// subtree and its dispatcher routes on the leaf name. There are around twenty
+	// of those leaves and they are registered in code, so enumerating them here
+	// would stand up a second registry whose only guaranteed property is drifting
+	// from the first.
+	{Org: "northwind", Name: "reply_kiosk_command", Capability: "reply", SubjectSuffix: "command.>",
+		Description: "Answer any command the controller sends: inventory, instances, checkouts, timeclock, RFID. Single attempt, 5s budget — a handler that cannot do the work must still reply, or the controller renders the kiosk as offline."},
+	{Org: "northwind", Name: "subscribe_kiosk_sighting", Capability: "subscribe", SubjectSuffix: "sighting.raw",
+		Description: "Advisory tag sightings from an off-platform gateway. Raw: it carries a tag id, never a resolved unit, and the subscriber resolves it."},
+
 	// ---- ironbridge
 	{Org: "ironbridge", Name: "publish_power", Capability: "publish", SubjectSuffix: "power",
 		Description: "Three-phase panel measurement, every 5s."},
@@ -275,6 +330,90 @@ var thingTypes = []thingTypeFixture{
 		Schema: objSchema(map[string]any{
 			"panel_size":  str("Panel size"),
 			"orientation": enum("Orientation", "landscape", "portrait"),
+		})},
+
+	// ---- northwind: the tool crib.
+	//
+	// These carry the codes of `kiosks` rows in the KIOSK app, and the prefix is
+	// its real subject hierarchy. Two things about it are worth reading twice.
+	//
+	// There is NO {location} segment. `acc.{location}.door.{thing}` names a portal
+	// by where it hangs; `kiosk.{thing}` names a node by what it is, because a
+	// kiosk's own code IS the routing token — the controller's stream binds
+	// `kiosk.*.event.>` and its commands address `kiosk.<code>.command.<name>`.
+	// Adding a site segment here would render a plausible subject on the Thing
+	// Type screen that no kiosk publishes on and no controller listens to.
+	//
+	// And the codes are UPPERCASE where the stone-access ones are lowercase. Same
+	// rule produced both: the app that puts a code on the wire is the one that
+	// mints it, and the inventory follows. Site codes go the other way — KC-DC1,
+	// KC-OFFICE and SGF-XD2 come from here, because the platform is the system of
+	// record for sites.
+	{Org: "northwind", Code: "tool-kiosk", Name: "Tool Crib Kiosk", Kind: kindGateway,
+		Description:   "A self-service checkout node. Owns its own ledger and keeps transacting with the WAN down; the controller aggregates rather than authorizes.",
+		SubjectPrefix: "kiosk.{thing}",
+		Operations: []string{
+			"publish_kiosk_transaction", "publish_kiosk_checkout", "publish_kiosk_return",
+			"publish_kiosk_consume", "publish_kiosk_admin_close", "publish_kiosk_inventory",
+			"publish_kiosk_instance", "publish_kiosk_punch", "publish_kiosk_receipt",
+			"publish_kiosk_lowstock", "publish_kiosk_maintenance", "publish_kiosk_integrity",
+			"publish_kiosk_rfid_read", "publish_kiosk_heartbeat", "reply_kiosk_command",
+			"subscribe_kiosk_sighting",
+		},
+		// kindGateway, and the role matches: a kiosk mirrors its catalogue out of
+		// JetStream KV and answers commands on its own subtree. `device` has no
+		// JetStream access at all, so a kiosk on it would come up, serve checkouts
+		// off its local database, and never learn what it stocks.
+		Role: "gateway",
+		Schema: objSchema(map[string]any{
+			"model":      str("Hardware model"),
+			"os":         str("Operating system"),
+			"port":       intF("HTTP port"),
+			"scanner":    enum("Barcode scanner", "usb-hid", "none"),
+			"rfid_mode":  enum("RFID", "counter_scan", "enclosure_diff", "mixed", "none"),
+			"enclosures": intF("Cabinets driven"),
+			"installed":  date("Installed"),
+		})},
+
+	{Org: "northwind", Code: "timeclock-terminal", Name: "Virtual Timeclock Terminal", Kind: kindAppliance,
+		Description:   "A punch-only station with no checkout surface. Workers authenticate from their own phones, so the punched identity comes from the session and never from the request body.",
+		SubjectPrefix: "kiosk.{thing}",
+		Operations:    []string{"publish_kiosk_punch", "publish_kiosk_heartbeat"},
+		// An appliance in form, an edge service on the bus: it mirrors the worker
+		// catalogue and the fleet punch replica out of KV, which is JetStream
+		// access, which `console-readonly` (what the dock display takes) does not
+		// have and could not use — that role cannot publish at all, and this one
+		// publishes every punch it accepts.
+		Role: "gateway",
+		Schema: objSchema(map[string]any{
+			"port":      intF("HTTP port"),
+			"auth":      enum("Worker sign-in", "oauth2", "password", "both"),
+			"installed": date("Installed"),
+		})},
+
+	// The controller declares NO operations, and that is the finding rather than
+	// an omission.
+	//
+	// Every subject it touches belongs to some OTHER thing: it requests on each
+	// kiosk's `command.` subtree, subscribes their `heartbeat` and `sighting.raw`,
+	// and consumes their `event.` subtree through the stream. An operation's
+	// suffix composes against its own type's prefix, so any entry here would
+	// render `app.kiosk.<code>.…` on the Thing Type screen — a subject nothing
+	// publishes on and nothing listens to.
+	//
+	// This is the same shape as the access-controller, whose subscriptions to door
+	// subjects are likewise absent from its operation list. Cross-subtree
+	// participation is expressed in the ROLE, not in operations, which is why
+	// TestApplicationRoleCanRunTheKioskController exists: it is the only check
+	// standing between this type and a credential that cannot do its job.
+	{Org: "northwind", Code: "kiosk-controller", Name: "Kiosk Controller", Kind: kindApp,
+		Description:   "Central aggregator for the kiosk fleet. Projects every node's ledger, publishes the catalogue into KV, and drives admin commands at remote nodes. Single instance.",
+		SubjectPrefix: "app.kiosk.{thing}",
+		Role:          "application",
+		Schema: objSchema(map[string]any{
+			"version":  str("Build"),
+			"kiosks":   intF("Nodes managed"),
+			"deployed": date("Deployed"),
 		})},
 
 	// ------------------------------------------------------------ ironbridge
@@ -528,14 +667,26 @@ var roleTemplates = []roleFixture{
 		// relay it. `device` has no JetStream access at all, so `$KV.>` alone
 		// would not even let it bind a bucket — half a permission is worse than
 		// none, because it reads as support for something that cannot work.
-		Publish:          []string{"telemetry.>", "event.>", "status.>", "gateway.>", "acc.>", "_INBOX.>", "$JS.API.>", "$KV.>"},
-		Subscribe:        []string{"telemetry.>", "event.>", "status.>", "gateway.>", "acc.>", "cmd.>", "config.>", "_INBOX.>"},
+		Publish:          []string{"telemetry.>", "event.>", "status.>", "gateway.>", "acc.>", "kiosk.>", "_INBOX.>", "$JS.API.>", "$KV.>"},
+		Subscribe:        []string{"telemetry.>", "event.>", "status.>", "gateway.>", "acc.>", "kiosk.>", "cmd.>", "config.>", "_INBOX.>"},
 		MaxSubscriptions: 512, MaxPayload: 4194304},
 
 	{Name: "application",
 		Description: "A software participant: publishes on its own app subtree and on the operator service contract, reads broadly.",
-		Publish:     []string{"app.>", "cmd.>", "helpdesk.>", "$JS.API.>"},
-		Subscribe:   []string{">"},
+		// `kiosk.>` and `$KV.>` are the kiosk controller's half of the same lesson
+		// the gateway role learned above, arrived at from the other direction.
+		//
+		// An application that AGGREGATES has no subtree of its own to work in. The
+		// controller requests on each kiosk's `kiosk.<code>.command.<name>` and
+		// writes the catalogue, the fleet punch state and the fleet open-checkout
+		// state into KV. Subscribe is already `>`, so reading looked complete and
+		// the gap showed up only on writes: catalogue fan-out is a plain publish
+		// to `$KV.catalog_items.<kiosk>.<sku>`, which `$JS.API.>` does not cover.
+		// Without it the controller starts, serves its console, aggregates every
+		// event the fleet sends — and silently ships no catalogue, so the kiosks
+		// stock nothing and the failure reads as a kiosk-side bug.
+		Publish:   []string{"app.>", "cmd.>", "helpdesk.>", "kiosk.>", "$JS.API.>", "$KV.>"},
+		Subscribe: []string{">"},
 		// $SYS belongs to the operator, never to a tenant's application. Denied
 		// explicitly rather than left to the account boundary, so the intent is
 		// legible on the role screen.

@@ -144,6 +144,54 @@ var things = []thingFixture{
 		Metadata: map[string]any{"lock_type": "strike", "reader_make": "HID Signo 20",
 			"reader_protocol": "osdp", "held_open_seconds": 15, "installed": "2025-02-18"}},
 
+	// ---- northwind: the tool crib estate.
+	//
+	// EVERY CODE BELOW IS ALSO A `kiosks` ROW IN THE KIOSK APP, and the same
+	// two-module contract applies as for stone-access above: nothing imports
+	// anything, so this list IS the join and changing a code has to change it on
+	// both sides. kiosk/internal/demoseed/data.go is the other side.
+	//
+	// Uppercase, where the access estate is lowercase, for the identical reason
+	// running the other way: these codes go on the wire as `kiosk.<code>.event.…`
+	// and the kiosk app mints them uppercase, so the inventory follows the app
+	// that publishes.
+	//
+	// Every node gets a Nebula host. That is the opposite call from the doors —
+	// and it is the same test applied honestly. A door is I/O on a controller's
+	// terminal block; a kiosk is a mini-PC with its own database that an
+	// administrator has to be able to reach when the bus is unhappy, which is
+	// exactly what the overlay is for.
+	{Org: "northwind", Code: "KC-DC1-CRIB", Name: "Main Tool Crib", Type: "tool-kiosk", Location: "KC-DC1",
+		Description: "Counter scanner plus two RFID cabinets. The flagship node.",
+		NebulaIP:    "10.20.50.1", NebulaGroups: []string{"kiosk", "kc"},
+		Metadata: map[string]any{"model": "Intel NUC 13 Pro", "os": "Debian 13", "port": 8101,
+			"scanner": "usb-hid", "rfid_mode": "mixed", "enclosures": 2, "installed": "2026-04-08"}},
+	{Org: "northwind", Code: "KC-DC1-DOCK", Name: "Dock Consumables", Type: "tool-kiosk", Location: "KC-DC1",
+		Description: "What most installs actually are: a badge, a barcode scanner, and a shelf of PPE.",
+		NebulaIP:    "10.20.50.2", NebulaGroups: []string{"kiosk", "kc"},
+		Metadata: map[string]any{"model": "Intel NUC 13 Pro", "os": "Debian 13", "port": 8102,
+			"scanner": "usb-hid", "rfid_mode": "none", "enclosures": 0, "installed": "2026-04-08"}},
+	{Org: "northwind", Code: "SGF-XD2-CRIB", Name: "Cross-Dock Crib", Type: "tool-kiosk", Location: "SGF-XD2",
+		Description: "Second site, one cabinet, a deliberately thinner slice of the KC catalogue. This is what makes the fleet a fleet.",
+		NebulaIP:    "10.20.50.3", NebulaGroups: []string{"kiosk", "sgf"},
+		Metadata: map[string]any{"model": "Intel NUC 13 Pro", "os": "Debian 13", "port": 8103,
+			"scanner": "usb-hid", "rfid_mode": "mixed", "enclosures": 1, "installed": "2026-05-20"}},
+	// KC-OFFICE has no crib. Office staff punch from their phones, which is how
+	// this binary is meant to be deployed — and it is the node that proves the
+	// cross-kiosk clock-out gate, because a phone has no local open checkouts at
+	// all and still has to see a tool out at Springfield.
+	{Org: "northwind", Code: "KC-OFFICE-TC", Name: "Office Timeclock", Type: "timeclock-terminal", Location: "KC-OFFICE",
+		Description: "Virtual timeclock terminal. No checkout surface is registered on this binary, so none can be exposed.",
+		NebulaIP:    "10.20.50.4", NebulaGroups: []string{"kiosk", "kc"},
+		Metadata: map[string]any{"port": 8092, "auth": "both", "installed": "2026-05-20"}},
+	// No kiosk_code of its own, deliberately: the controller is the one participant
+	// in this estate that is not a node, and it sits in the application overlay
+	// range beside the WMS connector rather than with the nodes it manages.
+	{Org: "northwind", Code: "KIOSK-CTRL-01", Name: "Kiosk Controller", Type: "kiosk-controller", Location: "KC-DC1-MDF",
+		Description: "Single instance. Aggregates all three nodes' ledgers and publishes their catalogue.",
+		NebulaIP:    "10.20.20.3", NebulaGroups: []string{"application"},
+		Metadata: map[string]any{"version": "1.0.0", "kiosks": 3, "deployed": "2026-04-08"}},
+
 	{Org: "northwind", Code: "TP-KC-LEGACY-07", Name: "Legacy Probe 07", Type: "temp-probe", Location: "KC-DC1-FZ1",
 		Description: "Replaced during the 2026 refit. Kept for its history.", Inactive: true,
 		Metadata: map[string]any{"serial": "TP-LEG-0007", "firmware": "1.2.9", "probe_type": "air", "calibrated_on": "2024-08-19"}},
