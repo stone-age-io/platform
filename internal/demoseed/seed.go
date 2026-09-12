@@ -329,10 +329,86 @@ func (s *seeder) seedNatsRoles() error {
 			if err != nil {
 				return err
 			}
+			if err := s.reconcileRolePermissions(rec, t); err != nil {
+				return err
+			}
 			s.roles[o.Code+":"+t.Name] = rec.Id
 		}
 	}
 	return nil
+}
+
+// reconcileRolePermissions is the one place this seeder deliberately overwrites
+// an existing record, and it is worth knowing why the general rule does not hold
+// here.
+//
+// `ensure` runs its fill only on create, so hand-edits survive a re-run. That is
+// right for a Thing someone renamed to try something out. It is wrong for a
+// role's permission list, because a role is not decoration — it is the set of
+// subjects a credential may use, and every demo credential is minted FROM it.
+//
+// The failure this fixes is a live one rather than a hypothetical. Adding the
+// kiosk estate meant adding `kiosk.>` to `gateway` and `kiosk.>` + `$KV.>` to
+// `application`. On a fresh install that works. On the installs that already ran
+// demo-seed — which is all of them — the role records already existed, so the new
+// lists never landed: the next run happily created five kiosk Things and minted
+// each one a credential against the OLD role. Every node would authenticate,
+// come up clean, and then fail on its first publish, while the controller shipped
+// no catalogue at all. Nothing in the seeder's output would have said so.
+//
+// Only the four permission arrays are reconciled. Limits are left alone: they are
+// a knob an operator may reasonably turn on a demo box, and getting one wrong
+// throttles rather than silently removes a capability.
+//
+// The save is skipped when nothing differs, and that is load-bearing, not a
+// micro-optimization: pb-nats hooks role updates and regenerates the JWT of every
+// user holding the role, so an unconditional save would re-sign every identity in
+// the deployment on every run.
+func (s *seeder) reconcileRolePermissions(rec *core.Record, t roleFixture) error {
+	want := map[string][]string{
+		"publish_permissions":        t.Publish,
+		"subscribe_permissions":      t.Subscribe,
+		"publish_deny_permissions":   orEmpty(t.PublishDeny),
+		"subscribe_deny_permissions": {},
+	}
+
+	var changed []string
+	for field, w := range want {
+		var have []string
+		if err := rec.UnmarshalJSONField(field, &have); err != nil {
+			return fmt.Errorf("read %s on role %q: %w", field, t.Name, err)
+		}
+		if samePatterns(have, w) {
+			continue
+		}
+		rec.Set(field, w)
+		changed = append(changed, field)
+	}
+	if len(changed) == 0 {
+		return nil
+	}
+	sort.Strings(changed)
+
+	if err := s.app.Save(rec); err != nil {
+		return fmt.Errorf("reconcile role %q: %w", t.Name, err)
+	}
+	s.opts.Log("role %q: updated %s to match the fixture", t.Name, strings.Join(changed, ", "))
+	return nil
+}
+
+// samePatterns compares two permission lists as ORDERED sequences. Order does not
+// matter to NATS, but it is stable in the fixture and preserving it keeps the
+// role screen readable, so a reordering is treated as a change worth writing.
+func samePatterns(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // orEmpty keeps a nil slice out of a JSON column, where it would serialize as

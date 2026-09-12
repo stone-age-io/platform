@@ -1020,3 +1020,93 @@ func TestGatewayRoleCanRunAKioskNode(t *testing.T) {
 			"kiosk.KC-DC1-CRIB.sighting.raw", sub)
 	}
 }
+
+// A re-seed has to REPAIR a role whose permissions have fallen behind the
+// fixture, and this is the one place the seeder overwrites an existing record.
+//
+// `ensure` runs its fill only on create, so hand-edits survive a re-run — right
+// for a Thing someone renamed, wrong for a role, because a role is the set of
+// subjects a credential may use and every demo credential is minted from it.
+//
+// The gap was live, not hypothetical. Adding the kiosk estate added `kiosk.>` to
+// `gateway` and `kiosk.>` + `$KV.>` to `application`. Fresh installs got them;
+// every already-seeded install did not, because those role records already
+// existed. The next run would have created five kiosk Things and minted each a
+// credential against the OLD role — every node authenticating, coming up clean,
+// and failing on its first publish, with the controller shipping no catalogue at
+// all and nothing in the seeder's output saying so.
+//
+// Note what this test could NOT have been. Every other test here builds a fresh
+// app, which only ever exercises the create path; the bug lives exclusively on
+// the second run. It has to seed, damage, and seed again.
+func TestReseedRepairsARoleThatFellBehind(t *testing.T) {
+	app := testutil.SetupApp(t)
+	if _, err := demoseed.Run(app, demoseed.Options{Things: 10}); err != nil {
+		t.Fatalf("first run: %v", err)
+	}
+
+	// Exactly the list every deployment seeded before the kiosk estate landed.
+	stale := []string{"app.>", "cmd.>", "helpdesk.>", "$JS.API.>"}
+	rec, err := app.FindFirstRecordByFilter("nats_roles",
+		"name = 'application' && organization.code = 'northwind'", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec.Set("publish_permissions", stale)
+	if err := app.Save(rec); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := demoseed.Run(app, demoseed.Options{Things: 10}); err != nil {
+		t.Fatalf("second run: %v", err)
+	}
+
+	after, err := app.FindFirstRecordByFilter("nats_roles",
+		"name = 'application' && organization.code = 'northwind'", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pub []string
+	if err := after.UnmarshalJSONField("publish_permissions", &pub); err != nil {
+		t.Fatal(err)
+	}
+	// The three the kiosk controller cannot work without, per
+	// TestApplicationRoleCanRunTheKioskController.
+	for _, subject := range []string{
+		"kiosk.KC-DC1-CRIB.command.inventory.adjust",
+		"$KV.catalog_items.KC-DC1-CRIB.HT-1010",
+		"$JS.API.STREAM.INFO.KIOSK_EVENTS",
+	} {
+		requirePermission(t, "application role", "after re-seed", "publish", subject, pub)
+	}
+}
+
+// The other half of that contract: a re-seed that has nothing to repair must not
+// write. pb-nats hooks role updates and regenerates the JWT of every user holding
+// the role, so an unconditional save would re-sign every identity in the
+// deployment on every run — which is not a correctness bug, and is exactly the
+// kind of churn nobody notices until a fleet is large.
+func TestReseedLeavesAnUpToDateRoleAlone(t *testing.T) {
+	app := testutil.SetupApp(t)
+	if _, err := demoseed.Run(app, demoseed.Options{Things: 10}); err != nil {
+		t.Fatalf("first run: %v", err)
+	}
+	rec, err := app.FindFirstRecordByFilter("nats_roles",
+		"name = 'application' && organization.code = 'northwind'", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := rec.GetDateTime("updated").String()
+
+	if _, err := demoseed.Run(app, demoseed.Options{Things: 10}); err != nil {
+		t.Fatalf("second run: %v", err)
+	}
+	after, err := app.FindFirstRecordByFilter("nats_roles",
+		"name = 'application' && organization.code = 'northwind'", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := after.GetDateTime("updated").String(); got != before {
+		t.Errorf("role was rewritten by a no-op re-seed: updated %s -> %s", before, got)
+	}
+}
