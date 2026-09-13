@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=176         # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=198         # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -761,8 +761,9 @@ expect "owner cannot write the account's revocations list" "403|400|404" "$RCODE
 req PATCH "/collections/nats_accounts/records/$ACCT" "$TO" '{"description":"operator edit"}'
 expect "platform operator CAN update it (same field, so the deny was authz)" 200 "$RCODE" "$RBODY"
 
-# nebula_ca has no rotate_keys field at all, so there is no tenant key operation to
-# preserve -- the whole owner/admin branch is gone.
+# nebula_ca stays operator-only for direct writes. It DOES now have a tenant
+# operation -- pb-nebula v0.3.0 added the `rotate` trigger the old rule comment
+# anticipated -- but it lives behind a route, checked in section 13b below.
 req GET "/collections/nebula_ca/records?filter=(organization='$ORG')" "$SU"
 CA=$(jn "$RBODY" 'o.items[0].id')
 if [ -n "$CA" ]; then
@@ -834,6 +835,129 @@ if [ "$(j "$RBODY" signing_public_key)" = "$OTHER_BEFORE" ]; then
 else
   no "cross-tenant rotation reached TestOrg's account"
 fi
+
+echo ""
+echo "=== 13b. Nebula CA rotation and the certificate audit are routes ==="
+# nebula_ca.updateRule has said since the authz hardening pass: "There is no
+# tenant-triggered CA rotation today because there is no trigger field for one.
+# If that changes, add a route rather than a branch here." pb-nebula v0.3.0 added
+# the trigger field. This is that route.
+#
+# A rule branch would have to deny-list certificate, private_key,
+# next_certificate, next_private_key, previous_certificate, expires_at, curve,
+# validity_years, name and organization -- and silently re-open every field added
+# afterwards. On the record holding the trust anchor for the tenant's whole mesh,
+# that is the same deny-list shape this repo has already been bitten by twice.
+req PATCH "/collections/nebula_ca/records/$CA" "$TA" '{"rotate":"prepare"}'
+expect "owner cannot write the rotate trigger directly" "403|400|404" "$RCODE" "$RBODY"
+
+# The three steps, in order, with the property each one exists to have.
+#
+# prepare publishing trust WITHOUT moving issuance is the reason rotation is
+# three steps and not one: config distribution is pull-based, so a single write
+# carrying both the new bundle and the new certificate splits the mesh for as
+# long as propagation takes -- a host that has fetched presents a new-CA
+# certificate to one that has not, and the handshake fails in both directions.
+req GET "/collections/nebula_ca/records/$CA" "$SU"
+CA_CERT_BEFORE=$(j "$RBODY" certificate)
+
+req POST "/org/nebula-ca/rotate" "$TA" '{"step":"finish"}'
+expect "finish on an idle CA is refused (nothing committed to finish)" 400 "$RCODE" "$RBODY"
+req POST "/org/nebula-ca/rotate" "$TA" '{"step":"commit"}'
+expect "commit with nothing prepared is refused" 400 "$RCODE" "$RBODY"
+req POST "/org/nebula-ca/rotate" "$TA" '{"step":"reticulate"}'
+expect "an unknown step is rejected, not silently ignored" 400 "$RCODE" "$RBODY"
+
+# Those three matter more than they look. pb-nebula binds its rotation checks to
+# the record-API request hooks, and this route calls app.Save() -- so before
+# v0.3.2 none of them ran here, while the executor (AfterUpdateSuccess, past the
+# point of refusing anything) ran regardless. The interlock that makes `finish`
+# safe to expose was reachable only from the caller that needed it least.
+req POST "/org/nebula-ca/rotate" "$TA" '{"step":"prepare"}'
+expect "owner CAN prepare a rotation through the route" 200 "$RCODE" "$RBODY"
+req GET "/collections/nebula_ca/records/$CA" "$SU"
+if [ -n "$(j "$RBODY" next_certificate)" ]; then
+  ok "prepare minted the incoming CA (trust published)"
+else
+  no "prepare did not mint an incoming CA"
+fi
+if [ "$(j "$RBODY" certificate)" = "$CA_CERT_BEFORE" ]; then
+  ok "prepare left issuance on the current CA (reversible, no fingerprint moved)"
+else
+  no "prepare moved issuance -- a host that has not fetched yet cannot verify one that has"
+fi
+
+req POST "/org/nebula-ca/rotate" "$TA" '{"step":"prepare"}'
+expect "a second prepare is refused while one is pending" 400 "$RCODE" "$RBODY"
+
+req POST "/org/nebula-ca/rotate" "$TA" '{"step":"commit"}'
+expect "owner CAN commit the rotation" 200 "$RCODE" "$RBODY"
+req GET "/collections/nebula_ca/records/$CA" "$SU"
+CA_CERT_AFTER=$(j "$RBODY" certificate)
+if [ "$CA_CERT_AFTER" != "$CA_CERT_BEFORE" ] && [ -n "$(j "$RBODY" previous_certificate)" ]; then
+  ok "commit swapped the incoming CA in and kept the outgoing one trusted"
+else
+  no "commit did not swap the CA while retaining the outgoing certificate"
+fi
+
+# The commit sweep re-signs every ACTIVE host, so the host minted in section 8
+# must now be on the new CA. If it were not, the finish below would be refused
+# by assertAllHostsMigrated -- which is exactly the interlock we want.
+req POST "/org/nebula-ca/rotate" "$TA" '{"step":"finish"}'
+expect "owner CAN finish once every active host has migrated" 200 "$RCODE" "$RBODY"
+req GET "/collections/nebula_ca/records/$CA" "$SU"
+if [ -z "$(j "$RBODY" previous_certificate)" ]; then
+  ok "finish dropped the outgoing CA"
+else
+  no "finish left the outgoing CA in the bundle"
+fi
+
+# ...and refuse everyone else.
+req POST "/org/nebula-ca/rotate" "$TB" '{"step":"prepare"}'
+expect "member cannot rotate the CA" "401|403|404" "$RCODE" "$RBODY"
+req POST "/org/nebula-ca/rotate" "$TG" '{"step":"prepare"}'
+expect "dashboard cannot rotate the CA" "401|403|404" "$RCODE" "$RBODY"
+req POST "/org/nebula-ca/rotate" "$TV" '{"step":"prepare"}'
+expect "viewer cannot rotate the CA" "401|403|404" "$RCODE" "$RBODY"
+req POST "/org/nebula-ca/rotate" "" '{"step":"prepare"}'
+expect "anonymous cannot rotate the CA" "401|403|404" "$RCODE" "$RBODY"
+
+# Like the NATS key route, this takes no record id: the CA is derived from the
+# caller's own active organization, so eve cannot aim it at TestOrg.
+req GET "/collections/nebula_ca/records/$CA" "$SU"
+CA_CERT_GUARD=$(j "$RBODY" certificate)
+req POST "/org/nebula-ca/rotate" "$TE" '{"step":"prepare"}'
+EVE_CA_CODE="$RCODE"
+req GET "/collections/nebula_ca/records/$CA" "$SU"
+if [ "$(j "$RBODY" certificate)" = "$CA_CERT_GUARD" ] && [ -z "$(j "$RBODY" next_certificate)" ]; then
+  ok "another org's owner cannot rotate this org's CA (HTTP $EVE_CA_CODE, CA untouched)"
+else
+  no "cross-tenant rotation reached TestOrg's CA"
+fi
+
+# The certificate audit. pb-nebula signed host certificates at /32 until v0.3.0,
+# which gives a host a route covering only itself: the certificate verifies, the
+# config renders, the handshake completes, and no packet ever crosses the mesh.
+# Answering "is this certificate still right?" needs a Nebula certificate parsed,
+# which the browser cannot do, so the console reads it from here.
+req GET "/org/nebula/cert-audit" "$TA"
+expect "owner CAN read the host certificate audit" 200 "$RCODE" "$RBODY"
+if [ "$(jn "$RBODY" 'Array.isArray(o.stale)?"array":typeof o.stale')" = "array" ]; then
+  ok "cert audit returns stale as an array when empty (not null)"
+else
+  no "cert audit stale should be an array"
+fi
+# Every host here was minted by the running binary, so a non-empty list means
+# this deployment is signing at the wrong mask right now.
+if [ "$(jn "$RBODY" 'o.stale.length')" = "0" ]; then
+  ok "no freshly minted host is stale (this build signs at the network mask)"
+else
+  no "a host minted by this build already fails the /32 audit: $(jn "$RBODY" 'o.stale.join(",")')"
+fi
+req GET "/org/nebula/cert-audit" "$TB"
+expect "member cannot read the certificate audit" "401|403|404" "$RCODE" "$RBODY"
+req GET "/org/nebula/cert-audit" ""
+expect "anonymous cannot read the certificate audit" "401|403|404" "$RCODE" "$RBODY"
 
 echo ""
 echo "=== 14. regression: ordinary tenant reads still work ==="
