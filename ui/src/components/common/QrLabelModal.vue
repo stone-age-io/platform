@@ -44,6 +44,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import QRCode from 'qrcode'
 import { useBrandingStore } from '@/stores/branding'
+import { useEscapeKey } from '@/composables/useEscapeKey'
 
 interface LabelSize {
   key: '2x1'
@@ -187,6 +188,11 @@ onBeforeUnmount(() => {
 function print() {
   window.print()
 }
+
+// Escape closes these; see useEscapeKey for why the dialogs do not get it
+// from the browser and which ones are deliberately left out.
+// Mounted only while open, so the open state is simply "yes".
+useEscapeKey(() => true, () => emit('close'))
 </script>
 
 <template>

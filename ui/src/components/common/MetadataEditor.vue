@@ -509,6 +509,7 @@ defineExpose({ commit })
                 type="button"
                 class="btn btn-ghost btn-square btn-sm shrink-0 sm:order-last"
                 title="Remove field"
+                aria-label="Remove field"
                 @click="removeRow(i)"
               >
                 ✕

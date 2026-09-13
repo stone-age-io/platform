@@ -95,7 +95,7 @@ onMounted(() => {
           <span v-if="location.expand?.type" class="text-xs text-base-content/60">{{ location.expand.type.name }}</span>
         </div>
       </div>
-      <button class="btn btn-sm btn-circle btn-ghost shrink-0" @click="emit('close')">✕</button>
+      <button class="btn btn-sm btn-circle btn-ghost shrink-0" aria-label="Close" @click="emit('close')">✕</button>
     </div>
 
     <!-- Tabs -->

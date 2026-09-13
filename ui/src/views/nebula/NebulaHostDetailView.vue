@@ -9,6 +9,7 @@ import { fetchStaleHostIds, expectedCertNetwork } from '@/utils/nebula'
 import type { NebulaHost } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import JsonViewer from '@/components/common/JsonViewer.vue'
+import { useEscapeKey } from '@/composables/useEscapeKey'
 
 const router = useRouter()
 const route = useRoute()
@@ -124,6 +125,10 @@ function copyToClipboard(text: string, label: string) {
 onMounted(() => {
   loadHost()
 })
+
+// Escape closes these; see useEscapeKey for why the dialogs do not get it
+// from the browser and which ones are deliberately left out.
+useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
 </script>
 
 <template>

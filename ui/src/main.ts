@@ -1,6 +1,6 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-import router from './router'
+import router, { applyDocumentTitle } from './router'
 import App from './App.vue'
 import { useBrandingStore } from './stores/branding'
 import { useAuthStore } from './stores/auth'
@@ -40,7 +40,9 @@ Promise.all([
   brandingStore.load().catch(err => console.error('Branding load failed:', err)),
   authStore.initializeFromAuth().catch(err => console.error('Auth init failed:', err)),
 ]).finally(() => {
-  document.title = brandingStore.appName
+  // Re-stamp the tab now that branding has resolved: the router already set a
+  // title for the initial route, but against the compiled-in default name.
+  applyDocumentTitle()
   app.mount('#app')
 
   // Smooth fade-out of the initial loader

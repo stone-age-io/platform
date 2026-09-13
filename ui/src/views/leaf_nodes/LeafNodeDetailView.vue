@@ -18,6 +18,7 @@ import RecordPicker from '@/components/common/RecordPicker.vue'
 import type { PickerOption } from '@/types/picker'
 import JsonViewer from '@/components/common/JsonViewer.vue'
 import LeafStatusBadge from '@/components/leaf_nodes/LeafStatusBadge.vue'
+import { useEscapeKey } from '@/composables/useEscapeKey'
 
 // The broad role the provisioning hook mints per org. When a leaf node still
 // uses it, editing it would affect every leaf node in the org — so we warn.
@@ -307,6 +308,13 @@ async function handleDelete() {
 }
 
 onMounted(loadNode)
+
+// Escape closes these; see useEscapeKey for why the dialogs do not get it
+// from the browser and which ones are deliberately left out.
+// showResetResultModal is deliberately absent: it shows the one-time
+// password for the edge box, which cannot be recovered once dismissed.
+useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
+useEscapeKey(showResetModal, () => { showResetModal.value = false })
 </script>
 
 <template>

@@ -11,6 +11,7 @@ import NebulaHostFormView from '@/views/nebula/NebulaHostFormView.vue'
 import RecordPicker from '@/components/common/RecordPicker.vue'
 import { flattenLocationTree, type LocationNode } from '@/utils/locations'
 import type { PickerOption } from '@/types/picker'
+import { useEscapeKey } from '@/composables/useEscapeKey'
 
 // Hard allowlist — must match the server-side rule grants + leaf-sync allowlist.
 const SYNCABLE_COLLECTIONS = [
@@ -256,6 +257,11 @@ onMounted(() => {
   loadOptions()
   if (isEdit.value) loadNode()
 })
+
+// Escape closes these; see useEscapeKey for why the dialogs do not get it
+// from the browser and which ones are deliberately left out.
+// showSuccessModal is deliberately absent: one-time provisioning password.
+useEscapeKey(showNebulaModal, () => { showNebulaModal.value = false })
 </script>
 
 <template>
@@ -426,7 +432,7 @@ onMounted(() => {
       <div class="modal-box w-11/12 max-w-3xl">
         <div class="flex justify-between items-center mb-4">
           <h3 class="font-bold text-lg">Quick Add Nebula Host</h3>
-          <button class="btn btn-sm btn-circle btn-ghost" @click="showNebulaModal = false">&#x2715;</button>
+          <button class="btn btn-sm btn-circle btn-ghost" aria-label="Close" @click="showNebulaModal = false">&#x2715;</button>
         </div>
         <div v-if="showNebulaModal">
           <NebulaHostFormView :embedded="true" @success="onNebulaCreated" @cancel="showNebulaModal = false" />

@@ -313,6 +313,7 @@ watch(() => dashboardStore.currentVariableValues, () => {
             class="btn btn-sm btn-square btn-ghost" 
             @click="handleRefreshDashboard"
             title="Refresh Dashboard Data (R)"
+            aria-label="Refresh dashboard data"
             :disabled="!natsStore.isConnected"
           >
             🔄
@@ -330,10 +331,10 @@ watch(() => dashboardStore.currentVariableValues, () => {
               <option :value="20">20 Cols</option>
             </select>
           </div>
-          <button v-if="hasVariables || !dashboardStore.isLocked" class="btn btn-sm btn-square" :class="showVariableBar ? 'btn-active' : 'btn-ghost'" @click="showVariableBar = !showVariableBar"><span class="font-mono font-bold">{ }</span></button>
-          <button class="btn btn-sm btn-square btn-ghost" @click="dashboardStore.toggleLock()">{{ dashboardStore.isLocked ? '🔒' : '🔓' }}</button>
+          <button v-if="hasVariables || !dashboardStore.isLocked" class="btn btn-sm btn-square" :class="showVariableBar ? 'btn-active' : 'btn-ghost'" :aria-label="showVariableBar ? 'Hide dashboard variables' : 'Show dashboard variables'" :aria-pressed="showVariableBar" @click="showVariableBar = !showVariableBar"><span class="font-mono font-bold">{ }</span></button>
+          <button class="btn btn-sm btn-square btn-ghost" :aria-label="dashboardStore.isLocked ? 'Unlock dashboard layout' : 'Lock dashboard layout'" @click="dashboardStore.toggleLock()">{{ dashboardStore.isLocked ? '🔒' : '🔓' }}</button>
           <button v-if="!dashboardStore.isLocked" class="btn btn-sm btn-primary" @click="showAddWidget = true">+ <span class="hidden sm:inline ml-1">Widget</span></button>
-          <button v-if="!isRestrictedMode" class="btn btn-sm btn-square btn-ghost hidden sm:flex" @click="showDebugPanel = true">🐞</button>
+          <button v-if="!isRestrictedMode" class="btn btn-sm btn-square btn-ghost hidden sm:flex" aria-label="Open debug panel" @click="showDebugPanel = true">🐞</button>
         </div>
       </div>
       
@@ -364,7 +365,7 @@ watch(() => dashboardStore.currentVariableValues, () => {
     <div v-if="fullScreenWidgetId && fullScreenWidget" class="fixed inset-0 z-[100] bg-base-100 flex flex-col">
       <div class="p-4 border-b border-base-300 flex justify-between items-center bg-base-200">
         <h2 class="font-bold text-lg">{{ fullScreenWidget.title }}</h2>
-        <button class="btn btn-sm btn-circle btn-ghost" @click="exitFullScreen">✕</button>
+        <button class="btn btn-sm btn-circle btn-ghost" aria-label="Exit full screen" @click="exitFullScreen">✕</button>
       </div>
       <div class="flex-1 p-6 overflow-hidden">
         <WidgetContainer :config="fullScreenWidget" :is-mobile="false" :is-fullscreen="true" @delete="handleDeleteWidget(fullScreenWidget.id)" @configure="handleConfigureWidget(fullScreenWidget.id)" @duplicate="handleDuplicateWidget(fullScreenWidget.id)" @fullscreen="exitFullScreen" />

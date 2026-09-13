@@ -27,7 +27,7 @@ const emit = defineEmits<{
         <span class="text-lg shrink-0">🛠️</span>
         <h3 class="font-bold text-sm truncate">Position Things</h3>
       </div>
-      <button class="btn btn-sm btn-circle btn-ghost shrink-0" @click="emit('close')">✕</button>
+      <button class="btn btn-sm btn-circle btn-ghost shrink-0" aria-label="Close" @click="emit('close')">✕</button>
     </div>
 
     <!-- Drag toggle -->

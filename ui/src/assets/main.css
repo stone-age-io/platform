@@ -49,6 +49,27 @@ body {
   width: 8px;
   height: 8px;
 }
+/* Custom scrollbar styling.
+ *
+ * Two declarations of the same intent, because no engine implements both.
+ * Firefox has only the standard `scrollbar-*` properties; Safari and older
+ * Chrome have only the `::-webkit-scrollbar` pseudo-elements. Dropping either
+ * one leaves half the browsers with the stock OS scrollbar, which against the
+ * dark theme is a bright band down the side of every scrollable pane.
+ *
+ * `scrollbar-width` does not inherit (`scrollbar-color` does), so this has to
+ * be `*` rather than `:root` to reach nested scroll containers the way the
+ * WebKit block already does. Firefox has no scrollbar hover state, so the
+ * `:hover` rule below has no standard counterpart. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: oklch(var(--bc) / 0.2) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
 
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -63,20 +84,68 @@ body {
   background: oklch(var(--bc) / 0.3);
 }
 
-/* Prevent mobile zoom on input focus by ensuring 16px minimum font size */
-input,
-textarea,
-select {
-  font-size: 16px !important;
-}
-
-/* Maintain smaller font size for desktop */
-@media (min-width: 768px) {
-  input,
-  textarea,
-  select {
-    font-size: 0.875rem !important; /* 14px - DaisyUI default */
+/* Baseline control font size: 14px, matching daisyUI's own `.textarea` and the
+ * `text-sm` on the labels around it. daisyUI sets bare `.input` and `.select`
+ * to 1rem and only its `-md` size modifiers to 0.875rem, and nothing here
+ * passes a size modifier, so without this rule every text field would sit two
+ * pixels above its own label.
+ *
+ * It lives in the components layer ON PURPOSE. This used to be a plain
+ * `input, textarea, select { font-size: 0.875rem !important }`, which beat the
+ * utilities as well as daisyUI: nineteen mono editors across ten files
+ * (JSON metadata, NATS publish/subscribe permissions, activation JWTs, KV
+ * values, Nebula host config) asked for `text-xs` and silently rendered at
+ * 14px, because a Tailwind utility is not `!important` and loses to one that
+ * is. Putting the default in `@layer components` gets the cascade to say what
+ * was meant all along: later than daisyUI's components, earlier than any
+ * utility, so `.input` is overridden and `text-xs` is not. If you ever need to
+ * reach for `!important` here again, the rule is in the wrong layer. */
+@layer components {
+  .input,
+  .textarea,
+  .select {
+    font-size: 0.875rem;
   }
 }
 
+/* The one place `!important` IS load-bearing: iOS Safari zooms the viewport
+ * when a focused control's font size is under 16px, and it has to beat the
+ * `text-xs` above to stop that. Scoped to the widths where it can happen —
+ * unscoped, it was the reason the desktop rule existed to claw it back. */
+@media (max-width: 767px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
 
+/* Honour a reduced-motion preference app-wide.
+ *
+ * ConfirmDialog has carried its own version of this since it was written; this
+ * generalises it to the toast transitions, the sidebar collapse, the dashboard
+ * grid's drag animations and every `transition-*` class in the app.
+ *
+ * `.loading` is exempt from the iteration clamp deliberately. Reduced motion
+ * means "do not animate decoration", not "freeze the one element whose whole
+ * job is to show that work is still in progress" — a spinner stopped at frame
+ * one reads as a hung page, which is a worse outcome than the movement. It is
+ * slowed rather than stopped for the same reason. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .loading,
+  .loading::before,
+  .loading::after {
+    animation-duration: 1.5s !important;
+    animation-iteration-count: infinite !important;
+  }
+}

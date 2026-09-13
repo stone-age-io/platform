@@ -14,6 +14,7 @@ import LocationFormView from '@/views/locations/LocationFormView.vue'
 import RecordPicker from '@/components/common/RecordPicker.vue'
 import { flattenLocationTree, type LocationNode } from '@/utils/locations'
 import type { PickerOption } from '@/types/picker'
+import { useEscapeKey } from '@/composables/useEscapeKey'
 
 type ProvisionMode = 'auto' | 'link' | 'none'
 
@@ -443,6 +444,14 @@ onMounted(() => {
     loadThing()
   }
 })
+
+// Escape closes these; see useEscapeKey for why the dialogs do not get it
+// from the browser and which ones are deliberately left out.
+// showSuccessModal is deliberately absent: it carries the one-time device
+// password, and losing it to a stray keypress means re-provisioning.
+useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
+useEscapeKey(showNebulaModal, () => { showNebulaModal.value = false })
+useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
 </script>
 
 <template>
@@ -869,7 +878,7 @@ onMounted(() => {
       <div class="modal-box w-11/12 max-w-3xl">
         <div class="flex justify-between items-center mb-4">
           <h3 class="font-bold text-lg">Quick Add NATS User</h3>
-          <button class="btn btn-sm btn-circle btn-ghost" @click="showNatsModal = false">&#x2715;</button>
+          <button class="btn btn-sm btn-circle btn-ghost" aria-label="Close" @click="showNatsModal = false">&#x2715;</button>
         </div>
         <div v-if="showNatsModal">
           <NatsUserFormView :embedded="true" @success="onNatsCreated" @cancel="showNatsModal = false" />
@@ -882,7 +891,7 @@ onMounted(() => {
       <div class="modal-box w-11/12 max-w-3xl">
         <div class="flex justify-between items-center mb-4">
           <h3 class="font-bold text-lg">Quick Add Nebula Host</h3>
-          <button class="btn btn-sm btn-circle btn-ghost" @click="showNebulaModal = false">&#x2715;</button>
+          <button class="btn btn-sm btn-circle btn-ghost" aria-label="Close" @click="showNebulaModal = false">&#x2715;</button>
         </div>
         <div v-if="showNebulaModal">
           <NebulaHostFormView :embedded="true" @success="onNebulaCreated" @cancel="showNebulaModal = false" />
@@ -895,7 +904,7 @@ onMounted(() => {
       <div class="modal-box w-11/12 max-w-3xl">
         <div class="flex justify-between items-center mb-4">
           <h3 class="font-bold text-lg">Quick Add Location</h3>
-          <button class="btn btn-sm btn-circle btn-ghost" @click="showLocationModal = false">&#x2715;</button>
+          <button class="btn btn-sm btn-circle btn-ghost" aria-label="Close" @click="showLocationModal = false">&#x2715;</button>
         </div>
         <div v-if="showLocationModal">
           <LocationFormView :embedded="true" @success="onLocationCreated" @cancel="showLocationModal = false" />

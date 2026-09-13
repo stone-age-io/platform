@@ -15,7 +15,7 @@ const uiStore = useUIStore()
     
     <!-- Left: Sidebar Toggle -->
     <div class="flex-none">
-      <label for="sidebar-drawer" class="btn btn-square btn-ghost">
+      <label for="sidebar-drawer" class="btn btn-square btn-ghost" aria-label="Open navigation menu">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-6 h-6 stroke-current">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
         </svg>
@@ -33,7 +33,11 @@ const uiStore = useUIStore()
 
     <!-- Right: Theme Toggle -->
     <div class="flex-none">
-      <button class="btn btn-square btn-ghost" @click="uiStore.toggleTheme">
+      <button
+        class="btn btn-square btn-ghost"
+        :aria-label="uiStore.theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'"
+        @click="uiStore.toggleTheme"
+      >
         <span v-if="uiStore.theme === 'dark'" class="text-xl">☀️</span>
         <span v-else class="text-xl">🌙</span>
       </button>

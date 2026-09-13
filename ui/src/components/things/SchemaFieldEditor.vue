@@ -72,6 +72,7 @@ function removeItemChild(i: number) {
         type="button"
         class="btn btn-ghost btn-xs btn-square self-end mb-1"
         :title="collapsed ? 'Expand' : 'Collapse'"
+        :aria-label="collapsed ? 'Expand field' : 'Collapse field'"
         @click="collapsed = !collapsed"
       >
         <svg

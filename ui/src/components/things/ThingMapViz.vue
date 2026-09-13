@@ -173,6 +173,7 @@ onUnmounted(() => {
         class="btn btn-sm btn-square bg-base-100 border-base-300 shadow-sm hover:bg-base-200"
         @click="fitAllMarkers()"
         title="Fit all things"
+        aria-label="Fit all things in view"
       >
         <span class="text-lg leading-none pb-1">⊡</span>
       </button>

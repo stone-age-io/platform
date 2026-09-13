@@ -6,6 +6,7 @@ import { formatDate, formatBytes } from '@/utils/format'
 import { useAuthStore } from '@/stores/auth'
 import type { NatsAccount } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import { useEscapeKey } from '@/composables/useEscapeKey'
 
 const toast = useToast()
 const authStore = useAuthStore()
@@ -167,6 +168,11 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('organization-changed', handleOrgChange)
 })
+
+// Escape closes these; see useEscapeKey for why the dialogs do not get it
+// from the browser and which ones are deliberately left out.
+useEscapeKey(showRotateModal, () => { showRotateModal.value = false })
+useEscapeKey(showRemoveKeyModal, () => { showRemoveKeyModal.value = false })
 </script>
 
 <template>

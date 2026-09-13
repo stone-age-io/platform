@@ -63,6 +63,9 @@ const newUserForm = ref({
   generatePassword: true,
 })
 const generatedPassword = ref('')
+// No useEscapeKey here on purpose. This modal shows the owner password once
+// and says so in its own copy; Escape dismissing it would lose a secret that
+// cannot be re-read. See useEscapeKey for the rest of that list.
 const showGeneratedPassword = ref(false)
 
 async function loadUsers() {

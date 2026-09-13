@@ -7,6 +7,7 @@ import { useConfirm } from '@/composables/useConfirm'
 import { formatDate } from '@/utils/format'
 import type { NatsUser } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import { useEscapeKey } from '@/composables/useEscapeKey'
 
 const router = useRouter()
 const route = useRoute()
@@ -189,6 +190,12 @@ function downloadCredsFile() {
 onMounted(() => {
   loadUser()
 })
+
+// Escape closes these; see useEscapeKey for why the dialogs do not get it
+// from the browser and which ones are deliberately left out.
+useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
+useEscapeKey(showRevokeModal, () => { showRevokeModal.value = false })
+useEscapeKey(showReenableModal, () => { showReenableModal.value = false })
 </script>
 
 <template>

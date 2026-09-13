@@ -5,6 +5,7 @@ import { useToast } from '@/composables/useToast'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import SchemaBuilder from '@/components/things/SchemaBuilder.vue'
 import { inferSchema } from '@/utils/inferSchema'
+import { useEscapeKey } from '@/composables/useEscapeKey'
 
 // MetadataSchemaCard — authors a type's `metadata_schema`: the JSON Schema
 // describing what is tracked about each record of that type. Used identically by
@@ -163,6 +164,10 @@ function commit(): boolean {
 }
 
 defineExpose({ commit })
+
+// Escape closes these; see useEscapeKey for why the dialogs do not get it
+// from the browser and which ones are deliberately left out.
+useEscapeKey(showInferModal, () => { showInferModal.value = false })
 </script>
 
 <template>

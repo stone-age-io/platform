@@ -52,7 +52,7 @@ function goToLocation(loc: Location) {
           <span v-else class="text-xs text-base-content/60">in this cluster</span>
         </div>
       </div>
-      <button class="btn btn-sm btn-circle btn-ghost shrink-0" @click="emit('close')">✕</button>
+      <button class="btn btn-sm btn-circle btn-ghost shrink-0" aria-label="Close" @click="emit('close')">✕</button>
     </div>
 
     <!-- Header (single / detail mode) -->
@@ -64,7 +64,7 @@ function goToLocation(loc: Location) {
           <span v-if="single.expand?.type" class="text-xs text-base-content/60">{{ single.expand.type.name }}</span>
         </div>
       </div>
-      <button class="btn btn-sm btn-circle btn-ghost shrink-0" @click="emit('close')">✕</button>
+      <button class="btn btn-sm btn-circle btn-ghost shrink-0" aria-label="Close" @click="emit('close')">✕</button>
     </div>
 
     <!-- Body (cluster / list mode) -->

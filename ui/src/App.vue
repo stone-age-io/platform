@@ -70,6 +70,9 @@ watch(() => authStore.currentOrgId, async (orgId) => {
   <!-- Toast Container: top-center on mobile, bottom-right on desktop -->
   <div class="toast toast-top toast-center md:toast-top md:toast-end z-[9999] w-full max-w-[calc(100vw-1rem)] md:w-auto md:max-w-sm">
     <TransitionGroup name="toast" tag="div" class="flex flex-col gap-2 w-full">
+      <!-- Errors and warnings interrupt; a success or an info note waits for a
+           pause in what the reader is already doing. role=alert is assertive,
+           role=status is polite. -->
       <div
         v-for="t in toast.toasts.value"
         :key="t.id"
@@ -79,7 +82,7 @@ watch(() => authStore.currentOrgId, async (orgId) => {
             'alert-info': t.type === 'info',
             'alert-warning': t.type === 'warning',
           }]"
-        role="alert"
+        :role="t.type === 'error' || t.type === 'warning' ? 'alert' : 'status'"
       >
         <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="TOAST_ICON_PATHS[t.type] ?? TOAST_ICON_PATHS.info" />

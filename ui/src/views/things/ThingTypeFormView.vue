@@ -11,6 +11,7 @@ import MetadataSchemaCard from '@/components/common/MetadataSchemaCard.vue'
 import RecordPicker from '@/components/common/RecordPicker.vue'
 import type { PickerOption } from '@/types/picker'
 import type { ThingTypeOperation } from '@/types/pocketbase'
+import { useEscapeKey } from '@/composables/useEscapeKey'
 
 const router = useRouter()
 const route = useRoute()
@@ -123,6 +124,10 @@ onMounted(async () => {
   await loadOptions()
   if (isEdit.value) await loadData()
 })
+
+// Escape closes these; see useEscapeKey for why the dialogs do not get it
+// from the browser and which ones are deliberately left out.
+useEscapeKey(showOperationModal, () => { showOperationModal.value = false })
 </script>
 
 <template>
@@ -233,7 +238,7 @@ onMounted(async () => {
       <div class="modal-box w-11/12 max-w-4xl">
         <div class="flex justify-between items-center mb-4">
           <h3 class="font-bold text-lg">Quick Add Operation</h3>
-          <button class="btn btn-sm btn-circle btn-ghost" @click="showOperationModal = false">&#x2715;</button>
+          <button class="btn btn-sm btn-circle btn-ghost" aria-label="Close" @click="showOperationModal = false">&#x2715;</button>
         </div>
         <div v-if="showOperationModal">
           <ThingTypeOperationFormView :embedded="true" @success="onOperationCreated" @cancel="showOperationModal = false" />

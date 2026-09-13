@@ -14,6 +14,7 @@ import { TWIN_BUCKET, TWIN_DESIRED_BUCKET } from '@/utils/twin'
 import MetadataCard from '@/components/common/MetadataCard.vue'
 import ExpiryBadge from '@/components/common/ExpiryBadge.vue'
 import QrLabelModal from '@/components/common/QrLabelModal.vue'
+import { useEscapeKey } from '@/composables/useEscapeKey'
 
 const router = useRouter()
 const route = useRoute()
@@ -192,6 +193,10 @@ async function handleDelete() {
 onMounted(() => {
   loadThing()
 })
+
+// Escape closes these; see useEscapeKey for why the dialogs do not get it
+// from the browser and which ones are deliberately left out.
+useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
 </script>
 
 <template>

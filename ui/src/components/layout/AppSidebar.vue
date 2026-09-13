@@ -9,6 +9,7 @@ import { useNatsStore } from '@/stores/nats'
 import { useBrandingStore } from '@/stores/branding'
 import { pb } from '@/utils/pb'
 import BrandLogo from '@/components/common/BrandLogo.vue'
+import { useEscapeKey } from '@/composables/useEscapeKey'
 
 const router = useRouter()
 const route = useRoute()
@@ -301,6 +302,10 @@ async function handleConnect() {
 async function handleDisconnect() {
   await natsStore.disconnect()
 }
+
+// Escape closes these; see useEscapeKey for why the dialogs do not get it
+// from the browser and which ones are deliberately left out.
+useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
 </script>
 
 <template>
@@ -333,6 +338,7 @@ async function handleDisconnect() {
           @click="uiStore.toggleCompact"
           class="btn btn-ghost btn-sm btn-square opacity-60 hover:opacity-100 transition-opacity"
           :title="uiStore.sidebarCompact ? 'Expand Sidebar' : 'Collapse Sidebar'"
+          :aria-label="uiStore.sidebarCompact ? 'Expand sidebar' : 'Collapse sidebar'"
         >
           <span v-if="uiStore.sidebarCompact">»</span>
           <span v-else>«</span>
@@ -586,7 +592,7 @@ async function handleDisconnect() {
             <h3 class="font-bold text-lg flex items-center gap-2">
               <span class="text-2xl">📡</span> NATS Connection
             </h3>
-            <button @click="showNatsModal = false" class="btn btn-sm btn-circle btn-ghost">✕</button>
+            <button @click="showNatsModal = false" class="btn btn-sm btn-circle btn-ghost" aria-label="Close">✕</button>
           </div>
 
           <!-- Connection Status & Controls -->

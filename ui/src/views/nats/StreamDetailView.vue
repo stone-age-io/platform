@@ -9,6 +9,7 @@ import { formatBytes, formatDate } from '@/utils/format'
 import type { StreamInfo } from '@nats-io/jetstream'
 import type { ConsumerSummary } from '@/types/jetstream'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import { useEscapeKey } from '@/composables/useEscapeKey'
 
 const router = useRouter()
 const route = useRoute()
@@ -167,6 +168,11 @@ onMounted(() => { loadData() })
 watch(() => natsStore.isConnected, (connected) => {
   if (connected) loadData()
 })
+
+// Escape closes these; see useEscapeKey for why the dialogs do not get it
+// from the browser and which ones are deliberately left out.
+useEscapeKey(showPurgeModal, () => { showPurgeModal.value = false })
+useEscapeKey(() => !!selectedMessage.value, () => { selectedMessage.value = null })
 </script>
 
 <template>
@@ -490,7 +496,7 @@ watch(() => natsStore.isConnected, (connected) => {
             <h3 class="font-bold text-lg">Message #{{ selectedMessage.seq }}</h3>
             <p class="text-xs opacity-50 font-mono break-all">{{ selectedMessage.subject }}</p>
           </div>
-          <button class="btn btn-sm btn-circle btn-ghost" @click="selectedMessage = null">✕</button>
+          <button class="btn btn-sm btn-circle btn-ghost" aria-label="Close" @click="selectedMessage = null">✕</button>
         </div>
 
         <div class="space-y-4">
