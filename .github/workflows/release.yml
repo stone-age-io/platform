@@ -57,6 +57,26 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # goreleaser reports success whether or not it used the notes file, so this
+      # asserts the published body rather than trusting the exit code. v0.5.0
+      # shipped with an EMPTY body: the flag was passed and logged correctly, but
+      # `changelog.disable: true` in .goreleaser.yaml skipped the pipe that reads
+      # it. Nothing in the run went red. A release body is only visibly wrong to
+      # someone who opens the release page, which is exactly the kind of failure
+      # that needs an assertion rather than a reviewer.
+      - name: Verify the release body came from CHANGELOG.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          body=$(gh release view "$GITHUB_REF_NAME" --json body --jq .body)
+          if ! grep -qF "## Stone Age Platform $GITHUB_REF_NAME" <<<"$body"; then
+            echo "::error::release body is not the one scripts/release-notes.sh built"
+            echo "first 20 lines of what was published:"
+            head -20 <<<"$body"
+            exit 1
+          fi
+          echo "release body OK ($(wc -l <<<"$body") lines)"
+
       # ------------------------------------------------------------------ image
       - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4

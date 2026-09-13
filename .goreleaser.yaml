@@ -98,15 +98,31 @@ checksum:
 # The release body is NOT built here. goreleaser's changelog is a list of commit
 # subjects, and this repo's reasoning lives in CHANGELOG.md as paragraphs -- with
 # upgrade notes that exist nowhere in the commit log. scripts/release-notes.sh
-# assembles the body (install prose + the changelog section for the tag) and the
-# release workflow passes it with --release-notes.
+# assembles the whole body (install prose + the changelog section for the tag)
+# and the release workflow passes it with --release-notes, which makes
+# everything below inert on a real release.
 #
-# Disabled rather than left at its default so the two cannot disagree: a body
-# assembled both here and there is a body that drifts. The install prose that
-# used to live in release.header/release.footer moved into that script for the
-# same reason.
+# DO NOT set `disable: true` here. It looks like the tidy way to say "the body
+# comes from elsewhere", and it silently breaks --release-notes: reading that
+# file is a step INSIDE the changelog pipe, so disabling the pipe skips the read
+# and publishes an empty body. v0.5.0 shipped that way and had to be edited by
+# hand afterwards. The settings below are the fallback for someone running
+# goreleaser without the flag, and the only thing that suppresses them is the
+# flag itself.
+#
+# release.header / release.footer are gone for the adjacent reason: goreleaser
+# does not apply them to a --release-notes body, so keeping them here would be
+# prose that renders on a manual run and vanishes on a real one. The install
+# prose lives in scripts/release-notes.sh, which is the one place the body is
+# assembled.
 changelog:
-  disable: true
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - '^ci:'
 
 release:
   github:
