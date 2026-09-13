@@ -3,18 +3,18 @@ import { ref, computed, watch } from 'vue'
 import SchemaFieldEditor from './SchemaFieldEditor.vue'
 import {
   type Field,
-  MAX_DEPTH,
   emptyField,
+  duplicateNames,
   isFormCompatible,
   schemaToFields,
   fieldsToSchema,
 } from './schemaFields'
 
 // SchemaBuilder — a guided form for building JSON Schemas describing an
-// `object`. Supports nested objects and arrays (including array-of-object) up
-// to MAX_DEPTH levels. Schemas that use features outside this scope ($ref,
-// anyOf/oneOf/allOf, or nesting deeper than the cap) show a notice so the user
-// knows to switch to the raw JSON view instead of silently losing data.
+// `object`. Supports nested objects and arrays (including array-of-object) to
+// any depth. Schemas that use features outside this scope ($ref,
+// anyOf/oneOf/allOf) show a notice so the user knows to switch to the raw JSON
+// view instead of silently losing data.
 
 interface Props {
   modelValue: Record<string, any>
@@ -27,6 +27,8 @@ const emit = defineEmits<{
 const compatible = computed(() => isFormCompatible(props.modelValue))
 const fields = ref<Field[]>([])
 let suppressNextWatch = false
+
+const dupes = computed(() => duplicateNames(fields.value))
 
 watch(
   () => props.modelValue,
@@ -63,7 +65,7 @@ function removeField(i: number) {
     <div v-if="!compatible" class="alert alert-warning text-sm">
       <span>
         This schema uses structures the form doesn't handle (<code>$ref</code>,
-        <code>anyOf</code>/<code>oneOf</code>/<code>allOf</code>, or nesting deeper than {{ MAX_DEPTH }} levels).
+        <code>anyOf</code>/<code>oneOf</code>/<code>allOf</code>).
         Switch to <strong>JSON view</strong> to edit it without losing anything.
       </span>
     </div>
@@ -77,11 +79,15 @@ function removeField(i: number) {
         v-for="(f, i) in fields"
         :key="i"
         :model-value="f"
-        :depth="0"
-        :max-depth="MAX_DEPTH"
+        :duplicate="dupes.has(f.name.trim())"
         @update:model-value="updateField(i, $event)"
         @remove="removeField(i)"
       />
+
+      <div v-if="dupes.size" class="text-xs text-error">
+        Duplicate propert{{ dupes.size === 1 ? 'y' : 'ies' }}:
+        <code>{{ [...dupes].join(', ') }}</code> — only the last is saved.
+      </div>
 
       <button type="button" class="btn btn-sm" @click="addField">
         + Add Property

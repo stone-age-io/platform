@@ -16,9 +16,17 @@
  * a sample cannot show which keys are optional — one sample is one observation,
  * not a population. Review is part of the flow, which is why the callers say so
  * when they apply it.
+ *
+ * The output has to stay editable in SchemaBuilder, or `applyInferred` lands the
+ * user on the incompatible banner in the same click that told them to review the
+ * result. A null sample value therefore infers `string` rather than the literal
+ * truth `{type: 'null'}`: a null in a sample means "this key exists and was
+ * empty when I looked", not "this key may only ever be null", and the builder
+ * has no null type to render it with. Mixed-type arrays still yield `anyOf` and
+ * still trip the banner — that one is genuinely outside what the form can say.
  */
 export function inferSchema(value: any): Record<string, any> {
-  if (value === null) return { type: 'null' }
+  if (value === null) return { type: 'string' }
 
   if (Array.isArray(value)) {
     if (value.length === 0) return { type: 'array', items: {} }

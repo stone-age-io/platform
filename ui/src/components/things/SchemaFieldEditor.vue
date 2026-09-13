@@ -1,23 +1,25 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { Field, FieldType } from './schemaFields'
-import { TYPES, ITEM_TYPES, STRING_FORMATS, emptyField } from './schemaFields'
+import { TYPES, ITEM_TYPES, STRING_FORMATS, emptyField, duplicateNames } from './schemaFields'
 
 interface Props {
   modelValue: Field
-  depth?: number
-  maxDepth?: number
+  /** This field's name collides with a sibling's; the parent renders the message. */
+  duplicate?: boolean
 }
 
-const props = withDefaults(defineProps<Props>(), { depth: 0, maxDepth: 4 })
+const props = withDefaults(defineProps<Props>(), { duplicate: false })
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: Field): void
   (e: 'remove'): void
 }>()
 
-const canNest = computed(() => props.depth < props.maxDepth)
 const collapsed = ref(false)
+
+const childDupes = computed(() => duplicateNames(props.modelValue.children))
+const itemChildDupes = computed(() => duplicateNames(props.modelValue.itemChildren))
 
 const summary = computed(() => {
   const f = props.modelValue
@@ -94,9 +96,24 @@ function removeItemChild(i: number) {
           :value="modelValue.name"
           type="text"
           class="input input-bordered input-sm font-mono"
+          :class="{ 'input-error': duplicate }"
           placeholder="field_name"
           pattern="[a-zA-Z_][a-zA-Z0-9_]*"
           @input="patch({ name: ($event.target as HTMLInputElement).value })"
+        />
+      </div>
+
+      <!-- Title is the LABEL a member sees on the record form; Name is the key
+           stored in `metadata` and read back off the bus. Blank falls back to
+           the name, which is why this is optional rather than required. -->
+      <div class="form-control flex-1 min-w-[10rem]">
+        <label class="label py-1"><span class="label-text text-xs">Title</span></label>
+        <input
+          :value="modelValue.title"
+          type="text"
+          class="input input-bordered input-sm"
+          placeholder="Human label (optional)"
+          @input="patch({ title: ($event.target as HTMLInputElement).value })"
         />
       </div>
 
@@ -158,6 +175,7 @@ function removeItemChild(i: number) {
         <input
           :value="modelValue.minimum"
           type="number"
+          step="any"
           class="input input-bordered input-sm font-mono"
           @input="patch({ minimum: ($event.target as HTMLInputElement).value })"
         />
@@ -167,6 +185,7 @@ function removeItemChild(i: number) {
         <input
           :value="modelValue.maximum"
           type="number"
+          step="any"
           class="input input-bordered input-sm font-mono"
           @input="patch({ maximum: ($event.target as HTMLInputElement).value })"
         />
@@ -199,22 +218,17 @@ function removeItemChild(i: number) {
         v-for="(child, i) in modelValue.children"
         :key="i"
         :model-value="child"
-        :depth="depth + 1"
-        :max-depth="maxDepth"
+        :duplicate="childDupes.has(child.name.trim())"
         @update:model-value="updateChild(i, $event)"
         @remove="removeChild(i)"
       />
-      <button
-        v-if="canNest"
-        type="button"
-        class="btn btn-xs"
-        @click="addChild"
-      >
+      <div v-if="childDupes.size" class="text-xs text-error">
+        Duplicate propert{{ childDupes.size === 1 ? 'y' : 'ies' }}:
+        <code>{{ [...childDupes].join(', ') }}</code> — only the last is saved.
+      </div>
+      <button type="button" class="btn btn-xs" @click="addChild">
         + Add Property
       </button>
-      <div v-else class="text-xs text-warning">
-        Max nesting depth reached. Use the JSON view to go deeper.
-      </div>
     </div>
 
     <!-- Nested: array -->
@@ -251,22 +265,17 @@ function removeItemChild(i: number) {
           v-for="(child, i) in modelValue.itemChildren"
           :key="i"
           :model-value="child"
-          :depth="depth + 1"
-          :max-depth="maxDepth"
+          :duplicate="itemChildDupes.has(child.name.trim())"
           @update:model-value="updateItemChild(i, $event)"
           @remove="removeItemChild(i)"
         />
-        <button
-          v-if="canNest"
-          type="button"
-          class="btn btn-xs"
-          @click="addItemChild"
-        >
+        <div v-if="itemChildDupes.size" class="text-xs text-error">
+          Duplicate propert{{ itemChildDupes.size === 1 ? 'y' : 'ies' }}:
+          <code>{{ [...itemChildDupes].join(', ') }}</code> — only the last is saved.
+        </div>
+        <button type="button" class="btn btn-xs" @click="addItemChild">
           + Add Property
         </button>
-        <div v-else class="text-xs text-warning">
-          Max nesting depth reached. Use the JSON view to go deeper.
-        </div>
       </template>
     </div>
     </template>

@@ -25,6 +25,8 @@ interface Field {
   description?: string
   title?: string
   enumValues?: any[]
+  minimum?: number
+  maximum?: number
 }
 
 const fields = computed<Field[]>(() => {
@@ -39,6 +41,8 @@ const fields = computed<Field[]>(() => {
     description: raw.description,
     title: raw.title,
     enumValues: raw.enum,
+    minimum: typeof raw.minimum === 'number' ? raw.minimum : undefined,
+    maximum: typeof raw.maximum === 'number' ? raw.maximum : undefined,
   }))
 })
 
@@ -59,6 +63,12 @@ function isPrimitive(f: Field): boolean {
   return ['string', 'integer', 'number', 'boolean'].includes(f.type)
 }
 
+// Every control in here hands back a string — <input> and <select> both do —
+// so the schema's declared type is the only thing that decides what gets
+// STORED. It matters beyond tidiness: this document is written to `metadata`
+// and read back off the bus by firmware and rule-router, so an integer field
+// holding `"3"` is a type mismatch at the far end of the wire, not a display
+// bug. The enum <select> used to skip this and store its option text verbatim.
 function castOnInput(f: Field, raw: string): any {
   if (f.type === 'integer') {
     const n = parseInt(raw, 10)
@@ -69,6 +79,14 @@ function castOnInput(f: Field, raw: string): any {
     return Number.isNaN(n) ? '' : n
   }
   return raw
+}
+
+// A number input's step defaults to 1, so a schema-declared `number` would
+// reject 20.5 as invalid and block the surrounding form's submit — which is why
+// MetadataEditor's free-form number row already sets this. Only `integer`
+// actually wants whole numbers.
+function stepFor(f: Field): string {
+  return f.type === 'integer' ? '1' : 'any'
 }
 </script>
 
@@ -92,7 +110,7 @@ function castOnInput(f: Field, raw: string): any {
         class="select select-bordered select-sm"
         :value="modelValue[f.name] ?? ''"
         :disabled="disabled"
-        @change="setField(f.name, ($event.target as HTMLSelectElement).value)"
+        @change="setField(f.name, castOnInput(f, ($event.target as HTMLSelectElement).value))"
       >
         <option value="">— —</option>
         <option v-for="opt in f.enumValues" :key="String(opt)" :value="opt">{{ opt }}</option>
@@ -117,6 +135,9 @@ function castOnInput(f: Field, raw: string): any {
         v-else-if="isPrimitive(f)"
         :type="inputType(f)"
         class="input input-bordered input-sm font-mono"
+        :min="f.minimum"
+        :max="f.maximum"
+        :step="inputType(f) === 'number' ? stepFor(f) : undefined"
         :value="modelValue[f.name] ?? ''"
         :disabled="disabled"
         :required="f.required"

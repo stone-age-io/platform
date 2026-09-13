@@ -942,11 +942,30 @@ you, so pushing an absolute one would make the login form an open redirect (the
 
 - `cd ui && npm test` — Vitest. Pure logic only, node environment, no component
   mounting except `ConfirmDialog` and `QrLabelModal`, where the DOM contract IS
-  the subject. Covers
-  the five files `vue-tsc && vite build` cannot protect: `twinDrift`,
-  `useSubscriptionManager`, the `can` capability map, dashboard import/export,
-  and `createDefaultWidget`. A spec that needs a DOM opts in with
-  `// @vitest-environment jsdom` on its first line.
+  the subject. Covers the pure logic `vue-tsc && vite build` cannot protect:
+  `twinDrift`, `useSubscriptionManager`, `useEscapeKey`, the `can` capability
+  map, dashboard import/export, `createDefaultWidget`, and the JSON Schema
+  round trip in `schemaFields` + `inferSchema`. A spec that needs a DOM opts in
+  with `// @vitest-environment jsdom` on its first line.
+  - **A form that edits a document needs a ROUND-TRIP assertion, not a render
+    test.** `SchemaBuilder` reads a JSON Schema into an internal `Field` struct
+    and writes it back out, so any keyword `schemaToFields` does not read is
+    deleted by the next `fieldsToSchema`. `title` — the human label every
+    seeded thing/location type uses, and the one both `JsonSchemaForm` and
+    `MetadataEditor` render — was dropped this way for as long as the builder
+    existed, silently, because `isFormCompatible` gates the "switch to JSON
+    view" banner on `$ref`/`anyOf`/`oneOf`/`allOf` and knows nothing about
+    which keywords survive the trip. Adding a keyword to the builder means
+    adding it to `Field`, to both conversion functions, and to the identity
+    test. Note the banner is not a safety net: it answers "can the form
+    represent this shape", never "will the form preserve this content".
+  - **The builder has no nesting cap, deliberately.** One used to live inside
+    `isFormCompatible` and disagreed with `SchemaFieldEditor`'s `depth <
+    maxDepth` by exactly one level, so a five-deep schema built in the form was
+    refused by the form on reload. It was removed rather than corrected: every
+    other branch of that predicate states a fact about what the builder can
+    *represent*, while a depth limit is a rendering preference, and one function
+    holding both kinds of judgement is what produced the off-by-one.
 - **`gofmt -l .` reports ~25 files on a Windows checkout, and they are all
   fine.** `core.autocrlf` rewrites `.go` files to CRLF in the worktree while
   `.gitattributes` (`*.go text eol=lf`) keeps the committed content LF, so gofmt

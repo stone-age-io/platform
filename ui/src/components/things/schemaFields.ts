@@ -4,6 +4,15 @@ export type FieldType = 'string' | 'integer' | 'number' | 'boolean' | 'object' |
 
 export interface Field {
   name: string
+  /**
+   * JSON Schema `title` — the human label. Distinct from `description`, which
+   * renders as fine print under the input: this one REPLACES the key as the
+   * label, which is what makes a member-facing form readable (`dock_doors` →
+   * "Dock doors"). Every seeded type in internal/demoseed/data.go uses it and
+   * none uses `description`, so a builder that could not round-trip it stripped
+   * the labels off the demo data on the first edit.
+   */
+  title: string
   type: FieldType
   required: boolean
   description: string
@@ -22,11 +31,10 @@ export const TYPES: FieldType[] = ['string', 'integer', 'number', 'boolean', 'ob
 export const ITEM_TYPES: FieldType[] = ['string', 'integer', 'number', 'boolean', 'object']
 export const STRING_FORMATS = ['', 'date-time', 'date', 'time', 'email', 'uri', 'uuid']
 
-export const MAX_DEPTH = 4
-
 export function emptyField(): Field {
   return {
     name: '',
+    title: '',
     type: 'string',
     required: false,
     description: '',
@@ -41,27 +49,49 @@ export function emptyField(): Field {
   }
 }
 
+// Sibling property names that appear more than once. `fieldsToSchema` writes
+// into a plain object so a duplicate silently overwrites its twin and the field
+// the user typed first disappears on save — same failure MetadataEditor already
+// warns about for free-form keys, so it gets the same warning here.
+export function duplicateNames(list: Field[]): Set<string> {
+  const seen = new Set<string>()
+  const dupes = new Set<string>()
+  for (const f of list) {
+    const n = f.name.trim()
+    if (!n) continue
+    if (seen.has(n)) dupes.add(n)
+    seen.add(n)
+  }
+  return dupes
+}
+
 // A schema node is form-compatible when every branch uses only the structures
 // the builder can round-trip. Anything else falls through to the JSON view.
-export function isFormCompatible(schema: any, depth = 0): boolean {
-  if (depth > MAX_DEPTH) return false
+//
+// There is deliberately NO nesting cap here. One used to live alongside these
+// checks and disagreed with the editor by exactly one level, so a schema built
+// in the form could not be reopened in the form. The rest of this predicate
+// states facts about what the builder can REPRESENT ($ref and the combinators
+// have no form equivalent); a depth limit is a rendering preference, and mixing
+// the two in one predicate is what produced the off-by-one. The recursion
+// terminates on the data either way.
+export function isFormCompatible(schema: any): boolean {
   if (!schema || typeof schema !== 'object') return false
   if (schema.type !== 'object') return false
   if (schema.$ref || schema.anyOf || schema.oneOf || schema.allOf) return false
   const props = schema.properties
   if (props == null) return true
   if (typeof props !== 'object') return false
-  return Object.values(props).every((raw: any) => isPropCompatible(raw, depth + 1))
+  return Object.values(props).every((raw: any) => isPropCompatible(raw))
 }
 
-function isPropCompatible(raw: any, depth: number): boolean {
-  if (depth > MAX_DEPTH) return false
+function isPropCompatible(raw: any): boolean {
   if (!raw || typeof raw !== 'object') return false
   if (raw.$ref || raw.anyOf || raw.oneOf || raw.allOf) return false
   if (!TYPES.includes(raw.type)) return false
   if (raw.type === 'object') {
     if (raw.properties == null) return true
-    return isFormCompatible(raw, depth)
+    return isFormCompatible(raw)
   }
   if (raw.type === 'array') {
     const items = raw.items
@@ -72,7 +102,7 @@ function isPropCompatible(raw: any, depth: number): boolean {
     if (items.type === 'array') return false
     if (items.type === 'object') {
       if (items.properties == null) return true
-      return isFormCompatible(items, depth + 1)
+      return isFormCompatible(items)
     }
     return true
   }
@@ -90,6 +120,7 @@ export function schemaToFields(schema: any): Field[] {
 function schemaNodeToField(name: string, raw: any, isRequired: boolean): Field {
   const f = emptyField()
   f.name = name
+  f.title = raw?.title || ''
   f.type = (TYPES.includes(raw?.type) ? raw.type : 'string') as FieldType
   f.required = isRequired
   f.description = raw?.description || ''
@@ -134,6 +165,7 @@ export function fieldsToSchema(list: Field[]): Record<string, any> {
 
 function fieldToSchemaNode(f: Field): Record<string, any> {
   const entry: Record<string, any> = { type: f.type }
+  if (f.title) entry.title = f.title
   if (f.description) entry.description = f.description
 
   if (f.type === 'string' && f.format) entry.format = f.format

@@ -63,6 +63,64 @@ and this file starts where the versioned releases do.
 
 ### Fixed
 
+- **The inventory-fields builder silently stripped every field's `title`.**
+  `title` is the human label — it is what turns `dock_doors` into "Dock doors"
+  on the form a member fills in, and both `JsonSchemaForm` and
+  `MetadataEditor`'s read-only view render it. `schemaFields.ts` never had a
+  `title` on its internal `Field`, so `schemaToFields` did not read the
+  keyword and `fieldsToSchema` did not write it back. Opening a thing type or
+  location type on the Form tab and changing anything at all rewrote the schema
+  without it.
+
+  There was no warning, because `isFormCompatible` — which decides the "switch
+  to JSON view" banner — knows about `$ref` and the combinators and nothing
+  about which keywords survive the round trip. Every type in the demo seed uses
+  `title` on every property and none uses `description`, so the first edit to a
+  seeded type reverted its whole form to raw key names. The builder now has a
+  Title input beside Name, and `schemaFields.spec.ts` asserts the round trip
+  against a copy of the seeded `warehouse` fixture.
+
+- **A schema built in the form could not be reopened in the form.** The builder's
+  nesting cap was enforced in two places that disagreed by exactly one level:
+  `isFormCompatible` accepted four levels of nested properties, while
+  `SchemaFieldEditor`'s `depth < maxDepth` let you author five. Nest five deep,
+  save, reload, and the Form tab refused its own output with "nesting deeper
+  than 4 levels. Switch to JSON view." (Arrays were inconsistent with objects on
+  top of that — `isPropCompatible` charged array-of-object an extra level that
+  the editor did not.)
+
+  The cap is gone rather than corrected. Everything else that predicate rejects
+  is a fact about what the builder can *represent* — there is no form equivalent
+  of `$ref` or `anyOf` — whereas a depth limit is a rendering preference, and
+  mixing the two kinds of judgement in one function is what produced the
+  off-by-one. The recursion terminates on the data either way, and nothing in
+  the product nests past one level.
+
+- **A numeric `enum` stored its selection as a string.** The enum `<select>` in
+  `JsonSchemaForm` emitted `event.target.value` verbatim, which is always a
+  string, while the builder happily authors `{"type": "integer", "enum": [1, 2,
+  3]}`. Picking `3` wrote `"3"` into `metadata`. That document is read back off
+  the bus by firmware and rule-router, so this was a type mismatch at the far end
+  of the wire rather than a display bug. It now casts by the declared type, the
+  same way the free-text input already did.
+
+- **A `number` field blocked the form it was on.** `JsonSchemaForm`'s numeric
+  input set no `step`, and `<input type="number">` defaults to `step=1` — so a
+  schema-declared `number` rejected `20.5` as invalid and the surrounding thing
+  or location form would not submit. `MetadataEditor`'s free-form number row
+  already carried `step="any"` for this reason. The schema-driven one now sets
+  `any` for `number` and `1` for `integer`, and passes `minimum`/`maximum`
+  through as `min`/`max` — the builder had been authoring bounds that nothing
+  enforced.
+
+- **"Infer from sample" could hand back a schema the form then refused.** A
+  `null` in the pasted sample inferred `{"type": "null"}`, which is not a type
+  the builder has, so the incompatible banner appeared in the same click that
+  toasted "review before saving". A null in a sample means "this key exists and
+  was empty when I looked", not "this key may only ever be null", so it now
+  infers `string`. A mixed-type array still yields `anyOf` and still trips the
+  banner; that one is genuinely outside what the form can express.
+
 - **The host detail view's "Regenerate Certificate" button did nothing, and said
   it had.** It sent `{ regenerate: true }`. There is no `regenerate` field on
   `nebula_hosts` and there never has been; PocketBase drops unknown keys from an
@@ -473,6 +531,27 @@ and this file starts where the versioned releases do.
   for every tenant. 17 widget types are now 16.
 
 ### Added
+
+- **A Title field in the inventory-fields builder**, beside Name. Name is the key
+  stored in `metadata` and read back off the bus; Title is the label a member
+  sees on the record form, falling back to the name when blank. Until now the
+  only way to set one was the JSON tab, and the Form tab deleted it on the next
+  edit.
+
+- **A duplicate property-name warning in the builder**, at every nesting level
+  including array item properties. `fieldsToSchema` writes into a plain object,
+  so two properties sharing a name silently collapse to one and the field typed
+  first disappears on save. `MetadataEditor` already warned about exactly this
+  for free-form keys; the schema builder now says the same thing, in the same
+  words, and marks the colliding input.
+
+- **Specs for `schemaFields.ts` and `inferSchema.ts`.** Both are pure functions
+  that `vue-tsc && vite build` stays green over while they silently lose data —
+  the `title` bug above is what a round-trip assertion is for. `schemaFields`
+  pins the `schemaToFields ∘ fieldsToSchema` identity over titles, formats,
+  enums, bounds, nested objects and array-of-object, and pins that there is no
+  depth at which the form stops accepting its own output. `inferSchema` pins the
+  invariant that what it produces stays editable in the builder.
 
 - **Nebula CA rotation, from the console.** `POST /api/org/nebula-ca/rotate`
   (owner/admin) drives pb-nebula's three steps — `prepare`, `commit`, `finish` —
