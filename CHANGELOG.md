@@ -11,6 +11,28 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The New button on the Things and Locations lists overflowed the screen on
+  mobile.** DaisyUI's `.btn` carries `flex-shrink: 0`, and the New button was
+  `w-full sm:w-auto` — correct while it was the only thing in that flex row,
+  wrong the moment the Labels button joined it in 0.5.0. It asked for 100% of a
+  row it was now sharing, neither button could give any back, and the primary
+  action rendered past the right edge of the viewport.
+
+  Both are now `flex-1 sm:flex-initial`, which restores shrink over DaisyUI's
+  zero and splits the row evenly. That is the idiom the Thing and Location
+  DETAIL views already used for their action rows, added in the same commit
+  that introduced these buttons — the list views simply kept the older
+  single-button `w-full`. Reused rather than writing a second responsive
+  pattern for the same problem two files away.
+
+  Sixteen other views have a lone `btn ... w-full sm:w-auto` and are fine: one
+  button owning its row is what that class pair is for. The bug is not the
+  class, it is the class surviving the arrival of a sibling — which nothing
+  here can catch, since `vue-tsc && vite build` has no opinion about layout
+  and there is no visual test.
+
 ## [0.5.0] - 2026-09-13
 
 Tenancy enforcement, and the discovery that the review question was wrong. Every
