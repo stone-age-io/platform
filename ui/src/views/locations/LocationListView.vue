@@ -207,6 +207,14 @@ onUnmounted(() => {
       </div>
 
       <!-- Right Side: Desktop Toggle & New Button -->
+      <!-- Every button in this row is `flex-1 sm:flex-initial`, the same idiom the
+           Thing and Location DETAIL views use for their action rows. The New
+           button used to be `w-full sm:w-auto`, which was right while it was
+           alone and wrong the moment Labels joined it: `.btn` carries
+           `flex-shrink: 0`, so it asked for 100% of a row it was sharing and
+           neither button could give any back — the primary action rendered past
+           the right edge of the screen. `flex-1` sets `flex: 1 1 0%`, which
+           restores shrink and splits the row evenly. -->
       <div class="flex gap-3 w-full sm:w-auto">
 
         <!-- Desktop Toggle: Hidden on mobile -->
@@ -229,14 +237,14 @@ onUnmounted(() => {
 
         <button
           v-if="viewMode === 'list' && filteredLocations.length > 0"
-          class="btn btn-outline"
+          class="btn btn-outline flex-1 sm:flex-initial"
           @click="showLabelModal = true"
         >
           <span>🏷️</span>
           <span>Labels ({{ filteredLocations.length }})</span>
         </button>
 
-        <router-link v-if="canWrite" to="/locations/new" class="btn btn-primary w-full sm:w-auto">
+        <router-link v-if="canWrite" to="/locations/new" class="btn btn-primary flex-1 sm:flex-initial">
           <span class="text-lg">+</span>
           <span>New Location</span>
         </router-link>
