@@ -186,18 +186,39 @@ the payload **is** the code.
     case is resolving a different record inside an already-authenticated
     session. It also buys error correction: `DOOR-1` at EC level H is a 21×21
     symbol where the URL form of the same identifier needs 41×41.
-*   **Sized in millimetres, not pixels.** 2″ × 1″ and 4″ × 2″ — the two sizes
-    that exist in both plain and UHF RFID stock. The per-size `@page` box is
-    written from script, because `@page` cannot be interpolated from a template
-    or a scoped style block; without it the browser prints onto whatever paper
-    is selected, with its default margins.
-*   **RFID inlay keep-out.** Both sizes reserve a clear band across the centre
-    where a length-wise UHF dipole's chip sits, and the artwork straddles it
-    (QR one side, text the other) so the *same* layout prints correctly on
-    plain or RFID media. The *RFID stock* toggle only reveals the reserved band
-    for checking against a specific inlay's datasheet — it never changes the
-    layout. Inlay geometry varies by vendor; the defaults are conservative, not
-    a guarantee.
+*   **It takes a list, never a record.** A detail view passes a list of one; a
+    list view passes its filtered set. There is no bulk mode, so there is one
+    code path instead of two layouts to keep in step. Records without a code
+    are skipped and *named* — a silent drop is discovered at the site, with a
+    short stack and no idea which ones are missing.
+*   **The filter is the selection mechanism.** The Things and Locations lists
+    carry a `Labels (n)` button that prints the whole result set of the current
+    filter, not the current page. Row checkboxes would owe select-all,
+    select-across-pages and a selection store, for a workflow that is almost
+    always already a filter — "everything at site S01", "the sensors I just
+    imported". The count rides in the button so the scope is visible before the
+    click. On Locations with an empty search that set is top-level only, matching
+    the rows on screen and the hint above them.
+*   **The modal teleports to `<body>`.** That makes the rest of the app a
+    sibling, so the print rules can drop it with `display:none` instead of
+    `visibility:hidden`. A hidden element still occupies its box, which is why
+    the single-label version had to pull its one label to the page origin with
+    `position:absolute` — and absolute boxes do not fragment across pages
+    predictably, which is the entire job when printing more than one.
+*   **Sized in millimetres, not pixels.** 2″ × 1″ and 4″ × 2″ — both common
+    plain thermal stock. The per-size `@page` box is written from script,
+    because `@page` cannot be interpolated from a template or a scoped style
+    block; without it the browser prints onto whatever paper is selected, with
+    its default margins.
+*   **No RFID inlay keep-out, deliberately.** Both sizes used to reserve a clear
+    band across the centre for a UHF dipole's chip, with the artwork straddling
+    it. It was removed: nothing in this platform encodes or reads an RFID tag and
+    no field on a thing holds an EPC, so the band cost the 2″ × 1″ label a third
+    of its text column — 19.4 mm for brand, code and name — for media it cannot
+    use. A 2″ × 1″ UHF smart label barely exists anyway: a UHF dipole needs
+    length, so that stock starts around 4″ × 2″, and 50 mm smart labels are
+    HF/NFC and a different reader. If RFID lands here it comes back measured
+    against a real inlay's datasheet, not a conservative guess.
 *   **The human-readable code is not decoration.** It is the path for the label
     that won't scan — greasy, scratched, or in a closet too dark to focus in.
     The organization name is deliberately *not* printed: a tenant name beside a

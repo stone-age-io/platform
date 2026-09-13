@@ -472,9 +472,7 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
     -->
     <QrLabelModal
       v-if="showLabelModal && thing"
-      :code="thing.code || ''"
-      :name="thing.name || ''"
-      kind="thing"
+      :records="[{ code: thing.code || '', name: thing.name || '', kind: 'thing' }]"
       @close="showLabelModal = false"
     />
   </div>

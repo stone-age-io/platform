@@ -11,6 +11,7 @@ import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 import ListPager from '@/components/ui/ListPager.vue'
 import LocationMapViz from '@/components/locations/LocationMapViz.vue'
+import QrLabelModal from '@/components/common/QrLabelModal.vue'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
@@ -77,6 +78,24 @@ const paginatedLocations = computed(() => {
 })
 
 const totalPages = computed(() => Math.ceil(filteredLocations.value.length / itemsPerPage))
+
+// Labels for the CURRENT FILTER, not the current page -- the same rule as the
+// Things list, and here it needs no fetch because this screen already holds
+// every location.
+//
+// Note what that means when nothing is typed: filteredLocations is ROOTS ONLY,
+// so the button prints roots only. That is deliberate. The alternative -- a
+// button whose count disagrees with the rows on screen -- is the worse
+// surprise, and the search hint above the list already says the view is
+// top-level. One rule: what the list is showing is what prints.
+const showLabelModal = ref(false)
+const labelRecords = computed(() =>
+  filteredLocations.value.map((l) => ({
+    code: l.code || '',
+    name: l.name || '',
+    kind: 'location' as const,
+  })),
+)
 
 /**
  * Load All Locations
@@ -208,6 +227,15 @@ onUnmounted(() => {
           </button>
         </div>
 
+        <button
+          v-if="viewMode === 'list' && filteredLocations.length > 0"
+          class="btn btn-outline"
+          @click="showLabelModal = true"
+        >
+          <span>🏷️</span>
+          <span>Labels ({{ filteredLocations.length }})</span>
+        </button>
+
         <router-link v-if="canWrite" to="/locations/new" class="btn btn-primary w-full sm:w-auto">
           <span class="text-lg">+</span>
           <span>New Location</span>
@@ -323,6 +351,12 @@ onUnmounted(() => {
     <div v-else-if="viewMode === 'map'" class="fade-in">
       <LocationMapViz :search-query="searchQuery" />
     </div>
+
+    <QrLabelModal
+      v-if="showLabelModal"
+      :records="labelRecords"
+      @close="showLabelModal = false"
+    />
 
   </div>
 </template>

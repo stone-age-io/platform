@@ -165,9 +165,8 @@ disqualified the alternative. See ADR 0002 in
 [platform-docs](https://github.com/stone-age-io/platform-docs).
 
 **QR labels.** Print an operator-branded label for any thing or location that
-has a code, sized in millimetres to real stock (2″ × 1″ and 4″ × 2″, both
-reserving the centred RFID inlay keep-out so one layout prints on plain or RFID
-media). The payload is the **bare code** — no host, no organization, no kind
+has a code, sized in millimetres to real thermal stock (2″ × 1″ and 4″ × 2″).
+The payload is the **bare code** — no host, no organization, no kind
 token — because a sticker in a public hallway is something a stranger can
 replace, and a URL payload would let a forged label send a person to arbitrary
 content. Scanning happens inside an app (the `scanner` widget here, `/staff/scan`

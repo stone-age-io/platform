@@ -866,14 +866,19 @@ hand in the meantime.
   `is_system_org` / `is_operator_org` special cases.
 
 - **QR labels for things and locations.** Printable, operator-branded, from the
-  record detail views. The payload is the **bare code** — no host, no
-  organization, no kind token — because a sticker in a public hallway is
-  something a stranger can replace, and a URL payload would let a forged label
-  send a person to arbitrary content. Sized in millimetres to real stock
-  (2″ × 1″ and 4″ × 2″), both reserving the centred RFID inlay keep-out so one
-  layout prints on plain or RFID media. The existing scanner widget reads them
-  with no changes, since a bare code was always what its `{value}` placeholder
-  expected.
+  record detail views, and from the Things and Locations lists, where a
+  `Labels (n)` button prints the whole result set of the current filter rather
+  than the current page — the search box is the selection mechanism, so there are
+  no row checkboxes and no selection state. The modal takes a **list** — a detail
+  view passes a list of one — so a batch and a single sticker are the same code
+  path; records without a code are skipped and named rather than dropped
+  silently. The
+  payload is the **bare code** — no host, no organization, no kind token —
+  because a sticker in a public hallway is something a stranger can replace,
+  and a URL payload would let a forged label send a person to arbitrary
+  content. Sized in millimetres to real thermal stock (2″ × 1″ and 4″ × 2″).
+  The existing scanner widget reads them with no changes, since a bare code was
+  always what its `{value}` placeholder expected.
 
 ### Changed
 

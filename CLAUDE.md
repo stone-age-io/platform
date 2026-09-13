@@ -560,7 +560,25 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
     identifier unique"* but **"whose database does this identifier belong to."**
 
 17. **QR labels** (`ui/src/components/common/QrLabelModal.vue`) - print an
-    operator-branded label from any thing or location that has a code. The
+    operator-branded label from any thing or location that has a code. It takes a
+    **list**, and a detail view passes a list of one — there is no bulk mode, so
+    there is one code path rather than two layouts to keep in step. The Things
+    and Locations lists print the **whole result set of the current filter**, not
+    the current page: the search box IS the selection mechanism, since the
+    workflow is almost always already a filter ("everything at site S01"), and row
+    checkboxes would owe select-all, select-across-pages and a selection store.
+    The count rides in the button so the scope is visible before the click. Things
+    refetches with `getFullList` (the list holds one page of 20); Locations already
+    holds every record, and when nothing is typed its filtered set is ROOTS ONLY,
+    so the button prints roots only — a button whose count disagreed with the rows
+    on screen would be the worse surprise. Records
+    without a code are skipped and **named**: a silent drop is only discovered at
+    the site, with a short stack and no idea which ones are missing. The modal
+    teleports to `<body>` so the print rules can drop the rest of the app with
+    `display:none` rather than `visibility:hidden` — a hidden element still
+    occupies its box, which is why the single-label version had to pull its one
+    label to the page origin with `position:absolute`, and absolute boxes do not
+    fragment across pages predictably. The
     payload is the **bare code** — no host, no org, no kind token. A sticker in
     a public hallway is an attacker-writable surface, so a URL payload would let
     a forged label send a person to arbitrary content; a bare in-system
@@ -568,13 +586,13 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
     already-authenticated session. It also makes maximum error correction free:
     `DOOR-1` at EC level H is a 21×21 symbol where the URL form needs 41×41.
 
-    Sizes are **millimetres**, not pixels — 2″ × 1″ and 4″ × 2″, the two that
-    exist in both plain and UHF RFID stock — with the per-size `@page` box
-    written imperatively, since `@page` cannot be interpolated from a template
-    or a scoped style block. Both reserve a centred **RFID inlay keep-out** that
-    the artwork straddles (QR one side, text the other), so one layout prints on
-    either medium; the *RFID stock* toggle only reveals the reserved band for
-    checking against a datasheet. Quiet zone is the spec's 4 modules. The
+    Sizes are **millimetres**, not pixels — 2″ × 1″ and 4″ × 2″, both common
+    plain thermal stock. The per-size `@page` box is written imperatively,
+    since `@page` cannot be interpolated from a template or a scoped style
+    block. There is deliberately **no RFID inlay keep-out**: nothing here encodes
+    or reads a tag and no field holds an EPC, so a reserved band was costing the
+    small label a third of its text column for media the platform cannot use.
+    Quiet zone is the spec's 4 modules. The
     human-readable code is not decoration — it is the path for the label that
     won't scan. The customer/org name is deliberately **not** printed: a tenant
     name beside a device naming convention is free reconnaissance.
@@ -923,7 +941,8 @@ you, so pushing an absolute one would make the login form an open redirect (the
 ## Testing
 
 - `cd ui && npm test` — Vitest. Pure logic only, node environment, no component
-  mounting except `ConfirmDialog`, where the DOM contract IS the subject. Covers
+  mounting except `ConfirmDialog` and `QrLabelModal`, where the DOM contract IS
+  the subject. Covers
   the five files `vue-tsc && vite build` cannot protect: `twinDrift`,
   `useSubscriptionManager`, the `can` capability map, dashboard import/export,
   and `createDefaultWidget`. A spec that needs a DOM opts in with

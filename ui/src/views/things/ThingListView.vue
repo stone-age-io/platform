@@ -13,6 +13,7 @@ import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 import ListPager from '@/components/ui/ListPager.vue'
 import ThingMapViz from '@/components/things/ThingMapViz.vue'
+import QrLabelModal from '@/components/common/QrLabelModal.vue'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
@@ -81,6 +82,44 @@ function onSort(next: string) {
 }
 
 const deleting = ref(false)
+
+// Labels for the CURRENT FILTER, not the current page. The search box is the
+// selection mechanism -- row checkboxes would need select-all, select-across-
+// pages and a selection store, for a workflow that is almost always already a
+// filter ("everything at site S01", "the sensors I just imported"). The count
+// rides in the button so the scope is visible before the click.
+//
+// No capability gate: this reads records the caller can already read, so its
+// entry capability is the screen's. A control only needs its own v-if when its
+// rule differs from the one that let the reader in -- which is why Delete has
+// one and this does not.
+const showLabelModal = ref(false)
+const loadingLabels = ref(false)
+const labelRecords = ref<{ code: string; name: string; kind: 'thing' }[]>([])
+
+async function openLabels() {
+  loadingLabels.value = true
+  try {
+    // A fresh getFullList rather than `things`, which holds one page of 20.
+    // Same filter and sort as the list, so the stack comes off the printer in
+    // the order on screen. `fields` keeps it to the two columns a label uses.
+    const all = await pb.collection('things').getFullList<Thing>({
+      filter: searchFilter.value,
+      sort: sort.value || 'name',
+      fields: 'code,name',
+    })
+    labelRecords.value = all.map((t) => ({
+      code: t.code || '',
+      name: t.name || '',
+      kind: 'thing' as const,
+    }))
+    showLabelModal.value = true
+  } catch (err: any) {
+    toast.error(err.message || 'Failed to load things for labels')
+  } finally {
+    loadingLabels.value = false
+  }
+}
 
 // Column configuration for responsive list
 const columns: Column<Thing>[] = [
@@ -234,6 +273,17 @@ onUnmounted(() => {
             🗺️ Map
           </button>
         </div>
+
+        <button
+          v-if="viewMode === 'list' && totalItems > 0"
+          class="btn btn-outline"
+          :disabled="loadingLabels"
+          @click="openLabels"
+        >
+          <span v-if="loadingLabels" class="loading loading-spinner loading-xs"></span>
+          <span v-else>🏷️</span>
+          <span>Labels ({{ totalItems }})</span>
+        </button>
 
         <router-link v-if="canWrite" to="/things/new" class="btn btn-primary w-full sm:w-auto">
           <span class="text-lg">+</span>
@@ -423,5 +473,11 @@ onUnmounted(() => {
     <div v-else-if="viewMode === 'map'">
       <ThingMapViz :search-query="searchQuery" />
     </div>
+
+    <QrLabelModal
+      v-if="showLabelModal"
+      :records="labelRecords"
+      @close="showLabelModal = false"
+    />
   </div>
 </template>

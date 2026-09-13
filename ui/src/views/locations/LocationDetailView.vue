@@ -576,9 +576,7 @@ onUnmounted(() => cleanupMap())
 
       <QrLabelModal
         v-if="showLabelModal"
-        :code="location.code || ''"
-        :name="location.name || ''"
-        kind="location"
+        :records="[{ code: location.code || '', name: location.name || '', kind: 'location' }]"
         @close="showLabelModal = false"
       />
     </template>
