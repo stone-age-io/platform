@@ -22,6 +22,7 @@ const (
 	CertKindCA       = certKindCA
 	CertKindHost     = certKindHost
 	CertExpiryWindow = certExpiryWindow
+	CAExpiryWindow   = caExpiryWindow
 	CertCheckName    = "nebula_cert_expiry"
 )
 

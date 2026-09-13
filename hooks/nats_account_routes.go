@@ -108,24 +108,12 @@ func RegisterNatsAccountRoutes(app *pocketbase.PocketBase, opts NatsAccountRoute
 // route bypasses the rules by design — the whole point is to permit a write the
 // update rule now forbids.
 func resolveOwnOrgNatsAccount(re *core.RequestEvent, opts NatsAccountRoutesOptions) (*core.Record, error) {
-	if re.Auth == nil || re.Auth.Collection().Name != "users" {
-		return nil, re.UnauthorizedError("user authentication required", nil)
-	}
-
-	orgID := re.Auth.GetString("current_organization")
-	if orgID == "" {
-		return nil, re.BadRequestError("no active organization selected", nil)
-	}
-
-	membership, err := re.App.FindFirstRecordByFilter(
-		opts.MembershipCollection,
-		"user = {:user} && organization = {:org} && (role = 'owner' || role = 'admin')",
-		dbx.Params{"user": re.Auth.Id, "org": orgID},
-	)
-	if err != nil || membership == nil {
-		// Same shape as an API-rule rejection: do not distinguish "not a member"
-		// from "insufficient role".
-		return nil, re.ForbiddenError("owner or admin of the active organization required", nil)
+	// Shared with the Nebula routes, which gate on the same owner/admin check.
+	// Two copies of "who may act on their own org infrastructure" is one copy
+	// too many -- it answers the same question for both.
+	orgID, err := requireOwnOrgManager(re, opts.MembershipCollection)
+	if err != nil {
+		return nil, err
 	}
 
 	account, err := re.App.FindFirstRecordByFilter(

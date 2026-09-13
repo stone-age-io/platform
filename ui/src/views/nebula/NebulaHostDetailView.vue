@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { formatDate } from '@/utils/format'
+import { fetchStaleHostIds, expectedCertNetwork } from '@/utils/nebula'
 import type { NebulaHost } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import JsonViewer from '@/components/common/JsonViewer.vue'
@@ -19,8 +20,17 @@ const loading = ref(true)
 const deleting = ref(false)
 const regenerating = ref(false)
 const showRegenerateModal = ref(false)
+const certIsStale = ref(false)
 
 const hostId = route.params.id as string
+
+/**
+ * What the certificate SHOULD say, for the warning below. Presentation only --
+ * the comparison itself happens on the server, against the certificate.
+ */
+const expectedNetwork = computed(() =>
+  expectedCertNetwork(host.value?.overlay_ip, host.value?.expand?.network_id?.cidr_range),
+)
 
 async function loadHost() {
   loading.value = true
@@ -31,9 +41,15 @@ async function loadHost() {
   } catch (err: any) {
     toast.error(err.message || 'Failed to load Nebula host')
     router.push('/nebula/hosts')
+    return
   } finally {
     loading.value = false
   }
+
+  // Advisory, and deliberately not awaited into the loading state: the page is
+  // useful without it, and an unreachable audit endpoint must not blank a host
+  // the operator came here to read.
+  certIsStale.value = (await fetchStaleHostIds()).has(hostId)
 }
 
 async function handleDelete() {
@@ -59,17 +75,29 @@ async function handleDelete() {
   }
 }
 
+/**
+ * Re-issue this host's certificate.
+ *
+ * The field is `renew`, and it used to be `regenerate` -- which is not a field
+ * on nebula_hosts and never has been. PocketBase drops unknown keys from an
+ * update body without complaint, so this button returned 200, toasted
+ * "Certificate regenerated" and did nothing at all, for every release up to
+ * this one. The certificate on screen afterwards was the same certificate.
+ *
+ * `renew` is an action field: pb-nebula re-issues on the false -> true edge and
+ * resets it in the same save, so it never reads back as state.
+ */
 async function confirmRegenerate() {
   if (!host.value) return
 
   regenerating.value = true
   try {
-    await pb.collection('nebula_hosts').update(host.value.id, { regenerate: true })
-    toast.success('Certificate regenerated')
+    await pb.collection('nebula_hosts').update(host.value.id, { renew: true })
+    toast.success('Certificate re-issued — redeploy this host\'s config')
     showRegenerateModal.value = false
     await loadHost()
   } catch (err: any) {
-    toast.error(err.message || 'Failed to regenerate certificate')
+    toast.error(err.message || 'Failed to re-issue certificate')
   } finally {
     regenerating.value = false
   }
@@ -120,6 +148,9 @@ onMounted(() => {
             <span v-if="host.is_lighthouse" class="badge badge-primary badge-outline gap-1">
               🚨 Lighthouse
             </span>
+            <span v-if="host.is_relay" class="badge badge-secondary badge-outline gap-1">
+              ↪️ Relay
+            </span>
           </div>
           <div class="flex gap-2 w-full sm:w-auto">
             <router-link :to="`/nebula/hosts/${host.id}/edit`" class="btn btn-primary flex-1 sm:flex-initial">
@@ -132,6 +163,31 @@ onMounted(() => {
         </div>
       </div>
       
+      <!--
+        The /32 warning. Worth a banner rather than a badge because the failure
+        it describes is invisible from every other angle: the certificate is
+        valid, the config renders, the host starts, the handshake completes, and
+        no traffic moves. Nothing else on this page looks wrong.
+      -->
+      <div v-if="certIsStale" class="alert alert-warning items-start">
+        <span class="text-xl">⚠️</span>
+        <div>
+          <h3 class="font-bold">Certificate does not match this network</h3>
+          <div class="text-sm mt-1">
+            Nebula builds this host's overlay route from the network in its certificate,
+            so a certificate issued at the wrong mask leaves the host unable to reach
+            any peer — with no error anywhere.
+            <template v-if="expectedNetwork">
+              It should carry <code class="font-mono">{{ expectedNetwork }}</code>.
+            </template>
+          </div>
+          <div class="text-sm mt-1">
+            Re-issue it below, then redeploy this host's config.
+          </div>
+        </div>
+        <button class="btn btn-sm" @click="showRegenerateModal = true">Re-issue</button>
+      </div>
+
       <!-- Content Grid -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         
@@ -182,6 +238,53 @@ onMounted(() => {
                   </span>
                 </dd>
               </div>
+
+              <!-- Signed into the certificate, unlike everything below it. -->
+              <div v-if="host.unsafe_networks && host.unsafe_networks.length > 0">
+                <dt class="text-sm font-medium text-base-content/70 mb-1">
+                  Routes To (unsafe networks)
+                </dt>
+                <dd class="flex flex-wrap gap-2">
+                  <code
+                    v-for="net in host.unsafe_networks"
+                    :key="net"
+                    class="text-sm bg-base-200 px-2 py-0.5 rounded font-mono"
+                  >{{ net }}</code>
+                </dd>
+              </div>
+
+              <div v-if="host.unsafe_routes && host.unsafe_routes.length > 0">
+                <dt class="text-sm font-medium text-base-content/70 mb-1">
+                  Routes Via (unsafe routes)
+                </dt>
+                <dd class="space-y-1">
+                  <div v-for="(r, i) in host.unsafe_routes" :key="i" class="text-sm font-mono">
+                    {{ r.route }} <span class="text-base-content/50">via</span> {{ r.via }}
+                  </div>
+                </dd>
+              </div>
+
+              <div v-if="host.preferred_ranges && host.preferred_ranges.length > 0">
+                <dt class="text-sm font-medium text-base-content/70 mb-1">
+                  Preferred Ranges (underlay)
+                </dt>
+                <dd class="flex flex-wrap gap-2">
+                  <code
+                    v-for="range in host.preferred_ranges"
+                    :key="range"
+                    class="text-sm bg-base-200 px-2 py-0.5 rounded font-mono"
+                  >{{ range }}</code>
+                </dd>
+              </div>
+
+              <div v-if="host.mtu || host.tun_device">
+                <dt class="text-sm font-medium text-base-content/70">Transport Overrides</dt>
+                <dd class="mt-1 text-sm font-mono">
+                  <span v-if="host.mtu">MTU {{ host.mtu }}</span>
+                  <span v-if="host.mtu && host.tun_device" class="text-base-content/50"> · </span>
+                  <span v-if="host.tun_device">{{ host.tun_device }}</span>
+                </dd>
+              </div>
             </dl>
           </BaseCard>
 
@@ -222,7 +325,7 @@ onMounted(() => {
                   <button 
                     @click="showRegenerateModal = true" 
                     class="btn btn-sm btn-outline btn-error"
-                    title="Regenerate Certificate"
+                    title="Re-issue certificate"
                   >
                     <span class="text-lg">🔄</span>
                   </button>
@@ -280,10 +383,15 @@ onMounted(() => {
     <!-- Regenerate Modal -->
     <dialog class="modal" :class="{ 'modal-open': showRegenerateModal }">
       <div class="modal-box">
-        <h3 class="font-bold text-lg text-warning">Regenerate Certificate?</h3>
+        <h3 class="font-bold text-lg text-warning">Re-issue Certificate?</h3>
         <p class="py-4">
-          This will invalidate the current certificate and generate a new key pair. You will need to 
-          download the new configuration file and redeploy it to the host.
+          A new key pair and certificate are issued immediately, and this host's config is
+          regenerated around them. The host keeps running on its old certificate until you
+          download the new config and redeploy it.
+        </p>
+        <p class="pb-4 text-sm text-base-content/70">
+          The certificate's fingerprint changes, which is what peers blocklist when a host
+          is deactivated — so re-issue when you intend to redeploy, not to tidy up.
         </p>
         <div class="modal-action">
           <button 
@@ -299,7 +407,7 @@ onMounted(() => {
             :disabled="regenerating"
           >
             <span v-if="regenerating" class="loading loading-spinner"></span>
-            Regenerate
+            Re-issue
           </button>
         </div>
       </div>

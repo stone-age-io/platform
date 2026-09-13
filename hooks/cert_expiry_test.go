@@ -229,6 +229,47 @@ func TestCertExpiryCountsExpiredExpiringAndValid(t *testing.T) {
 	}
 }
 
+// TestCAGetsALongerWarningWindowThanAHost pins the one thing that stops the two
+// windows collapsing back into a shared constant.
+//
+// A host certificate is renewable, and pb-nebula re-issues one automatically
+// once it has burned through its lifetime -- so 30 days is ample. A CA cannot be
+// renewed at all; the only remedy is rotation, which needs a wait in the middle
+// long enough for every host to fetch a config nobody told it to fetch. Nebula's
+// guide asks for two to three months.
+//
+// The certificate used here sits BETWEEN the two windows on purpose. With one
+// shared 30-day constant it reads as healthy, and the console's rotation panel
+// is first offered to an operator who no longer has time to use it.
+func TestCAGetsALongerWarningWindowThanAHost(t *testing.T) {
+	day := 24 * time.Hour
+
+	if hooks.CAExpiryWindow <= hooks.CertExpiryWindow {
+		t.Fatalf("the CA window (%v) must be longer than the host window (%v): "+
+			"a CA cannot be renewed, only rotated, and rotation cannot be hurried",
+			hooks.CAExpiryWindow, hooks.CertExpiryWindow)
+	}
+
+	// 60 days: inside the CA's 90-day window, outside a host's 30-day one.
+	between := 60 * day
+	f := newCertFixture(t, []time.Duration{between}, []time.Duration{between})
+
+	sums, err := hooks.NebulaCertSummaries(f.app, f.opts, f.now)
+	if err != nil {
+		t.Fatalf("summaries: %v", err)
+	}
+	ca, host := sums[0], sums[1]
+
+	if ca.Expiring != 1 {
+		t.Errorf("a CA %v out is not being called out (expiring=%d); by the time it is, "+
+			"rotation no longer fits before the deadline", between, ca.Expiring)
+	}
+	if host.Expiring != 0 {
+		t.Errorf("a host certificate %v out was called out (expiring=%d); it renews itself, "+
+			"and warning this early makes the badge meaningless", between, host.Expiring)
+	}
+}
+
 // A decommissioned device's lapsed certificate is not a fault anyone should be
 // paged about, and active=false is this platform's decommission flag.
 func TestCertExpiryIgnoresDecommissionedHosts(t *testing.T) {

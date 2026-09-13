@@ -261,6 +261,17 @@ export interface NebulaCA extends BaseRecord {
   expires_at?: string
   curve?: string
   organization?: string
+
+  // Rotation. `rotate` is a write-only action field and is never set from the
+  // console -- nebula_ca.updateRule is operator-only, so the three steps go
+  // through POST /api/org/nebula-ca/rotate. The other three are pb-nebula's
+  // output, and rotation state is DERIVED from them rather than stored: an
+  // incoming CA means prepared, an outgoing one means committed. See
+  // caRotationState() in utils/nebula.ts.
+  rotate?: string
+  next_certificate?: string
+  previous_certificate?: string
+  rotated_at?: string
 }
 
 // Nebula Network
@@ -291,6 +302,35 @@ export interface NebulaHost extends AuthRecord {
   active?: boolean
   network_id: string
   organization?: string
+
+  // A relay forwards traffic for peers that cannot reach each other directly.
+  // Config-only -- nothing about relaying reaches the certificate -- but it
+  // still needs a public_host_port, or the host listens on an ephemeral port
+  // while every peer is handed its overlay IP as a usable path.
+  is_relay?: boolean
+
+  // Per-host overrides. Zero and '' mean "inherit the default", which is why
+  // they are optional rather than defaulted here.
+  mtu?: number
+  tun_device?: string
+
+  // The two halves of gateway routing, which live on DIFFERENT hosts and do not
+  // derive one another. unsafe_networks is signed INTO the gateway's
+  // certificate -- Nebula authorizes routing on the certificate, not on config
+  // -- so editing it is inert until a new certificate is issued.
+  unsafe_networks?: string[]
+  // On every host that wants to REACH those subnets. `via` is the gateway's
+  // overlay IP. Plain config, and no peer embeds another host's routes.
+  unsafe_routes?: Array<{ route: string; via: string }>
+
+  // Underlay prefixes this host should favour when a peer advertises several
+  // addresses -- typically the LAN it sits on. IPv6 is allowed here and nowhere
+  // else in the platform, because it constrains the underlay, not the overlay.
+  preferred_ranges?: string[]
+
+  // Action field: set true and pb-nebula re-issues the certificate immediately,
+  // then resets it in the same save. Never read back as state.
+  renew?: boolean
 }
 
 // Audit Log

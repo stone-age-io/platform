@@ -414,6 +414,18 @@ func main() {
 		MembershipCollection:  tenancyOptions.MembershipsCollection,
 	})
 
+	// CA rotation and the host-certificate audit for an org's own overlay. Same
+	// shape again: nebula_ca.updateRule is operator-only, and its comment asked
+	// for a route the day pb-nebula grew a rotation trigger -- which v0.3.0 did.
+	// The audit is here because deciding whether a certificate still matches its
+	// network means parsing a Nebula certificate, which the browser cannot do.
+	hooks.RegisterNebulaRoutes(app, hooks.NebulaRoutesOptions{
+		NebulaCACollection:      nebulaOptions.CACollectionName,
+		NebulaNetworkCollection: nebulaOptions.NetworkCollectionName,
+		NebulaHostCollection:    nebulaOptions.HostCollectionName,
+		MembershipCollection:    tenancyOptions.MembershipsCollection,
+	})
+
 	// Thing creation with optional identity provisioning, in one transaction. The
 	// console used to do this in three unguarded calls, so a late failure orphaned
 	// a signed NATS credential; it also never set `active`, so every Thing it made
