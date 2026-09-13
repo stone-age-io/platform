@@ -95,14 +95,18 @@ checksum:
   name_template: 'checksums.txt'
   algorithm: sha256
 
+# The release body is NOT built here. goreleaser's changelog is a list of commit
+# subjects, and this repo's reasoning lives in CHANGELOG.md as paragraphs -- with
+# upgrade notes that exist nowhere in the commit log. scripts/release-notes.sh
+# assembles the body (install prose + the changelog section for the tag) and the
+# release workflow passes it with --release-notes.
+#
+# Disabled rather than left at its default so the two cannot disagree: a body
+# assembled both here and there is a body that drifts. The install prose that
+# used to live in release.header/release.footer moved into that script for the
+# same reason.
 changelog:
-  sort: asc
-  filters:
-    exclude:
-      - '^docs:'
-      - '^test:'
-      - '^chore:'
-      - '^ci:'
+  disable: true
 
 release:
   github:
@@ -113,28 +117,3 @@ release:
   # "Latest" on the repository front page and hand it to anyone following the
   # releases feed.
   prerelease: auto
-  header: |
-    ## Stone Age Platform {{ .Tag }}
-
-    Two binaries:
-
-    - **`stone-age`** — the control plane. One process: REST API, embedded Vue
-      console, SQLite, and (with `--nats`) the NATS server itself.
-    - **`leaf-sync`** — the edge agent. Mirrors an organization's configuration
-      into a NATS leaf node's local JetStream KV, and optionally runs that leaf
-      node in-process.
-
-    Or run the container, which needs no toolchain at all:
-
-    ```
-    docker run -d -p 8090:8090 -p 4222:4222 -p 9222:9222 \
-      -v stone-age-data:/data \
-      -e STONE_AGE_BOOTSTRAP_PASSWORD='change-me-8-chars-min' \
-      -e STONE_AGE_NATS_WEBSOCKET_URLS='ws://localhost:9222' \
-      ghcr.io/stone-age-io/platform:{{ .Tag }}
-    ```
-  footer: |
-    Pre-1.0: treat a minor version as potentially breaking, and pin what you
-    deploy.
-
-    **Full changelog**: https://github.com/stone-age-io/platform/commits/{{ .Tag }}
