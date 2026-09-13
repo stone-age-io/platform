@@ -191,7 +191,7 @@ function removeItemChild(i: number) {
 
     <!-- Nested: object -->
     <div v-if="modelValue.type === 'object'" class="pl-3 border-l-2 border-base-300 space-y-2">
-      <div class="text-xs font-semibold uppercase tracking-wide opacity-60">Properties</div>
+      <div class="text-xs font-semibold uppercase tracking-wide text-base-content/60">Properties</div>
       <div v-if="modelValue.children.length === 0" class="text-xs text-base-content/60 italic">
         No properties yet.
       </div>
@@ -243,7 +243,7 @@ function removeItemChild(i: number) {
       </div>
 
       <template v-if="modelValue.itemType === 'object'">
-        <div class="text-xs font-semibold uppercase tracking-wide opacity-60">Item Properties</div>
+        <div class="text-xs font-semibold uppercase tracking-wide text-base-content/60">Item Properties</div>
         <div v-if="modelValue.itemChildren.length === 0" class="text-xs text-base-content/60 italic">
           No properties yet.
         </div>

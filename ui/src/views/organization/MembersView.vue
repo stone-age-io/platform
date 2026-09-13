@@ -243,7 +243,7 @@ onUnmounted(() => {
         
         <!-- Custom cell for email -->
         <template #cell-expand.user.email="{ item }">
-          <span class="opacity-70 text-sm">{{ item.expand?.user?.email }}</span>
+          <span class="text-base-content/70 text-sm">{{ item.expand?.user?.email }}</span>
         </template>
         
         <!-- Custom cell for role -->

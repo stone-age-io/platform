@@ -3,6 +3,8 @@
 
 import { computed } from 'vue'
 
+import { NULL_DISPLAY } from '@/utils/tableColumns'
+
 export interface Column<T = any> {
   key: string
   label: string
@@ -54,6 +56,32 @@ const emit = defineEmits<{
 
 function get(obj: any, path: string): any {
   return path.split('.').reduce((acc, part) => acc?.[part], obj)
+}
+
+// A cell's text, and whether what came back was nothing.
+//
+// The placeholder is NULL_DISPLAY rather than a local literal so the list
+// tables and the dashboard table widgets agree on what "no value" looks like --
+// this used to print "-" here and "—" there, in the same theme, three clicks
+// apart. Blank cells also render at a third of the contrast: in a table with a
+// sparse column, a full-strength dash reads as data and is the thing your eye
+// lands on, which is exactly backwards.
+//
+// Two functions rather than one returning a pair, because a template cannot
+// destructure a call. Both are cheap and neither touches the DOM.
+function formatted(col: Column<T>, item: T): unknown {
+  const raw = get(item, col.key)
+  return col.format ? col.format(raw, item) : raw
+}
+
+function cellBlank(col: Column<T>, item: T): boolean {
+  const out = formatted(col, item)
+  return out === null || out === undefined || out === ''
+}
+
+function cellText(col: Column<T>, item: T): string {
+  const out = formatted(col, item)
+  return cellBlank(col, item) ? NULL_DISPLAY : String(out)
 }
 
 // The desktop table is `table-fixed`: a column's width comes from its <th>, NOT
@@ -128,7 +156,15 @@ function handleClick(item: T) {
 </script>
 
 <template>
-  <div class="w-full">
+  <!--
+    tabular-nums on the root, so it reaches the desktop table and the mobile
+    cards from one place (font-variant-numeric inherits). Every column in this
+    app that a reader scans DOWN is numeric -- dates, byte counts, stream
+    sequences, revisions, RTT -- and proportional digits make those ragged,
+    which is most of why a dense table looks unsettled. It only changes digit
+    advance widths, so slotted text is unaffected.
+  -->
+  <div class="w-full tabular-nums">
     <!-- 1. DESKTOP VIEW: Table -->
     <div class="hidden lg:block overflow-x-auto">
       <table class="table table-sm w-full table-fixed">
@@ -171,8 +207,8 @@ function handleClick(item: T) {
             <td v-for="col in columns" :key="col.key" :class="col.class" class="py-3">
               <div class="min-w-0 break-words">
                 <slot :name="`cell-${col.key}`" :item="item" :value="get(item, col.key)">
-                  <span class="text-sm">
-                    {{ col.format ? col.format(get(item, col.key), item) : get(item, col.key) || '-' }}
+                  <span class="text-sm" :class="{ 'text-base-content/40': cellBlank(col, item) }">
+                    {{ cellText(col, item) }}
                   </span>
                 </slot>
               </div>
@@ -190,7 +226,7 @@ function handleClick(item: T) {
     <!-- 2. MOBILE VIEW: High-Density Cards -->
     <div class="lg:hidden space-y-2">
       <div v-if="sortableColumns.length" class="flex items-center gap-2 pb-1">
-        <span class="text-[10px] uppercase font-bold opacity-50 tracking-tight shrink-0">Sort</span>
+        <span class="text-[10px] uppercase font-bold text-base-content/50 tracking-tight shrink-0">Sort</span>
         <select
           class="select select-xs select-bordered flex-1"
           aria-label="Sort by"
@@ -260,8 +296,8 @@ function handleClick(item: T) {
               <div class="flex-1 truncate">
                 <slot :name="`card-${col.key}`" :item="item" :value="get(item, col.key)">
                   <slot :name="`cell-${col.key}`" :item="item" :value="get(item, col.key)">
-                    <span class="text-xs font-medium text-base-content/80">
-                      {{ col.format ? col.format(get(item, col.key), item) : get(item, col.key) || '-' }}
+                    <span class="text-xs font-medium" :class="cellBlank(col, item) ? 'text-base-content/40' : 'text-base-content/80'">
+                      {{ cellText(col, item) }}
                     </span>
                   </slot>
                 </slot>

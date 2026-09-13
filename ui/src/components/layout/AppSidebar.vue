@@ -455,7 +455,7 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
                 :data-tip="item.label"
               ></div>
 
-              <span class="text-lg opacity-80 w-6 text-center">{{ item.icon }}</span>
+              <span class="text-lg text-base-content/80 w-6 text-center">{{ item.icon }}</span>
               <span v-show="!effectiveCompact" class="font-medium truncate">{{ item.label }}</span>
             </summary>
 
@@ -488,7 +488,7 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
               :data-tip="item.label"
             ></div>
 
-            <span class="text-lg opacity-80 w-6 text-center">{{ item.icon }}</span>
+            <span class="text-lg text-base-content/80 w-6 text-center">{{ item.icon }}</span>
             <span v-show="!effectiveCompact" class="font-medium truncate">{{ item.label }}</span>
           </router-link>
         </li>
@@ -646,11 +646,11 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
             <!-- Stats -->
             <div class="grid grid-cols-2 gap-3">
               <div class="bg-base-200 rounded-box p-3 text-center">
-                <div class="text-xs opacity-60 mb-1">RTT</div>
+                <div class="text-xs text-base-content/60 mb-1">RTT</div>
                 <div class="text-xl font-mono font-semibold">{{ natsStore.rtt ?? '—' }}<span class="text-sm opacity-60">ms</span></div>
               </div>
               <div class="bg-base-200 rounded-box p-3 text-center">
-                <div class="text-xs opacity-60 mb-1">Server</div>
+                <div class="text-xs text-base-content/60 mb-1">Server</div>
                 <div class="text-sm font-mono text-primary break-all">{{ natsStore.nc?.getServer() || 'Unknown' }}</div>
               </div>
             </div>
@@ -662,7 +662,7 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
                 class="w-full flex items-center justify-between p-3 text-sm font-medium hover:bg-base-300 transition-colors"
               >
                 <span>Server Info</span>
-                <span class="text-xs opacity-60">{{ showServerInfo ? '▲' : '▼' }}</span>
+                <span class="text-xs text-base-content/60">{{ showServerInfo ? '▲' : '▼' }}</span>
               </button>
               <div v-show="showServerInfo" class="border-t border-base-300">
                 <pre class="p-3 text-xs overflow-x-auto"><code>{{ serverInfoJson }}</code></pre>
@@ -672,7 +672,7 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
 
           <!-- Disconnected State -->
           <div v-else-if="natsStore.status === 'disconnected'" class="text-center py-8">
-            <span class="text-4xl opacity-40">🔌</span>
+            <span class="text-4xl text-base-content/40">🔌</span>
             <p class="text-sm opacity-60 mt-2">
               {{ authStore.currentMembership?.nats_user
                 ? 'Click Connect to establish a connection.'

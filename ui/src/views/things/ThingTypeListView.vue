@@ -185,14 +185,14 @@ onUnmounted(() => {
       >
         <template #cell-code="{ item }">
           <code v-if="item.code" class="bg-base-200 px-1 rounded text-xs">{{ item.code }}</code>
-          <span v-else class="text-base-content/40">-</span>
+          <span v-else class="text-base-content/40">—</span>
         </template>
 
         <template #cell-operations="{ item }">
           <span v-if="item.operations?.length" class="badge badge-sm">
             {{ item.operations.length }}
           </span>
-          <span v-else class="text-base-content/40 text-xs">-</span>
+          <span v-else class="text-base-content/40 text-xs">—</span>
         </template>
 
         <template #actions="{ item }">

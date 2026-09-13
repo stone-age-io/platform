@@ -216,7 +216,7 @@ onMounted(loadData)
                     </div>
                   </div>
                   <div class="flex flex-col">
-                    <span class="text-xs opacity-60">Invited By</span>
+                    <span class="text-xs text-base-content/60">Invited By</span>
                     <span class="text-sm font-bold">{{ membership.expand.invited_by.name || membership.expand.invited_by.email }}</span>
                   </div>
                 </div>
@@ -312,9 +312,9 @@ onMounted(loadData)
               </div>
 
               <div v-else class="flex flex-col items-center justify-center py-10 border-2 border-dashed border-base-300 rounded-xl bg-base-200/30">
-                <span class="text-4xl mb-2 opacity-20">📡</span>
-                <span class="text-xs font-bold opacity-40 uppercase tracking-widest">Offline Mode</span>
-                <p class="text-[10px] opacity-40 mt-1">No operational identity assigned</p>
+                <span class="text-4xl mb-2 text-base-content/20">📡</span>
+                <span class="text-xs font-bold text-base-content/40 uppercase tracking-widest">Offline Mode</span>
+                <p class="text-[10px] text-base-content/40 mt-1">No operational identity assigned</p>
               </div>
             </div>
           </BaseCard>

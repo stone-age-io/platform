@@ -8,6 +8,7 @@ import { formatDate } from '@/utils/format'
 import type { NatsUser } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import { useEscapeKey } from '@/composables/useEscapeKey'
+import SubjectChip from '@/components/common/SubjectChip.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -256,7 +257,7 @@ useEscapeKey(showReenableModal, () => { showReenableModal.value = false })
                   >
                     📡 {{ user.expand.account_id.name }}
                   </router-link>
-                  <span v-else class="text-sm text-base-content/40">-</span>
+                  <span v-else class="text-sm text-base-content/40">—</span>
                 </dd>
               </div>
               
@@ -270,7 +271,7 @@ useEscapeKey(showReenableModal, () => { showReenableModal.value = false })
                   >
                     🎭 {{ user.expand.role_id.name }}
                   </router-link>
-                  <span v-else class="text-sm text-base-content/40">-</span>
+                  <span v-else class="text-sm text-base-content/40">—</span>
                 </dd>
               </div>
 
@@ -294,13 +295,13 @@ useEscapeKey(showReenableModal, () => { showReenableModal.value = false })
                 <div v-if="getSubjectArray(user.publish_permissions).length">
                   <span class="text-xs text-base-content/50">Allow:</span>
                   <div class="flex flex-wrap gap-1 mt-1">
-                    <code v-for="s in getSubjectArray(user.publish_permissions)" :key="s" class="badge badge-outline font-mono text-xs h-auto py-1 px-2">{{ s }}</code>
+                    <SubjectChip v-for="s in getSubjectArray(user.publish_permissions)" :key="s" :subject="s" />
                   </div>
                 </div>
                 <div v-if="getSubjectArray(user.publish_deny_permissions).length">
                   <span class="text-xs text-base-content/50">Deny:</span>
                   <div class="flex flex-wrap gap-1 mt-1">
-                    <code v-for="s in getSubjectArray(user.publish_deny_permissions)" :key="s" class="badge badge-error badge-outline font-mono text-xs h-auto py-1 px-2">{{ s }}</code>
+                    <SubjectChip v-for="s in getSubjectArray(user.publish_deny_permissions)" :key="s" :subject="s" deny />
                   </div>
                 </div>
               </div>
@@ -315,13 +316,13 @@ useEscapeKey(showReenableModal, () => { showReenableModal.value = false })
                 <div v-if="getSubjectArray(user.subscribe_permissions).length">
                   <span class="text-xs text-base-content/50">Allow:</span>
                   <div class="flex flex-wrap gap-1 mt-1">
-                    <code v-for="s in getSubjectArray(user.subscribe_permissions)" :key="s" class="badge badge-outline font-mono text-xs h-auto py-1 px-2">{{ s }}</code>
+                    <SubjectChip v-for="s in getSubjectArray(user.subscribe_permissions)" :key="s" :subject="s" />
                   </div>
                 </div>
                 <div v-if="getSubjectArray(user.subscribe_deny_permissions).length">
                   <span class="text-xs text-base-content/50">Deny:</span>
                   <div class="flex flex-wrap gap-1 mt-1">
-                    <code v-for="s in getSubjectArray(user.subscribe_deny_permissions)" :key="s" class="badge badge-error badge-outline font-mono text-xs h-auto py-1 px-2">{{ s }}</code>
+                    <SubjectChip v-for="s in getSubjectArray(user.subscribe_deny_permissions)" :key="s" :subject="s" deny />
                   </div>
                 </div>
               </div>

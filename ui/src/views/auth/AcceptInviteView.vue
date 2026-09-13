@@ -157,7 +157,7 @@ async function handleAction() {
             <span v-if="loading" class="loading loading-spinner"></span>
             Join Organization
           </button>
-          <div class="divider text-xs opacity-50">OR</div>
+          <div class="divider text-xs text-base-content/50">OR</div>
           <button @click="authStore.logout()" class="btn btn-ghost btn-sm">
             Log out to use a different account
           </button>

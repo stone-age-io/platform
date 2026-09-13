@@ -7,6 +7,7 @@ import { useConfirm } from '@/composables/useConfirm'
 import { formatDate, formatBytes } from '@/utils/format'
 import type { NatsRole } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import SubjectChip from '@/components/common/SubjectChip.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -171,14 +172,14 @@ onMounted(loadRole)
                 <div>
                   <span class="text-xs text-base-content/50">Allow</span>
                   <div v-if="getSubjectArray(role.publish_permissions).length" class="flex flex-wrap gap-1.5 mt-1">
-                    <code v-for="s in getSubjectArray(role.publish_permissions)" :key="s" class="badge badge-outline font-mono text-xs h-auto py-1.5 px-2">{{ s }}</code>
+                    <SubjectChip v-for="s in getSubjectArray(role.publish_permissions)" :key="s" :subject="s" />
                   </div>
                   <div v-else class="text-xs text-base-content/40 italic mt-1">None</div>
                 </div>
                 <div>
                   <span class="text-xs text-base-content/50">Deny</span>
                   <div v-if="getSubjectArray(role.publish_deny_permissions).length" class="flex flex-wrap gap-1.5 mt-1">
-                    <code v-for="s in getSubjectArray(role.publish_deny_permissions)" :key="s" class="badge badge-error badge-outline font-mono text-xs h-auto py-1.5 px-2">{{ s }}</code>
+                    <SubjectChip v-for="s in getSubjectArray(role.publish_deny_permissions)" :key="s" :subject="s" deny />
                   </div>
                   <div v-else class="text-xs text-base-content/40 italic mt-1">None</div>
                 </div>
@@ -195,14 +196,14 @@ onMounted(loadRole)
                 <div>
                   <span class="text-xs text-base-content/50">Allow</span>
                   <div v-if="getSubjectArray(role.subscribe_permissions).length" class="flex flex-wrap gap-1.5 mt-1">
-                    <code v-for="s in getSubjectArray(role.subscribe_permissions)" :key="s" class="badge badge-outline font-mono text-xs h-auto py-1.5 px-2">{{ s }}</code>
+                    <SubjectChip v-for="s in getSubjectArray(role.subscribe_permissions)" :key="s" :subject="s" />
                   </div>
                   <div v-else class="text-xs text-base-content/40 italic mt-1">None</div>
                 </div>
                 <div>
                   <span class="text-xs text-base-content/50">Deny</span>
                   <div v-if="getSubjectArray(role.subscribe_deny_permissions).length" class="flex flex-wrap gap-1.5 mt-1">
-                    <code v-for="s in getSubjectArray(role.subscribe_deny_permissions)" :key="s" class="badge badge-error badge-outline font-mono text-xs h-auto py-1.5 px-2">{{ s }}</code>
+                    <SubjectChip v-for="s in getSubjectArray(role.subscribe_deny_permissions)" :key="s" :subject="s" deny />
                   </div>
                   <div v-else class="text-xs text-base-content/40 italic mt-1">None</div>
                 </div>

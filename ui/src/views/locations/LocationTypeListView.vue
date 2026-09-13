@@ -191,12 +191,12 @@ onUnmounted(() => {
       >
         <template #cell-description="{ item }">
           <div v-if="item.description" :title="item.description" class="text-sm text-base-content/70 line-clamp-1">{{ item.description }}</div>
-          <span v-else class="text-base-content/40">-</span>
+          <span v-else class="text-base-content/40">—</span>
         </template>
 
         <template #cell-code="{ item }">
           <code v-if="item.code" class="bg-base-200 px-1 rounded text-xs">{{ item.code }}</code>
-          <span v-else class="text-base-content/40">-</span>
+          <span v-else class="text-base-content/40">—</span>
         </template>
 
         <template #actions="{ item }">

@@ -348,7 +348,7 @@ onUnmounted(() => {
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <!-- Before -->
             <div>
-              <h4 class="font-bold text-sm mb-2 opacity-70">Before Changes</h4>
+              <h4 class="font-bold text-sm mb-2 text-base-content/70">Before Changes</h4>
               <div v-if="selectedLog.before_changes && Object.keys(selectedLog.before_changes).length" 
                    class="mockup-code bg-base-300 text-xs min-h-[100px]">
                 <pre><code>{{ JSON.stringify(selectedLog.before_changes, null, 2) }}</code></pre>
@@ -360,7 +360,7 @@ onUnmounted(() => {
 
             <!-- After -->
             <div>
-              <h4 class="font-bold text-sm mb-2 opacity-70">After Changes</h4>
+              <h4 class="font-bold text-sm mb-2 text-base-content/70">After Changes</h4>
               <div v-if="selectedLog.after_changes && Object.keys(selectedLog.after_changes).length" 
                    class="mockup-code bg-base-300 text-xs min-h-[100px]">
                 <pre><code>{{ JSON.stringify(selectedLog.after_changes, null, 2) }}</code></pre>

@@ -82,7 +82,7 @@
               </span>
             </div>
           </div>
-          <div v-if="flattenedPbItems.length === 0" class="text-xs opacity-50 italic">No records</div>
+          <div v-if="flattenedPbItems.length === 0" class="text-xs text-base-content/50 italic">No records</div>
         </div>
 
         <!-- Publish Status -->

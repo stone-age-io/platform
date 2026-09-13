@@ -365,7 +365,7 @@ onUnmounted(() => cleanupMap())
                   <dt class="text-sm font-medium text-base-content/70">Code</dt>
                   <dd class="mt-1">
                     <code v-if="location.code" class="text-sm bg-base-200 px-2 py-0.5 rounded font-mono">{{ location.code }}</code>
-                    <span v-else class="text-sm text-base-content/40">-</span>
+                    <span v-else class="text-sm text-base-content/40">—</span>
                   </dd>
                 </div>
                 <div>
@@ -438,11 +438,11 @@ onUnmounted(() => cleanupMap())
             <div v-show="location.coordinates && activeTab === 'coordinates'" class="p-4 flex-grow flex flex-col gap-4">
               <div v-if="location.coordinates" class="grid grid-cols-2 gap-2 text-center">
                 <div class="bg-base-200 rounded p-2">
-                  <span class="block text-[10px] uppercase opacity-50 font-bold">Latitude</span>
+                  <span class="block text-[10px] uppercase text-base-content/50 font-bold">Latitude</span>
                   <span class="font-mono text-xs">{{ location.coordinates.lat }}</span>
                 </div>
                 <div class="bg-base-200 rounded p-2">
-                  <span class="block text-[10px] uppercase opacity-50 font-bold">Longitude</span>
+                  <span class="block text-[10px] uppercase text-base-content/50 font-bold">Longitude</span>
                   <span class="font-mono text-xs">{{ location.coordinates.lon }}</span>
                 </div>
               </div>
@@ -462,7 +462,7 @@ onUnmounted(() => cleanupMap())
 
             <!-- Empty state: neither floorplan nor coordinates -->
             <div v-if="!location.floorplan && !location.coordinates" class="flex-grow flex flex-col items-center justify-center p-8 text-center">
-              <span class="text-6xl mb-4 opacity-30">🗺️</span>
+              <span class="text-6xl mb-4 text-base-content/30">🗺️</span>
               <h3 class="font-bold opacity-60">No Map or Floor Plan</h3>
               <p class="text-sm opacity-50 mb-4 max-w-sm">
                 {{ canEditMetadata

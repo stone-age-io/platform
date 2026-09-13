@@ -475,7 +475,7 @@ onMounted(() => {
               <div class="space-y-3">
                 <div class="flex items-center gap-2">
                   <span class="text-sm">📤</span>
-                  <h4 class="text-xs font-black uppercase opacity-50 tracking-widest">Publishing</h4>
+                  <h4 class="text-xs font-black uppercase text-base-content/50 tracking-widest">Publishing</h4>
                 </div>
                 <div class="form-control">
                   <label class="label py-1"><span class="label-text text-xs">Allow Subjects</span></label>
@@ -492,7 +492,7 @@ onMounted(() => {
               <div class="space-y-3">
                 <div class="flex items-center gap-2">
                   <span class="text-sm">📥</span>
-                  <h4 class="text-xs font-black uppercase opacity-50 tracking-widest">Subscribing</h4>
+                  <h4 class="text-xs font-black uppercase text-base-content/50 tracking-widest">Subscribing</h4>
                 </div>
                 <div class="form-control">
                   <label class="label py-1"><span class="label-text text-xs">Allow Subjects</span></label>

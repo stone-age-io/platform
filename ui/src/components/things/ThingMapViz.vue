@@ -162,8 +162,8 @@ onUnmounted(() => {
       <div class="badge badge-lg bg-base-100/90 backdrop-blur border-base-300 shadow-sm gap-2">
         <span>📦</span>
         <span class="font-bold">{{ filteredThings.length }}</span>
-        <span v-if="props.searchQuery && filteredThings.length !== mappableThings.length" class="text-xs opacity-70">of {{ mappableThings.length }} mapped</span>
-        <span v-else class="text-xs opacity-70">mapped</span>
+        <span v-if="props.searchQuery && filteredThings.length !== mappableThings.length" class="text-xs text-base-content/70">of {{ mappableThings.length }} mapped</span>
+        <span v-else class="text-xs text-base-content/70">mapped</span>
       </div>
     </div>
 

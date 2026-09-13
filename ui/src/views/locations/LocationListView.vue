@@ -278,23 +278,23 @@ onUnmounted(() => {
             </template>
 
             <template #cell-expand.type.name="{ item }">
-              <span v-if="item.expand?.type" class="badge badge-ghost">{{ item.expand.type.name }}</span>
-              <span v-else class="text-base-content/40">-</span>
+              <span v-if="item.expand?.type" class="badge badge-ghost badge-sm">{{ item.expand.type.name }}</span>
+              <span v-else class="text-base-content/40">—</span>
             </template>
 
             <template #cell-expand.parent.name="{ item }">
-              <span v-if="item.expand?.parent" class="text-sm opacity-80">{{ item.expand.parent.name }}</span>
+              <span v-if="item.expand?.parent" class="text-sm text-base-content/80">{{ item.expand.parent.name }}</span>
               <span v-else class="text-base-content/30 text-xs italic">Root</span>
             </template>
 
             <template #card-expand.type.name="{ item }">
               <span v-if="item.expand?.type" class="badge badge-ghost badge-sm">{{ item.expand.type.name }}</span>
-              <span v-else>-</span>
+              <span v-else class="text-base-content/40">—</span>
             </template>
 
             <template #cell-code="{ item }">
               <code v-if="item.code" class="text-xs bg-base-200 px-1 py-0.5 rounded">{{ item.code }}</code>
-              <span v-else class="text-base-content/40">-</span>
+              <span v-else class="text-base-content/40">—</span>
             </template>
 
             <template #actions="{ item }">

@@ -711,13 +711,13 @@ function previewValue(val: any): string {
                 </td>
                 <td class="py-3 align-top">
                   <div class="flex items-center gap-2 min-w-0">
-                    <span v-if="!isReported(item.key)" class="text-[10px] italic opacity-40">awaiting device</span>
+                    <span v-if="!isReported(item.key)" class="text-[10px] italic text-base-content/40">awaiting device</span>
                     <span v-else-if="typeof item.value === 'boolean'" class="badge badge-sm" :class="item.value ? 'badge-success' : 'badge-ghost'">
                       {{ item.value ? 'TRUE' : 'FALSE' }}
                     </span>
                     <span v-else-if="item.value === null" class="badge badge-sm badge-ghost">null</span>
                     <span v-else-if="typeof item.value === 'number'" class="text-xs font-mono font-medium">{{ item.value }}</span>
-                    <span v-else-if="isObject(item.value)" class="text-[10px] font-mono opacity-70 truncate block max-w-xs">{{ JSON.stringify(item.value) }}</span>
+                    <span v-else-if="isObject(item.value)" class="text-[10px] font-mono text-base-content/70 truncate block max-w-xs">{{ JSON.stringify(item.value) }}</span>
                     <span v-else class="text-xs font-medium truncate block max-w-xs">{{ item.value }}</span>
 
                     <!-- Twin marker: only rows that carry an assertion show one,
@@ -729,7 +729,7 @@ function previewValue(val: any): string {
                     <span v-if="item.twin" class="flex items-center gap-1.5 shrink-0 ml-auto pl-2">
                       <span v-if="item.twin.agrees" class="text-success leading-none" :title="item.twin.title">✓</span>
                       <template v-else>
-                        <span class="opacity-30 text-xs">→</span>
+                        <span class="text-base-content/30 text-xs">→</span>
                         <span
                           v-if="item.twin.inline !== null"
                           class="font-mono text-xs font-semibold text-warning truncate max-w-[12rem]"
@@ -773,15 +773,15 @@ function previewValue(val: any): string {
                 :class="row.isLeaf ? 'font-semibold text-primary group-hover:underline' : 'font-bold opacity-70'"
               >{{ row.node.name }}</span>
               <template v-if="row.isLeaf && row.node.entry">
-                <span class="opacity-30 text-xs shrink-0">=</span>
+                <span class="text-base-content/30 text-xs shrink-0">=</span>
                 <!-- Desired-only rows have no reported value; without this they
                      render as a blank cell after the `=`. -->
-                <span v-if="!isReported(row.node.entry.key)" class="text-[10px] italic opacity-40 shrink-0">awaiting device</span>
+                <span v-if="!isReported(row.node.entry.key)" class="text-[10px] italic text-base-content/40 shrink-0">awaiting device</span>
                 <span v-else-if="typeof row.node.entry.value === 'boolean'" class="badge badge-sm shrink-0" :class="row.node.entry.value ? 'badge-success' : 'badge-ghost'">
                   {{ row.node.entry.value ? 'TRUE' : 'FALSE' }}
                 </span>
                 <span v-else-if="row.node.entry.value === null" class="badge badge-sm badge-ghost shrink-0">null</span>
-                <span v-else class="text-xs opacity-70 truncate min-w-0 flex-1 font-mono">{{ previewValue(row.node.entry.value) }}</span>
+                <span v-else class="text-xs text-base-content/70 truncate min-w-0 flex-1 font-mono">{{ previewValue(row.node.entry.value) }}</span>
                 <!-- Marker and revision travel together in one right-anchored
                      group. Two separate `ml-auto` siblings would split the free
                      space between them instead of both hugging the right edge,
@@ -790,7 +790,7 @@ function previewValue(val: any): string {
                   <template v-if="row.node.entry.twin">
                     <span v-if="row.node.entry.twin.agrees" class="text-success leading-none" :title="row.node.entry.twin.title">✓</span>
                     <template v-else>
-                      <span class="opacity-30 text-xs">→</span>
+                      <span class="text-base-content/30 text-xs">→</span>
                       <span
                         v-if="row.node.entry.twin.inline !== null"
                         class="font-mono text-xs font-semibold text-warning truncate max-w-[12rem]"
@@ -799,10 +799,10 @@ function previewValue(val: any): string {
                       <span v-else class="badge badge-warning badge-xs" :title="row.node.entry.twin.title">{{ row.node.entry.twin.badge }}</span>
                     </template>
                   </template>
-                  <span class="text-[10px] opacity-30 font-mono">r{{ row.node.entry.revision }}</span>
+                  <span class="text-[10px] text-base-content/30 font-mono">r{{ row.node.entry.revision }}</span>
                 </span>
               </template>
-              <span v-else class="text-[10px] opacity-40 ml-auto shrink-0 font-mono">{{ row.node.children.length }}</span>
+              <span v-else class="text-[10px] text-base-content/40 ml-auto shrink-0 font-mono">{{ row.node.children.length }}</span>
             </li>
             <li v-if="flatTree.length === 0" class="py-20 text-center opacity-30 italic text-sm">
               {{ emptyMessage }}
@@ -875,13 +875,13 @@ function previewValue(val: any): string {
                 </p>
                 <div v-else class="grid grid-cols-[auto_1fr_auto_1fr] gap-x-2 gap-y-1 items-baseline">
                   <span></span>
-                  <span class="text-[9px] uppercase tracking-widest opacity-50">Reported</span>
+                  <span class="text-[9px] uppercase tracking-widest text-base-content/50">Reported</span>
                   <span></span>
-                  <span class="text-[9px] uppercase tracking-widest opacity-50">Desired</span>
+                  <span class="text-[9px] uppercase tracking-widest text-base-content/50">Desired</span>
                   <template v-for="p in selectedDriftPairs" :key="p.path">
-                    <span class="font-mono text-[11px] opacity-50 break-all">{{ p.path }}</span>
-                    <span class="font-mono text-[11px] opacity-80 break-all">{{ previewValue(p.reported) }}</span>
-                    <span class="opacity-30 text-[11px]">→</span>
+                    <span class="font-mono text-[11px] text-base-content/50 break-all">{{ p.path }}</span>
+                    <span class="font-mono text-[11px] text-base-content/80 break-all">{{ previewValue(p.reported) }}</span>
+                    <span class="text-base-content/30 text-[11px]">→</span>
                     <span class="font-mono text-[11px] font-semibold text-warning break-all">{{ previewValue(p.desired) }}</span>
                   </template>
                 </div>
@@ -968,7 +968,7 @@ function previewValue(val: any): string {
                 </div>
 
                 <div v-if="historyLoading" class="flex justify-center"><span class="loading loading-dots loading-xs"></span></div>
-                <div v-else-if="historyEntries.length === 0" class="text-center text-[10px] opacity-30 italic py-4">No history</div>
+                <div v-else-if="historyEntries.length === 0" class="text-center text-[10px] text-base-content/30 italic py-4">No history</div>
                 <div v-else class="space-y-2">
                   <div
                     v-for="rev in historyEntries"
@@ -985,11 +985,11 @@ function previewValue(val: any): string {
                       <span class="text-[10px] opacity-50 w-3 shrink-0">
                         <template v-if="rev.operation !== 'DEL' && rev.operation !== 'PURGE'">{{ expandedRevisions.has(rev.id) ? '▾' : '▸' }}</template>
                       </span>
-                      <span class="text-[10px] font-bold opacity-70 shrink-0">REV #{{ rev.revision }}</span>
+                      <span class="text-[10px] font-bold text-base-content/70 shrink-0">REV #{{ rev.revision }}</span>
                       <span v-if="rev.revision === selectedEntry?.revision" class="badge badge-xs badge-primary badge-outline shrink-0">current</span>
                       <span v-if="rev.operation === 'DEL' || rev.operation === 'PURGE'" class="badge badge-xs badge-ghost shrink-0">{{ rev.operation }}</span>
-                      <span v-else class="text-[10px] font-mono opacity-60 truncate min-w-0 flex-1">{{ previewValue(rev.value) }}</span>
-                      <span class="text-[10px] font-mono opacity-50 shrink-0" :title="formatDate(rev.created)">{{ formatRelativeTime(rev.created) }}</span>
+                      <span v-else class="text-[10px] font-mono text-base-content/60 truncate min-w-0 flex-1">{{ previewValue(rev.value) }}</span>
+                      <span class="text-[10px] font-mono text-base-content/50 shrink-0" :title="formatDate(rev.created)">{{ formatRelativeTime(rev.created) }}</span>
                     </div>
 
                     <!-- Expanded full value -->

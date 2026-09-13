@@ -249,7 +249,7 @@ watch(() => authStore.currentOrgId, loadIdentities)
         <div class="flex justify-between items-center mb-2">
           <h3 class="card-title">Public Profile</h3>
           <div class="flex items-center gap-2">
-            <span class="text-xs font-medium opacity-60">Dark Mode</span>
+            <span class="text-xs font-medium text-base-content/60">Dark Mode</span>
             <input 
               type="checkbox" 
               class="toggle toggle-sm toggle-primary" 
@@ -300,7 +300,7 @@ watch(() => authStore.currentOrgId, loadIdentities)
           <div class="flex justify-between items-center mb-2">
             <div>
               <h3 class="card-title">Context: {{ authStore.currentOrg?.name }}</h3>
-              <p class="text-xs opacity-60">Settings specific to this organization</p>
+              <p class="text-xs text-base-content/60">Settings specific to this organization</p>
             </div>
             <div v-if="authStore.currentMembership && !isFakeMembership && authStore.userRole !== 'owner'">
               <button @click="handleLeaveOrg" class="btn btn-xs btn-error btn-outline">Leave Org</button>
@@ -337,7 +337,7 @@ watch(() => authStore.currentOrgId, loadIdentities)
             />
           </div>
 
-          <div class="divider text-xs opacity-50 font-bold">NATS Connection</div>
+          <div class="divider text-xs text-base-content/50 font-bold">NATS Connection</div>
 
           <!-- Connection URLs -->
           <!--
@@ -386,8 +386,8 @@ watch(() => authStore.currentOrgId, loadIdentities)
                   :class="{'bg-success ring-success/30': natsStore.status === 'connected', 'bg-warning ring-warning/30': natsStore.status === 'connecting' || natsStore.status === 'reconnecting', 'bg-error ring-error/30': natsStore.status === 'disconnected'}">
                 </div>
                 <div class="flex flex-col">
-                  <span class="text-xs font-bold uppercase opacity-70">{{ natsStore.status }}</span>
-                  <span v-if="natsStore.rtt" class="text-[10px] font-mono opacity-50">RTT: {{ natsStore.rtt }}ms</span>
+                  <span class="text-xs font-bold uppercase text-base-content/70">{{ natsStore.status }}</span>
+                  <span v-if="natsStore.rtt" class="text-[10px] font-mono text-base-content/50">RTT: {{ natsStore.rtt }}ms</span>
                 </div>
               </div>
               <button v-if="natsStore.isConnected" @click="natsStore.disconnect" class="btn btn-sm btn-error btn-outline">Disconnect</button>

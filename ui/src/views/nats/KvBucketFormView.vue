@@ -126,7 +126,7 @@ async function handleSubmit() {
                 <input v-model="formData.ttl" type="text" class="input input-bordered font-mono" placeholder="0 (no expiry)" />
                 <label class="label"><span class="label-text-alt">e.g. 30s, 5m, 24h, 7d. 0 = no expiry</span></label>
               </div>
-              <p class="text-[10px] opacity-50 italic px-1">-1 = Unlimited, 0 = Default/None</p>
+              <p class="text-[10px] text-base-content/50 italic px-1">-1 = Unlimited, 0 = Default/None</p>
             </div>
           </BaseCard>
         </div>

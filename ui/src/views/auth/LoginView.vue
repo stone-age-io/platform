@@ -155,7 +155,7 @@ function getProviderLabel(name: string) {
             <!-- Subtle Admin Toggle -->
             <div v-if="showAdminToggle" class="form-control bg-base-200 p-3 rounded-lg border border-base-300">
               <label class="label cursor-pointer justify-between">
-                <span class="label-text font-bold text-xs uppercase tracking-widest opacity-70">Super User</span>
+                <span class="label-text font-bold text-xs uppercase tracking-widest text-base-content/70">Super User</span>
                 <input type="checkbox" v-model="isSuperAdmin" class="toggle toggle-primary toggle-sm" />
               </label>
             </div>
@@ -171,7 +171,7 @@ function getProviderLabel(name: string) {
 
           <!-- OAuth2 Section (Hidden for SuperUsers) -->
           <div v-if="!isSuperAdmin && authStore.authProviders.length > 0" class="mt-6">
-            <div class="divider text-xs opacity-50">OR</div>
+            <div class="divider text-xs text-base-content/50">OR</div>
             <div class="flex flex-col gap-3">
               <button 
                 v-for="provider in authStore.authProviders" 

@@ -10,6 +10,7 @@ import type { StreamInfo } from '@nats-io/jetstream'
 import type { ConsumerSummary } from '@/types/jetstream'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import { useEscapeKey } from '@/composables/useEscapeKey'
+import SubjectChip from '@/components/common/SubjectChip.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -213,7 +214,7 @@ useEscapeKey(() => !!selectedMessage.value, () => { selectedMessage.value = null
               <div>
                 <dt class="text-sm font-medium text-base-content/70">Subjects</dt>
                 <dd class="mt-1 flex flex-wrap gap-1">
-                  <span v-for="sub in streamInfo.config.subjects" :key="sub" class="badge badge-outline font-mono text-xs">{{ sub }}</span>
+                  <SubjectChip v-for="sub in streamInfo.config.subjects" :key="sub" :subject="sub" />
                 </dd>
               </div>
               <div class="grid grid-cols-2 gap-4">
@@ -494,7 +495,7 @@ useEscapeKey(() => !!selectedMessage.value, () => { selectedMessage.value = null
         <div class="flex justify-between items-start mb-4">
           <div class="min-w-0">
             <h3 class="font-bold text-lg">Message #{{ selectedMessage.seq }}</h3>
-            <p class="text-xs opacity-50 font-mono break-all">{{ selectedMessage.subject }}</p>
+            <p class="text-xs text-base-content/50 font-mono break-all">{{ selectedMessage.subject }}</p>
           </div>
           <button class="btn btn-sm btn-circle btn-ghost" aria-label="Close" @click="selectedMessage = null">✕</button>
         </div>
@@ -511,7 +512,7 @@ useEscapeKey(() => !!selectedMessage.value, () => { selectedMessage.value = null
           </div>
           <div class="form-control">
             <label class="label pb-1 flex justify-between">
-              <span class="label-text text-xs uppercase font-bold opacity-50">Payload</span>
+              <span class="label-text text-xs uppercase font-bold text-base-content/50">Payload</span>
               <button @click="copyText(getPayloadString(selectedMessage.payload), 'Payload')" class="btn btn-xs btn-ghost">Copy Data</button>
             </label>
             <div class="mockup-code bg-base-300 text-base-content text-sm min-h-[200px] max-h-[60vh] overflow-y-auto">

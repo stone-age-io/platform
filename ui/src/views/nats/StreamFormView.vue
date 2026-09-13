@@ -224,7 +224,7 @@ onMounted(() => { if (isEdit.value) loadStream() })
                 <input v-model="formData.duplicateWindow" type="text" class="input input-bordered font-mono" placeholder="2m" />
                 <label class="label"><span class="label-text-alt">e.g. 2m, 5m</span></label>
               </div>
-              <p class="text-[10px] opacity-50 italic px-1">-1 = Unlimited, 0 = Default/None</p>
+              <p class="text-[10px] text-base-content/50 italic px-1">-1 = Unlimited, 0 = Default/None</p>
             </div>
           </BaseCard>
         </div>

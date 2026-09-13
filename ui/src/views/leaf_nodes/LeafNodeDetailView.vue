@@ -19,6 +19,7 @@ import type { PickerOption } from '@/types/picker'
 import JsonViewer from '@/components/common/JsonViewer.vue'
 import LeafStatusBadge from '@/components/leaf_nodes/LeafStatusBadge.vue'
 import { useEscapeKey } from '@/composables/useEscapeKey'
+import SubjectChip from '@/components/common/SubjectChip.vue'
 
 // The broad role the provisioning hook mints per org. When a leaf node still
 // uses it, editing it would affect every leaf node in the org — so we warn.
@@ -552,15 +553,15 @@ leaf-sync run      # mirror config → local KV</pre>
                   <div v-if="getSubjectArray(natsUser.publish_permissions).length || getSubjectArray(natsUser.publish_deny_permissions).length">
                     <span class="text-xs text-base-content/50">📤 Publish</span>
                     <div class="flex flex-wrap gap-1 mt-1">
-                      <code v-for="s in getSubjectArray(natsUser.publish_permissions)" :key="`pa-${s}`" class="badge badge-outline font-mono text-xs">{{ s }}</code>
-                      <code v-for="s in getSubjectArray(natsUser.publish_deny_permissions)" :key="`pd-${s}`" class="badge badge-error badge-outline font-mono text-xs">!{{ s }}</code>
+                      <SubjectChip v-for="s in getSubjectArray(natsUser.publish_permissions)" :key="`pa-${s}`" :subject="s" />
+                      <SubjectChip v-for="s in getSubjectArray(natsUser.publish_deny_permissions)" :key="`pd-${s}`" :subject="'!' + s" deny />
                     </div>
                   </div>
                   <div v-if="getSubjectArray(natsUser.subscribe_permissions).length || getSubjectArray(natsUser.subscribe_deny_permissions).length">
                     <span class="text-xs text-base-content/50">📥 Subscribe</span>
                     <div class="flex flex-wrap gap-1 mt-1">
-                      <code v-for="s in getSubjectArray(natsUser.subscribe_permissions)" :key="`sa-${s}`" class="badge badge-outline font-mono text-xs">{{ s }}</code>
-                      <code v-for="s in getSubjectArray(natsUser.subscribe_deny_permissions)" :key="`sd-${s}`" class="badge badge-error badge-outline font-mono text-xs">!{{ s }}</code>
+                      <SubjectChip v-for="s in getSubjectArray(natsUser.subscribe_permissions)" :key="`sa-${s}`" :subject="s" />
+                      <SubjectChip v-for="s in getSubjectArray(natsUser.subscribe_deny_permissions)" :key="`sd-${s}`" :subject="'!' + s" deny />
                     </div>
                   </div>
                 </div>

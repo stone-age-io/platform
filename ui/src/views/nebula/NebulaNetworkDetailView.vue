@@ -173,15 +173,15 @@ onMounted(() => {
             <div class="grid grid-cols-2 gap-4 mb-4">
               <div class="bg-base-200 p-3 rounded-lg text-center border border-base-300">
                 <div class="text-2xl font-bold">{{ totalHosts }}</div>
-                <div class="text-xs opacity-60 uppercase tracking-wide">Total Hosts</div>
+                <div class="text-xs text-base-content/60 uppercase tracking-wide">Total Hosts</div>
               </div>
               <div class="bg-base-200 p-3 rounded-lg text-center border border-base-300">
                 <div class="text-2xl font-bold text-success">{{ activeHosts }}</div>
-                <div class="text-xs opacity-60 uppercase tracking-wide">Active</div>
+                <div class="text-xs text-base-content/60 uppercase tracking-wide">Active</div>
               </div>
               <div class="bg-base-200 p-3 rounded-lg text-center border border-base-300 col-span-2">
                 <div class="text-xl font-bold font-mono">{{ totalLighthouses }}</div>
-                <div class="text-xs opacity-60 uppercase tracking-wide">Lighthouses</div>
+                <div class="text-xs text-base-content/60 uppercase tracking-wide">Lighthouses</div>
               </div>
             </div>
 

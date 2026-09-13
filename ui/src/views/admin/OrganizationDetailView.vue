@@ -7,6 +7,7 @@ import { useToast } from '@/composables/useToast'
 import { formatDate } from '@/utils/format'
 import type { Organization, User, NatsAccount } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import StatusBadge from '@/components/common/StatusBadge.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -158,9 +159,7 @@ onMounted(() => loadData())
               <img :src="logoUrl" :alt="`${org.name} logo`" class="w-full h-full object-contain" />
             </div>
             <h1 class="text-3xl font-bold">{{ org.name }}</h1>
-            <span class="badge" :class="org.active ? 'badge-success' : 'badge-error'">
-              {{ org.active ? 'Active' : 'Inactive' }}
-            </span>
+            <StatusBadge :active="org.active" size="md" />
             <span v-if="org.is_system_org" class="badge badge-neutral">System</span>
             <span v-if="org.is_operator_org" class="badge badge-secondary">Operator</span>
             <span v-if="org.managed" class="badge badge-primary">Managed</span>

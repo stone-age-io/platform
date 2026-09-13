@@ -355,23 +355,23 @@ onUnmounted(() => {
         
         <!-- Custom cell for type (badge) -->
         <template #cell-expand.type.name="{ item }">
-          <span v-if="item.expand?.type" class="badge badge-ghost">
+          <span v-if="item.expand?.type" class="badge badge-ghost badge-sm">
             {{ item.expand.type.name }}
           </span>
-          <span v-else class="text-base-content/40">-</span>
+          <span v-else class="text-base-content/40">—</span>
         </template>
         
         <template #card-expand.type.name="{ item }">
          <span v-if="item.expand?.type" class="badge badge-ghost badge-sm">
            {{ item.expand.type.name }}
          </span>
-         <span v-else>-</span>
+         <span v-else class="text-base-content/40">—</span>
         </template>
 
         <!-- Custom cell for code (mono font) -->
         <template #cell-code="{ item }">
           <code v-if="item.code" class="text-xs">{{ item.code }}</code>
-          <span v-else class="text-base-content/40">-</span>
+          <span v-else class="text-base-content/40">—</span>
         </template>
         
         <!-- Actions - @click.stop is handled in ResponsiveList -->

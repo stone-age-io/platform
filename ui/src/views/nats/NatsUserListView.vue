@@ -13,6 +13,7 @@ import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 import ListPager from '@/components/ui/ListPager.vue'
 import ExpiryBadge from '@/components/common/ExpiryBadge.vue'
+import StatusBadge from '@/components/common/StatusBadge.vue'
 
 const router = useRouter()
 const toast = useToast()
@@ -295,24 +296,14 @@ onUnmounted(() => {
         -->
         <template #cell-active="{ item }">
           <div class="flex flex-wrap items-center gap-1">
-            <span
-              class="badge badge-sm"
-              :class="item.active ? 'badge-success' : 'badge-error'"
-            >
-              {{ item.active ? 'Active' : 'Inactive' }}
-            </span>
+            <StatusBadge :active="item.active" />
             <ExpiryBadge :value="item.jwt_expires_at" size="sm" />
           </div>
         </template>
 
         <template #card-active="{ item }">
           <div class="flex flex-wrap items-center gap-1">
-            <span
-              class="badge badge-sm"
-              :class="item.active ? 'badge-success' : 'badge-error'"
-            >
-              {{ item.active ? 'Active' : 'Inactive' }}
-            </span>
+            <StatusBadge :active="item.active" />
             <ExpiryBadge :value="item.jwt_expires_at" size="sm" />
           </div>
         </template>

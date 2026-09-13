@@ -12,6 +12,7 @@ import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 import ListPager from '@/components/ui/ListPager.vue'
+import StatusBadge from '@/components/common/StatusBadge.vue'
 
 const router = useRouter()
 const toast = useToast()
@@ -264,22 +265,12 @@ onUnmounted(() => {
         
         <!-- Custom cell for status (badge) -->
         <template #cell-active="{ item }">
-          <span 
-            class="badge badge-sm"
-            :class="item.active ? 'badge-success' : 'badge-error'"
-          >
-            {{ item.active ? 'Active' : 'Inactive' }}
-          </span>
+          <StatusBadge :active="item.active" />
         </template>
         
         <template #card-active="{ item }">
-  	  <span 
-    	    class="badge badge-sm"
-    	    :class="item.active ? 'badge-success' : 'badge-error'"
-  	  >
-    	    {{ item.active ? 'Active' : 'Inactive' }}
-  	  </span>
-	</template> 
+          <StatusBadge :active="item.active" />
+        </template>
         
 	<!-- Actions -->
         <template #actions="{ item }">

@@ -257,7 +257,7 @@ onUnmounted(() => {
           <span v-if="item.is_default" class="badge badge-primary badge-sm">
             Default
           </span>
-          <span v-else class="text-base-content/40">-</span>
+          <span v-else class="text-base-content/40">—</span>
         </template>
         
         <!-- Actions -->

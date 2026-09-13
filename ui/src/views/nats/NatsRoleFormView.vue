@@ -197,7 +197,7 @@ onMounted(() => { if (isEdit.value) loadRole() })
                 <label class="label"><span class="label-text">Max Payload (bytes)</span></label>
                 <input v-model="formData.max_payload" type="number" class="input input-bordered font-mono" />
               </div>
-              <p class="text-[10px] opacity-50 italic px-1">-1 = Unlimited</p>
+              <p class="text-[10px] text-base-content/50 italic px-1">-1 = Unlimited</p>
             </div>
           </BaseCard>
         </div>
@@ -208,7 +208,7 @@ onMounted(() => { if (isEdit.value) loadRole() })
               <div class="space-y-3">
                 <div class="flex items-center gap-2">
                   <span class="text-sm">📤</span>
-                  <h4 class="text-xs font-black uppercase opacity-50 tracking-widest">Publishing</h4>
+                  <h4 class="text-xs font-black uppercase text-base-content/50 tracking-widest">Publishing</h4>
                 </div>
                 <div class="form-control">
                   <label class="label py-1"><span class="label-text text-xs">Allow Subjects</span></label>
@@ -225,7 +225,7 @@ onMounted(() => { if (isEdit.value) loadRole() })
               <div class="space-y-3">
                 <div class="flex items-center gap-2">
                   <span class="text-sm">📥</span>
-                  <h4 class="text-xs font-black uppercase opacity-50 tracking-widest">Subscribing</h4>
+                  <h4 class="text-xs font-black uppercase text-base-content/50 tracking-widest">Subscribing</h4>
                 </div>
                 <div class="form-control">
                   <label class="label py-1"><span class="label-text text-xs">Allow Subjects</span></label>

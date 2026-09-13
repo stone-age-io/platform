@@ -345,7 +345,7 @@ watch(() => dashboardStore.currentVariableValues, () => {
       <div class="visualizer-content">
         <DashboardGrid v-if="dashboardStore.activeWidgets.length > 0" :widgets="dashboardStore.activeWidgets" :column-count="dashboardStore.activeDashboard?.columnCount" @delete-widget="handleDeleteWidget" @configure-widget="handleConfigureWidget" @duplicate-widget="handleDuplicateWidget" @fullscreen-widget="toggleFullScreen" />
         <div v-else class="h-full flex flex-col items-center justify-center text-base-content/50 p-8 text-center">
-          <span class="text-6xl mb-4 opacity-50">📊</span>
+          <span class="text-6xl mb-4 text-base-content/50">📊</span>
           <h3 class="text-xl font-bold">Empty Dashboard</h3>
           <p class="mt-2 text-sm max-w-xs mx-auto">
             <template v-if="!dashboardStore.isLocked">Tap <strong>+</strong> to add your first widget.</template>

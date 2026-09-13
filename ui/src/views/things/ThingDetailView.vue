@@ -284,14 +284,14 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
                   <dt class="text-sm font-medium text-base-content/70">Type</dt>
                   <dd class="mt-1">
                     <span v-if="thing.expand?.type" class="badge badge-neutral">{{ thing.expand.type.name }}</span>
-                    <span v-else class="text-sm text-base-content/40">-</span>
+                    <span v-else class="text-sm text-base-content/40">—</span>
                   </dd>
                 </div>
                 <div>
                   <dt class="text-sm font-medium text-base-content/70">Code</dt>
                   <dd class="mt-1">
                     <code v-if="thing.code" class="text-sm bg-base-200 px-2 py-0.5 rounded font-mono">{{ thing.code }}</code>
-                    <span v-else class="text-sm">-</span>
+                    <span v-else class="text-sm text-base-content/40">—</span>
                   </dd>
                 </div>
               </div>
@@ -391,7 +391,7 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
             <div v-else-if="thing.nats_user" class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">
               <span class="text-2xl block mb-2">🔒</span>
               <p class="text-sm">NATS identity linked</p>
-              <p class="text-xs opacity-70 mt-1">Details require an administrator</p>
+              <p class="text-xs text-base-content/70 mt-1">Details require an administrator</p>
             </div>
             <div v-else class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">
               <span class="text-2xl block mb-2">📡</span>
@@ -421,7 +421,7 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
             <div v-else-if="thing.nebula_host" class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">
               <span class="text-2xl block mb-2">🔒</span>
               <p class="text-sm">Nebula host linked</p>
-              <p class="text-xs opacity-70 mt-1">Details require an administrator</p>
+              <p class="text-xs text-base-content/70 mt-1">Details require an administrator</p>
             </div>
             <div v-else class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">
               <span class="text-2xl block mb-2">🌐</span>

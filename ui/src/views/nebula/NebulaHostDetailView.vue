@@ -215,7 +215,7 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
                   >
                     🌐 {{ host.expand.network_id.name }}
                   </router-link>
-                  <span v-else class="text-sm text-base-content/40">-</span>
+                  <span v-else class="text-sm text-base-content/40">—</span>
                 </dd>
               </div>
 

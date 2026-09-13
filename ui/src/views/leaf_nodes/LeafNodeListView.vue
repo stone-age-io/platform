@@ -244,12 +244,12 @@ onUnmounted(() => {
 
         <template #cell-code="{ item }">
           <code v-if="item.code" class="text-xs">{{ item.code }}</code>
-          <span v-else class="text-base-content/40">-</span>
+          <span v-else class="text-base-content/40">—</span>
         </template>
 
         <template #cell-domain="{ item }">
           <code v-if="item.domain" class="text-xs">{{ item.domain }}</code>
-          <span v-else class="text-base-content/40">-</span>
+          <span v-else class="text-base-content/40">—</span>
         </template>
 
         <template #cell-status="{ item }">
