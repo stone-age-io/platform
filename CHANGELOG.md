@@ -13,6 +13,44 @@ and this file starts where the versioned releases do.
 
 ### Security
 
+- **`locations.floorplan` is restricted to image mime types.** It was the only
+  upload field on the platform with an empty `mimeTypes` list, so it accepted
+  any file at all. The exposure was the thumbnail rather than the upload:
+  PocketBase allows `?thumb=100x100` on any file field regardless of that
+  field's own `thumbs` list (`defaultThumbSizes` is checked before
+  `fileField.Thumbs` in `apis/file.go`), so `"thumbs": []` never meant "no
+  thumb can be generated", and a thumb request runs the stored bytes through
+  `imaging.Decode` + `Resize`. `disintegration/imaging` registers
+  `golang.org/x/image/tiff` and panics on a crafted TIFF (CVE-2023-36308); it
+  is unmaintained, v1.6.2 is the last release, and there is no patched version
+  to upgrade to, so narrowing what reaches the decoder is the only lever
+  available.
+
+  Rated Low upstream and hardening rather than a fix here: the panic is
+  recovered by `net/http` so the process survives, and the caller has to be an
+  authenticated member of the organization requesting a thumb of a file they
+  uploaded themselves. Existing files are unaffected — `mimeTypes` is validated
+  on upload, not on read.
+
+- **Documented why the `maplibre-gl` v5 pin does not carry
+  GHSA-jrc7-96c5-q579.** The advisory is critical, its range covers every
+  published 5.x, and the fix landed only in 6.4.1 — a line this repo holds back
+  for the worker-splitting reason in CLAUDE.md, so there is nothing to upgrade
+  to. The vulnerable `DOM.sanitize()` has exactly one sink, MapLibre's own
+  attribution control, and that control is never constructed:
+  `@maplibre/maplibre-gl-leaflet` hardcodes `attributionControl: false` when it
+  builds the `maplibregl.Map`, `useLeafletMap.ts` passes the same, and it is
+  the app's only MapLibre instance. The credit on screen is Leaflet's control,
+  fed by a constant.
+
+  No code changed. What changed is that `attributionControl: false` now says it
+  is a security setting, because flipping it to render the OpenFreeMap credit
+  through MapLibre would reintroduce a critical XSS with nothing to catch it.
+  The comment also records the larger hazard: the Leaflet binding lifts a
+  style's source `attribution` into Leaflet's attribution control, which
+  assigns to `innerHTML` unsanitized, so making `STYLE_URLS` configurable would
+  open a path upgrading maplibre does not close.
+
 - **A blank organization no longer matches a blank organization context.** Every
   inventory read rule scoped on `organization = @request.auth.current_organization`.
   Both sides are TEXT columns whose zero value is the empty string, and in

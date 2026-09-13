@@ -68,6 +68,21 @@ routine "bump everything" pass must not drag them along:
   plain and the Leaflet-binding setup. Revisit when
   `@maplibre/maplibre-gl-leaflet` documents v6 rather than merely permitting it
   in `peerDependencies`.
+
+  **Staying on v5 means carrying GHSA-jrc7-96c5-q579 unpatched** (critical; the
+  `DOM.sanitize()` bypass, fixed in 6.4.1 and never backported — 5.24.0 is the
+  last 5.x there will be). It is not reachable here, and the reason is narrow
+  enough to be worth writing down: the only sink is MapLibre's own attribution
+  control, and that control is never constructed, because
+  `@maplibre/maplibre-gl-leaflet` hardcodes `attributionControl: false` when it
+  builds the `maplibregl.Map` and `useLeafletMap.ts` passes the same. The credit
+  on screen is **Leaflet's** control, fed by the `TILE_ATTRIBUTION` constant.
+  Two changes would end that: turning the MapLibre control on, or making
+  `STYLE_URLS` configurable — the Leaflet binding lifts a style's source
+  `attribution` into Leaflet's control, which assigns to `innerHTML` with no
+  sanitizing at all, so a hostile style document would get a cleaner path than
+  the advisory describes and upgrading maplibre would not close it. Both are
+  commented at the call site.
 - **TypeScript 6, not 7.** TS 7 is the native port and no longer exposes the
   `./lib/tsc` subpath that `vue-tsc` resolves at startup, so `npm run build`
   dies before type checking. `vue-tsc` 3.3.10 is the newest there is; 6.0 is the

@@ -191,6 +191,30 @@ export function useLeafletMap() {
       map.value.removeLayer(basemapLayer.value)
     }
 
+    // attributionControl: false is a SECURITY setting, not a cosmetic one, and
+    // STYLE_URLS being two constants is load-bearing beside it.
+    //
+    // MapLibre's own attribution control writes the style's attribution strings
+    // into innerHTML through DOM.sanitize(), and every published 5.x --
+    // including 5.24.0, the last there will ever be -- carries the sanitizer
+    // bypass in GHSA-jrc7-96c5-q579: it iterates the live NamedNodeMap while
+    // removing attributes, so the attribute after a stripped one is skipped and
+    // survives. The fix exists only in 6.4.1+, which is the line held back above
+    // for the worker-splitting reason, so this app cannot buy its way out by
+    // upgrading. It is not exploitable here because that control is never
+    // constructed -- @maplibre/maplibre-gl-leaflet hardcodes the same false when
+    // it builds the maplibregl.Map, and this is the app's only MapLibre
+    // instance -- and because the attribution text it would render comes from
+    // two hardcoded OpenFreeMap URLs.
+    //
+    // Turning this on to let MapLibre render the OpenFreeMap credit instead of
+    // Leaflet (see TILE_ATTRIBUTION) would reintroduce a critical XSS silently.
+    // And note the exposure does not end with MapLibre: the Leaflet binding
+    // lifts a style's source `attribution` into LEAFLET's attribution control,
+    // which assigns straight to innerHTML with no sanitizing at all. So making
+    // STYLE_URLS configurable -- a self-hosted tile server, per the note above --
+    // hands a hostile style document a cleaner path than this advisory
+    // describes, on a control that upgrading maplibre would not protect.
     const newLayer = L.maplibreGL({
       style: isDarkMode ? STYLE_URLS.dark : STYLE_URLS.light,
       attributionControl: false,

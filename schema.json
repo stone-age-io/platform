@@ -2059,7 +2059,13 @@
         "id": "file3043290937",
         "maxSelect": 1,
         "maxSize": 0,
-        "mimeTypes": [],
+        "mimeTypes": [
+          "image/jpeg",
+          "image/png",
+          "image/svg+xml",
+          "image/gif",
+          "image/webp"
+        ],
         "name": "floorplan",
         "presentable": false,
         "protected": false,
