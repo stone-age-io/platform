@@ -11,6 +11,59 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-13
+
+Tenancy enforcement, and the discovery that the review question was wrong. Every
+inventory read rule scoped on `organization = @request.auth.current_organization`,
+both sides are TEXT columns whose zero value is the empty string, and in
+PocketBase an empty string equals an empty string — so a record with a blank
+organization was readable by any caller whose own context was blank. No role was
+bypassed and no rule was mis-written; two sentinels compared equal. Both halves
+were ordinary product states an owner could reach in two clicks. The question to
+ask of a rule is not "does this name the right roles" but "what does this do when
+both sides are the zero value".
+
+The platform also learned to report on itself. `GET /api/ready` and `GET /metrics`
+on the Control Plane, `/ready` and `/metrics` on `leaf-sync`, with one rule
+behind every check: it must be answerable first-hand by the process running it.
+That is the NATS account boundary restated, and it is why there are no per-org
+labels and no platform credential inside a tenant's account. Nebula certificate
+expiry is the one exception, and it earns it — those are certificates this
+process signed itself and stores.
+
+Nebula caught up with pb-nebula v0.3: CA rotation is a three-step route the
+tenant owns, the `/32` certificate defect has an audit and a per-host re-issue,
+and decommissioning finally closes the overlay door as well as the console and
+NATS ones. It had been closing two of three.
+
+And the console got a test runner, which it did not have. 179 tests over the pure
+logic `vue-tsc && vite build` stays green while it breaks.
+
+**Upgrading an existing database.** `migrate up` handles all of it, but four
+changes are visible afterwards:
+
+- **Orphaned records stop being readable through the API.** Anything left at a
+  blank `organization` by an organization deleted under a previous version —
+  things, locations, types, leaf nodes, `nats_accounts`, `nebula_ca` — no longer
+  matches any tenant read rule. The rows are still there and a superuser still
+  sees them in `/_/`. That is the fix working, but it means a console that could
+  list those records before will not afterwards.
+- **`message_schemas` is dropped**, along with `thing_type_operations.schema`
+  and the dead `capabilities` / `nats_role` fields on `thing_types`. The
+  migration also prunes `message_schemas` out of any leaf node's
+  `synced_collections`, since the edge never synced it and a badge naming a
+  collection that no longer exists tells the operator something untrue.
+- **`leaf-sync` opens a loopback listener it did not open before.**
+  `observability.addr` now defaults to `127.0.0.1:9100` instead of empty. Set it
+  back to `""` to switch it off. The Control Plane's `/api/ready` and `/metrics`
+  are routes on the existing server and open no new port — but `/metrics` is
+  open by default there, so put `metrics.token` or a proxy in front of it if the
+  server is exposed.
+- **A `nebula_hosts` record created without an `active` field now lands ACTIVE**
+  (pb-nebula v0.2.0+). A host born inactive is one every peer blocklists at
+  birth. Anything creating hosts through the API and relying on the old default
+  should set the field explicitly.
+
 ### Security
 
 - **`locations.floorplan` is restricted to image mime types.** It was the only
@@ -448,6 +501,102 @@ and this file starts where the versioned releases do.
   of the list. `Record<WidgetType, …>` still fails to compile when a type is
   missing, and tests can now walk all sixteen.
 
+- **`nats export --output` wrote nothing when combined with `--config`** (pb-nats
+  bumped to v0.2.1). pb-nats registered a bool flag named `config` on the export
+  subcommand, and this binary defines `--config <path>` as a persistent root flag.
+  Cobra let the subcommand's local bool shadow the root's string, so
+
+  ```
+  ./stone-age --config ./config.yaml nats export -o ./nats-config
+  ```
+
+  set pb-nats's *preview* flag, swallowed the config path as a positional
+  argument, printed `nats.conf` to stdout, created no directory, and exited zero.
+  The `--config` global is documented on every command, so the failure was easy to
+  hit and gave no sign it had happened.
+
+  Two things follow from the fix. The preview flag is now `--nats-conf`, so any
+  script using `nats export --config` needs updating — though in this binary that
+  script was never doing what it looked like. And because the export resolves
+  paths against its output directory, the generated config now carries **absolute**
+  paths: `serve --nats` and an external `nats-server -c` no longer have to be
+  started from the export directory.
+
+  `readiness.go` and `natsd.go` both tell operators to run
+  `nats export --output ./nats-config/`; that advice was correct all along and now
+  works as written.
+
+- **The managed organization's NATS export and import are read-only in the
+  console.** Flagging an org `managed` provisions a `helpdesk-events` export on
+  its account and a matching import on the operator hub, and `ensureManagedExports`
+  reconciles them on every save of that organization. The console offered Edit
+  and Delete on both, so a change to the subject was accepted, re-signed into the
+  account JWT by pb-nats, and then silently reverted on the next org save;
+  deleting one had it reappear.
+
+  Both now show a **Managed** badge with View instead of Edit or Delete, and a
+  banner naming the fields that actually get rewritten and pointing at the real
+  control — clearing `managed` on the organization, which removes the pair
+  together. Not a permission: an owner still has write access to the collection.
+  The banner names `subject`, `type` and `description` rather than claiming the
+  record is frozen, because `token_req`, `advertise` and `allow_trace` are
+  create-only and an edit to those would persist.
+
+- **Seeded `device` and `gateway` NATS roles could not carry the contracts their
+  own thing types declare.** Four separate gaps, all invisible in the console —
+  every screen renders correctly and the JWT signs cleanly; the permission is
+  simply absent from it.
+
+  - `acc.>` was on neither role, so a seeded door could not publish the decision
+    its type declares and a controller could not receive the taps it exists to
+    answer. The stone-access thing types were added pointing at the stock roles
+    without checking that the stock roles reached `acc.`.
+  - The subscribe lists carried only `cmd.>` and `config.>`, on the assumption
+    that inbound traffic arrives on a command root. Nothing in the fixture works
+    that way — a reefer takes its setpoint on `asset.{location}.{thing}.setpoint`,
+    a line controller its mode on `line.…mode`, a turbine its curtailment on
+    `turbine.…curtail` — so three types shipped unable to receive the instructions
+    they declare, and the `.echo` half of each pair had nothing to echo. The two
+    lists now cover the same subtrees.
+  - `_INBOX.>` was on subscribe only, which is the *requester's* half of
+    request/reply. Three types declaring `reply_diagnostics` could not answer one.
+  - `$KV.>` was missing from `gateway`, and is **not** covered by `$JS.API.>`.
+    Reading a KV bucket goes through the JetStream API, but a write is a plain
+    publish to `$KV.{bucket}.{key}`. An access controller authenticating as its
+    own seeded Thing booted clean, synced its entire policy graph, armed every
+    portal, and then failed on the first status write with a permissions
+    violation. A box that starts fine and cannot report state is worse than one
+    that refuses to start.
+
+  The first three are now checked structurally:
+  `TestEveryThingTypeCanSpeakItsOwnContract` composes every operation's subject
+  and asserts the type's default role permits it, in the direction the capability
+  implies — `reply` needs the subject on subscribe *and* an inbox on publish, and
+  `request` needs the mirror image. The fourth cannot be derived from a thing
+  type, so `TestGatewayRoleCanRunAnEdgeService` names the three permissions an
+  edge service needs and why each one's absence looks like someone else's bug.
+
+  All four were found by running the thing: four access-controllers against a
+  `serve --nats` deployment, each authenticating as its own seeded Thing.
+
+- **Deep links and browser refresh worked on `/` and `/settings` only.**
+  `app.use(router)` starts resolving the initial navigation the moment the router
+  is installed — before `main.ts` reaches the auth hydration it deliberately
+  awaits before mounting. `user` is set synchronously from the stored token, so
+  `isAuthenticated` passed and nobody was sent to `/login`; `memberships` arrive
+  over the network, so **every capability read false on that first pass and every
+  capability-gated route redirected to the dashboard.** Clicking a sidebar link
+  worked, because by then the store was populated — which is what made this
+  look like anything other than a bug: the sidebar showed the link you had just
+  been refused.
+
+  Hydration is now memoized in the auth store and awaited by the guard.
+  Deliberately not "call it earlier in `main.ts`": an ordering convention between
+  two files is exactly what broke. The guard also carries the intended path
+  through as `?redirect=`, so following a deep link while signed out now lands
+  where you were going; `LoginView` accepts that value only when it is a
+  relative in-app path, since it arrives in a URL someone else can send you.
+
 ### Changed
 
 - **pb-nebula bumped to v0.2.0**, which is what makes the Nebula half of
@@ -841,104 +990,6 @@ and this file starts where the versioned releases do.
   it signed these certificates and stores them. The check and the collector share
   one scan function, so a green tick can never sit beside a metric reporting an
   expiry.
-
-### Fixed
-
-- **`nats export --output` wrote nothing when combined with `--config`** (pb-nats
-  bumped to v0.2.1). pb-nats registered a bool flag named `config` on the export
-  subcommand, and this binary defines `--config <path>` as a persistent root flag.
-  Cobra let the subcommand's local bool shadow the root's string, so
-
-  ```
-  ./stone-age --config ./config.yaml nats export -o ./nats-config
-  ```
-
-  set pb-nats's *preview* flag, swallowed the config path as a positional
-  argument, printed `nats.conf` to stdout, created no directory, and exited zero.
-  The `--config` global is documented on every command, so the failure was easy to
-  hit and gave no sign it had happened.
-
-  Two things follow from the fix. The preview flag is now `--nats-conf`, so any
-  script using `nats export --config` needs updating — though in this binary that
-  script was never doing what it looked like. And because the export resolves
-  paths against its output directory, the generated config now carries **absolute**
-  paths: `serve --nats` and an external `nats-server -c` no longer have to be
-  started from the export directory.
-
-  `readiness.go` and `natsd.go` both tell operators to run
-  `nats export --output ./nats-config/`; that advice was correct all along and now
-  works as written.
-
-- **The managed organization's NATS export and import are read-only in the
-  console.** Flagging an org `managed` provisions a `helpdesk-events` export on
-  its account and a matching import on the operator hub, and `ensureManagedExports`
-  reconciles them on every save of that organization. The console offered Edit
-  and Delete on both, so a change to the subject was accepted, re-signed into the
-  account JWT by pb-nats, and then silently reverted on the next org save;
-  deleting one had it reappear.
-
-  Both now show a **Managed** badge with View instead of Edit or Delete, and a
-  banner naming the fields that actually get rewritten and pointing at the real
-  control — clearing `managed` on the organization, which removes the pair
-  together. Not a permission: an owner still has write access to the collection.
-  The banner names `subject`, `type` and `description` rather than claiming the
-  record is frozen, because `token_req`, `advertise` and `allow_trace` are
-  create-only and an edit to those would persist.
-
-- **Seeded `device` and `gateway` NATS roles could not carry the contracts their
-  own thing types declare.** Four separate gaps, all invisible in the console —
-  every screen renders correctly and the JWT signs cleanly; the permission is
-  simply absent from it.
-
-  - `acc.>` was on neither role, so a seeded door could not publish the decision
-    its type declares and a controller could not receive the taps it exists to
-    answer. The stone-access thing types were added pointing at the stock roles
-    without checking that the stock roles reached `acc.`.
-  - The subscribe lists carried only `cmd.>` and `config.>`, on the assumption
-    that inbound traffic arrives on a command root. Nothing in the fixture works
-    that way — a reefer takes its setpoint on `asset.{location}.{thing}.setpoint`,
-    a line controller its mode on `line.…mode`, a turbine its curtailment on
-    `turbine.…curtail` — so three types shipped unable to receive the instructions
-    they declare, and the `.echo` half of each pair had nothing to echo. The two
-    lists now cover the same subtrees.
-  - `_INBOX.>` was on subscribe only, which is the *requester's* half of
-    request/reply. Three types declaring `reply_diagnostics` could not answer one.
-  - `$KV.>` was missing from `gateway`, and is **not** covered by `$JS.API.>`.
-    Reading a KV bucket goes through the JetStream API, but a write is a plain
-    publish to `$KV.{bucket}.{key}`. An access controller authenticating as its
-    own seeded Thing booted clean, synced its entire policy graph, armed every
-    portal, and then failed on the first status write with a permissions
-    violation. A box that starts fine and cannot report state is worse than one
-    that refuses to start.
-
-  The first three are now checked structurally:
-  `TestEveryThingTypeCanSpeakItsOwnContract` composes every operation's subject
-  and asserts the type's default role permits it, in the direction the capability
-  implies — `reply` needs the subject on subscribe *and* an inbox on publish, and
-  `request` needs the mirror image. The fourth cannot be derived from a thing
-  type, so `TestGatewayRoleCanRunAnEdgeService` names the three permissions an
-  edge service needs and why each one's absence looks like someone else's bug.
-
-  All four were found by running the thing: four access-controllers against a
-  `serve --nats` deployment, each authenticating as its own seeded Thing.
-
-- **Deep links and browser refresh worked on `/` and `/settings` only.**
-  `app.use(router)` starts resolving the initial navigation the moment the router
-  is installed — before `main.ts` reaches the auth hydration it deliberately
-  awaits before mounting. `user` is set synchronously from the stored token, so
-  `isAuthenticated` passed and nobody was sent to `/login`; `memberships` arrive
-  over the network, so **every capability read false on that first pass and every
-  capability-gated route redirected to the dashboard.** Clicking a sidebar link
-  worked, because by then the store was populated — which is what made this
-  look like anything other than a bug: the sidebar showed the link you had just
-  been refused.
-
-  Hydration is now memoized in the auth store and awaited by the guard.
-  Deliberately not "call it earlier in `main.ts`": an ordering convention between
-  two files is exactly what broke. The guard also carries the intended path
-  through as `?redirect=`, so following a deep link while signed out now lands
-  where you were going; `LoginView` accepts that value only when it is a
-  relative in-app path, since it arrives in a URL someone else can send you.
 
 ## [0.4.0] - 2026-08-30
 
@@ -1482,7 +1533,8 @@ repository public. Each of these was reproduced before being fixed.
 - `scripts/test-authz.sh` grew from 135 to 147 checks, covering the membership
   lifecycle, the code uniqueness constraint, and the frozen leaf-node code.
 
-[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/stone-age-io/platform/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/stone-age-io/platform/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/stone-age-io/platform/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/stone-age-io/platform/compare/v0.2.0...v0.3.0

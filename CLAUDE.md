@@ -999,7 +999,7 @@ you, so pushing an absolute one would make the login form an open redirect (the
   rather than string-matched, because nothing in CI scrapes it and a malformed
   body looks fine in a terminal.
 - `./scripts/test-authz.sh` — **run after any API-rule change in `schema.json`.**
-  Builds the binary, stands up a throwaway DB, and asserts 176 authorization
+  Builds the binary, stands up a throwaway DB, and asserts 198 authorization
   behaviours against a live server. The rules are the only tenancy enforcement
   in the platform and nothing else type-checks them. Add a check when you add a
   rule, and bump `EXPECTED_CHECKS`. Note PocketBase answers 404 (not 403) when an
