@@ -11,6 +11,15 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-09-13
+
+One layout fix, shipped on its own because it is on the first screen of the two
+most-used sections and it is worse on a phone than it sounds: the primary action
+was off the edge of the viewport, not merely cramped.
+
+Nothing else changed. No schema migration, no dependency bump, no API surface —
+upgrading from 0.5.0 is replacing the binary or the image.
+
 ### Fixed
 
 - **The New button on the Things and Locations lists overflowed the screen on
@@ -1555,7 +1564,8 @@ repository public. Each of these was reproduced before being fixed.
 - `scripts/test-authz.sh` grew from 135 to 147 checks, covering the membership
   lifecycle, the code uniqueness constraint, and the frozen leaf-node code.
 
-[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/stone-age-io/platform/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/stone-age-io/platform/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/stone-age-io/platform/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/stone-age-io/platform/compare/v0.3.0...v0.3.1
