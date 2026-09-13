@@ -39,7 +39,25 @@ import (
 // should not find them disagreeing about what "expiring" means. Not worth a
 // cross-language test the way the managed-export name is — a mismatch here
 // makes two views inconsistent, not silently inert.
+//
+// This is the HOST window. The CA gets its own, below.
 const certExpiryWindow = 30 * 24 * time.Hour
+
+// caExpiryWindow is the same idea for the CA, and it is deliberately much
+// longer.
+//
+// A host certificate is renewable — pb-nebula re-issues one automatically once
+// it has burned through its lifetime, so 30 days' notice is ample. A CA cannot
+// be renewed at all. The only remedy is rotation, and rotation is a three-step
+// procedure with a wait in the middle that nothing can compress: it has to
+// outlast every host fetching a config nobody told it to fetch. Nebula's own
+// guide asks you to begin two to three months out, which is where 90 comes from
+// — and it is what pb-nebula warns at too, on a log line this deployment never
+// sees, because nebula.log_to_console is false here.
+//
+// So these are not a tunable and a copy of it. 30 days' notice on a CA is
+// notice that the remedy no longer fits.
+const caExpiryWindow = 90 * 24 * time.Hour
 
 // certKind labels one family of certificate. These are the metric's `kind`
 // label values, so they are snake_case and stable.
@@ -84,7 +102,7 @@ type certSummary struct {
 // `where` narrows the rows: host certificates are filtered to active = true,
 // because a decommissioned device's lapsed certificate is not a problem anyone
 // needs paging about.
-func scanCertExpiry(app core.App, collection, kind, where string, now time.Time) (certSummary, error) {
+func scanCertExpiry(app core.App, collection, kind, where string, window time.Duration, now time.Time) (certSummary, error) {
 	sum := certSummary{Kind: kind}
 	if collection == "" {
 		return sum, nil
@@ -114,7 +132,7 @@ func scanCertExpiry(app core.App, collection, kind, where string, now time.Time)
 		switch {
 		case !at.After(now):
 			sum.Expired++
-		case at.Sub(now) <= certExpiryWindow:
+		case at.Sub(now) <= window:
 			sum.Expiring++
 		}
 	}
@@ -130,17 +148,18 @@ func nebulaCertSummaries(app core.App, opts ObservabilityOptions, now time.Time)
 		collection string
 		kind       string
 		where      string
+		window     time.Duration
 	}{
-		{opts.NebulaCACollection, certKindCA, ""},
+		{opts.NebulaCACollection, certKindCA, "", caExpiryWindow},
 		// Only certificates that are meant to be in service. `active = false`
 		// is this platform's decommission flag, and hooks/active_flag.go has
 		// already killed the NATS half of such a device's identity.
-		{opts.NebulaHostCollection, certKindHost, "active = true"},
+		{opts.NebulaHostCollection, certKindHost, "active = true", certExpiryWindow},
 	}
 
 	out := make([]certSummary, 0, len(specs))
 	for _, s := range specs {
-		sum, err := scanCertExpiry(app, s.collection, s.kind, s.where, now)
+		sum, err := scanCertExpiry(app, s.collection, s.kind, s.where, s.window, now)
 		if err != nil {
 			return nil, err
 		}

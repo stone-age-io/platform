@@ -63,6 +63,23 @@ and this file starts where the versioned releases do.
 
 ### Fixed
 
+- **The host detail view's "Regenerate Certificate" button did nothing, and said
+  it had.** It sent `{ regenerate: true }`. There is no `regenerate` field on
+  `nebula_hosts` and there never has been; PocketBase drops unknown keys from an
+  update body without complaint, so the request returned 200, the console
+  toasted "Certificate regenerated", and the certificate on screen afterwards was
+  the same certificate. It now sends `renew`, pb-nebula's actual action field.
+
+- **A CA now gets 90 days' warning rather than 30.** `certExpiryWindow` was
+  shared between host certificates and the CA. A host certificate is renewable —
+  pb-nebula re-issues one automatically — so 30 days is ample. A CA cannot be
+  renewed at all: the only remedy is rotation, and rotation needs long enough in
+  the middle for every host to fetch a config nobody told it to fetch. Nebula's
+  own guide asks you to begin two to three months out. Thirty days' notice on a
+  CA is notice that the remedy no longer fits. pb-nebula warns at 90 too, but on
+  a log line this deployment never sees, because `nebula.log_to_console` is
+  false here.
+
 - **`ConfirmDialog` is now an actual dialog.** It is the gate in front of every
   destructive action in the console — deleting a Thing, revoking a credential,
   decommissioning a device — and it was a plain `<div>`: no `role="dialog"`, no
@@ -456,6 +473,65 @@ and this file starts where the versioned releases do.
   for every tenant. 17 widget types are now 16.
 
 ### Added
+
+- **Nebula CA rotation, from the console.** `POST /api/org/nebula-ca/rotate`
+  (owner/admin) drives pb-nebula's three steps — `prepare`, `commit`, `finish` —
+  and the CA detail view presents them as a three-step panel with the state it
+  derives from the certificates themselves.
+
+  It is a route rather than a rule branch because `nebula_ca.updateRule` is
+  operator-only, and its comment has said since the authz hardening pass: "There
+  is no tenant-triggered CA rotation today because there is no trigger field for
+  one. If that changes, add a route rather than a branch here." pb-nebula v0.3.0
+  added the trigger field. A branch would have to deny-list ten fields and would
+  silently re-open every field added afterwards — the same deny-list shape this
+  repo has already been bitten by twice, on the record holding the trust anchor
+  for a tenant's whole mesh.
+
+  Three steps and not one because Nebula verification is mutual and config
+  distribution is pull-based: a single write carrying both the new trust bundle
+  and the new certificate splits the mesh, since a host that has fetched presents
+  a new-CA certificate to one that has not and the handshake fails in *both*
+  directions. `prepare` publishes trust and moves no issuance, so it is fully
+  reversible. `commit` swaps issuance and re-signs every active host. `finish`
+  drops the outgoing CA and is refused while any active host still holds a
+  certificate signed by it.
+
+  The tenant owns the lever because the dangerous part of rotating a CA is the
+  **wait** in the middle, and the wait belongs to whoever operates the devices.
+
+- **A certificate audit for the `/32` defect**, at `GET /api/org/nebula/cert-audit`
+  (owner/admin), surfaced as a "Wrong mask" badge on the host list and a banner
+  with a re-issue button on host detail.
+
+  pb-nebula signed host certificates at `/32` until v0.3.0. Nebula does not read
+  a certificate's network as "this host's address" — it puts the prefix straight
+  onto the tun device and installs a link route for it, so the mask in the
+  certificate **is** the host's route to the overlay. A `/32` gives a host a
+  route covering only itself: the certificate verifies, the config renders, the
+  host starts, the handshake completes, and no packet ever crosses the mesh.
+  Nothing errors anywhere, which is why it survived from that library's first
+  commit.
+
+  Existing hosts are **not** re-signed automatically. Re-signing moves a
+  certificate's fingerprint, and a fingerprint is what `pki.blocklist` revokes,
+  so a sweep would rewrite every peer config in the mesh on the strength of a
+  dependency bump. The audit names the affected hosts and the console offers a
+  per-host re-issue instead. Inactive hosts are excluded: they are revoked, and
+  re-signing one would publish a new fingerprint while the old certificate
+  stayed valid.
+
+  It is a route because answering it means parsing a Nebula certificate, which
+  the browser cannot do.
+
+- **The rest of pb-nebula v0.3's host surface, in the console.** Relay
+  (`is_relay`, with the `public_host_port` a relay needs or it listens on an
+  ephemeral port while peers hold its overlay IP), gateway routing
+  (`unsafe_networks` on the provider, `unsafe_routes` on the consumer — two
+  halves on two different hosts, neither derived from the other),
+  `preferred_ranges` for underlay path selection, and per-host `mtu` and
+  `tun_device` overrides. The host list now badges lighthouse and relay
+  independently, because a host can be both.
 
 - **126 frontend unit tests**, across the five places most dangerous to change
   blind. All pure logic, no component mounting:

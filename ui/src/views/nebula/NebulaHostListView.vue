@@ -7,6 +7,7 @@ import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { pb } from '@/utils/pb'
 import { formatDate } from '@/utils/format'
+import { fetchStaleHostIds } from '@/utils/nebula'
 import type { NebulaHost } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
@@ -64,6 +65,22 @@ function onSort(next: string) {
   loadHosts()
 }
 const deleting = ref(false)
+
+/**
+ * Hosts whose certificate no longer matches their network -- the /32 defect
+ * pb-nebula carried until v0.3.0, plus anything whose overlay_ip was edited
+ * afterwards. Loaded once per org rather than per page: it is a handful of ids,
+ * and paging through a fleet should not re-audit it each time.
+ *
+ * This list view is the right place for it for the same reason ExpiryBadge is
+ * here -- the failure is silent everywhere else. A host with the wrong mask
+ * looks entirely healthy: active, in date, certificate present.
+ */
+const staleHostIds = ref<Set<string>>(new Set())
+
+async function loadStaleHosts() {
+  staleHostIds.value = await fetchStaleHostIds()
+}
 
 // Column configuration
 const columns: Column<NebulaHost>[] = [
@@ -151,10 +168,14 @@ async function handleDelete(host: NebulaHost) {
 function handleOrgChange() {
   searchQuery.value = ''
   loadHosts()
+  // The audit is org-scoped on the server, so a stale set from the previous
+  // organization would badge rows that have nothing to do with it.
+  loadStaleHosts()
 }
 
 onMounted(() => {
   loadHosts()
+  loadStaleHosts()
   window.addEventListener('organization-changed', handleOrgChange)
 })
 
@@ -268,24 +289,25 @@ onUnmounted(() => {
           <code class="text-sm">{{ item.overlay_ip }}</code>
         </template>
         
-        <!-- Custom cell for type (badge) -->
+        <!--
+          Type: lighthouse and relay are independent roles, so a host can be
+          both, either, or neither. "Node" is only correct when it is neither.
+        -->
         <template #cell-is_lighthouse="{ item }">
-          <span 
-            class="badge badge-sm"
-            :class="item.is_lighthouse ? 'badge-primary' : 'badge-ghost'"
-          >
-            {{ item.is_lighthouse ? 'Lighthouse' : 'Node' }}
-          </span>
+          <div class="flex flex-wrap items-center gap-1">
+            <span v-if="item.is_lighthouse" class="badge badge-sm badge-primary">Lighthouse</span>
+            <span v-if="item.is_relay" class="badge badge-sm badge-secondary">Relay</span>
+            <span v-if="!item.is_lighthouse && !item.is_relay" class="badge badge-sm badge-ghost">Node</span>
+          </div>
         </template>
-        
+
         <template #card-is_lighthouse="{ item }">
-  	  <span 
-    	    class="badge badge-sm"
-    	    :class="item.is_lighthouse ? 'badge-primary' : 'badge-ghost'"
-  	  >
-    	    {{ item.is_lighthouse ? 'Lighthouse' : 'Node' }}
-  	  </span>
-	</template>
+          <div class="flex flex-wrap items-center gap-1">
+            <span v-if="item.is_lighthouse" class="badge badge-sm badge-primary">Lighthouse</span>
+            <span v-if="item.is_relay" class="badge badge-sm badge-secondary">Relay</span>
+            <span v-if="!item.is_lighthouse && !item.is_relay" class="badge badge-sm badge-ghost">Node</span>
+          </div>
+        </template>
 
         <!--
           Status = the active badge plus, when it matters, the certificate
@@ -301,6 +323,13 @@ onUnmounted(() => {
               {{ item.active ? 'Active' : 'Inactive' }}
             </span>
             <ExpiryBadge :value="item.expires_at" size="sm" />
+            <span
+              v-if="staleHostIds.has(item.id)"
+              class="badge badge-sm badge-warning"
+              title="This certificate's network does not match the host's network. Nebula builds the overlay route from it, so the host cannot reach any peer. Open the host to re-issue."
+            >
+              Wrong mask
+            </span>
           </div>
         </template>
 
@@ -313,6 +342,13 @@ onUnmounted(() => {
               {{ item.active ? 'Active' : 'Inactive' }}
             </span>
             <ExpiryBadge :value="item.expires_at" size="sm" />
+            <span
+              v-if="staleHostIds.has(item.id)"
+              class="badge badge-sm badge-warning"
+              title="This certificate's network does not match the host's network. Open the host to re-issue."
+            >
+              Wrong mask
+            </span>
           </div>
         </template>
 

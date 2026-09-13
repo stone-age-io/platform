@@ -41,12 +41,48 @@ const formData = ref({
   
   // Config
   is_lighthouse: false,
+  is_relay: false,
   public_host_port: '',
   active: true,
 
   // Certificate (optional; empty = network default)
   validity_years: '',
+
+  // Routing and transport. The list fields are edited as newline-separated
+  // text for the same reason groups is edited as a comma-separated string:
+  // one textarea beats a bespoke chip editor for something an operator pastes
+  // in from their network documentation.
+  unsafe_networks: '',
+  preferred_ranges: '',
+  unsafe_routes: [] as Array<{ route: string; via: string }>,
+  mtu: '',
+  tun_device: '',
 })
+
+/** Split a textarea into trimmed, non-empty lines. */
+function lines(value: string): string[] {
+  return value.split('\n').map(v => v.trim()).filter(v => v.length > 0)
+}
+
+/**
+ * A lighthouse and a relay both need a reachable address, for different
+ * reasons. Peers read a lighthouse's endpoint out of their own static_host_map;
+ * a relay's address is learned at runtime, but without a public_host_port
+ * pb-nebula gives it listen.port 0 (ephemeral) while handing every peer its
+ * overlay IP as a usable path. The server rejects either case -- this only
+ * stops the operator finding out by round trip.
+ */
+const needsPublicEndpoint = computed(
+  () => formData.value.is_lighthouse || formData.value.is_relay,
+)
+
+function addUnsafeRoute() {
+  formData.value.unsafe_routes.push({ route: '', via: '' })
+}
+
+function removeUnsafeRoute(index: number) {
+  formData.value.unsafe_routes.splice(index, 1)
+}
 
 // Relation options
 const networks = ref<NebulaNetwork[]>([])
@@ -105,9 +141,18 @@ async function loadHost() {
       groups: groupsStr,
       overlay_ip: host.overlay_ip || '',
       is_lighthouse: host.is_lighthouse || false,
+      is_relay: host.is_relay || false,
       public_host_port: host.public_host_port || '',
       active: host.active ?? true,
       validity_years: host.validity_years ? String(host.validity_years) : '',
+      unsafe_networks: (host.unsafe_networks || []).join('\n'),
+      preferred_ranges: (host.preferred_ranges || []).join('\n'),
+      // Copied, not aliased: editing the rows must not mutate the loaded
+      // record, or a cancelled edit would leave the form's idea of "unchanged"
+      // wrong.
+      unsafe_routes: (host.unsafe_routes || []).map(r => ({ ...r })),
+      mtu: host.mtu ? String(host.mtu) : '',
+      tun_device: host.tun_device || '',
     }
   } catch (err: any) {
     toast.error('Failed to load Nebula host')
@@ -148,9 +193,22 @@ async function handleSubmit() {
       network_id: formData.value.network_id,
       groups: groupsArray,
       is_lighthouse: formData.value.is_lighthouse,
+      is_relay: formData.value.is_relay,
       public_host_port: formData.value.public_host_port || null,
       active: formData.value.active,
       overlay_ip: formData.value.overlay_ip,
+      unsafe_networks: lines(formData.value.unsafe_networks),
+      preferred_ranges: lines(formData.value.preferred_ranges),
+      // A half-filled row is dropped rather than sent. pb-nebula would reject
+      // it, but an operator who added a row and changed their mind has not
+      // asked for an error.
+      unsafe_routes: formData.value.unsafe_routes
+        .map(r => ({ route: r.route.trim(), via: r.via.trim() }))
+        .filter(r => r.route && r.via),
+      tun_device: formData.value.tun_device.trim(),
+      // 0 is pb-nebula's "inherit the default", and the schema's Min bound is
+      // short-circuited on it -- so an empty box has to send 0, not null.
+      mtu: formData.value.mtu ? parseInt(formData.value.mtu, 10) : 0,
     }
 
     // Only send validity_years when set; empty lets pb-nebula use its default
@@ -377,8 +435,26 @@ onMounted(() => {
                 </label>
               </div>
 
+              <!-- Is Relay -->
+              <div class="form-control">
+                <label class="label cursor-pointer justify-start gap-4">
+                  <input 
+                    v-model="formData.is_relay"
+                    type="checkbox" 
+                    class="checkbox checkbox-primary"
+                  />
+                  <span class="label-text">
+                    <span class="font-medium">Is Relay</span>
+                    <span class="block text-sm text-base-content/70 mt-1">
+                      Forwards traffic for peers that cannot reach each other directly.
+                      Config only — a relay's certificate is no different.
+                    </span>
+                  </span>
+                </label>
+              </div>
+
               <!-- Public IP/Port (Conditional) -->
-              <div v-if="formData.is_lighthouse" class="form-control pl-8 border-l-2 border-base-300">
+              <div v-if="needsPublicEndpoint" class="form-control pl-8 border-l-2 border-base-300">
                 <label class="label">
                   <span class="label-text">Public Host:Port *</span>
                 </label>
@@ -387,11 +463,19 @@ onMounted(() => {
                   type="text" 
                   placeholder="1.2.3.4:4242"
                   class="input input-bordered font-mono"
-                  :required="formData.is_lighthouse"
+                  :required="needsPublicEndpoint"
                 />
                 <label class="label">
                   <span class="label-text-alt">
-                    The publicly accessible address of this lighthouse
+                    <template v-if="formData.is_lighthouse">
+                      The publicly accessible address of this lighthouse. Peers read it
+                      from their own static host map.
+                    </template>
+                    <template v-else>
+                      Required for a relay too: without it the host listens on an
+                      ephemeral port while every peer is handed its overlay IP as a
+                      usable path.
+                    </template>
                   </span>
                 </label>
               </div>
@@ -437,6 +521,154 @@ onMounted(() => {
         </div>
       </div>
       
+      <!--
+        Routing and transport. Below the two columns rather than inside them:
+        every field here is optional, most hosts need none of it, and putting it
+        alongside the hostname would suggest otherwise.
+      -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+
+        <BaseCard title="Gateway Routing">
+          <div class="space-y-4">
+            <p class="text-sm text-base-content/70">
+              The two halves of reaching a subnet that is not on the overlay. They live
+              on <em>different</em> hosts and neither implies the other.
+            </p>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Unsafe Networks</span>
+              </label>
+              <textarea
+                v-model="formData.unsafe_networks"
+                rows="3"
+                placeholder="192.168.1.0/24&#10;10.200.0.0/16"
+                class="textarea textarea-bordered font-mono text-sm"
+              ></textarea>
+              <label class="label">
+                <span class="label-text-alt">
+                  Subnets <strong>this</strong> host routes to, one per line. Signed into
+                  the certificate — Nebula authorizes routing on the certificate, not on
+                  config, so saving this re-issues it and the change is inert until the
+                  host picks up the new one.
+                </span>
+              </label>
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Unsafe Routes</span>
+              </label>
+
+              <div v-if="formData.unsafe_routes.length === 0" class="text-sm text-base-content/50 pb-2">
+                None. Add one to reach a subnet behind another host.
+              </div>
+
+              <div
+                v-for="(row, index) in formData.unsafe_routes"
+                :key="index"
+                class="flex flex-col sm:flex-row gap-2 mb-2"
+              >
+                <input
+                  v-model="row.route"
+                  type="text"
+                  placeholder="192.168.5.0/24"
+                  class="input input-bordered input-sm font-mono flex-1"
+                  aria-label="Route"
+                />
+                <input
+                  v-model="row.via"
+                  type="text"
+                  placeholder="via 10.100.0.7"
+                  class="input input-bordered input-sm font-mono flex-1"
+                  aria-label="Gateway overlay IP"
+                />
+                <button
+                  type="button"
+                  @click="removeUnsafeRoute(index)"
+                  class="btn btn-sm btn-ghost text-error"
+                >
+                  Remove
+                </button>
+              </div>
+
+              <button type="button" @click="addUnsafeRoute" class="btn btn-sm btn-outline self-start">
+                + Add Route
+              </button>
+
+              <label class="label">
+                <span class="label-text-alt">
+                  Subnets this host reaches <strong>through</strong> another, where
+                  <code>via</code> is that gateway's overlay IP. Routes are never derived
+                  from anyone's unsafe networks: two sites can legitimately advertise the
+                  same prefix, and Nebula would load-balance across both — sending half of
+                  every flow to the wrong LAN.
+                </span>
+              </label>
+            </div>
+          </div>
+        </BaseCard>
+
+        <BaseCard title="Transport">
+          <div class="space-y-4">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Preferred Ranges</span>
+              </label>
+              <textarea
+                v-model="formData.preferred_ranges"
+                rows="3"
+                placeholder="192.168.1.0/24&#10;fd00::/8"
+                class="textarea textarea-bordered font-mono text-sm"
+              ></textarea>
+              <label class="label">
+                <span class="label-text-alt">
+                  <strong>Underlay</strong> prefixes to favour when a peer advertises
+                  several addresses — usually the LAN this host sits on, so two machines in
+                  one rack talk over private addresses instead of public ones. IPv6 is
+                  allowed here and nowhere else, because this is not the overlay.
+                </span>
+              </label>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">MTU</span>
+                </label>
+                <input
+                  v-model="formData.mtu"
+                  type="number"
+                  min="576"
+                  max="9000"
+                  placeholder="Default (1300)"
+                  class="input input-bordered font-mono"
+                />
+                <label class="label">
+                  <span class="label-text-alt">Blank inherits the default.</span>
+                </label>
+              </div>
+
+              <div class="form-control">
+                <label class="label">
+                  <span class="label-text">TUN Device</span>
+                </label>
+                <input
+                  v-model="formData.tun_device"
+                  type="text"
+                  maxlength="15"
+                  placeholder="Default (nebula1)"
+                  class="input input-bordered font-mono"
+                />
+                <label class="label">
+                  <span class="label-text-alt">Interface name on the host.</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </BaseCard>
+      </div>
+
       <!-- Actions -->
       <div class="flex flex-col sm:flex-row justify-end gap-2 sm:gap-4">
         <button 
