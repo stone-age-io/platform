@@ -136,7 +136,8 @@ minute. Run the bus with `serve --nats` and the platform is its own NATS server.
 Isolation is enforced *entirely* by the PocketBase API rules in `schema.json` —
 the NATS and Nebula libraries contain no tenancy logic and never reference
 `organization`. The console's capability map is navigation convenience, not a
-boundary.
+boundary. The invitation email is editable in `/_` under Collections →
+`email_templates`; SMTP is configured in `/_` under Settings → Mail.
 
 **NATS in operator mode.** Creating an organization provisions its account.
 Roles are permission templates; a user JWT is signed from one. Credentials
@@ -215,7 +216,7 @@ other over NATS. Deploy each where it belongs.
 
 A `config.yaml` in the working directory or `/etc/stone-age/`, or environment
 variables prefixed `STONE_AGE_` (`STONE_AGE_NATS_SERVER_URL`,
-`STONE_AGE_TENANCY_LOG_TO_CONSOLE`). Environment variables win. Every key has a
+`STONE_AGE_NATS_ENCRYPTION_KEY`). Environment variables win. Every key has a
 default, so the file is optional.
 
 Two keys are worth understanding before a production deployment.

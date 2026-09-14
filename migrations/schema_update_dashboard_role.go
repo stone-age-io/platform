@@ -22,7 +22,7 @@ import (
 //     still holding `badge` are not revalidated by an import, so they survive
 //     the window between the two steps.
 //  2. The UPDATE rewrites them. It bypasses the ORM deliberately — going through
-//     app.Save() would fire pb-tenancy's membership hooks (re-provisioning, mail)
+//     app.Save() would fire the membership hooks (re-provisioning, mail)
 //     for what is a pure rename of a stored string.
 //
 // This rename cannot widen access. Every rule in schema.json is an ALLOWLIST

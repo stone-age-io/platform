@@ -110,8 +110,6 @@ github.com/skeeeon/pb-nats v0.2.1 h1:DtiD/BhdP4Z6itzg0L7LD7U39F4YpI6KVcZZcVtjac8
 github.com/skeeeon/pb-nats v0.2.1/go.mod h1:3HWYpwr/Rq+aoILi5ywiQ5e1r7e7Pxu9zvJv+++Z0xM=
 github.com/skeeeon/pb-nebula v0.3.2 h1:Us9PfMvVamJVqAxnXoDpB9CDE26AmyVc4rUSmS6I1Ms=
 github.com/skeeeon/pb-nebula v0.3.2/go.mod h1:1iDAMF48xWxMMwk56559cRu3WbVapwVHi80vN+lOQgQ=
-github.com/skeeeon/pb-tenancy v0.1.0 h1:Z2kZjMUqjvm7tgccocYHX/9raqjIQATBIMzzD5+AlS4=
-github.com/skeeeon/pb-tenancy v0.1.0/go.mod h1:Jfr+y+KPiIqaiT9TSDiKps0ZdzEzIJ6e8NzFnqknCyU=
 github.com/slackhq/nebula v1.11.0 h1:UVSVPTFw1/QxrfH/MIm27tzxGWn2dSnXZRGh7q0VhsQ=
 github.com/slackhq/nebula v1.11.0/go.mod h1:ASNK6VI3QkMJ1z9fONuu1XUdRMfzop606pYM0yijwRY=
 github.com/spf13/afero v1.15.0 h1:b/YBCLWAJdFWJTN9cLhiXXcD7mzKn9Dm86dNnfyQw1I=

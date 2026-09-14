@@ -16,7 +16,6 @@ import (
 	pbaudit "github.com/skeeeon/pb-audit"
 	pbnats "github.com/skeeeon/pb-nats"
 	pbnebula "github.com/skeeeon/pb-nebula"
-	pbtenancy "github.com/skeeeon/pb-tenancy"
 
 	"platform/hooks"
 	"platform/internal/demoseed"
@@ -86,7 +85,6 @@ func setDefaults() {
 	viper.SetDefault("tenancy.memberships_collection", "memberships")
 	viper.SetDefault("tenancy.invites_collection", "invites")
 	viper.SetDefault("tenancy.invite_expiry_days", 7)
-	viper.SetDefault("tenancy.log_to_console", false)
 
 	// NATS
 	viper.SetDefault("nats.account_collection_name", "nats_accounts")
@@ -199,17 +197,20 @@ func main() {
 	// nor PocketBase usefully. A bug report needs both: the API rules are the
 	// entire authorization layer here, and their semantics are PocketBase's.
 	// The pb-* libraries are listed alongside PocketBase for the same reason:
-	// that is where NATS credential minting, Nebula CA issuance, the tenancy
-	// collections and the audit trail actually live, so "which pb-nats is this"
-	// is the second fact any credential or authorization bug report needs. They
-	// are read from the build info, not stamped -- a library has no ldflags
-	// equivalent -- which is precisely why those repos carry tags: an untagged
-	// module reads back here as a pseudo-version naming a commit.
+	// that is where NATS credential minting, Nebula CA issuance and the audit
+	// trail actually live, so "which pb-nats is this" is the second fact any
+	// credential or authorization bug report needs. They are read from the build
+	// info, not stamped -- a library has no ldflags equivalent -- which is
+	// precisely why those repos carry tags: an untagged module reads back here as
+	// a pseudo-version naming a commit.
+	//
+	// pb-tenancy was on this list until it was absorbed. The answer to "which
+	// tenancy code is this" is now the platform version on the line above, which
+	// is the point of absorbing it.
 	app.RootCmd.Version = version.Version + "\n" + version.DependencyLines(
 		"github.com/pocketbase/pocketbase",
 		"github.com/skeeeon/pb-nats",
 		"github.com/skeeeon/pb-nebula",
-		"github.com/skeeeon/pb-tenancy",
 		"github.com/skeeeon/pb-audit",
 	)
 
@@ -235,14 +236,22 @@ func main() {
 	}
 
 	// --- Tenancy ---
-	tenancyOptions := pbtenancy.DefaultOptions()
-	tenancyOptions.OrganizationsCollection = viper.GetString("tenancy.organizations_collection")
-	tenancyOptions.MembershipsCollection = viper.GetString("tenancy.memberships_collection")
-	tenancyOptions.InvitesCollection = viper.GetString("tenancy.invites_collection")
-	tenancyOptions.LogToConsole = viper.GetBool("tenancy.log_to_console")
+	// Platform-owned since the pb-tenancy absorb. The library's collection and
+	// API-rule half never ran here anyway -- schema.json has owned those since the
+	// initial import, and every rule it would have written had been replaced -- so
+	// what came back in-tree is the half that did: owner membership, the
+	// invitation lifecycle, and the accept endpoint. See hooks/org_membership.go
+	// and hooks/invites.go.
+	//
+	// tenancy.log_to_console is gone with it. Mail failures now go through
+	// app.Logger() unconditionally, because the one thing that flag did here was
+	// silence them.
+	orgCollection := viper.GetString("tenancy.organizations_collection")
+	membershipCollection := viper.GetString("tenancy.memberships_collection")
+	inviteCollection := viper.GetString("tenancy.invites_collection")
 	// Assigned unconditionally: setDefaults guarantees a sane value, so the old
 	// viper.IsSet guard only obscured whether the key could be missing.
-	tenancyOptions.InviteExpiryDays = viper.GetInt("tenancy.invite_expiry_days")
+	inviteExpiryDays := viper.GetInt("tenancy.invite_expiry_days")
 
 	// --- NATS ---
 	natsOptions := pbnats.DefaultOptions()
@@ -318,9 +327,6 @@ func main() {
 	if err := pbaudit.Setup(app, auditOptions); err != nil {
 		log.Fatalf("Failed to register audit setup: %v", err)
 	}
-	if err := pbtenancy.Setup(app, tenancyOptions); err != nil {
-		log.Fatalf("Failed to register tenancy setup: %v", err)
-	}
 	if err := pbnats.Setup(app, natsOptions); err != nil {
 		log.Fatalf("Failed to register NATS setup: %v", err)
 	}
@@ -334,11 +340,11 @@ func main() {
 	// Platform-owned hooks: every org gets an immutable `code`, the root of the
 	// public namespace (ADR 0002). Registered before the provisioning hook so a
 	// code exists on the record the moment anything else reads it.
-	hooks.RegisterOrgCode(app, tenancyOptions.OrganizationsCollection)
+	hooks.RegisterOrgCode(app, orgCollection)
 
 	// Platform-owned hooks: auto-provision NATS account + Nebula CA per new org.
 	hooks.RegisterOrgProvisioning(app, hooks.OrgProvisioningOptions{
-		OrgCollection:                tenancyOptions.OrganizationsCollection,
+		OrgCollection:                orgCollection,
 		NatsAccountCollection:        natsOptions.AccountCollectionName,
 		NebulaCACollection:           nebulaOptions.CACollectionName,
 		NatsMaxConnections:           viper.GetInt("nats.default_limits.max_connections"),
@@ -354,12 +360,39 @@ func main() {
 		log.Fatalf("❌ nats.managed_export_subject must end in '.>' (got %q)", managedExportSubject)
 	}
 	hooks.RegisterManagedOrgExports(app, hooks.ManagedOrgExportsOptions{
-		OrgCollection:     tenancyOptions.OrganizationsCollection,
+		OrgCollection:     orgCollection,
 		AccountCollection: natsOptions.AccountCollectionName,
 		ExportCollection:  natsOptions.ExportCollectionName,
 		ImportCollection:  natsOptions.ImportCollectionName,
 		ExportSubject:     managedExportSubject,
 	})
+
+	// Owner membership, and the invitation lifecycle. Absorbed from pb-tenancy;
+	// see hooks/org_membership.go for what changed.
+	//
+	// POSITION IS DELIBERATE. The library registered its organizations
+	// AfterCreateSuccess handler from inside its own OnBootstrap callback, which
+	// put it after every hooks.Register* call here -- so provisioning and managed
+	// exports ran before it. Registering it at this point reproduces that order
+	// exactly. It no longer TERMINATES the chain, which is what made a late bind
+	// silently inert, so a new handler may now be bound after this one.
+	hooks.RegisterOrgMembership(app, hooks.OrgMembershipOptions{
+		OrgCollection:        orgCollection,
+		MembershipCollection: membershipCollection,
+		UserCollection:       "users",
+	})
+	hooks.RegisterInvites(app, hooks.InviteOptions{
+		MembershipCollection: membershipCollection,
+		InviteCollection:     inviteCollection,
+		UserCollection:       "users",
+		ExpiryDays:           inviteExpiryDays,
+	})
+
+	// Give every mail the platform composes itself a row an operator can edit in
+	// /_ . Every template listed here is seeded on first serve if it is missing,
+	// and never overwritten after that. A new one is added by appending it to this
+	// call -- see hooks/email_templates.go.
+	hooks.RegisterEmailTemplates(app, hooks.OrgInviteEmail)
 
 	// Platform-owned hooks: auto-provision a single NATS user per new leaf node.
 	hooks.RegisterLeafNodeProvisioning(app, hooks.LeafNodeProvisioningOptions{
@@ -383,7 +416,7 @@ func main() {
 	// users.current_organization on its own, so a membership delete that leaves
 	// it pointing at the old org leaves the reader inside it.
 	hooks.RegisterMembershipLifecycle(app, hooks.MembershipLifecycleOptions{
-		MembershipCollection: tenancyOptions.MembershipsCollection,
+		MembershipCollection: membershipCollection,
 		UserCollection:       "users",
 	})
 
@@ -401,7 +434,7 @@ func main() {
 	// because it must permit a write to exactly one field.
 	hooks.RegisterCredentialRoutes(app, hooks.CredentialRoutesOptions{
 		NatsUserCollection:   natsOptions.UserCollectionName,
-		MembershipCollection: tenancyOptions.MembershipsCollection,
+		MembershipCollection: membershipCollection,
 		ThingCollection:      "things",
 		LeafNodeCollection:   "leaf_nodes",
 	})
@@ -411,7 +444,7 @@ func main() {
 	// so nats_accounts.updateRule is operator-only and these live in a route.
 	hooks.RegisterNatsAccountRoutes(app, hooks.NatsAccountRoutesOptions{
 		NatsAccountCollection: natsOptions.AccountCollectionName,
-		MembershipCollection:  tenancyOptions.MembershipsCollection,
+		MembershipCollection:  membershipCollection,
 	})
 
 	// CA rotation and the host-certificate audit for an org's own overlay. Same
@@ -423,7 +456,7 @@ func main() {
 		NebulaCACollection:      nebulaOptions.CACollectionName,
 		NebulaNetworkCollection: nebulaOptions.NetworkCollectionName,
 		NebulaHostCollection:    nebulaOptions.HostCollectionName,
-		MembershipCollection:    tenancyOptions.MembershipsCollection,
+		MembershipCollection:    membershipCollection,
 	})
 
 	// Thing creation with optional identity provisioning, in one transaction. The
@@ -432,8 +465,8 @@ func main() {
 	// was locked out of the API by things.authRule.
 	hooks.RegisterThingRoutes(app, hooks.ThingRoutesOptions{
 		ThingCollection:         "things",
-		OrgCollection:           tenancyOptions.OrganizationsCollection,
-		MembershipCollection:    tenancyOptions.MembershipsCollection,
+		OrgCollection:           orgCollection,
+		MembershipCollection:    membershipCollection,
 		NatsUserCollection:      natsOptions.UserCollectionName,
 		NatsAccountCollection:   natsOptions.AccountCollectionName,
 		NatsRoleCollection:      natsOptions.RoleCollectionName,
@@ -517,8 +550,8 @@ func main() {
 	// leaf-sync from the edge.
 	hooks.RegisterObservability(app, hooks.ObservabilityOptions{
 		Version:               version.Version,
-		OrgCollection:         tenancyOptions.OrganizationsCollection,
-		MembershipCollection:  tenancyOptions.MembershipsCollection,
+		OrgCollection:         orgCollection,
+		MembershipCollection:  membershipCollection,
 		NatsAccountCollection: natsOptions.AccountCollectionName,
 		NatsUserCollection:    natsOptions.UserCollectionName,
 		NebulaHostCollection:  nebulaOptions.HostCollectionName,
@@ -603,7 +636,7 @@ func main() {
 	})
 
 	// Register Bootstrap Command
-	addBootstrapCommand(app, tenancyOptions.OrganizationsCollection, tenancyOptions.MembershipsCollection, natsOptions)
+	addBootstrapCommand(app, orgCollection, membershipCollection, natsOptions)
 
 	// `demo-seed`: three fictional tenants with the full contract, identity and
 	// edge surface. Registered AFTER every hook above, which is what makes the

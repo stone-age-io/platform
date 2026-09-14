@@ -13,7 +13,9 @@ tenancy:
   memberships_collection: "memberships"
   invites_collection: "invites"
   invite_expiry_days: 7
-  log_to_console: false
+  # log_to_console is gone: the tenancy hooks are platform code now, and the one
+  # thing that flag did was silence invitation-email failures. They go through the
+  # application logger unconditionally.
 
 nats:
   account_collection_name: "nats_accounts"

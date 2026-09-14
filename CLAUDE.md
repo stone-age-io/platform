@@ -16,7 +16,7 @@ Stone Age IoT Platform is a single-binary IoT and Event-Driven management platfo
 - **Go 1.26.0** with PocketBase 0.39.11
 - **Cobra** for CLI commands (bootstrap, NATS management)
 - **Viper** for configuration management
-- **Key libraries**: pb-audit, pb-tenancy, pb-nats, pb-nebula, nats-io/jwt, slackhq/nebula
+- **Key libraries**: pb-audit, pb-nats, pb-nebula, nats-io/jwt, slackhq/nebula (tenancy was pb-tenancy until it was absorbed into `hooks/`)
 
 ### Frontend
 - **Vue 3** (Composition API + `<script setup>`)
@@ -814,20 +814,28 @@ Rules to follow when touching authorization:
   `things` record is readable by any org member, so "linked but not visible to you"
   and "not linked" stay distinguishable without any rule change — three states, not
   two. Same rule as the twin markers: show what you actually know.
-- **pb-tenancy TERMINATES the `organizations` AfterCreateSuccess chain, so a
-  hook bound after `app.Bootstrap()` never runs.** Its handler is
-  `return autoCreateOwnerMembership(...)` with no `e.Next()`
-  (`pb-tenancy/internal/tenancy/hooks.go`; the comment on the hook below it
-  reads "FIXED: Added e.Next()", so one of the pair was fixed and this one was
-  missed). It is registered from `Setup`'s `OnBootstrap` callback rather than
-  from `Setup` itself, which puts it AFTER every `hooks.Register*` call — so
-  main.go is safe only because it binds before `app.Start()` bootstraps. Anything
-  binding later gets silence: no handler, no error, no log. This cost real time
-  — `RegisterManagedOrgExports` called on an already-bootstrapped test app
+- **A hook that returns without `e.Next()` silently deletes every handler bound
+  after it.** FIXED, and worth keeping written down because of how it presented.
+  pb-tenancy's `organizations` AfterCreateSuccess handler was
+  `return autoCreateOwnerMembership(...)` with no `e.Next()`, and it registered
+  from `Setup`'s `OnBootstrap` callback rather than from `Setup` itself — which
+  put it after every `hooks.Register*` call, so it was always last and nothing
+  downstream ever noticed. Anything binding later got silence: no handler, no
+  error, no log. `RegisterManagedOrgExports` on an already-bootstrapped test app
   provisioned nothing, and a `Priority: -9999` bind was the only thing that
-  fired. `internal/testutil` therefore registers it in the harness, before
-  Bootstrap, exactly where main.go does; a test that needs an `organizations`
-  hook must do the same rather than binding on the app it is handed.
+  fired. That hook is now `hooks.RegisterOrgMembership` and it calls `e.Next()`,
+  guarded by `TestOrgCreateDoesNotTerminateTheHookChain`, which binds on the
+  bootstrapped app the harness hands out — precisely the case that used to be
+  inert. `internal/testutil` still registers organization hooks before Bootstrap,
+  now as a convention (be equivalent to main.go) rather than a requirement.
+- **Tenancy is platform code, not a library.** `organizations`, `memberships` and
+  `invites` were pb-tenancy until it was absorbed. Only half of it ever ran here:
+  `schema.json` has owned those collections and every one of their API rules since
+  the initial import, so the library's `createCollections`/`setAPIRules` half was
+  dead, and its roles (`owner`/`admin`/`member`) had already been outgrown by
+  `viewer` and `dashboard`. What came back in-tree is the half that did run —
+  `hooks/org_membership.go` (owner membership) and `hooks/invites.go` (token,
+  expiry, mail, resend, `POST /api/org/invites/accept`).
 - **pb-nats trigger fields only fire from a route if pb-nats watches them on the
   MODEL hook.** `regenerate`, `revoke`, `rotate_keys`, `add_signing_key` and
   `remove_signing_key` are all handled in `pb-nats internal/sync/manager.go`. Those

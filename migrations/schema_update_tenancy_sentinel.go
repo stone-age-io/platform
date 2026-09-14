@@ -66,7 +66,7 @@ import (
 //     scope on precisely that field. This branch is anonymous and cannot check
 //     membership even in principle (there is no auth record yet), so the fix is
 //     to refuse the field: accept-invite fills it in from the invite once the
-//     account exists, and pb-tenancy only writes it when empty.
+//     account exists, and hooks/invites.go only writes it when empty.
 //
 //  3. organizations.deleteRule is platform-operator only, matching updateRule.
 //     An owner branch on delete was strictly worse than one on update given the

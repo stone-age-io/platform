@@ -1214,7 +1214,7 @@
     "authRule": "// A deactivated Thing cannot obtain a new auth token.\n//\n// This rule is evaluated at the AUTH ENDPOINT ONLY (apis/record_helpers.go,\n// RecordAuthResponse) -- not on every request carrying an already-issued token.\n// authToken.duration below is 7 days, so on its own this rule would leave a\n// deactivated device connected for up to a week. hooks/active_flag.go closes\n// that window by refreshing tokenKey when active goes true -> false, which\n// invalidates every outstanding token immediately, and by revoking the linked\n// NATS identity -- which is the Thing's real capability, and is not touched by\n// anything PocketBase does.\nactive = true",
     "manageRule": "// Org Admins/Owners may manage (e.g. reset the PocketBase password of) their\n// organization's things. Without this, `password` on update requires\n// `oldPassword` (forms/record_upsert.go) which nobody holds for a device, so a\n// Thing's PocketBase credential was mint-once with no recovery short of\n// deleting the record. Mirrors the leaf_nodes manageRule and the updateRule\n// below.\norganization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n (@request.auth.memberships_via_user.role ?= \"owner\" || @request.auth.memberships_via_user.role ?= \"admin\"))",
     "authAlert": {
-      "enabled": true,
+      "enabled": false,
       "emailTemplate": {
         "subject": "Login from a new location",
         "body": "<p>Hello,</p>\n<p>We noticed a login to your {APP_NAME} account from a new location.</p>\n<p>If this was you, you may disregard this email.</p>\n<p><strong>If this wasn't you, you should immediately change your {APP_NAME} account password to revoke access from all other locations.</strong></p>\n<p>\n  Thanks,<br/>\n  {APP_NAME} team\n</p>"
@@ -4415,7 +4415,7 @@
     "authRule": "// A deactivated leaf node cannot obtain a new auth token, so leaf-sync stops\n// pulling config and GET /api/leaf/bootstrap stops answering it.\n//\n// Same caveat and same remedy as the things authRule: this is checked at the\n// auth endpoint only, and hooks/active_flag.go refreshes tokenKey and revokes\n// the linked NATS identity on deactivation so the edge box actually goes dark.\n// leaf_nodes has no member-level write path -- create/update are already\n// owner/admin -- so `active` needs no extra field freeze.\nactive = true",
     "manageRule": "// Org Admins/Owners may manage (e.g. reset the PocketBase password of) their organization's leaf nodes.\norganization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n (@request.auth.memberships_via_user.role ?= \"owner\" || @request.auth.memberships_via_user.role ?= \"admin\"))",
     "authAlert": {
-      "enabled": true,
+      "enabled": false,
       "emailTemplate": {
         "subject": "Login from a new location",
         "body": "<p>Hello,</p>\n<p>We noticed a login to your {APP_NAME} account from a new location.</p>\n<p>If this was you, you may disregard this email.</p>\n<p><strong>If this wasn't you, you should immediately change your {APP_NAME} account password to revoke access from all other locations.</strong></p>\n<p>\n  Thanks,<br/>\n  {APP_NAME} team\n</p>"
@@ -4477,5 +4477,118 @@
       "subject": "Confirm your {APP_NAME} new email address",
       "body": "<p>Hello,</p>\n<p>Click on the button below to confirm your new email address.</p>\n<p>\n  <a class=\"btn\" href=\"{APP_URL}/_/#/auth/confirm-email-change/{TOKEN}\" target=\"_blank\" rel=\"noopener\">Confirm new email</a>\n</p>\n<p><i>If you didn't ask to change your email address, you can ignore this email.</i></p>\n<p>\n  Thanks,<br/>\n  {APP_NAME} team\n</p>"
     }
+  },
+  {
+    "id": "pbc_242159415",
+    "listRule": null,
+    "viewRule": null,
+    "createRule": null,
+    "updateRule": null,
+    "deleteRule": null,
+    "name": "email_templates",
+    "type": "base",
+    "system": false,
+    "fields": [
+      {
+        "autogeneratePattern": "[a-z0-9]{15}",
+        "hidden": false,
+        "id": "text3208210256",
+        "max": 15,
+        "min": 15,
+        "name": "id",
+        "pattern": "^[a-z0-9]+$",
+        "presentable": false,
+        "primaryKey": true,
+        "required": true,
+        "system": true,
+        "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text2324736937",
+        "max": 64,
+        "min": 1,
+        "name": "key",
+        "pattern": "^[a-z0-9_]+$",
+        "presentable": true,
+        "primaryKey": false,
+        "required": true,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text4224597626",
+        "max": 255,
+        "min": 0,
+        "name": "subject",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": true,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "convertURLs": false,
+        "hidden": false,
+        "id": "editor3685223346",
+        "maxSize": 0,
+        "name": "body",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "editor",
+        "help": "HTML fragment only -- no <html>/<body> wrapper, the platform adds one. Placeholders for org_invite: {{.OrgName}} {{.InviterName}} {{.Role}} {{.InviteLink}} {{.ExpiresAt}} {{.AppName}}. A template that fails to render falls back to the built-in copy and logs an error."
+      },
+      {
+        "hidden": false,
+        "id": "bool1260321794",
+        "name": "active",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "bool"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text1843675174",
+        "max": 255,
+        "min": 0,
+        "name": "description",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "hidden": false,
+        "id": "autodate2990389176",
+        "name": "created",
+        "onCreate": true,
+        "onUpdate": false,
+        "presentable": false,
+        "system": false,
+        "type": "autodate"
+      },
+      {
+        "hidden": false,
+        "id": "autodate3332085495",
+        "name": "updated",
+        "onCreate": true,
+        "onUpdate": true,
+        "presentable": false,
+        "system": false,
+        "type": "autodate"
+      }
+    ],
+    "indexes": [
+      "CREATE UNIQUE INDEX `idx_email_templates_key` ON `email_templates` (`key`)"
+    ]
   }
 ]

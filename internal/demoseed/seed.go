@@ -461,8 +461,8 @@ func (s *seeder) seedMemberships() error {
 				return err
 			}
 
-			// An owner's membership is NOT created here. pb-tenancy's
-			// autoCreateOwnerMembership already made it when the organization was
+			// An owner's membership is NOT created here.
+			// hooks.RegisterOrgMembership already made it when the organization was
 			// saved, so `ensure` above finds it and its `fill` never runs — which
 			// left every owner without the console NATS identity the rest of this
 			// demo depends on.

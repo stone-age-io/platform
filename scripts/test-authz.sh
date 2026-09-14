@@ -166,7 +166,7 @@ ORG2=$(j "$RBODY" id)
 [ -z "$ORG" ] || [ -z "$ORG2" ] && die "org create failed: $RBODY"
 echo "  orgs: TestOrg=$ORG OtherOrg=$ORG2"
 
-# alice's owner membership is created for her by pb-tenancy; add the others.
+# alice's owner membership is created for her by hooks.RegisterOrgMembership; add the others.
 req POST /collections/memberships/records "$SU" \
   "{\"user\":\"$BOB\",\"organization\":\"$ORG\",\"role\":\"member\"}"
 MBOB=$(j "$RBODY" id)

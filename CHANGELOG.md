@@ -11,6 +11,106 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+### Added
+
+- **The invitation email is editable in `/_`.** A new superuser-only
+  `email_templates` collection holds the subject and body of every mail the
+  platform composes for itself, rendered with `html/template` against the
+  built-in copy as a fallback. Previously the invitation was a Go `const` in
+  pb-tenancy, so changing one word of it meant editing a library, tagging it,
+  `go get`, rebuild, redeploy.
+
+  PocketBase's own editable templates are a closed set of five, all record flows
+  on an auth collection, with no mechanism for registering a sixth — which is why
+  anything the platform composes itself had nowhere to live but Go. Rows are
+  seeded on first serve from the compiled-in values and never overwritten after
+  that, so an operator's edit survives every upgrade; deactivating or breaking a
+  row falls back to the built-in and logs it. The body is an HTML *fragment* —
+  the document shell is added at send time, so `/_`'s rich-text editor is not
+  fighting a `<!DOCTYPE>` it intends to strip.
+
+### Changed
+
+- **pb-tenancy absorbed into the platform.** `organizations`, `memberships` and
+  `invites` are platform code now (`hooks/org_membership.go`,
+  `hooks/invites.go`); the dependency is gone from `go.mod` and from
+  `--version`.
+
+  Only half the library ever ran here. `schema.json` has owned those three
+  collections and every one of their API rules since the initial import, so
+  `createCollections` and `setAPIRules` were dead code on this deployment — and
+  the rules they would have written had long since diverged (organization
+  creation is operator-only here, not "any authenticated user"), as had the
+  roles, which gained `viewer` and `dashboard`. What came back in-tree is the
+  half that did run: owner membership, the invitation lifecycle, and the accept
+  endpoint.
+
+- **`POST /api/tenancy/accept-invite` is now `POST /api/org/invites/accept`,**
+  matching `/api/org/things`. The old path named a library that no longer
+  exists. Invitation links already in someone's inbox are unaffected — they point
+  at the console route `/accept-invite`, which posts to the API, not at the API
+  directly.
+
+- **`tenancy.log_to_console` is gone.** The one thing it did on this deployment
+  was silence invitation-email failures. They go through the application logger
+  unconditionally. An existing `config.yaml` carrying the key is unaffected;
+  viper ignores it.
+
+- **Resending an invitation always sent a dead link.** The console only offers
+  Resend once an invitation has *expired* — `InvitationsView.vue` disables the
+  button otherwise — and pb-tenancy's resend hook re-sent the mail without
+  touching the token or the expiry. So every Resend mailed the link that had
+  already lapsed, and redeeming it returned 410 and deleted the invitation.
+  Resend now mints a fresh token and a fresh expiry before it mails anything,
+  post-commit, so the link is durable before it is sent.
+
+- **A failed invitation email produced no output anywhere.** The send error was
+  swallowed behind the library's `LogToConsole` flag, which `config.yaml` set to
+  `false`. The invite row was created, the console listed it as pending, and
+  nothing had gone wrong as far as anyone could see. Failures are now logged at
+  ERROR with the invite id, address and organization.
+
+- **An invitation created outside a REST request got no token and no expiry.**
+  Token and expiry were set on `OnRecordCreateRequest`, which fires for REST
+  calls only — so an invitation written by a seed, a migration or a test landed
+  with a blank token and a zero expiry, which the accept endpoint reads as
+  expired and deletes. They are set on `OnRecordCreate` now. Same trap as the
+  pb-nats trigger fields already documented in CLAUDE.md: if it has to happen on
+  every path, it belongs on the model hook.
+
+- **A hook bound after `app.Bootstrap()` on the `organizations`
+  AfterCreateSuccess chain never ran.** pb-tenancy's handler returned without
+  `e.Next()`, terminating the chain, and because it registered from inside its
+  own `OnBootstrap` callback it was always last — so nothing downstream noticed.
+  Anything binding later got silence: no handler, no error, no log.
+  `RegisterManagedOrgExports` on an already-bootstrapped test app provisioned
+  nothing. Guarded now by `TestOrgCreateDoesNotTerminateTheHookChain`, which
+  binds on the bootstrapped app the harness hands out.
+
+- **The invitation email interpolated a user-settable display name into HTML
+  unescaped.** The template was parsed with `text/template`, not
+  `html/template`, and `InviterName` comes from `users.name`.
+
+- **The invitation link never carried the invitee's address.**
+  `AcceptInviteView` reads an `email` query parameter to prefill the
+  registration form an invitee without an account has to fill in first, and the
+  template sent only the token — so that field was always blank and every
+  invitee retyped an address the system already knew. Tokens are also unpadded
+  base64url now, so they survive a query string without escaping.
+
+- **New-device login alerts are off for `things` and `leaf_nodes`.** Both are
+  auth collections whose addresses are synthetic and undeliverable by
+  construction — `hooks/thing_routes.go` mints `<code>@<org>.thing.local` so the
+  `(organization, code)` join key has somewhere to live, not so anyone can be
+  written to. The send is *blocking*: `apis/record_helpers.go` waits on it with a
+  15-second timer before returning the auth response. With no SMTP configured
+  PocketBase falls back to `mailer.Sendmail{}` and the runtime image has no
+  sendmail binary, so every device auth from an unseen origin paid that wait.
+  The fingerprint is `MD5(ip + user-agent)` and `maxAuthOrigins` is 5, so a
+  device on a changing address kept regenerating origins and kept paying. Left
+  enabled on `users` and `_superusers`, who are people with real addresses and
+  can act on the alert.
+
 ## [0.5.1] - 2026-09-13
 
 One layout fix, shipped on its own because it is on the first screen of the two

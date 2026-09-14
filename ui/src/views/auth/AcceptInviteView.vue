@@ -43,8 +43,9 @@ onMounted(() => {
 })
 
 async function executeAccept() {
-  // Call the custom tenancy endpoint
-  await pb.send('/api/tenancy/accept-invite', {
+  // Platform route (hooks/invites.go). Was /api/tenancy/accept-invite, named
+  // after a library that has since been absorbed.
+  await pb.send('/api/org/invites/accept', {
     method: 'POST',
     body: { token: token.value },
   })

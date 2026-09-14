@@ -22,7 +22,6 @@ import (
 
 	pbnats "github.com/skeeeon/pb-nats"
 	pbnebula "github.com/skeeeon/pb-nebula"
-	pbtenancy "github.com/skeeeon/pb-tenancy"
 
 	"platform/hooks"
 	"platform/migrations"
@@ -82,7 +81,13 @@ func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
 		HideStartBanner: true,
 	})
 
-	tenancyOpts := pbtenancy.DefaultOptions()
+	// Mirrors main.go's viper defaults for the absorbed tenancy collections.
+	const (
+		orgCollection        = "organizations"
+		membershipCollection = "memberships"
+		inviteCollection     = "invites"
+	)
+
 	natsOpts := pbnats.DefaultOptions()
 	nebulaOpts := pbnebula.DefaultOptions()
 
@@ -107,9 +112,6 @@ func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
 	// library acts on the record.
 	hooks.RegisterRelationTenancy(app)
 
-	if err := pbtenancy.Setup(app, tenancyOpts); err != nil {
-		return nil, fmt.Errorf("tenancy setup: %w", err)
-	}
 	if err := pbnats.Setup(app, natsOpts); err != nil {
 		return nil, fmt.Errorf("nats setup: %w", err)
 	}
@@ -117,9 +119,9 @@ func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
 		return nil, fmt.Errorf("nebula setup: %w", err)
 	}
 
-	hooks.RegisterOrgCode(app, tenancyOpts.OrganizationsCollection)
+	hooks.RegisterOrgCode(app, orgCollection)
 	hooks.RegisterOrgProvisioning(app, hooks.OrgProvisioningOptions{
-		OrgCollection:                tenancyOpts.OrganizationsCollection,
+		OrgCollection:                orgCollection,
 		NatsAccountCollection:        natsOpts.AccountCollectionName,
 		NebulaCACollection:           nebulaOpts.CACollectionName,
 		NatsMaxConnections:           10,
@@ -127,29 +129,53 @@ func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
 		NatsMaxPayload:               1048576,
 		NebulaDefaultCAValidityYears: 5,
 	})
-	// Registered here rather than in the test that needs it, and the ORDER IS
-	// LOAD-BEARING -- it must be bound before app.Bootstrap() below.
+	// Registered here rather than in the test that needs it, and it must still be
+	// bound before app.Bootstrap() below.
 	//
-	// pb-tenancy defers its own hook registration to OnBootstrap (tenancy.go
-	// Setup -> tenancy.Initialize -> registerHooks), and its organizations
-	// AfterCreateSuccess handler is `return autoCreateOwnerMembership(...)` with
-	// no e.Next() -- so it TERMINATES the chain. Every handler on that event
-	// bound after Bootstrap therefore never runs, silently. A test that called
-	// RegisterManagedOrgExports on the app this function returns got no export,
-	// no import, and no error; a priority -9999 bind was the only thing that
-	// fired. main.go is safe because it binds before app.Start() bootstraps, and
-	// this harness is only equivalent to main.go if it does the same.
+	// This used to be a hard requirement rather than a convention. pb-tenancy
+	// deferred its own hook registration to OnBootstrap, and its organizations
+	// AfterCreateSuccess handler returned without e.Next() -- so it TERMINATED
+	// the chain, and every handler on that event bound after Bootstrap never ran,
+	// silently. A test that called RegisterManagedOrgExports on the app this
+	// function returns got no export, no import, and no error; a priority -9999
+	// bind was the only thing that fired. That hook is now
+	// hooks.RegisterOrgMembership and it calls e.Next(), so a late bind would
+	// work. Registering before Bootstrap stays anyway: this harness is only
+	// equivalent to main.go if it binds where main.go binds.
 	//
 	// Quiet for tests that do not care: syncManaged only provisions when
 	// organizations.managed is true, and its removal path is silent when there
 	// is nothing to remove.
 	hooks.RegisterManagedOrgExports(app, hooks.ManagedOrgExportsOptions{
-		OrgCollection:     tenancyOpts.OrganizationsCollection,
+		OrgCollection:     orgCollection,
 		AccountCollection: natsOpts.AccountCollectionName,
 		ExportCollection:  natsOpts.ExportCollectionName,
 		ImportCollection:  natsOpts.ImportCollectionName,
 		ExportSubject:     "helpdesk.>", // main.go's default for nats.managed_export_subject
 	})
+
+	// Absorbed from pb-tenancy, and bound in the position the library's own
+	// bootstrap-registered hook effectively occupied. RegisterOrgMembership is
+	// what gives a new organization's owner their `owner` membership row, which
+	// every write rule resolves authority through -- a harness without it would
+	// produce owners who cannot write in their own tenant, which production
+	// owners can.
+	hooks.RegisterOrgMembership(app, hooks.OrgMembershipOptions{
+		OrgCollection:        orgCollection,
+		MembershipCollection: membershipCollection,
+		UserCollection:       "users",
+	})
+	// RegisterInvites binds record hooks AND a route. Only the record hooks
+	// matter here (this harness never serves), but they are the half that decides
+	// what a write does: token, expiry and invited_by on create, reissue on
+	// resend. See the note at the bottom of this function about that boundary.
+	hooks.RegisterInvites(app, hooks.InviteOptions{
+		MembershipCollection: membershipCollection,
+		InviteCollection:     inviteCollection,
+		UserCollection:       "users",
+		ExpiryDays:           7, // main.go's default for tenancy.invite_expiry_days
+	})
+
 	hooks.RegisterLeafNodeProvisioning(app, hooks.LeafNodeProvisioningOptions{
 		LeafNodeCollection:    "leaf_nodes",
 		NatsAccountCollection: natsOpts.AccountCollectionName,
@@ -177,7 +203,7 @@ func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
 		NebulaHostCollection: nebulaOpts.HostCollectionName,
 	})
 	hooks.RegisterMembershipLifecycle(app, hooks.MembershipLifecycleOptions{
-		MembershipCollection: tenancyOpts.MembershipsCollection,
+		MembershipCollection: membershipCollection,
 		UserCollection:       "users",
 	})
 

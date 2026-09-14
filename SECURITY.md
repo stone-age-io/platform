@@ -36,7 +36,7 @@ knowing before you go hunting.
 
 **`schema.json` is the enforcement layer.** The PocketBase API rules in that file
 are the *only* thing enforcing tenant isolation and privilege boundaries. The
-supporting libraries (`pb-nats`, `pb-nebula`, `pb-tenancy`, `pb-audit`) contain no
+supporting libraries (`pb-nats`, `pb-nebula`, `pb-audit`) contain no
 tenancy logic at all — they never reference `organization`. The console's
 capability map (`ui/src/stores/auth.ts`) is navigation convenience, not a
 boundary: a role that cannot see a screen can still call the API. So a finding

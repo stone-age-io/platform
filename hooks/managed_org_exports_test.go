@@ -31,9 +31,11 @@ import (
 // vendored schema: the copy is fine, the copy going stale is not.
 //
 // NOTE ON THE HOOK ITSELF: RegisterManagedOrgExports is bound by
-// internal/testutil, not here, and it has to be -- pb-tenancy terminates the
-// organizations AfterCreateSuccess chain, so a late bind never fires at all.
-// The comment in testutil.go has the detail.
+// internal/testutil, not here. It used to HAVE to be -- pb-tenancy terminated the
+// organizations AfterCreateSuccess chain, so a late bind never fired at all --
+// and while that is fixed (hooks/org_membership.go calls e.Next(), guarded by
+// TestOrgCreateDoesNotTerminateTheHookChain), the harness is still where it
+// belongs: binding where main.go binds is what makes the two agree.
 
 const managedExportsTS = "../ui/src/utils/managedExports.ts"
 
