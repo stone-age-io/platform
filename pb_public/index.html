@@ -1,106 +1,52 @@
 <!DOCTYPE html>
+<!--
+  Placeholder. This file is tracked in git so that `go build` works on a fresh
+  clone: main.go embeds this directory with `//go:embed all:pb_public/*`, and an
+  empty or missing directory is a compile error, not a runtime one.
+
+  `cd ui && npm run build` replaces this file (and everything beside it) with the
+  real console. That overwrite is expected and is not meant to be committed.
+-->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" href="/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Stone Age Console</title>
-    <link rel="manifest" href="/manifest.json">
-    <!-- The basemap origin. MapLibre does not ask for the style until the map
-         is constructed, several chunks and a PocketBase round trip into the
-         page, so the DNS + TCP + TLS handshake to this host is worth starting
-         during the HTML parse instead. crossorigin is load-bearing, not
-         decoration: the style, glyphs, sprite and tiles are all CORS fetches,
-         and a preconnect without it opens the socket in the wrong credentials
-         mode, so nothing reuses it and the handshake happens twice. -->
-    <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
-    <meta name="theme-color" content="#0a0a0a">
-    <link rel="apple-touch-icon" href="/icon-192.png">
-    <!-- Optional operator branding overlay; harmless 404 if not configured. -->
-    <link rel="stylesheet" href="/branding/theme.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Stone Age &mdash; console not built</title>
     <style>
-      /* Inline critical CSS for initial loading state */
       body {
         margin: 0;
-        background: #0a0a0a;
         min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #14110f;
+        color: #e8e3dc;
+        font: 15px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       }
-      .app-loader {
-        position: fixed;
-        inset: 0;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 1.5rem;
-        background: #0a0a0a;
-        color: #a0a0a0;
-        font-family: system-ui, -apple-system, sans-serif;
-        z-index: 9999;
-        opacity: 1;
-        transition: opacity 0.3s ease-out;
+      main { max-width: 34rem; padding: 2rem; }
+      h1 { font-size: 1rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #c8a45c; }
+      p { color: #a8a29a; }
+      pre {
+        background: #1f1b18;
+        border-left: 2px solid #c8a45c;
+        padding: 0.75rem 1rem;
+        overflow-x: auto;
       }
-      .app-loader.fade-out {
-        opacity: 0;
-        pointer-events: none;
-      }
-      .app-loader-logo {
-        width: 64px;
-        height: 64px;
-        color: #58a6ff;
-        animation: pulse-glow 2s ease-in-out infinite;
-      }
-      .app-loader-text {
-        font-size: 13px;
-        font-weight: 500;
-        letter-spacing: 0.5px;
-        text-transform: uppercase;
-        opacity: 0.5;
-      }
-      .app-loader-bar {
-        width: 120px;
-        height: 3px;
-        background: #222;
-        border-radius: 3px;
-        overflow: hidden;
-      }
-      .app-loader-bar-fill {
-        height: 100%;
-        width: 30%;
-        background: #58a6ff;
-        border-radius: 3px;
-        animation: loading-bar 1.5s ease-in-out infinite;
-      }
-      @keyframes pulse-glow {
-        0%, 100% { opacity: 0.7; filter: drop-shadow(0 0 8px rgba(88, 166, 255, 0.3)); }
-        50% { opacity: 1; filter: drop-shadow(0 0 16px rgba(88, 166, 255, 0.6)); }
-      }
-      @keyframes loading-bar {
-        0% { transform: translateX(-100%); }
-        50% { transform: translateX(250%); }
-        100% { transform: translateX(250%); }
-      }
+      a { color: #c8a45c; }
     </style>
-    <script type="module" crossorigin src="/assets/index-d6VwX3Vq.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/vue-vendor-B_VpeZ57.js">
-    <link rel="modulepreload" crossorigin href="/assets/pb-BcqMhA-i.js">
-    <link rel="modulepreload" crossorigin href="/assets/rolldown-runtime-Dd_uD5pT.js">
-    <link rel="modulepreload" crossorigin href="/assets/nats-C1lpDJbT.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-XfTpGjKT.css">
   </head>
   <body>
-    <div id="app">
-      <!-- Branded loader shown until Vue mounts -->
-      <div class="app-loader" id="app-loader">
-        <svg class="app-loader-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor">
-          <path d="M128,0 C57.343,0 0,57.343 0,128 C0,198.657 57.343,256 128,256 C198.657,256 256,198.657 256,128 C256,57.343 198.657,0 128,0 z M128,28 C181.423,28 224.757,71.334 224.757,124.757 C224.757,139.486 221.04,153.32 214.356,165.42 C198.756,148.231 178.567,138.124 162.876,124.331 C155.723,124.214 128.543,124.043 113.254,124.043 C113.254,147.334 113.254,172.064 113.254,190.513 C100.456,179.347 94.543,156.243 94.543,156.243 C83.432,147.065 31.243,124.757 31.243,124.757 C31.243,71.334 74.577,28 128,28 z"/>
-        </svg>
-        <div class="app-loader-bar">
-          <div class="app-loader-bar-fill"></div>
-        </div>
-        <div class="app-loader-text">Loading</div>
-      </div>
-    </div>
+    <main>
+      <h1>Console not built</h1>
+      <p>
+        The server is running, but this binary was compiled without the frontend.
+        Build it and restart:
+      </p>
+      <pre>cd ui &amp;&amp; npm install &amp;&amp; npm run build
+go build -o stone-age .</pre>
+      <p>
+        The admin panel at <a href="/_/">/_/</a> and the REST API under
+        <code>/api/</code> work either way.
+      </p>
+    </main>
   </body>
 </html>
-
