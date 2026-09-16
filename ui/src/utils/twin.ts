@@ -60,8 +60,8 @@
  * than a second one that has to reinvent tree view, filtering, history and the
  * responsive detail drawer.
  *
- * Keep TWIN_BUCKET_CONFIG in step with twinBucketConfig() in
- * internal/leafsync/twin.go — both the console and leaf-sync create these
+ * Keep TWIN_BUCKET_CONFIG in step with twinBucketConfig() in the agent repo
+ * (internal/edge/twin.go) — both the console and the agent create these
  * buckets, and whoever gets there first defines them.
  */
 
@@ -71,7 +71,7 @@ export const TWIN_BUCKET = 'twin'
 /** Desired state, written by operators. The writable half. */
 export const TWIN_DESIRED_BUCKET = 'twin_desired'
 
-/** Retention for both twin buckets. Mirrors internal/leafsync/twin.go. */
+/** Retention for both twin buckets. Mirrors the agent's internal/edge/twin.go. */
 export const TWIN_BUCKET_CONFIG = {
   history: 10,
   storage: 'file',

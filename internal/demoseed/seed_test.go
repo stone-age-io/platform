@@ -81,7 +81,6 @@ func TestSeedPopulatesEveryCollectionItClaimsTo(t *testing.T) {
 		{"thing_type_operations", 35},
 		{"thing_types", 22},
 		{"things", testThings},
-		{"leaf_nodes", 5},
 		{"nats_accounts", 3},
 		{"nats_roles", 15},
 		{"nebula_ca", 3},
@@ -135,29 +134,6 @@ func TestEveryOrganizationIsProvisioned(t *testing.T) {
 			"organization = {:o}", dbx.Params{"o": org.Id})
 		if err != nil || ca == nil {
 			t.Errorf("organization %q has no Nebula CA", org.GetString("code"))
-		}
-	}
-}
-
-// A leaf node's NATS user is minted by RegisterLeafNodeProvisioning, not by the
-// seeder. This is what proves the seed goes in through the platform's own
-// provisioning path rather than around it.
-func TestLeafNodesGetTheirNatsUserFromTheHook(t *testing.T) {
-	app := shared
-
-	leaves, err := app.FindAllRecords("leaf_nodes")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(leaves) == 0 {
-		t.Fatal("no leaf nodes seeded")
-	}
-	for _, leaf := range leaves {
-		if leaf.GetString("nats_user") == "" {
-			t.Errorf("leaf node %q has no NATS user", leaf.GetString("code"))
-		}
-		if got, want := leaf.GetString("domain"), "edge-"+leaf.GetString("code"); got != want {
-			t.Errorf("leaf node %q domain = %q, want %q", leaf.GetString("code"), got, want)
 		}
 	}
 }
@@ -359,7 +335,7 @@ func TestSeedingTwiceChangesNothing(t *testing.T) {
 		t.Fatalf("first run: %v", err)
 	}
 	before := map[string]int{}
-	for _, c := range []string{"organizations", "things", "locations", "nats_users", "memberships", "leaf_nodes"} {
+	for _, c := range []string{"organizations", "things", "locations", "nats_users", "memberships"} {
 		before[c] = count(t, app, c)
 	}
 
@@ -409,7 +385,7 @@ func TestRaisingTheThingCountTopsUp(t *testing.T) {
 func TestCodesAreUniqueWithinAnOrganization(t *testing.T) {
 	app := shared
 
-	for _, collection := range []string{"things", "locations", "thing_types", "location_types", "leaf_nodes"} {
+	for _, collection := range []string{"things", "locations", "thing_types", "location_types"} {
 		recs, err := app.FindAllRecords(collection)
 		if err != nil {
 			t.Fatal(err)

@@ -16,7 +16,6 @@ type Capability =
   | 'manageMembers'
   | 'manageInfrastructure'
   | 'manageDefinitions'
-  | 'manageLeafNodes'
   | 'manageMessaging'
   | 'viewInventory'
   | 'manageInventory'
@@ -41,7 +40,6 @@ const MATRIX: Record<Role, Record<Capability, boolean>> = {
     manageMembers: true,
     manageInfrastructure: true,
     manageDefinitions: true,
-    manageLeafNodes: true,
     manageMessaging: true,
     viewInventory: true,
     manageInventory: true,
@@ -51,7 +49,6 @@ const MATRIX: Record<Role, Record<Capability, boolean>> = {
     manageMembers: true,
     manageInfrastructure: true,
     manageDefinitions: true,
-    manageLeafNodes: true,
     manageMessaging: true,
     viewInventory: true,
     manageInventory: true,
@@ -61,7 +58,6 @@ const MATRIX: Record<Role, Record<Capability, boolean>> = {
     manageMembers: false,
     manageInfrastructure: false,
     manageDefinitions: false,
-    manageLeafNodes: false,
     manageMessaging: false,
     viewInventory: true,
     manageInventory: true,
@@ -72,7 +68,6 @@ const MATRIX: Record<Role, Record<Capability, boolean>> = {
     manageMembers: false,
     manageInfrastructure: false,
     manageDefinitions: false,
-    manageLeafNodes: false,
     manageMessaging: false,
     viewInventory: true,
     manageInventory: false,
@@ -86,7 +81,6 @@ const MATRIX: Record<Role, Record<Capability, boolean>> = {
     manageMembers: false,
     manageInfrastructure: false,
     manageDefinitions: false,
-    manageLeafNodes: false,
     manageMessaging: false,
     viewInventory: false,
     manageInventory: false,

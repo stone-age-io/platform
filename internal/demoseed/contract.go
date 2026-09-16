@@ -702,8 +702,9 @@ var roleTemplates = []roleFixture{
 	{Name: "console-readonly",
 		Description: "A console session that cannot change anything on the bus. Pair this with the viewer and dashboard roles — a console role is not a NATS role, and the two are set independently.",
 		// Reads only, plus the publishes a read actually requires: an inbox for
-		// request/reply, and the JetStream API calls the KV browser issues to
-		// list streams, create an ephemeral consumer and fetch values.
+		// request/reply, the JetStream API calls the KV browser issues to list
+		// streams, create an ephemeral consumer and fetch values, and the
+		// account-scoped monitoring request behind the site-connectivity view.
 		Publish: []string{
 			"_INBOX.>",
 			"$JS.API.INFO",
@@ -713,8 +714,27 @@ var roleTemplates = []roleFixture{
 			"$JS.API.CONSUMER.CREATE.>",
 			"$JS.API.CONSUMER.MSG.NEXT.>",
 			"$JS.API.DIRECT.GET.>",
+			// How the console knows whether a gateway's leaf node is attached.
+			// CONNZ lists leaf connections and names each by the leaf server's
+			// `server_name`, which is a Thing's code -- so a site is
+			// identifiable, not merely countable. The server scopes the answer
+			// to the caller's own account; see
+			// internal/health/leaf_visibility_test.go.
+			"$SYS.REQ.ACCOUNT.PING.>",
 		},
-		Subscribe:        []string{">"},
-		PublishDeny:      []string{"$SYS.>"},
+		Subscribe: []string{">"},
+		// Server-level monitoring is the operator's, never a tenant's: LEAFZ
+		// there is EVERY account's leaves. Denied explicitly rather than left to
+		// the allow-list above, so the intent is legible on the role screen.
+		//
+		// This used to read `$SYS.>`, which also blocked the account-scoped
+		// endpoints the console now needs. DO NOT widen it back and add an allow
+		// beside it -- in NATS a publish DENY beats a publish ALLOW, so
+		// deny `$SYS.>` + allow `$SYS.REQ.ACCOUNT.PING.>` refuses the request,
+		// and it refuses it as a request TIMEOUT with the real reason arriving
+		// asynchronously on the connection's error handler. Nothing points at
+		// permissions. TestDenyingAllOfSysBlocksAccountMonitoring pins all four
+		// shapes against a real server.
+		PublishDeny:      []string{"$SYS.REQ.SERVER.>"},
 		MaxSubscriptions: 256, MaxPayload: 1048576},
 }

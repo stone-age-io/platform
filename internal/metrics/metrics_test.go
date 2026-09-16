@@ -166,7 +166,7 @@ func TestObserveNilIsNotReady(t *testing.T) {
 // depend on which unrelated library happened to initialise.
 func TestSetsUsePrivateRegistries(t *testing.T) {
 	a := New("stone_age", "v1")
-	b := New("leaf_sync", "v1")
+	b := New("agent", "v1")
 	if a.Registry == b.Registry {
 		t.Fatal("two Sets share a registry")
 	}

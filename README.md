@@ -184,18 +184,21 @@ Payload *shape* is deliberately not described. A `message_schemas` collection
 held a JSON Schema per operation and was dropped: nothing validated against it,
 so an invalid schema document saved cleanly and rendered zero fields.
 
-**Edge sites.** Each is a `leaf_nodes` record — a special kind of thing, with one
-server-provisioned NATS user. The separate [`leaf-sync`](./cmd/leaf-sync/README.md)
-agent runs on the edge, authenticates as the leaf node, and mirrors its
-organization's configuration into a NATS leaf node's local JetStream KV. It can
-host that leaf node itself (`leaf-sync run --nats`), so an edge site is one
-service rather than two.
+**Edge sites.** A site is a Thing. There is no separate record type for one:
+its `thing_types` entry already says it is a gateway, and a second marker would
+be a second thing to get wrong. Its agent — the
+[Agent](https://github.com/stone-age-io/agent), which absorbed the old
+`leaf-sync` — authenticates as that Thing and calls
+`GET /api/me/leaf-config` for the public trust material a NATS leaf server
+needs. It can host that leaf server in-process, so an edge site is one service
+rather than two. The JetStream domain is the Thing's own code, computed rather
+than stored, so there is no second copy to disagree with the first.
 
 **Digital twin.** Two KV buckets per organization with one writer each: `twin`
 for reported state flowing edge-to-hub, `twin_desired` for desired state flowing
 hub-to-edge. Drift is shown as the values themselves, not a status word.
 
-**Dashboards.** Grid layout, 17 widget types, three data-source kinds
+**Dashboards.** Grid layout, 16 widget types, three data-source kinds
 (subscription, consumer, KV), variable substitution, and a live NATS WebSocket
 connection straight from the browser.
 
@@ -207,7 +210,7 @@ searchable viewer.
 *This component* is one binary — Go backend, embedded Vue console, SQLite, no
 runtime dependencies, and with `--nats` the message bus too. The **platform** is
 not one binary: it is a small set of independent single-binary components (this
-Control Plane, `nebula`, `rule-router`, the Agent, `leaf-sync`) that find each
+Control Plane, `nebula`, `rule-router`, the Agent) that find each
 other over NATS. Deploy each where it belongs.
 
 ---
@@ -320,7 +323,7 @@ or as HTTP Basic with any username, covering every scraper in common use.
 | `stone_age_http_requests_total{route,method,status}` | Traffic by matched route *pattern*, status by class |
 | `stone_age_http_request_duration_seconds` | Request latency histogram, same route label |
 | `stone_age_records{collection}` | Rows **configured** — inventory, not availability |
-| `stone_age_inactive_records{collection}` | Decommissioned things and leaf nodes (`active = false`) |
+| `stone_age_inactive_records{collection}` | Decommissioned things (`active = false`) |
 | `stone_age_nats_users_revoked` | Credentials on their account's revocation list |
 | `stone_age_database_size_bytes` | SQLite plus its WAL, for disk growth |
 | `stone_age_collector_errors` | Collectors that failed *this scrape* — the affected series are missing, not zero |
@@ -331,15 +334,16 @@ The standard `go_*` and `process_*` collectors are included too.
 **Nothing here is per-organization, and that is structural rather than a
 simplification.** This process holds the NATS operator and the `$SYS` account
 and has no user credential inside any organization's account, so it cannot read
-what is in one — not the `twin` buckets, and not the `leaf_status` heartbeats
-`leaf-sync` writes. `stone_age_records{collection="leaf_nodes"}` therefore
-counts leaf nodes *configured*; an alert on it can never fire.
+what is in one — not the `twin` buckets, and nothing a site reports about
+itself. `stone_age_records{collection="things"}` therefore counts devices
+*configured*; an alert on it can never fire.
 
-Per-site health is exported by `leaf-sync` on the edge box, which is inside the
-account and keeps answering when the WAN is down — see
-[cmd/leaf-sync/README.md](cmd/leaf-sync/README.md). The console shows the same
+Per-site health is exported by the agent on the edge box, which is inside the
+account and keeps answering when the WAN is down. The console shows the same
 thing for humans, because a browser connects with the logged-in user's own
-in-account credential.
+in-account credential — a Thing's page reports whether its leaf node is attached
+by asking `$SYS.REQ.ACCOUNT.PING.CONNZ`, which is account-scoped and so answers
+for that organization and no other.
 
 With an external `nats-server`, scrape it with
 [prometheus-nats-exporter](https://github.com/nats-io/prometheus-nats-exporter):
@@ -441,17 +445,17 @@ To change it:
 
 - **Organization created** → provisions that organization's NATS account and
   Nebula CA.
-- **Leaf node created** → mints the edge node's NATS user, so `leaf-sync` can
-  authenticate as the leaf node (`hooks/leaf_node_provisioning.go`).
 - **Membership deleted** → clears the departing member's organization context,
   which is what the inventory read rules are scoped by
   (`hooks/membership_lifecycle.go`).
-- **`active` flipped on a thing or leaf node** → invalidates outstanding tokens
-  and revokes the linked NATS identity (`hooks/active_flag.go`).
-- **`GET /api/leaf/bootstrap`** → everything `leaf-sync config` needs, in eight
-  named fields, so a leaf-node identity needs no read grant on any `nats_*` or
-  `nebula_*` collection (`hooks/leaf_node_routes.go`).
-  `GET /api/leaf/operator-jwt` remains as a superseded alias.
+- **`active` flipped on a thing** → invalidates outstanding tokens and revokes
+  the linked NATS identity (`hooks/active_flag.go`).
+- **`GET /api/me/leaf-config`** → everything an agent needs to stand up a NATS
+  leaf server, in ten named fields, so a gateway needs no read grant on any
+  `nats_*` or `nebula_*` collection (`hooks/leaf_config_routes.go`). Bound to
+  `things` and taking no record id: the target is the caller's own record. There
+  is deliberately no marker to gate it on — everything served is either public
+  trust material or the caller's own credential.
 - **`POST /api/org/things`** → a Thing plus an optional NATS or Nebula identity in
   one transaction: member-level for the inventory half, owner/admin for the
   identity half (`hooks/thing_routes.go`).
@@ -467,7 +471,7 @@ To change it:
 
 | | |
 |---|---|
-| [`cmd/leaf-sync/`](./cmd/leaf-sync/README.md) | The edge agent, and the edge deployment flow |
+| [stone-age-io/agent](https://github.com/stone-age-io/agent) | The edge agent, and the edge deployment flow |
 | [platform-docs](https://github.com/stone-age-io/platform-docs) | Configuration reference, operations, architecture decisions |
 | [`CHANGELOG.md`](./CHANGELOG.md) | Releases |
 | [`SECURITY.md`](./SECURITY.md) | Reporting a vulnerability, and what counts as one |

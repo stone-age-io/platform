@@ -7,9 +7,14 @@ import (
 	m "github.com/pocketbase/pocketbase/migrations"
 )
 
-// schema_update_device_active_flag adds the `active` flag to things and
-// leaf_nodes, sets both collections' authRule to `active = true`, and gives
-// things the manageRule it was missing.
+// schema_update_device_active_flag adds the `active` flag to things, sets the
+// authRule to `active = true`, and gives things the manageRule it was missing.
+//
+// It also did this for leaf_nodes, which schema_update_drop_leaf_nodes.go later
+// removed. That half is edited out rather than left to fail: the second backfill
+// pass below is fatal, and on a fresh database there is no leaf_nodes table for
+// it to update. Editing the body keeps the migration NAME, which is what the
+// _migrations ledger and the schema_version readiness check key on.
 //
 // The backfill is the load-bearing part. `active` is a new bool column, so every
 // existing row gets SQLite's zero value — false. Importing the new authRule
@@ -32,17 +37,11 @@ func init() {
 		// Backfill before the rule goes live. The columns may not exist yet on a
 		// fresh database (the import below creates them), so a failure here is
 		// expected in that case and is not fatal — there are no rows to strand.
-		for _, table := range []string{"things", "leaf_nodes"} {
-			res, err := app.DB().NewQuery(
-				"UPDATE {{" + table + "}} SET [[active]] = true WHERE [[active]] IS NULL OR [[active]] = false",
-			).Execute()
-			if err != nil {
-				log.Printf("ℹ️ Skipped %s active backfill (column not present yet): %v", table, err)
-				continue
-			}
-			if n, err := res.RowsAffected(); err == nil && n > 0 {
-				log.Printf("✅ Backfilled active=true on %d existing %s record(s)", n, table)
-			}
+		res, err := app.DB().NewQuery("UPDATE {{things}} SET [[active]] = true WHERE [[active]] IS NULL OR [[active]] = false").Execute()
+		if err != nil {
+			log.Printf("ℹ️ Skipped the things active backfill (column not present yet): %v", err)
+		} else if n, err := res.RowsAffected(); err == nil && n > 0 {
+			log.Printf("✅ Backfilled active=true on %d existing things record(s)", n)
 		}
 
 		if err := app.ImportCollectionsByMarshaledJSON(SchemaJSON, false); err != nil {
@@ -51,15 +50,11 @@ func init() {
 
 		// Fresh databases created the columns during the import above, so run the
 		// backfill once more to cover rows the import may have brought along.
-		for _, table := range []string{"things", "leaf_nodes"} {
-			if _, err := app.DB().NewQuery(
-				"UPDATE {{" + table + "}} SET [[active]] = true WHERE [[active]] IS NULL OR [[active]] = false",
-			).Execute(); err != nil {
-				return err
-			}
+		if _, err := app.DB().NewQuery("UPDATE {{things}} SET [[active]] = true WHERE [[active]] IS NULL OR [[active]] = false").Execute(); err != nil {
+			return err
 		}
 
-		log.Println("✅ things/leaf_nodes active flag applied (authRule active = true, things manageRule added)")
+		log.Println("✅ things active flag applied (authRule active = true, things manageRule added)")
 		return nil
 	}, nil)
 }

@@ -1,6 +1,8 @@
 package hooks
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"strings"
 
@@ -475,4 +477,17 @@ func resolveNebulaHost(
 		return "", re.BadRequestError("failed to create Nebula host", err)
 	}
 	return h.Id, nil
+}
+
+// randomSecret returns a hex-encoded cryptographically-random string of nBytes
+// of entropy. It is used for the PocketBase password of a Thing and of the
+// nats_users record minted beside it — neither is ever typed by a person, and
+// the NATS identity authenticates to the bus with its signed JWT rather than
+// with this.
+func randomSecret(nBytes int) (string, error) {
+	b := make([]byte, nBytes)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }

@@ -25,11 +25,15 @@ var codeScopedCollections = []string{
 	"locations",
 	"thing_types",
 	"location_types",
-	"leaf_nodes",
 }
 
-// schema_update_unique_org_code adds UNIQUE (organization, code) to the five
-// collections whose code is a lookup handle, and freezes `code` on leaf_nodes.
+// schema_update_unique_org_code adds UNIQUE (organization, code) to the
+// collections whose code is a lookup handle.
+//
+// It covered leaf_nodes too until schema_update_drop_leaf_nodes.go removed that
+// collection. Dropped from the list here rather than left to hit the graceful
+// skip below, which would log "table not present yet" about a table that is
+// never coming.
 //
 // Nothing enforced this before. `code` was documented as unique and used as one
 // -- as a KV key, as a subject segment, as the argument to `stone thing get` --
@@ -96,7 +100,7 @@ func init() {
 		if len(problems) > 0 {
 			return fmt.Errorf(
 				"cannot add UNIQUE (organization, code): existing duplicates must be resolved first.\n%s\n\n"+
-					"Each code has to be unique within its organization, because leaf-sync and stone-cli\n"+
+					"Each code has to be unique within its organization, because the agent and stone-cli\n"+
 					"both resolve records by it -- a duplicate silently changes the KV key shape at the edge\n"+
 					"rather than failing. Rename the records that should not own the code (admin panel at /_/,\n"+
 					"or the API), then run `migrate up` again. This migration deliberately does not pick a\n"+
@@ -108,7 +112,7 @@ func init() {
 			return err
 		}
 
-		log.Println("✅ UNIQUE (organization, code) applied to things, locations, thing_types, location_types, leaf_nodes; leaf_nodes.code frozen")
+		log.Println("✅ UNIQUE (organization, code) applied to things, locations, thing_types, location_types")
 		return nil
 	}, nil)
 }

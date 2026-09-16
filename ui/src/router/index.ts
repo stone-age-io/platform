@@ -68,11 +68,6 @@ const routes: RouteRecordRaw[] = [
       { path: 'things/:id', name: 'ThingDetail', component: () => import('@/views/things/ThingDetailView.vue'), meta: { title: 'Thing', requiresCapability: 'viewInventory' } },
       { path: 'things/:id/edit', name: 'ThingEdit', component: () => import('@/views/things/ThingFormView.vue'), meta: { title: 'Edit Thing', requiresCapability: 'manageInventory' } },
 
-      // Leaf Nodes (edge nodes)
-      { path: 'leaf-nodes', name: 'LeafNodes', component: () => import('@/views/leaf_nodes/LeafNodeListView.vue'), meta: { title: 'Leaf Nodes', requiresCapability: 'manageLeafNodes' } },
-      { path: 'leaf-nodes/new', name: 'LeafNodeNew', component: () => import('@/views/leaf_nodes/LeafNodeFormView.vue'), meta: { title: 'New Leaf Node', requiresCapability: 'manageLeafNodes' } },
-      { path: 'leaf-nodes/:id', name: 'LeafNodeDetail', component: () => import('@/views/leaf_nodes/LeafNodeDetailView.vue'), meta: { title: 'Leaf Node', requiresCapability: 'manageLeafNodes' } },
-      { path: 'leaf-nodes/:id/edit', name: 'LeafNodeEdit', component: () => import('@/views/leaf_nodes/LeafNodeFormView.vue'), meta: { title: 'Edit Leaf Node', requiresCapability: 'manageLeafNodes' } },
 
       // Locations
       { path: 'locations/types', name: 'LocationTypes', component: () => import('@/views/locations/LocationTypeListView.vue'), meta: { title: 'Location Types', requiresCapability: 'manageDefinitions' } },

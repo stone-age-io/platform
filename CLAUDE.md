@@ -8,7 +8,7 @@ Stone Age IoT Platform is a single-binary IoT and Event-Driven management platfo
 - SQLite database
 - NATS messaging infrastructure integration
 - Nebula overlay network management
-- Edge nodes: a NATS leaf node + local KV mirror of an org's config, kept in sync by the `leaf-sync` agent
+- Edge sites: a NATS leaf node run by the Agent (a separate repo), bootstrapped from `GET /api/me/leaf-config`
 
 ## Tech Stack
 
@@ -103,10 +103,8 @@ platform/
 ├── go.mod, go.sum          # Go dependencies
 ├── config.yaml             # Application configuration
 ├── schema.json             # PocketBase collection schema
-├── hooks/                  # Server-side hooks: org + leaf-node provisioning, operator-jwt route
+├── hooks/                  # Server-side hooks: org provisioning, leaf-config route, thing routes
 ├── migrations/             # Schema migrations (re-import schema.json)
-├── cmd/leaf-sync/          # Edge agent binary (separate from the server; PocketBase → local NATS KV)
-├── internal/leafsync/      # leaf-sync engine (pbclient, sync, kv, bootstrap)
 ├── ui/                     # Frontend Vue 3 application
 │   ├── public/             # PWA assets (manifest, service worker, icons)
 │   ├── src/
@@ -117,7 +115,7 @@ platform/
 │   │   │   ├── layout/     # AppHeader, AppSidebar, MainLayout
 │   │   │   ├── ui/         # Base UI primitives (BaseCard, ResponsiveList)
 │   │   │   ├── dashboard/  # Dashboard grid, widget containers, variables
-│   │   │   │   └── config/ # 23 widget configuration form components
+│   │   │   │   └── config/ # 16 per-widget config panels + shared editors
 │   │   │   ├── widgets/    # 16 widget type components
 │   │   │   │   └── map/    # Map marker sub-components (detail, kv, publish, switch, text)
 │   │   │   ├── map/        # FloorPlanMap component
@@ -178,16 +176,11 @@ cd ui && npm run build
 # Build Go binary
 go build -o stone-age .
 
-# Build the edge agent (separate lean binary — runs on edge boxes, not the server)
-go build -o leaf-sync ./cmd/leaf-sync
-# Release build with the version stamped in (surfaced by `leaf-sync --version` and in heartbeats):
-go build -ldflags "-X platform/internal/version.Version=$(git describe --tags --always --dirty)" -o leaf-sync ./cmd/leaf-sync
-
 # Run
 ./stone-age serve
 ```
 
-See [cmd/leaf-sync/README.md](cmd/leaf-sync/README.md) for the edge deployment flow.
+The edge agent is a separate repo — [stone-age-io/agent](https://github.com/stone-age-io/agent) — and has its own deployment flow.
 
 ### NPM Scripts
 - `npm run dev` - Vite dev server with HMR
@@ -228,7 +221,7 @@ deployment default (this key) → compiled-in `ws://localhost:9222`. Rules:
   a hub URL and a leaf URL together.
 - **No JetStream domain setting, deliberately.** The UI passes no domain, so
   plain `$JS.API` resolves to the JetStream of whichever server was dialed —
-  hub URL → hub, leaf URL → that leaf's `edge-<code>`. The URL already selects
+  hub URL → hub, leaf URL → that leaf's domain, which is its Thing code. The URL already selects
   the domain. A separate domain knob would be a second control that can
   disagree with the first, failing as an empty bucket list with no diagnosis.
   Cross-domain browsing ("read site S01's KV from the hub") is a per-view
@@ -327,21 +320,27 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
     constant and asserts it against the names the hook actually creates: a
     hand-copied literal is fine, a hand-copied literal going stale means the
     console silently offers the Edit button again.
-12. **Edge / Leaf Nodes** - `leaf_nodes` auth collection (a "special thing" with one nats_user, server-provisioned). The `leaf-sync` agent runs on the edge, authenticates as the leaf node, and mirrors its org's config collections into a NATS leaf node's local JetStream KV. A leaf-node identity holds **no read grant on any `nats_*` or `nebula_*` collection**: `leaf-sync config` gets everything it needs from `GET /api/leaf/bootstrap`, which returns eight named fields (`domain`, `code`, `creds`, `account_jwt`, `account_pub`, `operator_jwt`, `sys_account_jwt`, `sys_account_pub`). `nats_system_operator` stays superuser-only; `GET /api/leaf/operator-jwt` remains as a superseded alias so upgrade order doesn't matter.
-    - **A generated `nats-leaf.conf` must satisfy operator-mode validation, which no string assertion can check.** Two directives are mandatory and were both missing for months, so `leaf-sync config` produced a file `nats-server` refused to load — the failure was invisible because the only tests were `strings.Contains` over the output. (1) Every leaf remote needs an `account` key naming the local account; (2) `resolver_preload` needs the **`$SYS` account JWT** as well as the org's, because the operator JWT names a system account and `resolver: MEMORY` has nowhere to fetch it — without it the server dies with `error resolving system account: account missing` before JetStream starts. Preloading `$SYS`'s *account* JWT is public trust material and grants nothing; connecting as `$SYS` needs a `$SYS` **user** credential, which is never served. `TestBuildLeafConfIsAcceptedByNATSServer` now runs the real generator's output through `nats-server`'s own `ProcessConfigFile` + `NewServer` (no ports, no network) — keep it, and don't replace it with more `Contains` checks.
-    - **`leaf-sync run --nats` runs the leaf node in-process** (`internal/leafsync/embedded.go`, reusing `internal/natsd`), off by default. Two consequences worth keeping: the server starts **before** PocketBase is touched, and a failed login then **retries** instead of exiting — exiting would take the bus down, and a supervisor cycling the pair through a WAN outage means devices reconnecting and JetStream recovering its store on a loop. Without `--nats` the old fail-fast behaviour stands, because the bus is another process. Cost: the binary goes ~12 MB → ~26 MB, since `nats-server` links in either way, plus ~3 MB for the Prometheus client behind `leaf-sync`'s `/metrics` (measured 25.8 → 28.9 MB). The Control Plane pays nothing for that second one — `slackhq/nebula` already linked `client_golang` in there. `leaf-sync` writes a best-effort liveness heartbeat into the hub's `leaf_status` KV (when `nats.hub_domain` is set); the UI reads it to show online/offline status on the leaf node list + detail views. Credentials are resettable by org Admins/Owners (collection `manageRule`) — `things` now carries the same `manageRule`, so a device's PocketBase password is recoverable too.
+12. **Edge sites** - An edge site is a **Thing**. There is no separate collection for one: its `thing_types` entry already says it is a gateway, and a second marker would be a second thing to get wrong. The edge agent lives in [stone-age-io/agent](https://github.com/stone-age-io/agent), authenticates as that Thing against `things`, and calls `GET /api/me/leaf-config` (`hooks/leaf_config_routes.go`) for everything a NATS leaf server needs: ten named fields (`code`, `domain`, `creds`, `account_jwt`, `account_pub`, `operator_jwt`, `sys_account_jwt`, `sys_account_pub`, `hub_leaf_url`, `hub_domain`). So a gateway needs **no read grant on any `nats_*` or `nebula_*` collection**; `nats_system_operator` stays superuser-only.
+    - **The route has no marker, flag or capability check, deliberately.** Everything it serves is either public trust material — the operator, account and `$SYS` account JWTs, which every server in the network validates — or the caller's own credential, which it must already hold to connect at all. A Thing that will never run a leaf node can ask and learns nothing it could not already read. Adding a gate would be a permission on data that is not secret, and it would need a marker field to gate on.
+    - **The JetStream domain is the Thing's code, computed and never stored.** `leafConfigResponse` sets `domain = code`; the agent writes that into both `server_name` and `jetstream { domain }`. A stored `domain` column existed and was dropped — it could disagree with the code, it was NATS vocabulary on an inventory record most of whose rows will never have one, and the disagreement surfaced as a site that simply stopped appearing. An `edge-` prefix and an org-code segment were dropped at the same time: JetStream is already inside the account, so the account is the namespace.
+    - **A generated `nats-leaf.conf` must satisfy operator-mode validation, which no string assertion can check.** Two directives are mandatory and were both missing for months, so the generator produced a file `nats-server` refused to load — invisible, because the only tests were `strings.Contains` over the output. (1) Every leaf remote needs an `account` key naming the local account; (2) `resolver_preload` needs the **`$SYS` account JWT** as well as the org's, because the operator JWT names a system account and `resolver: MEMORY` has nowhere to fetch it — without it the server dies with `error resolving system account: account missing` before JetStream starts. Preloading `$SYS`'s *account* JWT is public trust material and grants nothing; connecting as `$SYS` needs a `$SYS` **user** credential, which is never served. `TestBuildLeafConfIsAcceptedByNATSServer` runs the real generator's output through `nats-server`'s own `ProcessConfigFile` + `NewServer` (no ports, no network). **That test now lives in the agent repo** — it moved with the generator and is the one thing in that move that was not allowed to change.
+    - **Site liveness is asked of NATS, not stored.** There is no `leaf_nodes` collection, no `leaf_status` KV bucket and no heartbeat. A heartbeat travels over the very link whose failure it reports, so a missing beat cannot distinguish "edge box down" from "WAN down" from "agent crashed" — and the Control Plane could not read one anyway (it holds the operator and `$SYS`, and no credential inside any tenant account). The hub always knows which leaves it is holding, so the **console** asks it: `$SYS.REQ.ACCOUNT.PING.CONNZ` over the browser's own in-account connection, matching `kind: "Leafnode"` entries by `name` to a Thing's `code` (`ui/src/composables/useLeafConnections.ts`). It renders as one row in the Thing page's NATS card — **not a separate screen**, because a site is a Thing and a second inventory list is a second list that can disagree with the first.
+    - **`$SYS` is account-scoped for a tenant and operator-wide for us, and that asymmetry is the whole design.** Each account carries its own `$SYS` subject space, so `$SYS.REQ.ACCOUNT.PING.*` answers for that organization and no other. `$SYS.REQ.SERVER.PING.*` would span every tenant and is operator-only; the server enforces both halves. `internal/health/leaf_visibility_test.go` pins them against a real hub with a real leaf attached, because fixtures cannot answer a question about the server's own trust decision.
+    - **Publish DENY beats publish ALLOW in NATS**, and this is the trap that will come back. A `nats_roles` entry carrying `$SYS.>` in its publish deny list cannot reach the account endpoints no matter what its allow list says — and the symptom is a plain request timeout, with the real reason arriving asynchronously on the connection's error handler and never on the request. Deny `$SYS.REQ.SERVER.>` instead. `internal/demoseed/contract.go` says so at the one place that sets it, and `TestDenyingAllOfSysBlocksAccountMonitoring` is what stops someone "re-tightening" it back and then debugging the console for a day.
+    - **The collection mirror is gone with the collection.** `leaf-sync` copied an organization's config collections into the edge's local KV so devices could read them offline. Nothing consumed the mirrored rows — no rule-router rule, no firmware — so it was moving data nobody asked for, and it is what made a leaf node need read grants across the inventory. If a real consumer appears, the thing to build is that consumer's read path, not a general mirror.
+    - **The embedded nats-server is opt-in.** The agent hosts the leaf in-process only when `nats.server_config` names a file; left empty, systemd or Docker supervises `nats-server` and the bus survives an agent restart, which is what you want when upgrading the agent on a live site. `nats-server` links into the binary either way, so a scanner flagging a `nats-server` CVE is reporting code that does not run unless configured.
 13. **Digital Twin / Live State** - **Two** KV buckets per org, split by owner:
     `twin` (reported — the device writes it, flows edge→hub) and `twin_desired`
     (desired — operators write it, flows hub→edge). Keys are
     `<kind>.<code>.<prop>` (`thing.S01.temp`); direction is the bucket, so keys
     carry no sync bookkeeping. Defined once in `ui/src/utils/twin.ts` and
-    `internal/leafsync/twin.go` — keep the two retention configs in step, since
-    both the console and `leaf-sync` create these buckets and whoever gets there
-    first defines them. **Not** one bucket per location; the old `ui/README.md`
+    the agent repo's `internal/edge/twin.go` — keep the two retention configs in
+    step, since both the console and the agent create these buckets and whoever
+    gets there first defines them. **Not** one bucket per location; the old `ui/README.md`
     claim to that effect described a design that was never built. The platform
     server **cannot** provision them: it holds the NATS operator (SYSTEM account
     only) and has no reach into an org's account. Creation is the console's
-    Initialize button or `leaf-sync`.
+    Initialize button or the agent.
     - **One writer per bucket is the whole safety property.** A single bucket
       written from both ends does not pick a loser on a conflict, it *oscillates*:
       two concurrent values swap across the link, then swap back, forever — ~170k
@@ -398,7 +397,7 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
       value is readable in the edge's local KV. What consumes it is the
       integrator's firmware or rule-router, the same boundary as minting NATS
       creds and not caring what publishes with them.
-    - **Edge sync is `internal/leafsync/twin.go`**, off by default
+    - **Edge sync is the agent repo's `internal/edge/twin.go`**, off by default
       (`twin.enabled`). `twin_desired` is a native JetStream **mirror** (one
       origin, N mirrors — no code in the data path, and it serves last-known
       values offline because the edge never writes it). `twin` needs the relay:
@@ -409,7 +408,7 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
       state a source without solving that.
 14. **Readiness & metrics** - `GET /api/ready` (unauthenticated, 503/200) and
     `GET /metrics` (Prometheus, open by default) on the Control Plane;
-    `/ready` + `/metrics` on `leaf-sync` behind `observability.addr`. Checks live
+    `/ready` + `/metrics` on the agent behind `observability.addr`. Checks live
     in `internal/health`, exposition in `internal/metrics`, platform-specific
     parts in `hooks/observability.go` (one `RegisterObservability` call, one
     options struct) + `hooks/readiness.go` + `hooks/metrics.go`.
@@ -417,27 +416,28 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
       is the whole design constraint, and it is the NATS account boundary
       restated. The Control Plane holds the operator and `$SYS` and has **no user
       credential inside any organization's account**, so it cannot read `twin`,
-      `twin_desired`, or the `leaf_status` heartbeats — the console can, because
-      a browser connects as the logged-in user, and `leaf-sync` can, because it
-      runs inside the account. Do not "improve" a metric by minting the platform
+      `twin_desired`, or anything a site reports about itself — the console can,
+      because a browser connects as the logged-in user, and the agent can, because
+      it runs inside the account. Do not "improve" a metric by minting the platform
       a credential in a tenant's account: that turns a credential issuer into a
       data-plane participant in every tenant's bus. **No per-org labels**, for
       the same reason — with per-org data reduced to row counts, a tenant label
       would be a customer name on an inventory count.
-    - **`stone_age_records{collection="leaf_nodes"}` counts leaf nodes
-      CONFIGURED.** It is not availability and an alert on it can never fire.
-      Per-site liveness is `leaf_sync_*` on the edge box. Say this in the HELP
-      text of any metric that could be mistaken for a health signal.
+    - **`stone_age_records{collection="things"}` counts devices CONFIGURED.**
+      It is not availability and an alert on it can never fire. Per-site liveness
+      is `agent_*` on the edge box, and `$SYS.REQ.ACCOUNT.PING.CONNZ` in the
+      console. Say this in the HELP text of any metric that could be mistaken for
+      a health signal.
     - **Four states, and only `fail` is unready.** `warn` is
       running-but-misconfigured (encryption off, no `websocket_urls`); failing on
       those would refuse to serve the stock dev deployment. `skipped` is "this
       check did not apply / could not look", and it ranks BELOW `ok` —
       `Registry.Run` seeds the worst-state from the results rather than from
       `StateOK`, or an all-skipped report reads as a clean bill of health.
-      Likewise the leaf collector **omits** server-derived series when the
-      monitoring port is down rather than emitting zeros.
+      Likewise the agent's collector **omits** server-derived series when the
+      leaf's monitoring port is down rather than emitting zeros.
     - **An islanded edge warns, it does not fail.** Local NATS still works and
-      devices keep running against the mirrored config; that autonomy is why a
+      devices keep publishing and subscribing locally; that autonomy is why a
       leaf node exists, so 503 would invert the design.
     - **Don't publish a metric that cannot vary — but check the claim first.**
       `stone_age_nats_cluster_routes` was nearly cut on the grounds that
@@ -509,13 +509,13 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
       in CI, so a malformed exposition would look fine and be unscrapeable —
       the same argument as `TestBuildLeafConfIsAcceptedByNATSServer`. The tests
       parse the output with Prometheus's own parser and run promlint over it.
-15. **Decommissioning a device** - `things.active` / `leaf_nodes.active`, owner/admin only. The flag is enforced in **four** places at once, because any one alone is a half-measure: the `authRule` (`active = true`) blocks new logins; `hooks/active_flag.go` refreshes `tokenKey` so tokens already issued die immediately; the same hook mirrors `active` onto the linked `nats_user`, which is pb-nats's durable suspend switch, so the signed NATS credential stops working; and it mirrors `active` onto the linked `nebula_host`, which is what pb-nebula writes into every other host's `pki.blocklist`. Reactivating re-mints the NATS credential — the old `.creds` stays dead, because the account JWT's revocation cutoff is permanent.
+15. **Decommissioning a device** - `things.active`, owner/admin only. The flag is enforced in **four** places at once, because any one alone is a half-measure: the `authRule` (`active = true`) blocks new logins; `hooks/active_flag.go` refreshes `tokenKey` so tokens already issued die immediately; the same hook mirrors `active` onto the linked `nats_user`, which is pb-nats's durable suspend switch, so the signed NATS credential stops working; and it mirrors `active` onto the linked `nebula_host`, which is what pb-nebula writes into every other host's `pki.blocklist`. Reactivating re-mints the NATS credential — the old `.creds` stays dead, because the account JWT's revocation cutoff is permanent.
 
     **It mirrors `active`, not `revoke`.** In pb-nats `revoke` is the "these credentials leaked" button: it rotates the key pair and hands back a *working* replacement, leaving the user active. It is also checked before the active edge and returns early, so setting both in one save silently takes the revoke path — a deactivated Thing whose NATS identity is freshly re-issued and still publishing. The hook says so at length; this line used to say `revoke` and was simply wrong.
 
     **The Nebula half takes effect on redeploy, not instantly.** Nebula has no CRL, so revocation is a fingerprint in every *peer's* config, applied when that config is redeployed and the process reloads (SIGHUP is enough). The platform's job ends when the material it hands out refuses the certificate — the same boundary as minting a NATS credential and not policing what connects with it. It also means **deactivate, do not delete**: fingerprinting a certificate requires the certificate to still be in the database, so deleting a host leaves it trusted until expiry. Requires pb-nebula v0.2.0, which go.mod pins; against v0.1.0 the flag was mirrored and no blocklist was produced. **From v0.3.0 the blocklist is scoped to the CA rather than the network**, which is where it always belonged: Nebula's trust boundary is the CA, so a host revoked in one network stayed verifiable by every sibling network under the same CA -- those hosts carry the same `pki.ca` and none of them carried the fingerprint. An `active` flip now fans out across the whole CA. A `nebula_hosts` record created without an `active` field lands ACTIVE from v0.2.0 on, because a host born inactive is one every peer blocklists at birth -- `scripts/test-authz.sh` pins that dependency contract.
 
-    Distinct from a leaf node's heartbeat status, which reports whether the edge box *is* connected, not whether it *may* connect.
+    Distinct from the leaf-connection badge on a Thing page, which reports whether the edge box *is* connected, not whether it *may* connect.
 
 15b. **Rotating an organization's Nebula CA** - `POST /api/org/nebula-ca/rotate`, owner/admin, `{"step":"prepare"|"commit"|"finish"}`.
 
@@ -533,7 +533,7 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
     `platform-docs`). The rule is **ids for storage, codes for addressing**.
     `organizations.code` is the one *globally* unique identifier in the
     ecosystem; everything below it (`things`, `locations`, `thing_types`,
-    `location_types`, `leaf_nodes`) is unique only within its org, which the
+    `location_types`) is unique only within its org, which the
     `UNIQUE (organization, code) WHERE code != ''` partial indexes already
     enforce. Relation columns stay PocketBase ids — codes address, ids store.
 
@@ -547,8 +547,8 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
     name collided. A leading digit is fine — `816tech` is a valid code; the
     pattern demanded a leading letter until an operator org named exactly that
     could not be migrated, and nothing downstream (NATS subject tokens,
-    `edge-`-prefixed JetStream domains, KV bucket names, RFC 1123 hostname
-    labels) justified the restriction.
+    JetStream domains, KV bucket names, RFC 1123 hostname labels) justified the
+    restriction.
 
     **Bootstrap derives the two infrastructure orgs' codes the same way**, from
     `--org-name` / `--operator-org`, falling back to `system` / `operator` only
@@ -634,10 +634,10 @@ linked `nats_users` role permits, which is set independently.
 | Members, invitations | ✓ | ✓ | | | |
 | NATS + Nebula infrastructure | ✓ | ✓ | | | |
 | Thing/location types, operations, schemas | ✓ | ✓ | | | |
-| Leaf nodes, JetStream streams, KV buckets | ✓ | ✓ | | | |
+| JetStream streams, KV buckets | ✓ | ✓ | | | |
 | Attach a NATS/Nebula identity to a Thing | ✓ | ✓ | | | |
 | Delete a thing or location | ✓ | ✓ | | | |
-| Deactivate a thing or leaf node; reset a thing's password | ✓ | ✓ | | | |
+| Deactivate a thing; reset a thing's password | ✓ | ✓ | | | |
 | Things + locations: create and edit | ✓ | ✓ | ✓ | | |
 | Things + locations: **browse in the console** | ✓ | ✓ | ✓ | ✓ | |
 | Own NATS credential + rotation | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -674,12 +674,12 @@ Rules to follow when touching authorization:
   record with a blank `organization` was therefore readable by any caller whose
   own context was blank — no rule mis-written, no role bypassed, two sentinels
   comparing equal. Both halves were ordinary product states: deleting an
-  organization blanks `organization` on the 16 relations into it that are
+  organization blanks `organization` on the 15 relations into it that are
   non-cascade AND non-required (PocketBase blanks rather than deletes, via
   `SaveNoValidate`), and `hooks/membership_lifecycle.go` blanks
-  `current_organization` on the way out of an org. The leaf branches had the
-  identical hole on `@request.auth.organization`, which is blankable for the
-  same reason. Fixed in `migrations/schema_update_tenancy_sentinel.go` by
+  `current_organization` on the way out of an org. A second set of branches, for
+  a `leaf_nodes` collection that has since been dropped, had the identical hole
+  on `@request.auth.organization`. Fixed in `migrations/schema_update_tenancy_sentinel.go` by
   requiring a non-blank context **and** a correlated membership — the membership
   clause is the load-bearing half, because `memberships.organization` is
   required and cascade so it can never be `''`, which kills the sentinel by
@@ -714,8 +714,8 @@ Rules to follow when touching authorization:
   job either: it holds read capability, so a denial it passes proves less. Two
   roles, two purposes — don't merge them to save an enum entry.
 - **Reads are org-scoped, not role-scoped, and that is deliberate.** Every read
-  rule on `things`, `locations`, `thing_types`, `location_types`,
-  `thing_type_operations` and `leaf_nodes` scopes on the active organization plus
+  rule on `things`, `locations`, `thing_types`, `location_types` and
+  `thing_type_operations` scopes on the active organization plus
   a correlated membership in it (see the sentinel bullet above), with no ROLE
   branch, so *every* role in an org — `dashboard` included — can
   `curl` the whole inventory. `viewer` therefore reads exactly what `member`
@@ -772,13 +772,14 @@ Rules to follow when touching authorization:
   there is no CRL. Don't "fix" this by encrypting the column; state the boundary
   and let disk encryption, encrypted backups and single-tenant deployments carry
   the at-rest threat. See SECURITY.md.
-- **A leaf node reads nothing in `nats_*` or `nebula_*`.** `leaf-sync config` gets
-  its creds, the account JWT, and the operator JWT from `GET /api/leaf/bootstrap`
-  (`hooks/leaf_node_routes.go`), which reads those records with the app's own
-  privileges and returns six named fields. Don't re-add a leaf-node read branch to
-  those collections to make some edge feature work — extend the route instead. The
-  point is that the edge's blast radius is a fixed list rather than a consequence
-  of rules that change for unrelated reasons.
+- **A gateway reads nothing in `nats_*` or `nebula_*` beyond its own identity.**
+  Its agent gets the account JWT, the operator JWT, the `$SYS` account JWT and
+  its own creds from `GET /api/me/leaf-config` (`hooks/leaf_config_routes.go`),
+  which reads those records with the privileges of the app itself and returns ten
+  named fields. Don't add a read branch to those collections to make some edge
+  feature work — extend the route instead. The point is that the edge's blast
+  radius is a fixed list rather than a consequence of rules that change for
+  unrelated reasons.
 - **A rule cannot express a single-field allowlist.** That is why self-service
   rotation is `POST /api/me/nats-creds/rotate` (`hooks/credential_routes.go`) and
   account key management is `POST /api/org/nats-account/keys`
@@ -850,7 +851,7 @@ Rules to follow when touching authorization:
 - **An `authRule` is checked at the auth endpoint only, never on an existing
   token.** PocketBase evaluates it in `apis.RecordAuthResponse`
   (`apis/record_helpers.go`), reached from `/auth-with-password` and friends —
-  not in the middleware that loads a bearer token. `things` and `leaf_nodes` set
+  not in the middleware that loads a bearer token. `things` sets
   `authToken.duration` to 7 days, so `active = true` on its own would leave a
   deactivated device with a working session for a week. `hooks/active_flag.go`
   calls `RefreshTokenKey()` on the true→false flip, which invalidates every
@@ -864,11 +865,11 @@ Rules to follow when touching authorization:
   used to expose `active` as an editable checkbox next to a red/green badge, so
   an admin could "deactivate" a device that kept publishing. That checkbox is
   gone; Revoke/Re-enable on the detail view are the real controls. `things.active`
-  and `leaf_nodes.active` exist only because `hooks/active_flag.go` gives them
-  teeth — the flag, the token kill, and the NATS revoke are one operation. Do not
+  exists only because `hooks/active_flag.go` gives it teeth — the flag, the token
+  kill, and the NATS revoke are one operation. Do not
   add a status field to a device without deciding what enforces it.
 - **A device's real capability is its credentials, not its PocketBase session.**
-  Anything that takes a Thing or leaf node out of service has to reach
+  Anything that takes a Thing out of service has to reach
   `nats_users` **and** `nebula_hosts`, or it has only closed some of the doors.
   This was a live gap until the Nebula half was added: the console door and the
   NATS door closed while the overlay network stayed open until the certificate
@@ -998,7 +999,7 @@ you, so pushing an absolute one would make the login form an open redirect (the
   `git ls-files '*.go' | while read f; do git show ":$f" > /tmp/x.go; gofmt -l /tmp/x.go; done`.
   Do not "fix" the files `gofmt -l .` lists here, and do not conclude the gate is
   broken.
-- `go test ./...` — Go unit tests (`internal/leafsync` has the bulk of them).
+- `go test ./...` — Go unit tests (`hooks` and `migrations` have the bulk of them).
   Two habits worth keeping: the readiness checks that touch NATS are tested
   against a **real operator-mode `nats-server`** built in the test (see
   `internal/health/nats_test.go`), because the thing being asserted IS the
@@ -1007,8 +1008,9 @@ you, so pushing an absolute one would make the login form an open redirect (the
   rather than string-matched, because nothing in CI scrapes it and a malformed
   body looks fine in a terminal.
 - `./scripts/test-authz.sh` — **run after any API-rule change in `schema.json`.**
-  Builds the binary, stands up a throwaway DB, and asserts 198 authorization
-  behaviours against a live server. The rules are the only tenancy enforcement
+  Builds the binary, stands up a throwaway DB, and asserts every authorization
+  behaviour in it against a live server — `EXPECTED_CHECKS` at the top of the
+  script is the count, and is the only copy of it worth trusting. The rules are the only tenancy enforcement
   in the platform and nothing else type-checks them. Add a check when you add a
   rule, and bump `EXPECTED_CHECKS`. Note PocketBase answers 404 (not 403) when an
   update rule rejects, and 400 on a denied create — which is why every "cannot"
@@ -1041,20 +1043,18 @@ you, so pushing an absolute one would make the login form an open redirect (the
 ## Important Files
 
 - `main.go` - Backend entry, PocketBase setup, hooks, bootstrap command
-- `hooks/leaf_node_provisioning.go` - Mints a leaf node's NATS user on create
-- `hooks/leaf_node_routes.go` - `GET /api/leaf/bootstrap` (leaf-node-authed; everything `leaf-sync config` needs, including the `$SYS` account JWT the leaf's MEMORY resolver cannot fetch), plus the superseded `GET /api/leaf/operator-jwt`
-- `internal/leafsync/embedded.go` - `leaf-sync run --nats`: the edge's leaf node inside the agent process, via `internal/natsd`
+- `hooks/leaf_config_routes.go` - `GET /api/me/leaf-config` (bound to `things`, no record id): everything an agent needs to stand up a NATS leaf server, including the `$SYS` account JWT the leaf's MEMORY resolver cannot fetch. The JetStream domain is computed from the Thing's code rather than stored
 - `hooks/thing_routes.go` - `POST /api/org/things`: Thing + optional NATS/Nebula identity in one transaction; member-level for inventory, owner/admin for the identity half
 - `hooks/nebula_routes.go` - `POST /api/org/nebula-ca/rotate` (owner/admin, three steps) and `GET /api/org/nebula/cert-audit`. Both are routes for the same reason `nats_account_routes.go` is: a PocketBase rule cannot say "this one field and nothing else", and the audit needs a Nebula certificate parsed, which the browser cannot do
 - `hooks/client_config_routes.go` - `GET /api/client-config`: deployment facts the SPA cannot be compiled with (browser-facing NATS WebSocket URLs). Authed (`users`) — there is no pre-login need, so no reason to publish the bus address
-- `internal/health/` - readiness engine shared by both binaries: check registry, background prober, and the unauthenticated NATS reachability (`DialInfo`) + operator-trust (`CheckCreds`) probes
-- `internal/metrics/` - Prometheus exposition shared by both binaries, plus the optional Bearer/Basic scrape token
+- `internal/health/` - readiness engine: check registry, background prober, and the unauthenticated NATS reachability (`DialInfo`) + operator-trust (`CheckCreds`) probes
+- `internal/metrics/` - Prometheus exposition, plus the optional Bearer/Basic scrape token. The agent repo carries a copy of this and of `internal/health`: duplicated rather than extracted into a shared module, because two small copies that drift are cheaper to live with than a third repo to version, and the two processes check different things
 - `hooks/observability.go` + `hooks/readiness.go` + `hooks/metrics.go` - the Control Plane's `/api/ready` + `/metrics` routes, its checks, and its collectors
 - `hooks/cert_expiry.go` - the one scan behind both the `nebula_cert_expiry` check and the `stone_age_certificate*` metrics, so the two cannot disagree. **Two windows, not one**: hosts at 30 days (they renew themselves), the CA at 90 (it cannot be renewed at all, only rotated, and rotation needs months). `TestCAGetsALongerWarningWindowThanAHost` stops them collapsing back together
 - `ui/src/utils/nebula.ts` - rotation state derived from the CA's certificates (never a stored status), the rotation call, and the `/32` audit fetch. The audit swallows its own failure and returns an empty set: it drives an advisory badge, and a list view that refused to render because an advisory endpoint was down would be the worse outcome
 - `ui/src/utils/managedExports.ts` - names the platform-provisioned export/import pair so the console can present them read-only; mirrors `managedExportName` in `hooks/managed_org_exports.go`, and `hooks/managed_org_exports_test.go` reads this file to keep the two honest
-- `internal/leafsync/observe.go` - the edge's own `/ready` + `/metrics`, reading the leaf's loopback monitoring port; the only place per-site health is actually visible
-- `cmd/leaf-sync/` + `internal/leafsync/` - Edge agent (config bootstrap + KV sync); see `cmd/leaf-sync/README.md`
+- `internal/health/leaf_visibility_test.go` - what a tenant can learn about its own leaf nodes, asserted against a real hub with a real leaf attached. Pins the three nats-server behaviours the console's connectivity badge rests on, including that a publish DENY beats a publish ALLOW
+- `ui/src/composables/useLeafConnections.ts` - the console's side of that: `$SYS.REQ.ACCOUNT.PING.CONNZ` over the browser's own in-account connection, matched to a Thing by code
 - `ui/src/stores/auth.ts` - Authentication and organization context
 - `ui/src/stores/nats.ts` - NATS WebSocket connection manager
 - `ui/src/stores/dashboard.ts` - Dashboard state and persistence

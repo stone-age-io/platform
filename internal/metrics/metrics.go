@@ -6,8 +6,8 @@
 // a bespoke consumer, and this platform's users are integrators who already run
 // Prometheus, Grafana Alloy, Telegraf or an uptime checker — all of which speak
 // this format and none of which speak ours. The client library rather than a
-// hand-written text encoder for the same reason the leaf config is validated by
-// nats-server itself: there is no frontend test runner and no scrape test here,
+// hand-written text encoder for the same reason a generated nats-server config
+// is validated by nats-server itself: there is no scrape test in CI,
 // so a subtly malformed exposition (label escaping, `_total` conventions, NaN)
 // would look fine and be wrong. It also costs no binary size — slackhq/nebula
 // already links client_golang in.
@@ -18,7 +18,7 @@
 // use, and a poor trade on an endpoint that defaults to open. The numbers that
 // would justify a label (which site is offline, which bucket is stale) live
 // inside an organization's NATS account, which this process has no credential
-// for; leaf-sync exposes those from the edge, where they can actually be seen.
+// for; the agent exposes those from the edge, where they can actually be seen.
 package metrics
 
 import (
@@ -58,7 +58,7 @@ type Set struct {
 	checkTime  prometheus.Gauge
 }
 
-// New builds a metrics set under the given namespace ("stone_age", "leaf_sync")
+// New builds a metrics set under the given namespace ("stone_age", "agent")
 // and registers the Go runtime and process collectors alongside it.
 func New(namespace, version string) *Set {
 	reg := prometheus.NewRegistry()

@@ -14,7 +14,9 @@ import { TWIN_BUCKET, TWIN_DESIRED_BUCKET } from '@/utils/twin'
 import MetadataCard from '@/components/common/MetadataCard.vue'
 import ExpiryBadge from '@/components/common/ExpiryBadge.vue'
 import QrLabelModal from '@/components/common/QrLabelModal.vue'
+import LeafConnectionBadge from '@/components/things/LeafConnectionBadge.vue'
 import { useEscapeKey } from '@/composables/useEscapeKey'
+import { useLeafConnections, leafConnectionState } from '@/composables/useLeafConnections'
 
 const router = useRouter()
 const route = useRoute()
@@ -190,8 +192,23 @@ async function handleDelete() {
   }
 }
 
+// Whether this thing currently has a NATS leaf node attached to the hub.
+//
+// Asked of NATS, not of PocketBase. This replaced a `leaf_nodes` collection and
+// a heartbeat KV bucket, and the reason both went is worth keeping: a heartbeat
+// travels over the same link whose failure it reports, so a missing beat cannot
+// tell "edge box down" from "WAN down" from "agent crashed". The hub knows
+// exactly which leaves it is holding, and the console is already connected to it
+// as the logged-in user.
+const { connections, lastAnswer, start: startLeafWatch } = useLeafConnections()
+
+const leafState = computed(() =>
+  leafConnectionState(thing.value?.code ?? '', connections.value, lastAnswer.value),
+)
+
 onMounted(() => {
   loadThing()
+  startLeafWatch()
 })
 
 // Escape closes these; see useEscapeKey for why the dialogs do not get it
@@ -382,6 +399,19 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
                   🎭 {{ thing.expand.nats_user.expand.role_id.name }}
                 </span>
                 <span v-else class="font-mono text-sm text-base-content/60">—</span>
+              </div>
+              <!--
+                Inside the NATS card because that is what it is: a connection on
+                this organization account, read from $SYS.REQ.ACCOUNT.PING.CONNZ
+                over the console own NATS session. Shown for every thing rather
+                than gated on a gateway flag, because there is no gateway flag --
+                thing_types already says what a device is, and a second marker is
+                a second thing to get wrong. See LeafConnectionBadge for why the
+                empty state is not painted as a fault.
+              -->
+              <div class="bg-base-200 rounded-lg p-3 border border-base-300">
+                <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider block mb-1">Leaf node</span>
+                <LeafConnectionBadge :state="leafState" :conn="connections.get(thing.code ?? '')" />
               </div>
             </div>
             <!-- Linked, but the caller cannot read nats_users (members see only

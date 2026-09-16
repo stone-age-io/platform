@@ -46,7 +46,7 @@ func init() {
 			return err
 		}
 
-		log.Println("✅ New-device login alerts disabled on things and leaf_nodes (undeliverable synthetic addresses; the send blocks auth for up to 15s)")
+		log.Println("✅ New-device login alerts disabled on device auth collections (undeliverable synthetic addresses; the send blocks auth for up to 15s)")
 		return nil
 	}, nil)
 }

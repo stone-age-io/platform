@@ -102,6 +102,12 @@ func setDefaults() {
 	// generates. Not derived from server_url — that is a TCP address for this
 	// process, on a different port and often a different hostname.
 	viper.SetDefault("nats.websocket_urls", []string{})
+	// Where an edge box's leaf remote dials this deployment, and the hub's own
+	// JetStream domain. Served to gateways by GET /api/me/leaf-config; see the
+	// comment on hooks.LeafConfigRoutesOptions for why neither is derived from
+	// nats.server_url.
+	viper.SetDefault("nats.leaf_url", "")
+	viper.SetDefault("nats.jetstream_domain", "hub")
 	viper.SetDefault("nats.log_to_console", false)
 	viper.SetDefault("nats.default_limits.max_connections", 10)
 	viper.SetDefault("nats.default_limits.max_subscriptions", 50)
@@ -394,20 +400,11 @@ func main() {
 	// call -- see hooks/email_templates.go.
 	hooks.RegisterEmailTemplates(app, hooks.OrgInviteEmail)
 
-	// Platform-owned hooks: auto-provision a single NATS user per new leaf node.
-	hooks.RegisterLeafNodeProvisioning(app, hooks.LeafNodeProvisioningOptions{
-		LeafNodeCollection:    "leaf_nodes",
-		NatsAccountCollection: natsOptions.AccountCollectionName,
-		NatsUserCollection:    natsOptions.UserCollectionName,
-		NatsRoleCollection:    natsOptions.RoleCollectionName,
-	})
-
-	// Makes `active` on things/leaf_nodes mean something. The authRule only stops
+	// Makes `active` on things mean something. The authRule only stops
 	// new logins; this invalidates outstanding tokens and revokes the device's
 	// NATS identity, which is where its real capability lives.
 	hooks.RegisterActiveFlag(app, hooks.ActiveFlagOptions{
 		ThingCollection:      "things",
-		LeafNodeCollection:   "leaf_nodes",
 		NatsUserCollection:   natsOptions.UserCollectionName,
 		NebulaHostCollection: nebulaOptions.HostCollectionName,
 	})
@@ -420,15 +417,6 @@ func main() {
 		UserCollection:       "users",
 	})
 
-	// Leaf-node-authenticated bootstrap routes. These serve the operator JWT, the
-	// org account JWT, and the leaf's own creds, so a leaf-node identity needs no
-	// read grant on nats_users or nats_accounts at all.
-	hooks.RegisterLeafNodeRoutes(app, hooks.LeafNodeRoutesOptions{
-		LeafNodeCollection:    "leaf_nodes",
-		NatsUserCollection:    natsOptions.UserCollectionName,
-		NatsAccountCollection: natsOptions.AccountCollectionName,
-	})
-
 	// Self-service credential rotation. Reading credentials needs no route (the
 	// nats_users rules are row-scoped to the caller's own identity); rotation does,
 	// because it must permit a write to exactly one field.
@@ -436,7 +424,6 @@ func main() {
 		NatsUserCollection:   natsOptions.UserCollectionName,
 		MembershipCollection: membershipCollection,
 		ThingCollection:      "things",
-		LeafNodeCollection:   "leaf_nodes",
 	})
 
 	// Signing-key operations on an org's own NATS account. Same reason as above:
@@ -502,6 +489,26 @@ func main() {
 		NatsWebsocketURLs: natsWebsocketURLs,
 	})
 
+	// Everything a gateway needs to stand up its NATS leaf server. Checked here
+	// for the same reason websocket_urls is: an edge box that gets an empty
+	// leaf URL writes a nats-leaf.conf whose remote dials nowhere, and the only
+	// symptom is a site that never appears.
+	natsLeafURL := viper.GetString("nats.leaf_url")
+	if natsLeafURL != "" &&
+		!strings.HasPrefix(natsLeafURL, "nats-leaf://") &&
+		!strings.HasPrefix(natsLeafURL, "tls://") {
+		log.Fatalf("❌ nats.leaf_url must start with nats-leaf:// or tls:// (got %q).\n"+
+			"       This is the address an EDGE box dials to reach this hub's leafnode port,\n"+
+			"       not the nats:// address in nats.server_url.", natsLeafURL)
+	}
+	hooks.RegisterLeafConfigRoutes(app, hooks.LeafConfigRoutesOptions{
+		ThingCollection:       "things",
+		NatsUserCollection:    natsOptions.UserCollectionName,
+		NatsAccountCollection: natsOptions.AccountCollectionName,
+		HubLeafURL:            natsLeafURL,
+		HubDomain:             viper.GetString("nats.jetstream_domain"),
+	})
+
 	// Embedded NATS server. Bound to OnServe rather than OnBootstrap on purpose:
 	// the support library calls e.Next() *before* it seeds the NATS operator, so
 	// a bootstrap handler registered after its Setup actually runs earlier, when
@@ -546,8 +553,8 @@ func main() {
 	//
 	// Nothing here reaches inside an organization's NATS account, because this
 	// process holds no credential in one. Per-site liveness is read by the
-	// console, whose browser connects as the logged-in user, and exported by
-	// leaf-sync from the edge.
+	// console, whose browser connects as the logged-in user, and exported by the
+	// agent from the edge.
 	hooks.RegisterObservability(app, hooks.ObservabilityOptions{
 		Version:               version.Version,
 		OrgCollection:         orgCollection,
@@ -642,8 +649,7 @@ func main() {
 	// edge surface. Registered AFTER every hook above, which is what makes the
 	// seed go in through the platform's own provisioning rather than around it —
 	// an organization it creates gets its NATS account and Nebula CA from
-	// RegisterOrgProvisioning, and a leaf node gets its NATS user from
-	// RegisterLeafNodeProvisioning, exactly as one created in the console does.
+	// RegisterOrgProvisioning, exactly as one created in the console does.
 	demoseed.RegisterCommand(app)
 
 	if err := app.Start(); err != nil {

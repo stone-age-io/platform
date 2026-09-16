@@ -3,9 +3,9 @@
 // migration set applied, and the platform's own provisioning hooks bound.
 //
 // The hooks are the point. Most of what this platform does on a write happens in
-// a hook — an organization mints a NATS account and a Nebula CA, a leaf node
-// mints its NATS user — so a harness that skipped them would let a test assert
-// on records that production never produces the same way.
+// a hook — an organization mints a NATS account and a Nebula CA, a deactivated
+// Thing has its NATS identity revoked — so a harness that skipped them would let
+// a test assert on records that production never produces the same way.
 package testutil
 
 import (
@@ -176,18 +176,11 @@ func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
 		ExpiryDays:           7, // main.go's default for tenancy.invite_expiry_days
 	})
 
-	hooks.RegisterLeafNodeProvisioning(app, hooks.LeafNodeProvisioningOptions{
-		LeafNodeCollection:    "leaf_nodes",
-		NatsAccountCollection: natsOpts.AccountCollectionName,
-		NatsUserCollection:    natsOpts.UserCollectionName,
-		NatsRoleCollection:    natsOpts.RoleCollectionName,
-	})
-
 	// These two were missing, and their absence was not neutral -- it made the
 	// harness DISAGREE with production about what a write does.
 	//
-	// RegisterActiveFlag forces `active = true` on every things/leaf_nodes
-	// CREATE, because PocketBase bools have no schema default and the authRule is
+	// RegisterActiveFlag forces `active = true` on every things CREATE,
+	// because PocketBase bools have no schema default and the authRule is
 	// `active = true`. Without it bound here, a test could create an inactive
 	// device and assert on it happily while the real binary overwrote the flag --
 	// which is exactly what happened: internal/demoseed asked for inactive Things
@@ -198,7 +191,6 @@ func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
 	// current_organization, which the inventory read rules scope on.
 	hooks.RegisterActiveFlag(app, hooks.ActiveFlagOptions{
 		ThingCollection:      "things",
-		LeafNodeCollection:   "leaf_nodes",
 		NatsUserCollection:   natsOpts.UserCollectionName,
 		NebulaHostCollection: nebulaOpts.HostCollectionName,
 	})
@@ -210,7 +202,7 @@ func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
 	// DELIBERATELY NOT REGISTERED, and this is the harness's actual boundary
 	// rather than an oversight:
 	//
-	//   RegisterLeafNodeRoutes, RegisterCredentialRoutes,
+	//   RegisterLeafConfigRoutes, RegisterCredentialRoutes,
 	//   RegisterNatsAccountRoutes, RegisterThingRoutes,
 	//   RegisterClientConfigRoutes, RegisterObservability
 	//

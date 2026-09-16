@@ -628,10 +628,10 @@
       payload: '{"ts":"{@timestamp.iso}","thing":"REEFER-1184","firmware":"3.4.1","uptime":{@random.int(259100,259300)},"engine_hrs":{@random.int(9310,9313)},"setpoint_c":2.0,"supply_c":{@random.float(0.4,1.6,1)},"return_c":{@random.float(1.4,2.6,1)},"defrost":"{@random.choice(idle,pending)}","fuel_percent":{@random.int(40,55)},"alarms":[],"requested_by":"{requested_by}"}'
 
 # The gateways answer on `gateway.{location}.{thing}.diag`, and what they report
-# is the box rather than the cargo: leaf-node link, sync lag, disk, connected
-# clients. This is the request a support engineer actually makes at 3am, and it
-# is worth noticing that it works over the bus with no inbound port, no SSH and
-# no VPN — the same property that makes `leaf-sync` viable on a cellular site.
+# is the box rather than the cargo: leaf-node link, disk, connected clients.
+# This is the request a support engineer actually makes at 3am, and it is worth
+# noticing that it works over the bus with no inbound port, no SSH and no VPN —
+# the same property that makes the agent viable on a cellular site.
 - trigger:
     nats:
       subject: "gateway.KC-DC1-MDF.GW-KC-01.diag"
@@ -669,7 +669,7 @@
 # `twin_desired` are NOT created by the platform server — it holds the NATS
 # operator and has no user credential inside any organization's account, so it
 # cannot reach in and make them. Create them from the console (NATS → KV Buckets
-# → Initialize) or let `leaf-sync` do it, then come back.
+# → Initialize) or let the agent do it, then come back.
 #
 # HOW THIS WRITES A KV KEY. rule-router has no KV action — only `nats`, `http`
 # and `respond` — so these publish to the bucket's underlying stream subject,

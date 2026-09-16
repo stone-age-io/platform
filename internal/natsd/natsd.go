@@ -200,10 +200,10 @@ func portOf(rawURL string) (string, error) {
 // an organization's `twin` bucket.
 //
 // Leafnodes is the number of leaf CONNECTIONS currently attached to this
-// server. It is not the same fact as a leaf-sync heartbeat: this counts TCP
-// sessions the server can see, whereas a heartbeat says the agent on that box
-// is actually syncing. A site whose nats-server is up and whose leaf-sync has
-// been dead for a day is counted here and reports no heartbeat there.
+// server, ACROSS EVERY ACCOUNT. It is a capacity number, not a per-tenant
+// availability signal: a tenant asks about its own sites through
+// $SYS.REQ.ACCOUNT.PING.CONNZ, which is scoped to its account and names each
+// leaf by the server_name its agent set, which is the Thing code.
 type Stats struct {
 	Connections int
 	Leafnodes   int

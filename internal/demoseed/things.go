@@ -2,7 +2,6 @@ package demoseed
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
@@ -263,57 +262,4 @@ func (s *seeder) countByCodePrefix(orgCode, prefix string) (int, error) {
 		return 0, err
 	}
 	return len(recs), nil
-}
-
-// ------------------------------------------------------------------ edge sites
-
-func (s *seeder) seedLeafNodes() error {
-	for _, l := range leafNodes {
-		orgID, ok := s.orgs[l.Org]
-		if !ok {
-			return fmt.Errorf("leaf node %q references unknown org %q", l.Code, l.Org)
-		}
-		locID, ok := s.locations[l.Org+":"+l.Location]
-		if !ok {
-			return fmt.Errorf("leaf node %q references unknown location %q", l.Code, l.Location)
-		}
-
-		var nebulaHostID string
-		if l.NebulaIP != "" {
-			var err error
-			nebulaHostID, err = s.nebulaHost(l.Org, "leaf-"+l.Code, l.NebulaIP, l.NebulaGroups, "")
-			if err != nil {
-				return err
-			}
-		}
-
-		synced := l.Synced
-		sort.Strings(synced)
-
-		// No nats_user is set. RegisterLeafNodeProvisioning mints one on create
-		// and links it back, which is the path `leaf-sync` authenticates over —
-		// setting it here would bypass the hook and leave the demo unable to
-		// demonstrate the thing it is demonstrating.
-		if _, _, err := s.ensure("leaf_nodes", "organization = {:o} && code = {:c}",
-			dbx.Params{"o": orgID, "c": l.Code}, func(r *core.Record) {
-				r.Set("organization", orgID)
-				r.Set("code", l.Code)
-				r.Set("name", l.Name)
-				r.Set("description", l.Description)
-				r.Set("location", locID)
-				// edge-<code>, matching what LeafNodeFormView derives.
-				r.Set("domain", "edge-"+l.Code)
-				r.Set("synced_collections", synced)
-				r.Set("active", true)
-				r.Set("email", fmt.Sprintf("%s@%s.leaf.local", l.Code, l.Org))
-				r.Set("emailVisibility", true)
-				r.SetPassword(secret(16))
-				if nebulaHostID != "" {
-					r.Set("nebula_host", nebulaHostID)
-				}
-			}); err != nil {
-			return err
-		}
-	}
-	return nil
 }

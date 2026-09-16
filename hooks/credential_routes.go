@@ -13,7 +13,6 @@ type CredentialRoutesOptions struct {
 	NatsUserCollection   string
 	MembershipCollection string
 	ThingCollection      string
-	LeafNodeCollection   string
 }
 
 // RegisterCredentialRoutes adds the one credential operation that PocketBase API
@@ -22,7 +21,7 @@ type CredentialRoutesOptions struct {
 // Reading credentials needs no route. The API rules in schema.json scope
 // nats_users by ROW: an owner/admin sees every identity in their organization, and
 // everyone else sees only the single identity belonging to them — the one their
-// own browser, Thing, or leaf node authenticates with. Since a caller can only
+// own browser or Thing authenticates with. Since a caller can only
 // reach their own row, the credential inside it is not a leak.
 //
 // Rotation is different, because it is a WRITE. The update rule is owner/admin
@@ -70,10 +69,7 @@ func RegisterCredentialRoutes(app *pocketbase.PocketBase, opts CredentialRoutesO
 				"rotated":   true,
 				"nats_user": rec.Id,
 			})
-		}).Bind(apis.RequireAuth(
-			// A leaf node is "a special thing"; both own exactly one identity.
-			"users", opts.ThingCollection, opts.LeafNodeCollection,
-		))
+		}).Bind(apis.RequireAuth("users", opts.ThingCollection))
 
 		return se.Next()
 	})
@@ -83,9 +79,9 @@ func RegisterCredentialRoutes(app *pocketbase.PocketBase, opts CredentialRoutesO
 // authenticated record alone. Nothing is read from the request, so a caller
 // cannot name someone else's identity.
 //
-// The three cases mirror the read branches in nats_users.listRule: a user reaches
+// The two cases mirror the read branches in nats_users.listRule: a user reaches
 // their identity through the membership for their active organization, while a
-// Thing and a leaf node each carry the relation directly.
+// Thing carries the relation directly.
 func resolveOwnNatsUser(re *core.RequestEvent, opts CredentialRoutesOptions) (string, error) {
 	if re.Auth == nil {
 		return "", re.UnauthorizedError("authentication required", nil)
@@ -111,7 +107,7 @@ func resolveOwnNatsUser(re *core.RequestEvent, opts CredentialRoutesOptions) (st
 		}
 		return natsUserID, nil
 
-	case opts.ThingCollection, opts.LeafNodeCollection:
+	case opts.ThingCollection:
 		natsUserID := re.Auth.GetString("nats_user")
 		if natsUserID == "" {
 			return "", re.NotFoundError("no NATS identity assigned yet", nil)

@@ -83,10 +83,6 @@ const menuItems = computed(() => {
     )
   }
 
-  if (can.manageLeafNodes) {
-    items.push({ label: 'Leaf Nodes', icon: '🍃', path: '/leaf-nodes' })
-  }
-
   if (can.manageInfrastructure) {
     items.push(
       {

@@ -7,25 +7,24 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-// ActiveFlagOptions names the collections that carry an `active` flag whose
-// meaning this file enforces.
+// ActiveFlagOptions names the collection that carries an `active` flag whose
+// meaning this file enforces, plus the two identity collections it cascades to.
 type ActiveFlagOptions struct {
 	ThingCollection      string
-	LeafNodeCollection   string
 	NatsUserCollection   string
 	NebulaHostCollection string
 }
 
-// RegisterActiveFlag makes `active` on things and leaf_nodes mean something.
+// RegisterActiveFlag makes `active` on things mean something.
 //
-// The schema.json authRule on both collections is `active = true`, which stops a
+// The schema.json authRule on the collection is `active = true`, which stops a
 // deactivated device from obtaining a NEW auth token. On its own that is close to
 // worthless, for two reasons:
 //
 //  1. PocketBase evaluates authRule at the auth endpoint only — in
 //     apis.RecordAuthResponse (apis/record_helpers.go), reached from
 //     /auth-with-password and friends. It is NOT re-checked on requests that
-//     carry an already-issued token. Both collections set authToken.duration to
+//     carry an already-issued token. The collection sets authToken.duration to
 //     604800, so a device deactivated at noon keeps its API access for a week.
 //
 //  2. A Thing's real capability is not its PocketBase session, it is the signed
@@ -76,13 +75,11 @@ type ActiveFlagOptions struct {
 // A flag that turns a badge red while the device keeps publishing is worse than
 // no flag, because someone will trust it during an incident.
 //
-// The NATS cascade is best-effort and logged, never fatal: matching
-// RegisterLeafNodeProvisioning, a NATS hiccup must not roll back the operator's
-// deactivation. The PocketBase half — the part that is transactional with the
-// record write — always succeeds or fails with the save.
+// The NATS cascade is best-effort and logged, never fatal: a NATS hiccup must
+// not roll back the operator deactivation. The PocketBase half — the part that
+// is transactional with the record write — always succeeds or fails with the
+// save.
 func RegisterActiveFlag(app *pocketbase.PocketBase, opts ActiveFlagOptions) {
-	collections := []string{opts.ThingCollection, opts.LeafNodeCollection}
-
 	// A device is born enabled. `active` is a bool, and PocketBase bools have no
 	// schema-level default — an omitted field lands as false, which with the
 	// authRule above would mean every API-created Thing is dead on arrival. It is
@@ -90,12 +87,12 @@ func RegisterActiveFlag(app *pocketbase.PocketBase, opts ActiveFlagOptions) {
 	// things create rule freezes `active`, so a member's create legitimately
 	// carries no value, and "absent" and "explicitly false" are indistinguishable
 	// by the time a hook sees the record. Deactivation is an update.
-	app.OnRecordCreate(collections...).BindFunc(func(e *core.RecordEvent) error {
+	app.OnRecordCreate(opts.ThingCollection).BindFunc(func(e *core.RecordEvent) error {
 		e.Record.Set("active", true)
 		return e.Next()
 	})
 
-	app.OnRecordUpdate(collections...).BindFunc(func(e *core.RecordEvent) error {
+	app.OnRecordUpdate(opts.ThingCollection).BindFunc(func(e *core.RecordEvent) error {
 		was := e.Record.Original().GetBool("active")
 		now := e.Record.GetBool("active")
 
@@ -136,10 +133,9 @@ func RegisterActiveFlag(app *pocketbase.PocketBase, opts ActiveFlagOptions) {
 // edge first and returns before the regenerate branch runs, leaving the flag set
 // on the row to fire on some unrelated later save.
 //
-// Best-effort and logged, never fatal, matching RegisterLeafNodeProvisioning: a
-// hiccup in NATS or Nebula must not roll back the operator's deactivation. The
-// part that is transactional with the record write — the token kill — has
-// already succeeded by the time this runs.
+// Best-effort and logged, never fatal: a hiccup in NATS or Nebula must not roll
+// back the operator deactivation. The part that is transactional with the record
+// write — the token kill — has already succeeded by the time this runs.
 func mirrorActiveFlag(e *core.RecordEvent, collection, relationField, label string, now bool) {
 	if collection == "" {
 		return // not configured on this deployment

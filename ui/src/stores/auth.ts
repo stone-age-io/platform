@@ -78,8 +78,6 @@ export const useAuthStore = defineStore('auth', () => {
       manageInfrastructure: isAdmin,
       // Thing types, thing operations, location types.
       manageDefinitions: isAdmin,
-      // Edge nodes.
-      manageLeafNodes: isAdmin,
       // JetStream streams and KV buckets.
       manageMessaging: isAdmin,
       // Reading things and locations. `viewer` is a tenant's read-only staff:
@@ -87,7 +85,7 @@ export const useAuthStore = defineStore('auth', () => {
       //
       // This is NOT a read boundary and must not be mistaken for one. The read
       // rules on things, locations, thing_types, location_types,
-      // thing_type_operations and leaf_nodes are org-scoped with no role check, so
+      // and thing_type_operations are org-scoped with no role check, so
       // every role in the org — `dashboard` included — can already read all of
       // it over the API. What this capability decides is which screens the
       // console navigates to. If a read ever needs to be a boundary, it has to
@@ -98,10 +96,10 @@ export const useAuthStore = defineStore('auth', () => {
       // edit control is gated on.
       manageInventory: isAdmin || role === 'member',
       // Taking inventory out of service: deleting a thing/location, and flipping
-      // a thing or leaf node's `active` flag. Separate from manageInventory
-      // because members create and edit but do not decommission — deactivating
-      // revokes the device's NATS identity, and deleting orphans it and
-      // propagates into every edge KV mirror.
+      // a thing's `active` flag. Separate from manageInventory because members
+      // create and edit but do not decommission — deactivating revokes the
+      // device's NATS identity and blocklists its Nebula certificate, and
+      // deleting orphans both.
       decommissionInventory: isAdmin,
     }
   })

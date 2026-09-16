@@ -13,6 +13,42 @@ and this file starts where the versioned releases do.
 
 ### Added
 
+- **`GET /api/me/leaf-config`** — everything an agent needs to stand up a NATS
+  leaf server, in ten named fields (`code`, `domain`, `creds`, `account_jwt`,
+  `account_pub`, `operator_jwt`, `sys_account_jwt`, `sys_account_pub`,
+  `hub_leaf_url`, `hub_domain`). Bound to `things` and taking no record id: the
+  target is the caller's own authenticated record, like
+  `POST /api/me/nats-creds/rotate`.
+
+  There is deliberately no marker, flag or capability check on it. Everything it
+  serves is either public trust material — the operator, account and `$SYS`
+  account JWTs, which every server in the network validates anyway — or the
+  caller's own credential, which it must already hold to connect at all. A Thing
+  that will never run a leaf node can call it and learns nothing it could not
+  already read. A gate would have been a permission over data that is not
+  secret, and it would have needed a marker field to gate on.
+
+  The JetStream domain is **computed from the Thing's code**, not stored. Two
+  new config keys feed it: `nats.leaf_url` (where an edge box's leaf remote
+  dials this hub — startup rejects anything not beginning `nats-leaf://` or
+  `tls://`) and `nats.jetstream_domain` (this hub's own domain, default
+  `hub`). Neither is derived from `nats.server_url`, for the same reason
+  `nats.websocket_urls` is not: what this process dials says nothing about what
+  an edge box can reach.
+
+- **A Thing's page reports whether its NATS leaf node is attached.** Read live
+  from `$SYS.REQ.ACCOUNT.PING.CONNZ` over the console's own in-account
+  connection, matching `kind: "Leafnode"` entries by `name` to the Thing's
+  `code` (`ui/src/composables/useLeafConnections.ts`). Not a separate screen: a
+  site is a Thing, and a second inventory list is a second list that can
+  disagree with the first.
+
+  The empty state is deliberately not painted as a fault. The console cannot
+  tell a gateway that should have a leaf from a probe that never will — there is
+  no marker field, on purpose — so "no leaf node attached" is stated as a fact
+  and coloured neutrally. It is an alarm on a gateway's page and a shrug on a
+  probe's, and the reader knows which they are looking at.
+
 - **The invitation email is editable in `/_`.** A new superuser-only
   `email_templates` collection holds the subject and body of every mail the
   platform composes for itself, rendered with `html/template` against the
@@ -110,6 +146,56 @@ and this file starts where the versioned releases do.
   device on a changing address kept regenerating origins and kept paying. Left
   enabled on `users` and `_superusers`, who are people with real addresses and
   can act on the alert.
+
+### Removed
+
+- **`leaf_nodes`, `leaf-sync`, and the collection mirror.** An edge site is a
+  Thing now. The `leaf_nodes` auth collection is dropped
+  (`migrations/schema_update_drop_leaf_nodes.go`), along with `cmd/leaf-sync/`,
+  `internal/leafsync/`, `hooks/leaf_node_provisioning.go`,
+  `hooks/leaf_node_routes.go` (`GET /api/leaf/bootstrap` and its superseded
+  `/api/leaf/operator-jwt` alias), the console's Leaf Nodes screens, and the
+  `leaf-sync` release archive.
+
+  **This is a breaking change and it has an order.** Stand each site's agent up
+  against its Thing first — install
+  [stone-age-io/agent](https://github.com/stone-age-io/agent), point it at the
+  platform, run `agent -leaf-config` — and only then upgrade the Control Plane.
+  An older `leaf-sync` keeps running afterwards against its already-generated
+  `nats-leaf.conf`, but it can no longer log in or re-fetch anything.
+
+  Three things went and each for its own reason:
+
+  - **The mirror.** `leaf-sync` copied an organization's config collections
+    into the edge's local JetStream KV so devices could read them offline.
+    Nothing consumed the mirrored rows — no rule-router rule, no firmware — so
+    it was moving data nobody asked for, and it was the reason a leaf node
+    needed read grants spread across the inventory.
+  - **The collection.** With the mirror gone, a leaf node was a Thing with a
+    `domain` column and one server-provisioned NATS user. `thing_types` already
+    says whether a device is a gateway, so the split was a second way to state
+    something the schema stated once, and the `domain` column was a second copy
+    of the code that could disagree with it.
+  - **`leaf_status`.** The heartbeat bucket is gone and nothing replaced it on
+    the platform side. A heartbeat travels over the very link whose failure it
+    is meant to report, so a missing beat could not tell "edge box down" from
+    "WAN down" from "agent crashed" — and the Control Plane could never read one
+    anyway, holding the operator and `$SYS` and no credential inside any
+    tenant's account. The hub always knows which leaves it is holding, so the
+    console asks it.
+
+  **Credentials are left working on purpose.** A leaf node's `nats_users` and
+  `nebula_hosts` rows are non-cascade, so they survive the collection and stay
+  live; the migration lists them rather than revoking them, because a migration
+  that runs on deploy is not the place to take a fleet off the bus. Deactivate
+  each from the console once its site is running against a Thing — and
+  deactivate rather than delete, since revoking a Nebula certificate needs the
+  certificate still in the database to fingerprint it.
+
+  `stone_age_records{collection="leaf_nodes"}` and
+  `stone_age_inactive_records{collection="leaf_nodes"}` are gone with it. The
+  `leaf-sync` binary is no longer built or released from this repo; the agent
+  releases on its own tags.
 
 ## [0.5.1] - 2026-09-13
 

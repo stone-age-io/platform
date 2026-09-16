@@ -176,7 +176,7 @@ export function useNatsKv(bucketName: string = TWIN_BUCKET, baseKey?: string) {
     loading.value = true
     try {
       // Retention comes from one shared definition so that whichever creator
-      // gets here first — this button, or leaf-sync on an edge box — produces
+      // gets here first — this button, or the agent on an edge box — produces
       // the same bucket. See utils/twin.ts.
       const kvm = new Kvm(natsStore.nc)
       await kvm.create(bucketName, {

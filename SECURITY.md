@@ -75,7 +75,7 @@ different remediation costs:
 
 - **NATS**: rotate. Set `regenerate` on each `nats_users` row; the revocation
   cutoff in the account JWT is permanent, so the old `.creds` stays dead.
-  Central, scriptable, and delivery already exists (`GET /api/leaf/bootstrap`,
+  Central, scriptable, and delivery already exists (`GET /api/me/leaf-config`,
   the console download).
 - **Nebula**: re-issue *and* blocklist *and* redeliver. There is no CRL, so a
   revoked certificate is a fingerprint in every peer's `pki.blocklist`, applied
