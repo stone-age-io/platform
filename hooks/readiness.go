@@ -143,7 +143,7 @@ func registerPlatformChecks(app core.App, reg *health.Registry, opts Observabili
 		if !info.JetStream {
 			return health.Warn(
 				detail+", JetStream disabled",
-				"KV buckets — digital twin, leaf-node config mirrors, leaf_status — all need JetStream. "+
+				"KV buckets — the digital twin, and everything an edge site mirrors — all need JetStream. "+
 					"Enable it in nats.conf.",
 			)
 		}

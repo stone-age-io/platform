@@ -1,14 +1,14 @@
-# Release configuration. Ported from rule-router, with two differences that
-# matter for this repo.
+# Release configuration. Ported from rule-router, with one difference that
+# matters for this repo: the Go build embeds the compiled console
+# (`//go:embed all:pb_public/*`), so the frontend has to be built before
+# goreleaser compiles anything. That is what the `before` hooks are for --
+# without them the binaries would ship the tracked placeholder page.
 #
-# 1. The Go build embeds the compiled console (`//go:embed all:pb_public/*`), so
-#    the frontend has to be built before goreleaser compiles anything. That is
-#    what the `before` hooks are for -- without them the binaries would ship the
-#    tracked placeholder page.
-#
-# 2. Two binaries with very different jobs. `stone-age` is the server an operator
-#    runs; `leaf-sync` is the agent that lands on customer hardware, which is why
-#    linux/arm64 is not optional here.
+# ONE binary now. `leaf-sync` used to be released from here too, as the agent
+# that lands on customer hardware; it was absorbed into the stone-age-io/agent
+# repo, which releases it as `agent`. Nothing edge-side ships from this tree any
+# more -- which is also why darwin/arm64 is a convenience target here rather than
+# a fleet one.
 version: 2
 
 project_name: stone-age
@@ -38,23 +38,6 @@ builds:
       - goos: windows
         goarch: arm64
 
-  - id: leaf-sync
-    main: ./cmd/leaf-sync
-    binary: leaf-sync
-    env:
-      - CGO_ENABLED=0
-    ldflags:
-      - -s -w -X platform/internal/version.Version={{.Version}}
-    goos: [linux, darwin, windows]
-    goarch: [amd64, arm64]
-    ignore:
-      - goos: windows
-        goarch: arm64
-
-# One archive per binary, not one holding both. Someone provisioning an edge box
-# wants leaf-sync and nothing else -- making them download an archive named after
-# the server, containing a 40 MB control plane they will never run, is a bad first
-# impression on the audience that matters most here.
 archives:
   - id: stone-age
     ids: [stone-age]
@@ -69,24 +52,6 @@ archives:
       - config.yaml
     name_template: >-
       stone-age_
-      {{- .Version }}_
-      {{- .Os }}_
-      {{- .Arch }}
-
-  - id: leaf-sync
-    ids: [leaf-sync]
-    formats: [tar.gz]
-    format_overrides:
-      - goos: windows
-        formats: [zip]
-    files:
-      - LICENSE
-      # The edge agent has its own configuration and its own deployment flow;
-      # the platform README is not the document its operator needs.
-      - src: cmd/leaf-sync/README.md
-        dst: README.md
-    name_template: >-
-      leaf-sync_
       {{- .Version }}_
       {{- .Os }}_
       {{- .Arch }}

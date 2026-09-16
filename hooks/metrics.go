@@ -24,13 +24,13 @@ import (
 // the embedded NATS server's own counters. That is the whole of what the
 // Control Plane can observe first-hand.
 //
-// WHAT THEY ARE NOT. `stone_age_records{collection="leaf_nodes"}` counts leaf
-// nodes CONFIGURED, not leaf nodes online. Liveness lives in the `leaf_status`
-// KV bucket inside each organization's NATS account, which this process holds
-// no credential for; it is read by the console (the browser connects with the
-// logged-in user's own in-account credential) and exported by leaf-sync itself
-// on the edge. Alerting on this series as though it were availability would
-// produce an alert that can never fire.
+// WHAT THEY ARE NOT. `stone_age_records{collection="things"}` counts devices
+// CONFIGURED, not devices online. Liveness lives inside each organization NATS
+// account, which this process holds no credential for; it is read by the console
+// (the browser connects with the logged-in user own in-account credential, and
+// asks the bus directly via $SYS.REQ.ACCOUNT.PING.CONNZ) and exported by the
+// agent itself on the edge. Alerting on a row count as though it were
+// availability would produce an alert that can never fire.
 func registerPlatformMetrics(app core.App, set *metrics.Set, opts ObservabilityOptions) {
 	set.Registry.MustRegister(&dbCollector{app: app, opts: opts})
 	set.Registry.MustRegister(&certCollector{app: app, opts: opts})
@@ -57,12 +57,12 @@ var (
 	descRecords = prometheus.NewDesc(
 		"stone_age_records",
 		"Rows in a platform collection. This is inventory CONFIGURED, not anything online: "+
-			"leaf-node and device liveness lives inside an organization's NATS account, which this process cannot read.",
+			"device liveness lives inside an organization NATS account, which this process cannot read.",
 		[]string{"collection"}, nil,
 	)
 	descInactive = prometheus.NewDesc(
 		"stone_age_inactive_records",
-		"Rows with active = false: devices and leaf nodes that have been decommissioned.",
+		"Rows with active = false: devices that have been decommissioned.",
 		[]string{"collection"}, nil,
 	)
 	descRevokedUsers = prometheus.NewDesc(
@@ -97,7 +97,7 @@ func (c *dbCollector) Collect(ch chan<- prometheus.Metric) {
 	var failures float64
 
 	// A collection that errors is SKIPPED rather than reported as zero. Zero is
-	// a legitimate value here ("no leaf nodes configured"), so emitting it on
+	// a legitimate value here ("no Nebula hosts configured"), so emitting it on
 	// failure would turn a broken query into a confident wrong answer — and an
 	// alert on `== 0` would fire for the wrong reason. The absent series plus
 	// stone_age_collector_errors says what actually happened.
@@ -119,7 +119,6 @@ func (c *dbCollector) Collect(ch chan<- prometheus.Metric) {
 		"users",
 		"things",
 		"locations",
-		"leaf_nodes",
 		"thing_types",
 		"location_types",
 		c.opts.NatsAccountCollection,
@@ -131,11 +130,9 @@ func (c *dbCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	// The decommissioning flag from CLAUDE.md's "A flag is not a control unless
-	// something acts on it": these two have teeth (token kill + NATS revoke), so
-	// they are worth counting.
-	inactive := dbx.HashExp{"active": false}
-	count("things", descInactive, []string{"things"}, inactive)
-	count("leaf_nodes", descInactive, []string{"leaf_nodes"}, inactive)
+	// something acts on it": this one has teeth (token kill + NATS revoke), so it
+	// is worth counting.
+	count("things", descInactive, []string{"things"}, dbx.HashExp{"active": false})
 
 	count(c.opts.NatsUserCollection, descRevokedUsers, nil, dbx.HashExp{"revoke": true})
 
@@ -281,7 +278,8 @@ var (
 	descNATSLeafs = prometheus.NewDesc(
 		"stone_age_nats_leafnode_connections",
 		"Leaf-node CONNECTIONS attached to the embedded NATS server. A TCP session the server can see — "+
-			"not the same fact as a leaf-sync heartbeat, which says the edge agent is actually syncing.",
+			"across every account, so it is not a per-tenant availability signal. A tenant asks its own "+
+			"account via $SYS.REQ.ACCOUNT.PING.CONNZ.",
 		nil, nil,
 	)
 	descNATSSlow = prometheus.NewDesc(

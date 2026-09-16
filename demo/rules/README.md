@@ -279,7 +279,7 @@ Each file ends with a block that writes **reported** state into the `twin` KV
 bucket. It is separable — delete it if you are not using it — and it needs the
 bucket to exist first:
 
-**NATS → KV Buckets → Initialize** in the console, or let `leaf-sync` create it.
+**NATS → KV Buckets → Initialize** in the console, or let the agent create it.
 The platform server *cannot*: it holds the NATS operator and has no user
 credential inside any organization's account. From a shell it is
 `nats kv add twin --history=10 --storage=file` with the same creds file.

@@ -116,10 +116,11 @@ describe('valueAtPath', () => {
   })
 })
 
-// The two bucket names and their retention are duplicated in
-// internal/leafsync/twin.go, and whichever side creates a bucket first defines
-// it. Nothing enforces that they agree, so pin this side's values here; the Go
-// side has its own test.
+// The two bucket names and their retention are duplicated in the agent repo's
+// internal/edge/twin.go, and whichever side creates a bucket first defines it.
+// Nothing enforces that they agree — they are now in different repositories, so
+// nothing can — which is why this side pins its values here; the Go side has its
+// own test.
 describe('twin bucket definitions', () => {
   it('names the two buckets by owner, not by what they describe', () => {
     expect(TWIN_BUCKET).toBe('twin')

@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=198         # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=194         # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -337,7 +337,7 @@ echo "=== 7. credential broadcast: scoped by ROW, not by hidden fields ==="
 # it", and creds_file embeds the NATS seed -- so any member could download every
 # device credential. The fix narrows which ROWS are visible rather than hiding
 # the field, because the field has to stay readable to the identity that owns it
-# (the browser's own NATS connection, and leaf-sync's bootstrap).
+# (the browser's own NATS connection, and the agent's own credential).
 req GET "/collections/nats_users/records" "$TB"
 expect "member can query nats_users (rule parses; back-relation resolves)" 200 "$RCODE" "$RBODY"
 if [ "$(j "$RBODY" totalItems)" = "1" ]; then
@@ -521,7 +521,7 @@ fi
 echo ""
 echo "=== 10. deletion and org profile are management actions ==="
 # things was the only collection left with a member-level delete; every other
-# one (locations, thing_types, leaf_nodes, ...) already required owner/admin.
+# one (locations, thing_types, ...) already required owner/admin.
 req POST /collections/things/records "$SU" \
   "{\"email\":\"thing2@test.local\",\"password\":\"Password123!\",\"passwordConfirm\":\"Password123!\",\"emailVisibility\":true,\"name\":\"Thing Two\",\"code\":\"TH2\",\"organization\":\"$ORG\"}"
 THING2=$(j "$RBODY" id)
@@ -654,72 +654,68 @@ req PATCH "/collections/memberships/records/$MVIEW" "$TV" '{"role":"member"}'
 expect "viewer cannot promote itself to member" "403|400|404" "$RCODE" "$RBODY"
 
 echo ""
-echo "=== 12. a leaf node reads no NATS collection at all ==="
-# leaf-sync config used to read nats_users + nats_accounts through the CRUD API,
-# which meant granting a leaf-node identity a read branch on each. Those branches
-# are gone: GET /api/leaf/bootstrap serves the same values with the app's own
-# privileges, so the edge's blast radius is a fixed list of named fields rather
-# than "whatever those rules happen to match".
-req POST /collections/leaf_nodes/records "$SU" \
-  "{\"email\":\"leaf1@test.local\",\"password\":\"Password123!\",\"passwordConfirm\":\"Password123!\",\"emailVisibility\":true,\"name\":\"Leaf One\",\"code\":\"LEAF1\",\"domain\":\"edge-leaf1\",\"organization\":\"$ORG\",\"synced_collections\":[\"things\",\"locations\"]}"
-LEAF=$(j "$RBODY" id)
-[ -z "$LEAF" ] && die "leaf node create failed: $RBODY"
-sleep 2   # the provisioning hook mints its NATS user asynchronously
-req GET "/collections/leaf_nodes/records/$LEAF" "$SU"
-LEAF_NATS=$(j "$RBODY" nats_user)
-[ -z "$LEAF_NATS" ] && die "leaf node did not get a nats_user: $RBODY"
+echo ""
+echo "=== 12. /api/me/leaf-config: a gateway is a Thing ==="
+# The route that replaces /api/leaf/bootstrap. A gateway is not a separate kind
+# of record -- it is a Thing whose agent happens to run a NATS leaf server -- so
+# this is bound to `things` and takes no record id: the target is the caller's
+# own authenticated record, exactly like POST /api/me/nats-creds/rotate.
+#
+# There is deliberately NO marker, flag or capability check. Everything served
+# is either public trust material (operator and account JWTs, verified by every
+# server in the network) or the caller's own credential, which it must already
+# hold to connect at all. A Thing that will never run a leaf node can ask, and
+# learns nothing it could not already read.
+req POST /collections/things/auth-with-password "" \
+  '{"identity":"thing1@test.local","password":"Password123!"}'
+TLC=$(j "$RBODY" token)
+[ -z "$TLC" ] && die "thing login for leaf-config failed: $RBODY"
 
-req POST /collections/leaf_nodes/auth-with-password "" \
-  '{"identity":"leaf1@test.local","password":"Password123!"}'
-TL=$(j "$RBODY" token)
-[ -z "$TL" ] && die "leaf node login failed: $RBODY"
-
-req GET "/collections/nats_users/records" "$TL"
-LEAF_SEES=$(jn "$RBODY" 'o.items ? o.items.length : "err"')
-if [ "$LEAF_SEES" = "0" ] || [[ "$RCODE" =~ ^(403|404)$ ]]; then
-  ok "leaf node sees no nats_users rows (got ${LEAF_SEES:-$RCODE})"
+req GET "/me/leaf-config" "$TLC"
+expect "a thing CAN reach /api/me/leaf-config" 200 "$RCODE" "$RBODY"
+LC_MISSING=$(jn "$RBODY" \
+  '["code","domain","creds","account_jwt","account_pub","operator_jwt","sys_account_jwt","sys_account_pub"].filter(k=>!o[k]).join(",")')
+if [ -z "$LC_MISSING" ]; then
+  ok "leaf-config carries code, domain, creds, account/operator/sys JWTs and pubkeys"
 else
-  no "leaf node still reads nats_users: $LEAF_SEES row(s) -- $(head -c 200 <<<"$RBODY")"
-fi
-req GET "/collections/nats_users/records/$LEAF_NATS" "$TL"
-expect "leaf node cannot view even its own nats_user" "403|404" "$RCODE" "$RBODY"
-req GET "/collections/nats_accounts/records" "$TL"
-LEAF_ACCTS=$(jn "$RBODY" 'o.items ? o.items.length : "err"')
-if [ "$LEAF_ACCTS" = "0" ] || [[ "$RCODE" =~ ^(403|404)$ ]]; then
-  ok "leaf node sees no nats_accounts rows (got ${LEAF_ACCTS:-$RCODE})"
-else
-  no "leaf node still reads nats_accounts: $LEAF_ACCTS row(s)"
+  no "leaf-config response missing: $LC_MISSING"
 fi
 
-# Pair every "cannot" with a "can": the bootstrap route must still hand it
-# everything `leaf-sync config` needs, or the deny above is just a broken edge.
-req GET "/leaf/bootstrap" "$TL"
-expect "leaf node CAN reach /api/leaf/bootstrap" 200 "$RCODE" "$RBODY"
-BS_MISSING=$(jn "$RBODY" \
-  '["domain","creds","account_jwt","account_pub","operator_jwt","sys_account_jwt","sys_account_pub"].filter(k=>!o[k]).join(",")')
-if [ -z "$BS_MISSING" ]; then
-  ok "bootstrap response carries domain, creds, account/operator/sys JWTs and pubkeys"
+# The domain is the Thing's code, computed rather than stored. buildLeafConf
+# writes it into BOTH `server_name` and `jetstream { domain }`, and the console
+# matches a leaf's reported server_name back to a Thing's code to show a site
+# online -- so a divergence makes every gateway look offline.
+LC_DOMAIN=$(jn "$RBODY" 'o.domain === o.code ? "same" : o.domain + "!=" + o.code')
+if [ "$LC_DOMAIN" = "same" ]; then
+  ok "leaf-config domain is the thing's own code"
 else
-  no "bootstrap response missing: $BS_MISSING"
+  no "leaf-config domain and code disagree: $LC_DOMAIN"
 fi
-# The $SYS pair must be the actual system account, not a second copy of the org's.
-# Without it the generated nats-leaf.conf cannot resolve the system account the
-# operator JWT names, and nats-server refuses to start -- which is exactly the bug
-# this check exists to prevent coming back.
-BS_SYS_DISTINCT=$(jn "$RBODY" 'o.sys_account_pub !== o.account_pub ? "yes" : "no"')
-if [ "$BS_SYS_DISTINCT" = "yes" ]; then
-  ok "bootstrap sys_account_pub is the system account, not a copy of the org account"
-else
-  no "bootstrap sys_account_pub equals account_pub -- the system account lookup is wrong"
-fi
-req GET "/collections/things/records" "$TL"
-expect "leaf node CAN still list the collections it mirrors" 200 "$RCODE" "$RBODY"
 
-# The route is leaf-only: an org owner is not an edge box.
-req GET "/leaf/bootstrap" "$TA"
-expect "org owner cannot reach the leaf bootstrap route" "401|403|404" "$RCODE" "$RBODY"
-req GET "/leaf/bootstrap" ""
-expect "anonymous cannot reach the leaf bootstrap route" "401|403|404" "$RCODE" "$RBODY"
+# Same trap the bootstrap route had: without the real $SYS account JWT the
+# generated conf cannot resolve the system account the operator JWT names, and
+# nats-server refuses to start before JetStream is ever reached.
+LC_SYS_DISTINCT=$(jn "$RBODY" 'o.sys_account_pub !== o.account_pub ? "yes" : "no"')
+if [ "$LC_SYS_DISTINCT" = "yes" ]; then
+  ok "leaf-config sys_account_pub is the system account, not a copy of the org account"
+else
+  no "leaf-config sys_account_pub equals account_pub -- the system account lookup is wrong"
+fi
+
+# Console and anonymous callers are not edge boxes. An org owner holding this
+# would not be an escalation (it is public trust material), but the route exists
+# for devices and the binding should say so.
+req GET "/me/leaf-config" "$TA"
+expect "org owner cannot reach /api/me/leaf-config" "401|403|404" "$RCODE" "$RBODY"
+req GET "/me/leaf-config" ""
+expect "anonymous cannot reach /api/me/leaf-config" "401|403|404" "$RCODE" "$RBODY"
+
+# And the collection this replaced is actually gone, not merely unused. Asked as
+# a SUPERUSER so a 404 can only mean the collection does not exist -- a rule
+# denial would be indistinguishable from a deletion for any other caller, which
+# is how a "removed" collection stays quietly in the schema for a year.
+req GET "/collections/leaf_nodes/records" "$SU"
+expect "the leaf_nodes collection is gone (a superuser gets 404)" 404 "$RCODE" "$RBODY"
 
 echo ""
 echo "=== 12b. /api/client-config is console-only, and every console role gets it ==="
@@ -732,12 +728,12 @@ echo "=== 12b. /api/client-config is console-only, and every console role gets i
 # `dashboard` is the probe on the allow side deliberately. It is the
 # zero-authority role AND the appliance login that most needs this value, so an
 # over-tight guard here would strand exactly the deployment the setting exists
-# for. Device identities are on the deny side: a Thing or leaf node gets its bus
-# address from its own config file, not from the console's.
+# for. Device identities are on the deny side: a Thing gets its bus address
+# from its own config file, not from the console's.
 req GET "/client-config" ""
 expect "anonymous cannot read the client config" "401|403|404" "$RCODE" "$RBODY"
-req GET "/client-config" "$TL"
-expect "a leaf node cannot read the console's client config" "401|403|404" "$RCODE" "$RBODY"
+req GET "/client-config" "$TLC"
+expect "a thing cannot read the console's client config" "401|403|404" "$RCODE" "$RBODY"
 req GET "/client-config" "$TG"
 expect "dashboard CAN read the client config" 200 "$RCODE" "$RBODY"
 CC_URLS=$(jn "$RBODY" 'Array.isArray(o.natsWebsocketUrls)?"array":typeof o.natsWebsocketUrls')
@@ -747,6 +743,7 @@ else
   no "client config natsWebsocketUrls should be an array, got: $CC_URLS"
 fi
 
+echo ""
 echo ""
 echo "=== 13. account + CA writes are operator-only; key ops are a route ==="
 # Both updateRules used to carry an owner/admin branch commented "can only change
@@ -1082,8 +1079,8 @@ fi
 
 # things.manageRule. Without it, `password` on update requires `oldPassword`
 # (forms/record_upsert.go), which nobody holds for a device -- so a Thing's
-# PocketBase credential was mint-once with no recovery, while leaf_nodes could be
-# reset. The member deny below is the pair that proves this is a role boundary
+# PocketBase credential was mint-once with no recovery short of deleting the
+# record. The member deny below is the pair that proves this is a role boundary
 # and not just PocketBase refusing every password write.
 req PATCH "/collections/things/records/$THING" "$TB" \
   '{"password":"NewPassword456!","passwordConfirm":"NewPassword456!"}'
@@ -1269,7 +1266,7 @@ echo "=== 18. code is a per-organization handle, and the database says so ==="
 # `code` was documented as unique and used as one -- as a NATS KV key at the
 # edge, as a digital-twin key prefix, as the argument to `stone thing get` --
 # while nothing enforced it. Two Things sharing a code in one organization did
-# not fail: leaf-sync falls back to keying by record id, so the KV key silently
+# not fail: a consumer falls back to keying by record id, so the KV key silently
 # changes shape and every consumer looking up `thing.S01` finds nothing.
 #
 # UNIQUE (organization, code) is the enforcement. Scoped per organization, not
@@ -1297,14 +1294,15 @@ req POST /collections/locations/records "$SU" \
   "{\"name\":\"No Code Two\",\"organization\":\"$ORG\"}"
 expect "and so may a second one (the index is partial)" 200 "$RCODE" "$RBODY"
 
-# A leaf node's code is frozen after creation, the same way its organization
-# is. It is the JetStream domain suffix and the KV key prefix the edge has
-# already written under, so changing it centrally orphans everything at the
-# site without any error to show for it. Paired with a permitted edit on the
-# same record, so a blanket deny cannot pass.
-req PATCH "/collections/leaf_nodes/records/$LEAF" "$TA" '{"code":"RENAMED"}'
-expect "owner cannot change a leaf node's code" "403|400|404" "$RCODE" "$RBODY"
-req PATCH "/collections/leaf_nodes/records/$LEAF" "$TA" '{"name":"Leaf One Renamed"}'
+# A thing's code is frozen after creation, the same way its organization is.
+# For a gateway it is also the JetStream domain its edge has already written
+# under (GET /api/me/leaf-config computes the domain FROM the code), and it may
+# be printed on a label screwed to the device -- so changing it centrally
+# orphans everything at the site without any error to show for it. Paired with
+# a permitted edit on the same record, so a blanket deny cannot pass.
+req PATCH "/collections/things/records/$THING" "$TA" '{"code":"RENAMED"}'
+expect "owner cannot change a thing's code" "403|400|404" "$RCODE" "$RBODY"
+req PATCH "/collections/things/records/$THING" "$TA" '{"name":"Thing One Renamed"}'
 expect "owner CAN rename it (same record, so the deny was the frozen field)" 200 "$RCODE" "$RBODY"
 
 echo ""
@@ -1339,13 +1337,13 @@ echo "=== 20. a blank organization is not a tenancy match ==="
 # current_organization`. Both sides are TEXT defaulting to an empty string, and
 # in PocketBase an empty string equals an empty string -- so an orphaned record
 # was readable by anyone whose own context was blank. Neither state was exotic:
-# deleting an organization blanks `organization` on 16 non-cascade relations,
+# deleting an organization blanks `organization` on 15 non-cascade relations,
 # and hooks/membership_lifecycle.go blanks `current_organization` on the way out
 # of an org.
 #
 # ORPHAN is a dedicated record that stays blank for the whole section. An
-# earlier draft blanked and then restored the shared THING fixture, which left
-# the leaf-node checks below with nothing orphaned to find -- so they passed
+# earlier draft blanked and then restored the shared THING fixture and put it
+# back before the reads below, so they found nothing orphaned and passed
 # against the unfixed rules too. A check that cannot fail is worse than no
 # check, so the orphan is separate and permanent.
 req POST /collections/things/records "$SU" \
@@ -1397,25 +1395,6 @@ else
   ok "the orphan is invisible to the owner too (it belongs to no organization)"
 fi
 
-# The collapse had a second door: leaf_nodes.organization is itself non-cascade
-# and non-required, so an org delete blanks it too, and the leaf branch compares
-# it against the record's own blank column. ORPHAN is still blank here.
-req PATCH "/collections/leaf_nodes/records/$LEAF" "$SU" '{"organization":""}'
-req GET "/collections/things/records" "$TL"
-LEAF_ORPHAN=$(jn "$RBODY" 'o.items ? o.items.length : "err"')
-if [ "$LEAF_ORPHAN" = "0" ] || [[ "$RCODE" =~ ^(403|404)$ ]]; then
-  ok "leaf node with a blanked organization mirrors nothing (got ${LEAF_ORPHAN:-$RCODE})"
-else
-  no "blank-org leaf node read $LEAF_ORPHAN thing(s) -- the leaf branch still collapses"
-fi
-req PATCH "/collections/leaf_nodes/records/$LEAF" "$SU" "{\"organization\":\"$ORG\"}"
-req GET "/collections/things/records" "$TL"
-LEAF_OK=$(jn "$RBODY" 'o.items ? o.items.length : "err"')
-if [ "$LEAF_OK" != "0" ] && [ "$LEAF_OK" != "err" ]; then
-  ok "leaf node with its organization restored mirrors again ($LEAF_OK row(s))"
-else
-  no "restored leaf node mirrors nothing -- the guard broke normal edge sync"
-fi
 echo ""
 echo "=== 20b. cross-tenant reads (the class the suite never covered) ==="
 # Eve's token appeared exactly once in this file before, for a write. Every

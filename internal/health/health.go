@@ -1,5 +1,8 @@
-// Package health is the readiness-check engine shared by the Control Plane
-// (`stone-age serve`) and the edge agent (`leaf-sync run`).
+// Package health is the readiness-check engine behind `stone-age serve`.
+//
+// The same package lives in the agent repo. It was copied rather than extracted
+// into a shared module: two small copies that drift are cheaper to live with
+// than a third repo to version, and the two processes check different things.
 //
 // WHAT A READINESS CHECK IS FOR HERE. PocketBase already answers /api/health,
 // and that answer is "the HTTP server is listening" — which is true of every
@@ -12,10 +15,10 @@
 // WHAT EACH PROCESS MAY CHECK. A check must be answerable first-hand by the
 // process running it. The Control Plane holds the NATS operator and the $SYS
 // account; it has no user credential in any organization's account, so it
-// cannot read an org's KV — not `twin`, and not the `leaf_status` heartbeats
-// leaf-sync writes. Those are visible to the console, because a browser
-// connects with the logged-in user's own in-account credential, and to
-// leaf-sync, because it runs inside the account. Do not "improve" a check here
+// cannot read an org KV — not `twin`, and not anything a site reports about
+// itself. Those are visible to the console, because a browser connects with the
+// logged-in user own in-account credential, and to the agent, because it runs
+// inside the account. Do not "improve" a check here
 // by giving the Control Plane a credential inside a tenant's account: that
 // turns the platform from a credential issuer into a data-plane participant in
 // every tenant's bus, which is the one boundary the whole NATS design is built

@@ -103,7 +103,7 @@ Heartbeats per device over three minutes. A device that stops reporting drops ou
 of the result.
 
 This is the query that earns the whole exercise. `stone_age_records{collection=
-"leaf_nodes"}` counts things **configured** and can never fire on a device going
+"things"}` counts devices **configured** and can never fire on a device going
 quiet — its HELP text says so. Availability is a property of traffic, and traffic
 is on the bus.
 

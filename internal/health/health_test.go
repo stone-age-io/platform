@@ -52,9 +52,9 @@ func TestOnlyFailuresMakeUnready(t *testing.T) {
 
 // Skipped must not read as OK. A check that never ran and a check that passed
 // are different facts, and collapsing them is how a green tick stops meaning
-// anything — the leaf-node checks skip themselves when the local monitoring
-// port is unreachable, and reporting that as "uplink fine" would be a lie about
-// an islanded site.
+// anything — the edge checks skip themselves when the local monitoring port is
+// unreachable, and reporting that as "uplink fine" would be a lie about an
+// islanded site.
 func TestSkippedRanksBelowOK(t *testing.T) {
 	if StateSkipped.severity() >= StateOK.severity() {
 		t.Fatal("skipped must rank below ok, or an unrun check reads as a passing one")

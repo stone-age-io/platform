@@ -64,13 +64,12 @@ fi
 cat <<EOF
 ## Stone Age Platform $TAG
 
-Two binaries:
+One binary: **\`stone-age\`**, the control plane. One process: REST API,
+embedded Vue console, SQLite, and (with \`--nats\`) the NATS server itself.
 
-- **\`stone-age\`** — the control plane. One process: REST API, embedded Vue
-  console, SQLite, and (with \`--nats\`) the NATS server itself.
-- **\`leaf-sync\`** — the edge agent. Mirrors an organization's configuration
-  into a NATS leaf node's local JetStream KV, and optionally runs that leaf
-  node in-process.
+The edge agent lives in
+[stone-age-io/agent](https://github.com/stone-age-io/agent) and releases on its
+own tags.
 
 Or run the container, which needs no toolchain at all:
 

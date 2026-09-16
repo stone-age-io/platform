@@ -264,47 +264,6 @@ var lighthouses = []lighthouseFixture{
 		PublicHostPort: "lighthouse.galewind.example:4242", Groups: []string{"lighthouse"}},
 }
 
-// -------------------------------------------------------------- edge sites
-
-type leafFixture struct {
-	Org, Code, Name, Location, Description string
-
-	// NebulaIP mints the leaf node's own overlay address. The leaf node's NATS
-	// user is NOT set here: RegisterLeafNodeProvisioning mints it on create, and
-	// the seed goes in through that hook rather than around it.
-	NebulaIP     string
-	NebulaGroups []string
-
-	// Collections to mirror into the edge's local KV. Constrained server-side by
-	// leafsync.allowedCollections regardless of what is written here.
-	Synced []string
-}
-
-// domain is derived as edge-<code>, matching what LeafNodeFormView derives in
-// the console. Left implicit in the fixture so the two cannot drift.
-var leafNodes = []leafFixture{
-	{Org: "northwind", Code: "kc-dc1", Name: "Kansas City Edge", Location: "KC-DC1-MDF",
-		Description: "Leaf node for the KC distribution centre.",
-		NebulaIP:    "10.20.30.1", NebulaGroups: []string{"leaf", "kc"},
-		Synced: []string{"things", "locations", "thing_types", "location_types", "thing_type_operations"}},
-	{Org: "northwind", Code: "sgf-xd2", Name: "Springfield Edge", Location: "SGF-XD2-MDF",
-		Description: "Leaf node for the Springfield cross-dock.",
-		NebulaIP:    "10.20.30.2", NebulaGroups: []string{"leaf", "sgf"},
-		Synced: []string{"things", "locations", "thing_types", "location_types"}},
-	{Org: "ironbridge", Code: "pit-plant", Name: "Pittsburgh Works Edge", Location: "PIT-MCC1",
-		Description: "Leaf node for the plant. Runs alongside the OEE pipeline.",
-		NebulaIP:    "10.30.30.1", NebulaGroups: []string{"leaf", "plant"},
-		Synced: []string{"things", "locations", "thing_types", "location_types", "thing_type_operations"}},
-	{Org: "galewind", Code: "sub-n1", Name: "North Substation Edge", Location: "SUB-N1-CAB",
-		Description: "Leaf node on cellular. The reason the site keeps deciding locally during an outage.",
-		NebulaIP:    "10.40.30.1", NebulaGroups: []string{"leaf", "substation"},
-		Synced: []string{"things", "locations", "thing_types", "location_types", "thing_type_operations"}},
-	{Org: "galewind", Code: "sub-s2", Name: "South Substation Edge", Location: "SUB-S2",
-		Description: "Leaf node on cellular.",
-		NebulaIP:    "10.40.30.2", NebulaGroups: []string{"leaf", "substation"},
-		Synced: []string{"things", "locations", "thing_types", "location_types"}},
-}
-
 // ------------------------------------------------------------------- people
 
 // DemoPassword is shared by every seeded login. It is printed by the command and

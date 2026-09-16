@@ -4,10 +4,10 @@
 // buys three things an external script could not have:
 //
 //   - The provisioning hooks fire exactly as they do in production. Creating an
-//     organization mints its NATS account and Nebula CA; creating a leaf node
-//     mints that leaf's NATS user. The seed goes in THROUGH that machinery, not
-//     around it, so a demo instance is indistinguishable from one built by hand
-//     and a hook that breaks breaks the seed.
+//     organization mints its NATS account and Nebula CA. The seed goes in
+//     THROUGH that machinery, not around it, so a demo instance is
+//     indistinguishable from one built by hand and a hook that breaks breaks
+//     the seed.
 //   - No auth dance and no org switching. Every API rule here is scoped by
 //     users.current_organization, so an HTTP seeder would have to log in as a
 //     member of each tenant and PATCH its own context between phases.
@@ -155,7 +155,6 @@ func Run(app core.App, opts Options) (*Result, error) {
 		{"thing types", s.seedThingTypes},
 		{"overlay networks", s.seedNetworks},
 		{"things", s.seedThings},
-		{"edge sites", s.seedLeafNodes},
 	}
 	for _, step := range steps {
 		opts.Log("seeding %s...", step.name)

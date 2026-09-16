@@ -13,12 +13,7 @@ import (
 //
 // and defaults to "dev" for a plain `go build` or `go run`.
 //
-// One variable for both binaries, deliberately: `stone-age` and `leaf-sync` are
-// built from the same tree and released from the same tag, so two stamps would
-// only mean two chances to forget one -- and a `leaf-sync` reporting "dev" in its
-// heartbeat while the server reports v0.3.1 is a support call about nothing.
-//
-// It surfaces in `--version` on both commands and in every leaf-sync heartbeat.
+// It surfaces in `stone-age --version` and in the readiness report.
 var Version = "dev"
 
 // Dependency returns the module version of the given import path as recorded in

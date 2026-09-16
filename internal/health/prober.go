@@ -160,7 +160,7 @@ func WriteJSON(w http.ResponseWriter, rep *Report) {
 
 // Handler serves the cached report over plain net/http. The Control Plane
 // registers its own route on PocketBase's router instead and calls WriteJSON;
-// this is for leaf-sync, which has no router of its own.
+// this is for the agent, which has no router of its own.
 func (p *Prober) Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		WriteJSON(w, p.Snapshot())

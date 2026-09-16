@@ -14,8 +14,6 @@ storage
 stone-age
 stone-age.exe
 stone-age-authz-test*
-leaf-sync
-leaf-sync.exe
 
 .claude
 *.log

@@ -56,7 +56,6 @@ src/
     ├── audit/         # Audit log viewer (pb-audit)
     ├── auth/          # Login, invitation acceptance
     ├── dashboard/     # Visualizer (the home view; the `dashboard` role's only screen)
-    ├── leaf_nodes/    # Edge nodes (leaf_nodes records) + NATS identity / Nebula linking
     ├── locations/     # Locations + LocationTypes
     ├── nats/          # Account, Users, Roles, Imports, Exports, Streams, KV Buckets
     ├── nebula/        # CA, Networks, Hosts
@@ -83,7 +82,7 @@ We manage the connectivity layer as first-class entities:
 *   **JetStream:** Browse and manage Streams and KV Buckets (create, inspect, edit) directly from the console, backed by `useJetStreamManager`.
 *   **Nebula:** Manage Certificate Authorities, Networks, and Hosts.
 *   **Provisioning:** The UI facilitates the creation of cryptographic identities (NKeys, Certificates) via backend hooks and allows downloading `.creds` and `config.yaml` files directly.
-*   **Edge / Leaf Nodes:** Provision and manage `leaf_nodes` (edge sites) under `views/leaf_nodes/`. Each gets a server-minted NATS user and an optional Nebula host link; the detail view mirrors the Thing layout — identity, a Connectivity card (NATS role with reassignment, permission overrides, `.creds` download, plus Nebula hostname/IP/config), and synced-collection selection. The off-box [`leaf-sync`](../cmd/leaf-sync/README.md) agent mirrors the org's config into the edge's local NATS KV.
+*   **Edge sites:** there is no screen for these, deliberately. A site is a Thing, so its page is the Thing page — and whether its NATS leaf node is currently attached is one more row in that page's NATS card, read live from `$SYS.REQ.ACCOUNT.PING.CONNZ` over the console's own connection (`composables/useLeafConnections.ts`). A `leaf_nodes` collection and a `leaf_status` heartbeat bucket used to back a separate screen family; both are gone. The heartbeat travelled over the very link whose failure it reported, so a missing beat could not tell "edge box down" from "WAN down" from "agent crashed" — the hub always knows which leaves it holds.
 
 ### 3. Thing Modeling
 Things aren't just inventory records — they declare a messaging contract via three related collections managed under `views/things/`:
@@ -151,7 +150,8 @@ We bridge the gap between **SQL Metadata** (PocketBase) and **Live State** (NATS
     to devices; there is no control loop. The UI reports that two values disagree
     and does not predict what happens next. If rule-router ever applies desired
     state, the stronger word becomes earned.
-*   **Edge sync:** where a site runs a NATS leaf node, [`leaf-sync`](../cmd/leaf-sync/README.md)
+*   **Edge sync:** where a site runs a NATS leaf node, the
+    [Agent](https://github.com/stone-age-io/agent)
     gives it a server-maintained JetStream **mirror** of `twin_desired` and relays
     its local `twin` up to the hub — so the edge keeps writing reported state, and
     reading the last-known desired state, straight through a WAN outage.

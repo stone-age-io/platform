@@ -96,7 +96,6 @@ func preflight(app core.App) error {
 	}{
 		{"organizations", []string{"code", "managed"}},
 		{"things", []string{"code", "active"}},
-		{"leaf_nodes", []string{"code", "domain"}},
 		{"memberships", []string{"role"}},
 	}
 	for _, r := range required {
