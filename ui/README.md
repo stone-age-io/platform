@@ -27,7 +27,7 @@ src/
 ├── components/
 │   ├── common/        # ConfirmDialog, DebugPanel, JsonViewer, ResponseModal, KeyboardShortcutsModal
 │   ├── dashboard/     # Visualizer shell (Grid, Sidebar, Tree, WidgetContainer, Add/Configure modals, VariableBar, GaugeZone/Threshold editors)
-│   │   └── config/    # Per-widget config panels (Button, Chart, Console, Gauge, Kv, KvTable, Map, Markdown, PocketBase, Publisher, Scanner, Slider, Stat, Status, Switch, Text)
+│   │   └── config/    # Per-widget config panels (Button, Chart, Console, Gauge, Kv, KvTable, Map, Markdown, Publisher, Scanner, Slider, Stat, Status, StreamTable, Switch, Text)
 │   ├── layout/        # App shell (MainLayout, AppHeader, AppSidebar)
 │   ├── locations/     # LocationMapViz, LocationMapDrawer
 │   ├── map/           # FloorPlanMap (image-overlay indoor positioning)
