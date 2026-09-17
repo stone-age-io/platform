@@ -88,9 +88,10 @@ routine "bump everything" pass must not drag them along:
   dies before type checking. `vue-tsc` 3.3.10 is the newest there is; 6.0 is the
   ceiling until the Vue tooling catches up.
 
-Neither has an automated guard — there is no frontend test runner, so
-`vue-tsc && vite build` stays green while the UI renders wrong. That is exactly
-why these are written down rather than left to be rediscovered.
+None of the three has an automated guard. Vitest covers pure logic only (see
+**Testing**), so nothing exercises a rendered map, a theme token or a built
+bundle — `vue-tsc && vite build` stays green while the UI renders wrong. That is
+exactly why these are written down rather than left to be rediscovered.
 
 ### Database
 - SQLite (managed by PocketBase, stored in `pb_data/`)
@@ -303,320 +304,185 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
 8. **Maps** - Leaflet maps over an OpenFreeMap vector basemap (WebGL), with floorplan overlays
 9. **PWA** - Service worker, manifest, installable
 10. **Keyboard Shortcuts** - Configurable keyboard shortcuts with modal reference
-11. **Operator Org & Managed Orgs** - Bootstrap creates the platform operator's own org (`is_operator_org`) alongside the `$SYS` org (`is_system_org`); its NATS account is the hub for shared operator services (helpdesk etc.). Flagging a customer org `managed` provisions a stream export of `helpdesk.>` (configurable: `nats.managed_export_subject`) from its account plus a hub-side import remapped to `helpdesk.{organizations.code}.>` — the org prefix is baked into the signed account JWT, so event provenance is subject-based and unforgeable (`hooks/managed_org_exports.go`). That token was `org.Id` until ADR 0002 (see **Organization code** below); `hubImportName(org.Id)` still keys the import *record* by the immutable id, which is correct and should stay. `ensureManagedExports` is no longer create-if-missing: it `reconcile`s the desired fields on an existing import, because a create-only hook would have left a renamed org's signed import routing at the old token while the consumer's `helpdesk.*.tickets.>` wildcard masked the failure — traffic matches, and never arrives.
+11. **Operator Org & Managed Orgs** - Bootstrap creates the operator's own org
+    (`is_operator_org`) beside the `$SYS` org (`is_system_org`); its NATS account
+    is the hub for shared operator services. Flagging a customer org `managed`
+    provisions a `helpdesk.>` stream export from its account (configurable:
+    `nats.managed_export_subject`) plus a hub-side import remapped to
+    `helpdesk.{organizations.code}.>`, so event provenance is subject-based and
+    cannot be forged by the publisher.
+    - **Both records are read-only in the console.** Reconciliation rewrites them
+      on every org save, so an Edit button would offer a change that is silently
+      undone. Recognised by name in `ui/src/utils/managedExports.ts`, which
+      `hooks/managed_org_exports_test.go` reads so the two cannot drift.
+    - Why `reconcile` rather than create-if-missing, and why the import *record*
+      is still keyed by the immutable `org.Id` while the *subject* token is the
+      code: `hooks/managed_org_exports.go`.
 
-    **Both records are READ-ONLY in the console**, recognised by name in
-    `ui/src/utils/managedExports.ts` — the same `account_id` + `name` identity
-    the reconciler looks them up by, so a hand-made record under that name is
-    adopted rather than falsely flagged. Reconciliation rewrites `subject`,
-    `type`, `description` (plus `account` and `local_subject` on the import) on
-    every org save, so an Edit button there is an invitation to make a change
-    that is silently undone; `token_req`/`advertise`/`allow_trace` are
-    create-only and WOULD persist, which is why the banner names the reverting
-    fields instead of claiming the record is frozen. Not a permission — the API
-    rules still allow the write. The export sits on the tenant's account and the
-    import on the operator hub's, so the two land on different screens for
-    different people. `hooks/managed_org_exports_test.go` reads the `.ts`
-    constant and asserts it against the names the hook actually creates: a
-    hand-copied literal is fine, a hand-copied literal going stale means the
-    console silently offers the Edit button again.
-12. **Edge sites** - An edge site is a **Thing**. There is no separate collection for one, and **nothing in the schema marks which Things are gateways** — `thing_types` carries `name`, `code`, `subject_prefix`, `operations` and `metadata_schema`, none of which is a gateway flag, so "gateway" is a naming convention a tenant chooses. That is a deliberate absence (a second marker would be a second thing to get wrong) but do NOT write code that assumes the marker exists: an earlier version of this file claimed the type "already says it is a gateway", and a console feature was built on the strength of it. The edge agent lives in [stone-age-io/agent](https://github.com/stone-age-io/agent), authenticates as that Thing against `things`, and calls `GET /api/me/leaf-config` (`hooks/leaf_config_routes.go`) for everything a NATS leaf server needs: ten named fields (`code`, `domain`, `creds`, `account_jwt`, `account_pub`, `operator_jwt`, `sys_account_jwt`, `sys_account_pub`, `hub_leaf_url`, `hub_domain`). So a gateway needs **no read grant on any `nats_*` or `nebula_*` collection**; `nats_system_operator` stays superuser-only.
-    - **The route has no marker, flag or capability check, deliberately.** Everything it serves is either public trust material — the operator, account and `$SYS` account JWTs, which every server in the network validates — or the caller's own credential, which it must already hold to connect at all. A Thing that will never run a leaf node can ask and learns nothing it could not already read. Adding a gate would be a permission on data that is not secret, and it would need a marker field to gate on.
-    - **The JetStream domain is the Thing's code, computed and never stored.** `leafConfigResponse` sets `domain = code`; the agent writes that into both `server_name` and `jetstream { domain }`. A stored `domain` column existed and was dropped — it could disagree with the code, it was NATS vocabulary on an inventory record most of whose rows will never have one, and the disagreement surfaced as a site that simply stopped appearing. An `edge-` prefix and an org-code segment were dropped at the same time: JetStream is already inside the account, so the account is the namespace.
-    - **A generated `nats-leaf.conf` must satisfy operator-mode validation, which no string assertion can check.** Two directives are mandatory and were both missing for months, so the generator produced a file `nats-server` refused to load — invisible, because the only tests were `strings.Contains` over the output. (1) Every leaf remote needs an `account` key naming the local account; (2) `resolver_preload` needs the **`$SYS` account JWT** as well as the org's, because the operator JWT names a system account and `resolver: MEMORY` has nowhere to fetch it — without it the server dies with `error resolving system account: account missing` before JetStream starts. Preloading `$SYS`'s *account* JWT is public trust material and grants nothing; connecting as `$SYS` needs a `$SYS` **user** credential, which is never served. `TestBuildLeafConfIsAcceptedByNATSServer` runs the real generator's output through `nats-server`'s own `ProcessConfigFile` + `NewServer` (no ports, no network). **That test now lives in the agent repo** — it moved with the generator and is the one thing in that move that was not allowed to change.
-    - **Site liveness is asked of NATS, not stored — and it is a dashboard recipe, not a screen.** There is no `leaf_nodes` collection, no `leaf_status` KV bucket and no heartbeat. A heartbeat travels over the very link whose failure it reports, so a missing beat cannot distinguish "edge box down" from "WAN down" from "agent crashed" — and the Control Plane could not read one anyway (it holds the operator and `$SYS`, and no credential inside any tenant account). The hub always knows which leaves it is holding, so **ask it**: a Publisher or Button widget aimed at `$SYS.REQ.ACCOUNT.PING.CONNZ` with `{}` returns `kind: "Leafnode"` entries named by the leaf server's `server_name`, which the agent sets to the Thing's `code`. Both widgets already do request/reply with a free-text subject; no platform code is involved.
+12. **Edge sites** - An edge site is a **Thing**. The agent
+    ([stone-age-io/agent](https://github.com/stone-age-io/agent)) authenticates
+    against `things` and calls `GET /api/me/leaf-config` for everything a NATS
+    leaf server needs, in ten named fields. So a gateway needs **no read grant on
+    any `nats_*` or `nebula_*` collection**, and `nats_system_operator` stays
+    superuser-only. Don't add a read branch to those collections to make an edge
+    feature work — extend the route.
+    - **Nothing in the schema marks which Things are gateways.** `thing_types`
+      has no such field; "gateway" is a naming convention a tenant picks. Do not
+      write code that assumes the marker exists — this file once claimed it did,
+      and a console feature was built on the strength of it and then removed.
+    - **The JetStream domain is the Thing's code**, computed and never stored. A
+      stored column could disagree with the code, and the disagreement surfaced
+      as a site that simply stopped appearing.
+    - **Site liveness is asked of NATS, never stored** — no heartbeat, no
+      `leaf_status` bucket. A heartbeat travels over the very link whose failure
+      it reports. It is a dashboard widget recipe against
+      `$SYS.REQ.ACCOUNT.PING.CONNZ`, deliberately not a screen.
+    - **Tenant roles carry no `$SYS` publish deny, and adding one is a
+      regression.** The account boundary already blocks the operator-wide
+      endpoints, and in NATS a publish DENY beats a publish ALLOW — so a deny
+      silently kills account monitoring and fails as a bare timeout.
+      `internal/demoseed/contract.go`, pinned by
+      `internal/health/leaf_visibility_test.go`.
+    - Why the route gates on nothing, and the wire contract:
+      `hooks/leaf_config_routes.go`. The generated `nats-leaf.conf` (two
+      mandatory directives no string assertion can check) and the opt-in embedded
+      `nats-server` live in the agent repo.
 
-      **A built-in console badge for this was built and removed, and the reasoning is the general lesson.** It lived on every Thing detail view and polled a whole account's connection list every 15 seconds — to render "No leaf node attached" on temperature probes, because (see above) nothing in the schema says which Things are gateways, so it could not be gated and its empty state could not be painted as a fault. A widget asks once, when someone wants to know, and the tenant can point it at `SUBSZ` or `JSZ` too. If a *board* of site status is ever wanted, the thing to build is a `request` entry in `DataSourceType` (`ui/src/types/dashboard.ts`, today `subscription | consumer | kv`) so display widgets can poll — not a bespoke view.
-    - **`$SYS` is account-scoped for a tenant and operator-wide for us, and the ACCOUNT is what enforces it.** Each account carries its own `$SYS` subject space, so `$SYS.REQ.ACCOUNT.PING.*` answers for that organization and no other. `$SYS.REQ.SERVER.PING.*` would span every tenant: those endpoints are served inside the `$SYS` **account**, and an account is a closed subject namespace, so a tenant publishing to them reaches no responder *regardless of its permissions*. `TestTenantCannotReachServerEndpoints` proves it with a credential carrying no deny list at all.
-    - **Therefore no tenant role ships a `$SYS` publish deny, and adding one is a regression.** It would restate the account boundary somewhere strictly weaker, and it carries a trap to do it: **publish DENY beats publish ALLOW in NATS**, so a `nats_roles` entry carrying `$SYS.>` in its deny list cannot reach the *account* endpoints no matter what its allow list says — and the symptom is a plain request timeout, with the real reason arriving asynchronously on the connection's error handler and never on the request. Narrowing the deny to `$SYS.REQ.SERVER.>` is not the fix either; that is still decoration over the account boundary, and it is what `console-readonly` used to carry. Allow-list the account endpoints and write no deny. `internal/demoseed/contract.go` says so at both roles that used to set one, and `TestDenyingAllOfSysBlocksAccountMonitoring` is what stops someone "re-tightening" it back and then debugging a dead widget for a day.
-    - **The collection mirror is gone with the collection.** `leaf-sync` copied an organization's config collections into the edge's local KV so devices could read them offline. Nothing consumed the mirrored rows — no rule-router rule, no firmware — so it was moving data nobody asked for, and it is what made a leaf node need read grants across the inventory. If a real consumer appears, the thing to build is that consumer's read path, not a general mirror.
-    - **The embedded nats-server is opt-in.** The agent hosts the leaf in-process only when `nats.server_config` names a file; left empty, systemd or Docker supervises `nats-server` and the bus survives an agent restart, which is what you want when upgrading the agent on a live site. `nats-server` links into the binary either way, so a scanner flagging a `nats-server` CVE is reporting code that does not run unless configured.
 13. **Digital Twin / Live State** - **Two** KV buckets per org, split by owner:
-    `twin` (reported — the device writes it, flows edge→hub) and `twin_desired`
-    (desired — operators write it, flows hub→edge). Keys are
-    `<kind>.<code>.<prop>` (`thing.S01.temp`); direction is the bucket, so keys
-    carry no sync bookkeeping. Defined once in `ui/src/utils/twin.ts` and
-    the agent repo's `internal/edge/twin.go` — keep the two retention configs in
-    step, since both the console and the agent create these buckets and whoever
-    gets there first defines them. **Not** one bucket per location; the old `ui/README.md`
-    claim to that effect described a design that was never built. The platform
-    server **cannot** provision them: it holds the NATS operator (SYSTEM account
-    only) and has no reach into an org's account. Creation is the console's
-    Initialize button or the agent.
-    - **One writer per bucket is the whole safety property.** A single bucket
-      written from both ends does not pick a loser on a conflict, it *oscillates*:
-      two concurrent values swap across the link, then swap back, forever — ~170k
-      writes to one key in 300ms, measured. Encoding the owner in the key
-      (`thing.S01.state.temp`) was tried and reverted: same safety, but it taxes
-      every key in firmware/rule-router/widgets and a mistyped segment silently
-      never syncs. Don't merge the buckets.
-    - **The twin view is `KvDashboard` with its `desiredBucket` prop set**, not a
-      separate component. A bespoke card was built and deleted: it reimplemented
-      tree/flat, filtering, history, the responsive detail drawer and the JSON
-      parse hint, all worse. Adding twin behaviour to the browser costs one prop;
-      without it the browser is unchanged for `NATS → KV Buckets`.
-    - **Reported state is read-only in twin mode.** The edge overwrites it, so an
-      edit button is a lie. The Desired tab is the writable half.
-    - **A desired value is a partial assertion** (`twinDrift` in
-      `ui/src/utils/twin.ts`): only the keys present in the desired value are
-      checked, so extra fields in the reported object are ignored. Full-equality
-      comparison rots — the day a device reports one new field, every assertion
-      set months ago flips to "differs". Subset semantics are objects-only;
-      arrays and scalars compare exactly. Values may be primitives or objects.
-    - **Pair a desired key with an echo, never with a measurement.** Desired
-      belongs on a property the device *echoes back* to acknowledge an
-      instruction (`thing.S01.setpoint`, `.mode`) — those converge exactly, so
-      equality is the right question and "differs" means "the device has not
-      accepted my instruction". Desired `temp = 20` against reported
-      `temp = 20.3` compares an instruction to a continuous reading; it differs
-      forever, and no tolerance fixes it in general because the right tolerance
-      varies by property, device and season. This is the rule that dissolves
-      "what if desired is a range" — a range is a threshold over *reported*
-      state, which is a rule-router rule, not a desired value.
-    - **Do not add operators to `twinDrift`.** `{$gt: 30}`, then `{$between:
-      [18,22]}`, then tolerances, and it is a rules engine inside a KV browser —
-      and rule-router already is one, properly. If equality feels wrong for a
-      key, the key is paired with a measurement instead of an echo; fix the
-      pairing.
-    - **Four jobs, four homes.** Reported state → `twin` KV. Setpoints and
-      config → `twin_desired` KV (durable: a device booting after three days
-      offline reads the current value from its local mirror). Commands
-      ("reboot") → a NATS message on `cmd.>`, *not* a KV value, because a
-      durable "reboot now" sitting in a bucket forever is a bug. Ranges,
-      thresholds, alarms, hysteresis → a rule-router rule over `twin`. Rows
-      three and four are the ones people try to cram into `twin_desired`.
+    `twin` (reported — the device writes it, edge→hub) and `twin_desired`
+    (desired — operators write it, hub→edge). Keys are `<kind>.<code>.<prop>`;
+    direction is the bucket, so keys carry no sync bookkeeping. Defined in
+    `ui/src/utils/twin.ts` and the agent's `internal/edge/twin.go` — keep the two
+    retention configs in step, since whoever creates a bucket first defines it.
+    The platform server **cannot** provision them: it holds the operator only and
+    has no reach into an org's account.
+    - **Do not merge the buckets.** One writer per bucket is the whole safety
+      property; two ends writing one bucket does not pick a loser, it oscillates.
+    - **Four jobs, four homes.** Reported state → `twin`. Setpoints and config →
+      `twin_desired`. Commands ("reboot") → a message on `cmd.>`, never a durable
+      KV value. Ranges, thresholds, alarms → a rule-router rule. The last two are
+      the ones people try to cram into `twin_desired`.
+    - **Pair a desired key with an echo, never a measurement**, and **do not add
+      operators to `twinDrift`** — that is a rules engine inside a KV browser, and
+      rule-router already is one. If equality feels wrong for a key, the key is
+      paired with a measurement; fix the pairing.
     - **Say `differs`, never `pending`.** Nothing in this platform applies desired
-      values to devices — no hook, no agent, no subscription. A "waiting for the
-      device" message asserts a control loop that does not exist. Both readings of
-      desired (a command to converge on, or an expected value to alarm on) are
-      legitimate and the platform cannot tell which the customer means, so state
-      the difference and predict nothing.
-    - **Show the difference, not a word for it.** The drift indicator renders the
-      values themselves — `"auto" → "manual"` in the row, a reported/desired
-      column pair in the detail pane. "Differs on: mode" is the same width and
-      sends the reader off to look both values up. `twin_desired` is a
-      *delivery mechanism*, not a control: the platform's job ends when the
-      value is readable in the edge's local KV. What consumes it is the
-      integrator's firmware or rule-router, the same boundary as minting NATS
-      creds and not caring what publishes with them.
-    - **Edge sync is the agent repo's `internal/edge/twin.go`**, off by default
-      (`twin.enabled`). `twin_desired` is a native JetStream **mirror** (one
-      origin, N mirrors — no code in the data path, and it serves last-known
-      values offline because the edge never writes it). `twin` needs the relay:
-      aggregating N sites natively would need N sources all named `KV_twin`,
-      which requires the server's internal `iname` that nats.go doesn't expose,
-      so the alternative is `twin_<code>` at every edge and rule-router reading a
-      different bucket name per site. Don't "finish the job" by making reported
-      state a source without solving that.
+      values to devices, so "waiting for the device" asserts a control loop that
+      does not exist. Show the values themselves, not a word for the difference.
+    - The twin view is `KvDashboard` with `desiredBucket` set, not a separate
+      component. Subset semantics, the reverted key-encoding experiment, and the
+      mirror-vs-relay asymmetry: `ui/src/utils/twin.ts`.
+
 14. **Readiness & metrics** - `GET /api/ready` (unauthenticated, 503/200) and
-    `GET /metrics` (Prometheus, open by default) on the Control Plane;
-    `/ready` + `/metrics` on the agent behind `observability.addr`. Checks live
-    in `internal/health`, exposition in `internal/metrics`, platform-specific
-    parts in `hooks/observability.go` (one `RegisterObservability` call, one
-    options struct) + `hooks/readiness.go` + `hooks/metrics.go`.
-    - **A check must be answerable first-hand by the process running it.** This
-      is the whole design constraint, and it is the NATS account boundary
-      restated. The Control Plane holds the operator and `$SYS` and has **no user
-      credential inside any organization's account**, so it cannot read `twin`,
-      `twin_desired`, or anything a site reports about itself — the console can,
-      because a browser connects as the logged-in user, and the agent can, because
-      it runs inside the account. Do not "improve" a metric by minting the platform
-      a credential in a tenant's account: that turns a credential issuer into a
-      data-plane participant in every tenant's bus. **No per-org labels**, for
-      the same reason — with per-org data reduced to row counts, a tenant label
-      would be a customer name on an inventory count.
-    - **`stone_age_records{collection="things"}` counts devices CONFIGURED.**
-      It is not availability and an alert on it can never fire. Per-site liveness
-      is `agent_*` on the edge box, and `$SYS.REQ.ACCOUNT.PING.CONNZ` from a
-      console dashboard widget. Say this in the HELP text of any metric that
-      could be mistaken for a health signal.
+    `GET /metrics` (Prometheus, open by default) on the Control Plane; `/ready` +
+    `/metrics` on the agent. Checks in `internal/health`, exposition in
+    `internal/metrics`, platform-specific parts in `hooks/observability.go` +
+    `hooks/readiness.go` + `hooks/metrics.go`.
+    - **A check must be answerable first-hand by the process running it.** This is
+      the NATS account boundary restated: the Control Plane holds the operator and
+      `$SYS` and has **no credential inside any organization's account**. Do not
+      "improve" a metric by minting it one — that turns a credential issuer into a
+      data-plane participant in every tenant's bus. **No per-org labels**, same
+      reason.
     - **Four states, and only `fail` is unready.** `warn` is
-      running-but-misconfigured (encryption off, no `websocket_urls`); failing on
-      those would refuse to serve the stock dev deployment. `skipped` is "this
-      check did not apply / could not look", and it ranks BELOW `ok` —
-      `Registry.Run` seeds the worst-state from the results rather than from
-      `StateOK`, or an all-skipped report reads as a clean bill of health.
-      Likewise the agent's collector **omits** server-derived series when the
-      leaf's monitoring port is down rather than emitting zeros.
-    - **An islanded edge warns, it does not fail.** Local NATS still works and
-      devices keep publishing and subscribing locally; that autonomy is why a
-      leaf node exists, so 503 would invert the design.
-    - **Don't publish a metric that cannot vary — but check the claim first.**
-      `stone_age_nats_cluster_routes` was nearly cut on the grounds that
-      `internal/natsd` "deliberately does not support clustering the Control
-      Plane". That comment was wrong and nothing in the code ever enforced it:
-      `Start` hands the parsed config straight to `nats-server`, so a `cluster`
-      block is honoured like any other directive.
-      `TestEmbeddedServerClustersWithAPeer` now pins it with two real peered
-      servers. A comment asserting a limitation is not evidence of one.
-    - **Don't add a check that cannot fail.** `serve` calls `RunAllMigrations`
-      before it listens (PocketBase `apis/serve.go`), so a "migrations pending"
-      check is always green — which is why `schema_version` looks for the
-      opposite: applied migrations this binary does not know, i.e. a pb_data
-      written by a NEWER build. `serve` cannot fix that one. The `schema` check
-      survives the same test only because `initial_schema.go` returns nil when
-      the embedded `SchemaJSON` is empty, marking itself applied.
-    - **`nats_trust` is the check that earns the feature.** It connects with the
-      `$SYS` creds from the database; a server whose `nats.conf` carries a stale
-      operator JWT rejects it, which is otherwise invisible — every account claim
-      fails, no org's account reaches the bus, and the console looks fine.
-      Reachability (`DialInfo`, an unauthenticated INFO read) is deliberately a
-      separate check, because "nothing listening" and "listening but does not
-      trust us" have different fixes. It reads `creds_file`, not the seed:
-      that column is not one at-rest encryption covers, so no decryption code is
-      duplicated from pb-nats.
-    - **Nebula certificate expiry is the one credential the Control Plane MAY
-      check, and the exception proves the rule.** Every other expiring secret
-      lives where this process cannot look; Nebula certificates it signed itself
-      and stores, expiry included, in its own database (`hooks/cert_expiry.go`).
-      Three decisions worth keeping: it **warns, never fails** — readiness
-      failing means "stop sending me traffic", so a lapsed *device* certificate
-      must not pull the console out of a load balancer (same shape as an
-      islanded edge warning); the metric is an **absolute Unix timestamp, not a
-      countdown** (`stone_age_certificate_expiry_seconds`), because a "days
-      remaining" gauge is stale the moment it is stored and every retained
-      sample drifts further from the truth — write the horizon into the alert
-      (`expiry - time() < 30*86400`) instead of freezing it into the exporter;
-      and it is the **soonest per kind, not one series per certificate**, since
-      per-host series would need an identifying label, which is a per-tenant
-      device inventory on an endpoint that is open by default. Host certificates
-      count `active = true` only — a decommissioned device's lapsed
-      certificate is not a fault. The check and the collector share one scan
-      function so a green tick can never sit beside a metric reporting an
-      expiry; `TestCertCheckAndMetricAgree` is what holds that.
-    - **`expires_at` cannot be set by a fixture — pb-nebula overwrites it.**
-      Its create hook signs the certificate and derives the column from
-      `validity_years` (an integer, so "expired last week" is not a state the
-      signing path can be asked for at all). A test that `Set`s it before
-      `Save` gets a healthy one-year expiry back and then "passes" against a
-      check reporting everything fine. `hooks/cert_expiry_test.go` writes the
-      column with SQL after create, and says why.
-    - **The prober caches; the endpoint never runs checks.** A probe would
-      otherwise trigger a NATS dial per request, and a slow check would read as
-      unready and kill a healthy container. `OnRefresh` (every probe) feeds the
-      metrics; `OnChange` (flips only) feeds the log — collapsing them makes the
-      gauges stale or the log unreadable.
-    - **`/metrics` is open by default and does not use PocketBase auth.** PB
-      tokens are JWTs that expire and no scraper has a refresh flow, so it would
-      take a custom sidecar to read a standard format. `metrics.token` is
-      accepted as Bearer *or* Basic-with-any-username, which between them covers
-      every scraper in use. `/api/ready` is unauthenticated and serves ONE body
-      to everyone. A tiered version (names/states anonymously, detail and fixes
-      for a superuser) was built and cut: `/metrics` is open by default and
-      already publishes every check's state, so the withholding bought half a
-      boundary in exchange for a second response shape and six authz checks.
-      Closing these endpoints is a proxy's job.
-    - **Use `client_golang`, don't hand-roll the text format.** It costs no
-      binary size (slackhq/nebula already links it) and there is no scrape test
-      in CI, so a malformed exposition would look fine and be unscrapeable —
-      the same argument as `TestBuildLeafConfIsAcceptedByNATSServer`. The tests
-      parse the output with Prometheus's own parser and run promlint over it.
-15. **Decommissioning a device** - `things.active`, owner/admin only. The flag is enforced in **four** places at once, because any one alone is a half-measure: the `authRule` (`active = true`) blocks new logins; `hooks/active_flag.go` refreshes `tokenKey` so tokens already issued die immediately; the same hook mirrors `active` onto the linked `nats_user`, which is pb-nats's durable suspend switch, so the signed NATS credential stops working; and it mirrors `active` onto the linked `nebula_host`, which is what pb-nebula writes into every other host's `pki.blocklist`. Reactivating re-mints the NATS credential — the old `.creds` stays dead, because the account JWT's revocation cutoff is permanent.
+      running-but-misconfigured; `skipped` means the check could not look, and it
+      ranks **below** `ok`. An islanded edge warns rather than failing.
+    - **Don't add a check that cannot fail, and don't publish a metric that cannot
+      vary — but verify the claim first.** A comment asserting a limitation is not
+      evidence of one; `stone_age_nats_cluster_routes` was nearly cut on one that
+      was wrong.
+    - **`stone_age_records{collection="things"}` counts devices CONFIGURED**, not
+      online, and an alert on it can never fire. Say so in the HELP text of any
+      metric mistakable for a health signal.
+    - Why `nats_trust` earns the feature, why Nebula expiry is the one credential
+      this process may check (and its **two** windows — see also
+      `ui/src/utils/expiry.ts`), why the prober caches, and why `/metrics` is open
+      by default: the files above, plus `hooks/cert_expiry.go`.
 
-    **It mirrors `active`, not `revoke`.** In pb-nats `revoke` is the "these credentials leaked" button: it rotates the key pair and hands back a *working* replacement, leaving the user active. It is also checked before the active edge and returns early, so setting both in one save silently takes the revoke path — a deactivated Thing whose NATS identity is freshly re-issued and still publishing. The hook says so at length; this line used to say `revoke` and was simply wrong.
+15. **Decommissioning a device** - `things.active`, owner/admin only. Enforced in
+    **four** places at once because any one alone is a half-measure: the
+    `authRule` blocks new logins, `hooks/active_flag.go` refreshes `tokenKey` so
+    tokens already issued die immediately, and the same hook mirrors `active` onto
+    the linked `nats_user` and `nebula_host`. A device's real capability is its
+    credentials, not its PocketBase session.
+    - **Deactivate, never delete.** Revoking a Nebula certificate requires the
+      certificate to still be in the database to fingerprint it.
+    - **It mirrors `active`, not `revoke`.** In pb-nats `revoke` is the
+      "credentials leaked" button — it hands back a *working* replacement — and it
+      is checked first, so setting both in one save silently takes the revoke path.
+    - The Nebula half takes effect on redeploy, not instantly; Nebula has no CRL.
+      Requires pb-nebula v0.2.0, and from v0.3.0 the blocklist is CA-scoped rather
+      than network-scoped. Full reasoning: `hooks/active_flag.go`.
 
-    **The Nebula half takes effect on redeploy, not instantly.** Nebula has no CRL, so revocation is a fingerprint in every *peer's* config, applied when that config is redeployed and the process reloads (SIGHUP is enough). The platform's job ends when the material it hands out refuses the certificate — the same boundary as minting a NATS credential and not policing what connects with it. It also means **deactivate, do not delete**: fingerprinting a certificate requires the certificate to still be in the database, so deleting a host leaves it trusted until expiry. Requires pb-nebula v0.2.0, which go.mod pins; against v0.1.0 the flag was mirrored and no blocklist was produced. **From v0.3.0 the blocklist is scoped to the CA rather than the network**, which is where it always belonged: Nebula's trust boundary is the CA, so a host revoked in one network stayed verifiable by every sibling network under the same CA -- those hosts carry the same `pki.ca` and none of them carried the fingerprint. An `active` flip now fans out across the whole CA. A `nebula_hosts` record created without an `active` field lands ACTIVE from v0.2.0 on, because a host born inactive is one every peer blocklists at birth -- `scripts/test-authz.sh` pins that dependency contract.
+15b. **Rotating an organization's Nebula CA** - `POST /api/org/nebula-ca/rotate`,
+    owner/admin, `{"step":"prepare"|"commit"|"finish"}`. A route rather than a
+    rule branch for the reason `hooks/nats_account_routes.go` is: a rule cannot say
+    "this one field and nothing else". **Three steps because the wait between them
+    is the feature** — Nebula verification is mutual and config distribution is
+    pull-based, so a single write carrying both new trust and new certificates
+    splits the mesh. The tenant owns the lever because the wait belongs to whoever
+    operates the devices.
+    - Requires **pb-nebula v0.3.2**. Before it the rotation checks were bound to
+      the record-API request hooks alone and this route calls `app.Save()`, so
+      validation was skipped while the executor ran regardless.
+    - `hooks/nebula_routes.go`, `hooks/nebula_rotation_test.go`, and
+      `scripts/test-authz.sh` section 13b.
 
-    Distinct from the leaf-connection badge on a Thing page, which reports whether the edge box *is* connected, not whether it *may* connect.
-
-15b. **Rotating an organization's Nebula CA** - `POST /api/org/nebula-ca/rotate`, owner/admin, `{"step":"prepare"|"commit"|"finish"}`.
-
-    **Why a route.** `nebula_ca.updateRule` is operator-only, and its comment has said since the authz hardening pass: "There is no tenant-triggered CA rotation today because there is no trigger field for one. If that changes, add a route rather than a branch here." pb-nebula v0.3.0 added the trigger field. A rule branch would have to deny-list `certificate`, `private_key`, `next_certificate`, `next_private_key`, `previous_certificate`, `expires_at`, `curve`, `validity_years`, `name` and `organization` — and would silently re-open every field added afterwards. Same deny-list shape this repo has already been bitten by twice, on the record holding the trust anchor for a tenant's entire mesh. The switch in the handler IS the allowlist: one field, three permitted values.
-
-    **Why three steps.** Nebula verification is mutual and config distribution here is pull-based, so one write carrying both the new trust bundle and the new certificate splits the mesh: a host that has fetched presents a new-CA certificate to one that has not, and the handshake fails in *both* directions until propagation finishes. `prepare` publishes trust and is fully reversible — issuance does not move and no fingerprint changes. `commit` swaps issuance and re-signs every active host, idempotent and resumable. `finish` drops the outgoing CA and **refuses while any active host still holds a certificate signed by it**. The wait in the middle is operator judgment and cannot be designed away, which is the reason the tenant owns it rather than us: it belongs to whoever operates the devices.
-
-    **The route cannot validate the transition itself** — "has every active host migrated?" needs each certificate's issuer compared against the CA's fingerprint, which means parsing Nebula certificates only pb-nebula holds the code for. So it allowlists the verbs and trusts the library for ordering and the interlock. That trust was misplaced before **pb-nebula v0.3.2**: the rotation checks were bound to the record-API request hooks alone, and this route calls `app.Save()`, so none of them ran while the executor (`AfterUpdateSuccess`, past the point of refusing anything) ran regardless. `hooks/nebula_rotation_test.go` pins it as a dependency contract, and `scripts/test-authz.sh` section 13b walks a real `prepare → commit → finish` cycle through HTTP.
-
-15c. **The `/32` certificate defect, and why nothing re-signs automatically** - pb-nebula signed host certificates at `/32` until v0.3.0. Nebula does not read a certificate's network as "this host's address": it puts the prefix straight onto the tun device and installs a link route for it, so the mask in the certificate **is** the host's route to the overlay. A `/32` gives a host a route covering only itself — the certificate verifies, the config renders, the handshake completes, and no packet ever crosses the mesh. Nothing errors, which is why it survived from that library's first commit.
-
-    **Every host provisioned before the v0.3.0 bump still carries one.** They are not re-signed automatically, and that restraint is deliberate: re-signing moves a certificate's fingerprint, and a fingerprint is what `pki.blocklist` revokes, so a sweep would rewrite every peer config in the mesh on the strength of a dependency upgrade. `GET /api/org/nebula/cert-audit` returns the affected host ids (owner/admin, active hosts only — an inactive host is revoked, and re-signing one would publish a new fingerprint while the old certificate stayed valid). The console badges those rows and offers a per-host re-issue, which sets `renew = true`; redeploy that host's config afterwards.
+15c. **The `/32` certificate defect** - pb-nebula signed host certificates at
+    `/32` until v0.3.0. Nebula puts a certificate's network straight onto the tun
+    device and installs a link route for it, so the mask **is** the host's route to
+    the overlay: a `/32` verifies, renders, handshakes — and moves no packet.
+    Nothing errors.
+    - **Nothing re-signs automatically, deliberately.** Re-signing moves a
+      fingerprint, and a fingerprint is what `pki.blocklist` revokes, so a sweep
+      would rewrite every peer config in the mesh on the strength of a dependency
+      bump. `GET /api/org/nebula/cert-audit` names the affected hosts (active only);
+      the fix is `renew`, one host at a time, then redeploy that host's config.
+    - `hooks/nebula_routes.go`, `ui/src/utils/nebula.ts`.
 
 16. **Organization code — the ecosystem's namespace root** (ADR 0002 in
     `platform-docs`). The rule is **ids for storage, codes for addressing**.
-    `organizations.code` is the one *globally* unique identifier in the
-    ecosystem; everything below it (`things`, `locations`, `thing_types`,
-    `location_types`) is unique only within its org, which the
-    `UNIQUE (organization, code) WHERE code != ''` partial indexes already
-    enforce. Relation columns stay PocketBase ids — codes address, ids store.
-
-    `hooks/org_code.go` derives a code from the name on create when one wasn't
-    given (`Slugify`, max 31, `^[a-z0-9][a-z0-9-]{1,30}$`) and **refuses on
-    collision rather than auto-suffixing** — an invented `acme-2` would be
-    printed on labels and baked into signed JWTs before anyone noticed it was
-    the wrong tenant. Errors go through `apis.NewBadRequestError`, because a
-    plain `fmt.Errorf` from a hook reaches the client as
-    `{"message":"Failed to create record."}` and the operator never learns which
-    name collided. A leading digit is fine — `816tech` is a valid code; the
-    pattern demanded a leading letter until an operator org named exactly that
-    could not be migrated, and nothing downstream (NATS subject tokens,
-    JetStream domains, KV bucket names, RFC 1123 hostname labels) justified the
-    restriction.
-
-    **Bootstrap derives the two infrastructure orgs' codes the same way**, from
-    `--org-name` / `--operator-org`, falling back to `system` / `operator` only
-    when the name yields nothing valid (`orgCodeFor` in `bootstrap.go`). It used
-    to pin those two strings unconditionally, so bootstrap and
-    `migrations/schema_update_org_code.go` disagreed about the same org: a fresh
-    install of `--operator-org "816tech"` produced `operator` while the backfill
-    migration produced `816tech`. One deployment, two codes, decided by install
-    history — for a value that is immutable and printed on labels. The cost of
-    the fix is that `system` and `operator` are no longer reserved by
-    construction, which is acceptable because nothing resolves an org by them:
-    they are written and never read.
-
-    **`code` is optional but immutable.** Mutability was the disqualifier, not
-    optionality: `@request.body.code:changed = false` freezes it on
-    `organizations` and the four inventory collections. The sharp edge is that
-    this is a hook and rule guard, so it binds the API and **not** a superuser
-    editing in the PocketBase dashboard — and once codes are on stickers and in
-    signed account JWTs, an edit is a site visit plus a re-signed export.
-
-    `orgSlugFor` (`hooks/thing_routes.go`) returns this code rather than
-    slugifying the mutable `name`. That was a second, independent instance of
-    the same bug, and it yields the review question worth keeping: not *"is this
-    identifier unique"* but **"whose database does this identifier belong to."**
+    `organizations.code` is the one *globally* unique identifier in the ecosystem;
+    everything below it (`things`, `locations`, and the two type collections) is
+    unique only within its org, enforced by `UNIQUE (organization, code) WHERE
+    code != ''` partial indexes. Relation columns stay PocketBase ids.
+    - **`code` is optional but immutable.** Mutability was the disqualifier, not
+      optionality. `@request.body.code:changed = false` freezes it on
+      `organizations` and the four inventory collections — but that is a rule and
+      hook guard, so it binds the API and **not** a superuser editing in the
+      PocketBase dashboard. Once codes are on stickers and in signed account JWTs,
+      an edit is a site visit plus a re-signed export.
+    - Derivation **refuses on collision rather than auto-suffixing**: an invented
+      `acme-2` would be printed on labels and baked into signed JWTs before anyone
+      noticed it was the wrong tenant. A leading digit is valid (`816tech`).
+      `hooks/org_code.go`, and `orgCodeFor` in `bootstrap.go` for the two
+      infrastructure orgs.
+    - The review question this yields, and the reason it is worth keeping: not
+      *"is this identifier unique"* but **"whose database does this identifier
+      belong to."** `orgSlugFor` (`hooks/thing_routes.go`) was a second,
+      independent instance of the same bug.
 
 17. **QR labels** (`ui/src/components/common/QrLabelModal.vue`) - print an
     operator-branded label from any thing or location that has a code. It takes a
-    **list**, and a detail view passes a list of one — there is no bulk mode, so
-    there is one code path rather than two layouts to keep in step. The Things
-    and Locations lists print the **whole result set of the current filter**, not
-    the current page: the search box IS the selection mechanism, since the
-    workflow is almost always already a filter ("everything at site S01"), and row
-    checkboxes would owe select-all, select-across-pages and a selection store.
-    The count rides in the button so the scope is visible before the click. Things
-    refetches with `getFullList` (the list holds one page of 20); Locations already
-    holds every record, and when nothing is typed its filtered set is ROOTS ONLY,
-    so the button prints roots only — a button whose count disagreed with the rows
-    on screen would be the worse surprise. Records
-    without a code are skipped and **named**: a silent drop is only discovered at
-    the site, with a short stack and no idea which ones are missing. The modal
-    teleports to `<body>` so the print rules can drop the rest of the app with
-    `display:none` rather than `visibility:hidden` — a hidden element still
-    occupies its box, which is why the single-label version had to pull its one
-    label to the page origin with `position:absolute`, and absolute boxes do not
-    fragment across pages predictably. The
-    payload is the **bare code** — no host, no org, no kind token. A sticker in
-    a public hallway is an attacker-writable surface, so a URL payload would let
-    a forged label send a person to arbitrary content; a bare in-system
-    identifier means the worst case is resolving a different record inside an
-    already-authenticated session. It also makes maximum error correction free:
-    `DOOR-1` at EC level H is a 21×21 symbol where the URL form needs 41×41.
-
-    Sizes are **millimetres**, not pixels — 2″ × 1″ and 4″ × 2″, both common
-    plain thermal stock. The per-size `@page` box is written imperatively,
-    since `@page` cannot be interpolated from a template or a scoped style
-    block. There is deliberately **no RFID inlay keep-out**: nothing here encodes
-    or reads a tag and no field holds an EPC, so a reserved band was costing the
-    small label a third of its text column for media the platform cannot use.
-    Quiet zone is the spec's 4 modules. The
-    human-readable code is not decoration — it is the path for the label that
-    won't scan. The customer/org name is deliberately **not** printed: a tenant
-    name beside a device naming convention is free reconnaissance.
-
-    The same labels are scanned by `ScannerWidget` here and by the helpdesk's
-    `/staff/scan`. Nothing fetches the decoded string as a destination, and
-    there is deliberately **no resolver service**.
+    **list**, and a detail view passes a list of one, so there is one code path
+    rather than two layouts to keep in step. The Things and Locations lists print
+    the **whole result set of the current filter**, not the current page — the
+    search box IS the selection mechanism — and the count rides in the button so
+    the scope is visible before the click.
+    - **The payload is the bare code**: no host, no org, no kind token. A sticker
+      in a public hallway is an attacker-writable surface, so a URL payload would
+      let a forged label send a person to arbitrary content; a bare in-system
+      identifier means the worst case is resolving a different record inside an
+      already-authenticated session. It also makes maximum error correction free.
+    - **The customer/org name is deliberately not printed** — a tenant name beside
+      a device naming convention is free reconnaissance.
+    - Records without a code are skipped and **named**: a silent drop is only
+      discovered at the site.
+    - Sizes are millimetres, and there is deliberately **no RFID inlay keep-out**.
+      The teleport, the print-CSS mechanics and the per-size `@page` box: the
+      component. The same labels are scanned by `ScannerWidget` and the helpdesk's
+      `/staff/scan`; nothing fetches the decoded string as a destination, and there
+      is deliberately **no resolver service**.
 
 ## Roles & Authorization
 
@@ -1039,8 +905,9 @@ you, so pushing an absolute one would make the login form an open redirect (the
   after the query, in `apis.expandFetch`: a relation whose TARGET collection has
   a nil `viewRule` is an error, not an empty expansion, so making a collection
   superuser-only breaks every list view that expands a relation into it.
-- Frontend has no test runner; development relies on HMR (`npm run dev`),
-  browser DevTools, and the PocketBase admin panel at `/_/`
+- Beyond Vitest's pure-logic specs (first bullet), the frontend is checked by
+  hand: HMR (`npm run dev`), browser DevTools, and the PocketBase admin panel at
+  `/_/`. Nothing renders a component in CI, so anything visual is unguarded.
 
 ## Important Files
 
