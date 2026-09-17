@@ -82,6 +82,26 @@ func RegisterCredentialRoutes(app *pocketbase.PocketBase, opts CredentialRoutesO
 // The two cases mirror the read branches in nats_users.listRule: a user reaches
 // their identity through the membership for their active organization, while a
 // Thing carries the relation directly.
+//
+// WHY THIS DOES NOT USE requireMembership (hooks/org_context.go), despite the
+// `users` branch below looking like its three guards. Four reasons, and the
+// second is the load-bearing one:
+//
+//   - Half of this function is not a membership lookup at all. A Thing reads
+//     `nats_user` straight off its own auth record, and the default branch is a
+//     collection guard.
+//   - It applies NO role filter, and that has to stay true. EVERY console role
+//     holds "Own NATS credential + rotation" — `viewer` and `dashboard`
+//     included — so the absence of a role clause is the feature, not an
+//     oversight. Routed through a helper that takes a role list, adding a role
+//     would silently stop that role rotating its own credential.
+//   - The denial here is 404, not 403, and that is right: with no role check
+//     there is no "not a member" versus "wrong role" to avoid distinguishing,
+//     and what is missing really is a resource.
+//   - What it returns is the membership's `nats_user`, not the organization.
+//
+// Sharing would mean parameterising the role clause, the error type AND the
+// return value, which is two functions wearing one name.
 func resolveOwnNatsUser(re *core.RequestEvent, opts CredentialRoutesOptions) (string, error) {
 	if re.Auth == nil {
 		return "", re.UnauthorizedError("authentication required", nil)

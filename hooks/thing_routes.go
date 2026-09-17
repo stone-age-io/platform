@@ -230,27 +230,7 @@ func defaultMode(m string) string {
 // from the authenticated record, never the request, so a caller cannot create a
 // Thing in someone else's tenant.
 func resolveInventoryRole(re *core.RequestEvent, opts ThingRoutesOptions) (string, string, error) {
-	if re.Auth == nil || re.Auth.Collection().Name != "users" {
-		return "", "", re.UnauthorizedError("user authentication required", nil)
-	}
-
-	orgID := re.Auth.GetString("current_organization")
-	if orgID == "" {
-		return "", "", re.BadRequestError("no active organization selected", nil)
-	}
-
-	membership, err := re.App.FindFirstRecordByFilter(
-		opts.MembershipCollection,
-		"user = {:user} && organization = {:org} && (role = 'owner' || role = 'admin' || role = 'member')",
-		dbx.Params{"user": re.Auth.Id, "org": orgID},
-	)
-	if err != nil || membership == nil {
-		// Same shape as an API-rule rejection: don't distinguish "not a member"
-		// from "insufficient role".
-		return "", "", re.ForbiddenError("an inventory role in the active organization is required", nil)
-	}
-
-	return orgID, membership.GetString("role"), nil
+	return requireMembership(re, opts.MembershipCollection, rolesInventory)
 }
 
 // assertThingCodeFree rejects a duplicate code up front so the caller gets a

@@ -111,7 +111,7 @@ func resolveOwnOrgNatsAccount(re *core.RequestEvent, opts NatsAccountRoutesOptio
 	// Shared with the Nebula routes, which gate on the same owner/admin check.
 	// Two copies of "who may act on their own org infrastructure" is one copy
 	// too many -- it answers the same question for both.
-	orgID, err := requireOwnOrgManager(re, opts.MembershipCollection)
+	orgID, _, err := requireMembership(re, opts.MembershipCollection, rolesOrgManager)
 	if err != nil {
 		return nil, err
 	}

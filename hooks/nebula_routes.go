@@ -125,7 +125,7 @@ func RegisterNebulaRoutes(app *pocketbase.PocketBase, opts NebulaRoutesOptions) 
 // authenticated record and never from the request, so this cannot be aimed at
 // another tenant's CA.
 func resolveOwnOrgNebulaCA(re *core.RequestEvent, opts NebulaRoutesOptions) (*core.Record, error) {
-	orgID, err := requireOwnOrgManager(re, opts.MembershipCollection)
+	orgID, _, err := requireMembership(re, opts.MembershipCollection, rolesOrgManager)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +155,7 @@ func resolveOwnOrgNebulaCA(re *core.RequestEvent, opts NebulaRoutesOptions) (*co
 // and a row that cannot be evaluated is not a row we know to be wrong; the
 // library's bootstrap audit logs those cases for an operator.
 func auditOwnOrgHostCerts(re *core.RequestEvent, opts NebulaRoutesOptions) ([]string, error) {
-	orgID, err := requireOwnOrgManager(re, opts.MembershipCollection)
+	orgID, _, err := requireMembership(re, opts.MembershipCollection, rolesOrgManager)
 	if err != nil {
 		return nil, err
 	}
@@ -199,31 +199,8 @@ func auditOwnOrgHostCerts(re *core.RequestEvent, opts NebulaRoutesOptions) ([]st
 	return stale, nil
 }
 
-// requireOwnOrgManager returns the caller's active organization id, but only if
-// they are an owner or admin of it.
-//
-// Shared by both routes here so the two cannot drift apart on who is allowed to
+// Both routes here gate on rolesOrgManager via requireMembership
+// (hooks/org_context.go), so the two cannot drift apart on who is allowed to
 // look: the audit tells you which hosts hold a wrong certificate, which is the
 // same class of infrastructure detail the rotation lever acts on, and
 // nebula_hosts' own read rules already stop at owner/admin.
-func requireOwnOrgManager(re *core.RequestEvent, membershipCollection string) (string, error) {
-	if re.Auth == nil || re.Auth.Collection().Name != "users" {
-		return "", re.UnauthorizedError("user authentication required", nil)
-	}
-
-	orgID := re.Auth.GetString("current_organization")
-	if orgID == "" {
-		return "", re.BadRequestError("no active organization selected", nil)
-	}
-
-	membership, err := re.App.FindFirstRecordByFilter(
-		membershipCollection,
-		"user = {:user} && organization = {:org} && (role = 'owner' || role = 'admin')",
-		dbx.Params{"user": re.Auth.Id, "org": orgID},
-	)
-	if err != nil || membership == nil {
-		return "", re.ForbiddenError("owner or admin of the active organization required", nil)
-	}
-
-	return orgID, nil
-}
