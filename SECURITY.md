@@ -87,6 +87,36 @@ the host, encrypted backups, and for tenants who need the blast radius to be
 zero by construction, a dedicated single-tenant deployment with its own
 database, operator seed and CA.
 
+## Dismissed advisories, and why
+
+Two dependency advisories are carried unpatched on purpose. Both are recorded
+here rather than only in a Dependabot dismissal, because that comment is capped
+at 280 characters and lives outside the repository.
+
+- **GHSA-q7pp-wcgr-pffx** — `github.com/disintegration/imaging` ≤1.6.2, low. A
+  panic (integer index out of range in `Grayscale`) when scanning a crafted
+  **TIFF**; the advisory itself notes it is unclear whether this has any
+  security consequence. Transitive, via `pocketbase/tools/filesystem`'s
+  thumbnail generation.
+
+  **Not reachable here: nothing accepts a TIFF.** All three file fields in
+  `schema.json` — `users.avatar`, `locations.floorplan`, `organizations.logo` —
+  restrict `mimeTypes` to jpeg, png, svg+xml, gif and webp, and PocketBase
+  sniffs file content rather than trusting the extension, so a renamed TIFF is
+  rejected on upload. Only `organizations.logo` declares `thumbs`, so it is the
+  single field that ever invokes `imaging` at all.
+
+  There is also no fix to take: `disintegration/imaging` was last released in
+  2019 and the advisory lists no patched version. **Revisit if a TIFF mime type
+  is ever added to a file field**, or if PocketBase drops the dependency.
+
+- **GHSA-jrc7-96c5-q579** — `maplibre-gl` 5.x, critical. The `DOM.sanitize()`
+  bypass, fixed in 6.4.1 and never backported. The pin is deliberate and the
+  reachability argument is narrow enough to be worth reading before changing
+  anything near the map: the only sink is MapLibre's own attribution control,
+  which is never constructed. See the `maplibre-gl` entry in `CLAUDE.md` for the
+  two changes that would end that.
+
 ## Out of scope
 
 - Anything requiring PocketBase superuser access. A superuser bypasses every API
