@@ -81,7 +81,6 @@ export function useValidation() {
 
     // Not rejected by the client, but never intended by a human, and invisible
     // in a form field if pasted.
-    // eslint-disable-next-line no-control-regex
     if (/[\x00-\x1f\x7f]/.test(subject)) {
       return { valid: false, error: 'Subject cannot contain control characters' }
     }
