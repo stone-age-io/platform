@@ -11,6 +11,36 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-17
+
+**An edge site is a Thing.** The `leaf_nodes` collection, the `leaf-sync`
+binary and the config mirror are gone, and the edge agent now lives in its own
+repository at
+[stone-age-io/agent](https://github.com/stone-age-io/agent). A site that runs a
+NATS leaf node is an ordinary Thing whose agent bootstraps from one new route,
+`GET /api/me/leaf-config`. That removed about 5,900 lines net and, more to the
+point, removed the reason an edge identity needed read grants spread across the
+inventory.
+
+**This release is breaking twice, and both halves have an order.** Stand each
+site's agent up against its Thing *before* upgrading the Control Plane — an
+older `leaf-sync` keeps running on its generated `nats-leaf.conf` afterwards
+but can no longer log in or re-fetch anything. And
+`POST /api/tenancy/accept-invite` is now `POST /api/org/invites/accept`, which
+matters to anything driving invitations outside the console.
+
+The migration deliberately leaves each dropped leaf node's `nats_users` and
+`nebula_hosts` rows **working**, and lists them on the way past. Those are live
+credentials at real sites, and a migration that runs on deploy is not where a
+fleet gets taken off the bus. Deactivate them from the console once each site
+is running against its Thing — deactivate rather than delete, since revoking a
+Nebula certificate needs the certificate in the database to fingerprint it.
+
+Also here: pb-tenancy is absorbed into the platform, the invitation email is
+editable in `/_` and six invitation bugs behind it are fixed, and a widget-form
+validator that had been rejecting every NATS system subject — `$SYS.*`,
+`$JS.API.*`, `$KV.*` — is corrected.
+
 ### Added
 
 - **`GET /api/me/leaf-config`** — everything an agent needs to stand up a NATS
@@ -162,8 +192,9 @@ and this file starts where the versioned releases do.
   invitee retyped an address the system already knew. Tokens are also unpadded
   base64url now, so they survive a query string without escaping.
 
-- **New-device login alerts are off for `things` and `leaf_nodes`.** Both are
-  auth collections whose addresses are synthetic and undeliverable by
+- **New-device login alerts are off for `things`** (and, while it still existed
+  in this release, `leaf_nodes`). Both are auth collections whose addresses are
+  synthetic and undeliverable by
   construction — `hooks/thing_routes.go` mints `<code>@<org>.thing.local` so the
   `(organization, code)` join key has somewhere to live, not so anyone can be
   written to. The send is *blocking*: `apis/record_helpers.go` waits on it with a
@@ -1829,7 +1860,8 @@ repository public. Each of these was reproduced before being fixed.
 - `scripts/test-authz.sh` grew from 135 to 147 checks, covering the membership
   lifecycle, the code uniqueness constraint, and the frozen leaf-node code.
 
-[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/stone-age-io/platform/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/stone-age-io/platform/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/stone-age-io/platform/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/stone-age-io/platform/compare/v0.3.1...v0.4.0
