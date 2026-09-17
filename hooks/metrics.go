@@ -26,10 +26,11 @@ import (
 //
 // WHAT THEY ARE NOT. `stone_age_records{collection="things"}` counts devices
 // CONFIGURED, not devices online. Liveness lives inside each organization NATS
-// account, which this process holds no credential for; it is read by the console
-// (the browser connects with the logged-in user own in-account credential, and
-// asks the bus directly via $SYS.REQ.ACCOUNT.PING.CONNZ) and exported by the
-// agent itself on the edge. Alerting on a row count as though it were
+// account, which this process holds no credential for; it is reachable from a
+// console dashboard widget (the browser connects with the logged-in user own
+// in-account credential and asks the bus directly via
+// $SYS.REQ.ACCOUNT.PING.CONNZ — a recipe, not a built-in view) and exported by
+// the agent itself on the edge. Alerting on a row count as though it were
 // availability would produce an alert that can never fire.
 func registerPlatformMetrics(app core.App, set *metrics.Set, opts ObservabilityOptions) {
 	set.Registry.MustRegister(&dbCollector{app: app, opts: opts})

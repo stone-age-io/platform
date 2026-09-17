@@ -3,28 +3,41 @@ package health
 // What a tenant can learn about its own leaf nodes, asked of a real hub with a
 // real leaf attached.
 //
-// These tests assert nats-server's behaviour, not ours. They are here because
-// the console's site-connectivity view is built directly on them: the browser
-// connects as an ordinary org-account user and asks NATS whether that
-// organization's leaf nodes are attached. There is deliberately no platform
-// route and no `leaf_status` heartbeat behind that view -- a heartbeat travels
-// over the very link that breaks, so its absence cannot distinguish "edge down"
-// from "WAN down" from "agent crashed". The hub always knows.
+// These tests assert nats-server's behaviour, not ours. Nothing in the platform
+// ships a view built on them: a console badge for site connectivity was built
+// and removed, because nothing in the schema marks which Things are gateways, so
+// it rendered on every device and polled a whole account's connection list every
+// 15 seconds to tell temperature probes they had no leaf node. The capability is
+// a dashboard recipe now -- a Publisher or Button widget aimed at
+// $SYS.REQ.ACCOUNT.PING.CONNZ -- which is why these still matter: the recipe is
+// only usable if the three facts below hold, and none of them is ours to
+// guarantee.
 //
-// Two facts hold the design up, and a third would silently dismantle it:
+// There is deliberately no platform route and no `leaf_status` heartbeat for
+// this either. A heartbeat travels over the very link that breaks, so its
+// absence cannot distinguish "edge down" from "WAN down" from "agent crashed",
+// and the Control Plane could not read one anyway -- it holds the operator and
+// $SYS and no credential inside any tenant account. The hub always knows.
+//
+// Three facts, and the third is the one that silently dismantles the other two:
 //
 //  1. $SYS.REQ.ACCOUNT.PING.CONNZ lists leaf connections, and names each one by
 //     the leaf server's `server_name` -- which is a Thing's code. A site is
 //     therefore identifiable, not merely countable (STATZ gives a bare count).
-//  2. The account scope is enforced by the server. A tenant cannot reach
-//     $SYS.REQ.SERVER.PING.LEAFZ, which would be every account's leaves.
+//  2. The account scope is enforced by the SERVER, not by any permission we
+//     write. A tenant cannot reach $SYS.REQ.SERVER.PING.LEAFZ -- every account's
+//     leaves -- with a credential carrying no deny list at all, because those
+//     endpoints are served inside the $SYS ACCOUNT and an account is a closed
+//     subject namespace. That is TestTenantCannotReachServerEndpoints, and it is
+//     why no tenant role here ships a $SYS publish deny: a deny would restate
+//     this boundary somewhere weaker and strictly worse.
 //  3. Publish DENY beats publish ALLOW. A user carrying `$SYS.>` in its deny
 //     list cannot reach the account endpoints no matter what its allow list
 //     says -- and the failure surfaces as a request timeout, with the real
 //     reason arriving asynchronously on the connection's error handler. That is
 //     TestDenyingAllOfSysBlocksAccountMonitoring, which exists so nobody
 //     "re-tightens" tenant permissions back to a blanket $SYS deny and then
-//     debugs the console for a day.
+//     debugs a dead widget for a day.
 //
 // Fixtures cannot answer any of this, which is the same reason
 // TestBuildLeafConfIsAcceptedByNATSServer runs the generated config through the
@@ -241,7 +254,7 @@ func TestTenantCanSeeItsOwnLeafConnections(t *testing.T) {
 
 	body, ok := request(t, hub, tenant, "$SYS.REQ.ACCOUNT.PING.CONNZ")
 	if !ok {
-		t.Fatal("a tenant could not read CONNZ for its own account; the console would need a platform route after all")
+		t.Fatal("a tenant could not read CONNZ for its own account; the dashboard recipe for site connectivity does not work and would need a platform route after all")
 	}
 
 	var connz struct {
@@ -271,11 +284,38 @@ func TestTenantCanSeeItsOwnLeafConnections(t *testing.T) {
 	if !found {
 		t.Error("CONNZ answered but listed no Leafnode connection")
 	}
+}
 
-	// The scope is the server's to enforce, not ours. SERVER.PING.LEAFZ would be
-	// every account's leaves.
-	if _, ok := request(t, hub, tenant, "$SYS.REQ.SERVER.PING.LEAFZ"); ok {
-		t.Error("a tenant reached SERVER.PING.LEAFZ; account scoping is not being enforced")
+// TestTenantCannotReachServerEndpoints is why no tenant role in this platform
+// ships a $SYS publish deny.
+//
+// $SYS.REQ.SERVER.PING.LEAFZ answers for EVERY account's leaves, so a tenant
+// must never reach it -- and it never can, because those endpoints are served
+// inside the $SYS ACCOUNT and an account is a closed subject namespace. The
+// credential below carries an allow list and NO deny list whatsoever, which is
+// the point: the refusal is the server's account scoping, not a subject rule of
+// ours.
+//
+// A `$SYS.>` or `$SYS.REQ.SERVER.>` deny on a tenant role therefore adds no
+// protection, while risking the failure in
+// TestDenyingAllOfSysBlocksAccountMonitoring. Both roles in
+// internal/demoseed/contract.go used to carry one; this is the assertion that
+// licensed removing them.
+func TestTenantCannotReachServerEndpoints(t *testing.T) {
+	w := mintLeafWorld(t)
+	hub := startHubWithLeaf(t, w)
+	tenant := writeTemp(t, "tenant.creds",
+		userCreds(t, w.orgKP, "acme-user", []string{"$SYS.REQ.ACCOUNT.PING.>", "_INBOX.>"}, nil))
+
+	for _, subject := range []string{
+		"$SYS.REQ.SERVER.PING.LEAFZ",
+		"$SYS.REQ.SERVER.PING.CONNZ",
+		"$SYS.REQ.SERVER.PING.VARZ",
+	} {
+		if _, ok := request(t, hub, tenant, subject); ok {
+			t.Errorf("a tenant reached %s with no deny list; account scoping is not being enforced, "+
+				"and the roles in internal/demoseed/contract.go need their $SYS deny back", subject)
+		}
 	}
 }
 

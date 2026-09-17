@@ -36,18 +36,29 @@ and this file starts where the versioned releases do.
   `nats.websocket_urls` is not: what this process dials says nothing about what
   an edge box can reach.
 
-- **A Thing's page reports whether its NATS leaf node is attached.** Read live
-  from `$SYS.REQ.ACCOUNT.PING.CONNZ` over the console's own in-account
-  connection, matching `kind: "Leafnode"` entries by `name` to the Thing's
-  `code` (`ui/src/composables/useLeafConnections.ts`). Not a separate screen: a
-  site is a Thing, and a second inventory list is a second list that can
-  disagree with the first.
+- **Site connectivity is a dashboard recipe.** Point a Publisher or Button
+  widget at `$SYS.REQ.ACCOUNT.PING.CONNZ` with a `{}` payload: the reply lists
+  this organization's leaf connections, each named by the leaf server's
+  `server_name`, which the agent sets to the Thing's `code`. Both widgets
+  already do request/reply against a free-text subject, so this needs no
+  platform code and the operator can aim the same widget at `SUBSZ` or `JSZ`.
+  The `console-readonly` demo role allow-lists `$SYS.REQ.ACCOUNT.PING.>` for it.
 
-  The empty state is deliberately not painted as a fault. The console cannot
-  tell a gateway that should have a leaf from a probe that never will — there is
-  no marker field, on purpose — so "no leaf node attached" is stated as a fact
-  and coloured neutrally. It is an alarm on a gateway's page and a shrug on a
-  probe's, and the reader knows which they are looking at.
+  A built-in badge on every Thing's detail page was written and then removed
+  before release. Nothing in the schema marks which Things are gateways —
+  `thing_types` has no such field, and "gateway" is a naming convention a tenant
+  chooses — so the badge could not be gated, rendered on every device, and had
+  to state "no leaf node attached" neutrally about temperature probes because it
+  could not tell them from a site that was down. It also polled a whole
+  account's connection list every 15 seconds to do it. A widget asks once, when
+  someone wants to know. If a *board* of site status is wanted later, the thing
+  to build is a `request` entry in `DataSourceType` so display widgets can poll,
+  not a bespoke view.
+
+  One caveat for a clustered hub: the widgets use `request()`, which takes the
+  first reply, while CONNZ is answered by every server holding connections for
+  the account. On the single-binary hub this platform ships, one reply is the
+  complete answer.
 
 - **The invitation email is editable in `/_`.** A new superuser-only
   `email_templates` collection holds the subject and body of every mail the
@@ -66,6 +77,23 @@ and this file starts where the versioned releases do.
   fighting a `<!DOCTYPE>` it intends to strip.
 
 ### Changed
+
+- **No demo role ships a `$SYS` publish deny any more, and adding one back is a
+  regression.** `console-app` carried `$SYS.>` and `console-readonly` carried
+  `$SYS.REQ.SERVER.>`; both are gone from `internal/demoseed/contract.go`.
+
+  The operator-wide endpoints are served inside the `$SYS` **account**, and an
+  account is a closed subject namespace — so a tenant publishing
+  `$SYS.REQ.SERVER.PING.LEAFZ` reaches no responder whatever its permissions
+  say. The new `TestTenantCannotReachServerEndpoints` proves it with a
+  credential carrying no deny list at all. A deny therefore restated the account
+  boundary somewhere strictly weaker, while carrying a real hazard to do it: in
+  NATS a publish DENY beats a publish ALLOW, so the `$SYS.>` form silently kills
+  the account-scoped endpoints a console session legitimately needs, and adding
+  an allow beside it does not help. The symptom is a bare request timeout with
+  the real reason arriving asynchronously on the connection's error handler.
+  Allow-list the account endpoints; write no deny.
+  `TestDenyingAllOfSysBlocksAccountMonitoring` pins all four shapes.
 
 - **pb-tenancy absorbed into the platform.** `organizations`, `memberships` and
   `invites` are platform code now (`hooks/org_membership.go`,

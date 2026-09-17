@@ -687,10 +687,11 @@ var roleTemplates = []roleFixture{
 		// stock nothing and the failure reads as a kiosk-side bug.
 		Publish:   []string{"app.>", "cmd.>", "helpdesk.>", "kiosk.>", "$JS.API.>", "$KV.>"},
 		Subscribe: []string{">"},
-		// $SYS belongs to the operator, never to a tenant's application. Denied
-		// explicitly rather than left to the account boundary, so the intent is
-		// legible on the role screen.
-		PublishDeny:      []string{"$SYS.>"},
+		// NO $SYS DENY HERE, deliberately -- see console-readonly below. The
+		// operator's endpoints live in the $SYS ACCOUNT, and an account is a
+		// closed subject namespace, so publishing `$SYS.REQ.SERVER.>` from this
+		// account reaches no responder whatever this role permits. A deny would
+		// restate the account boundary in a weaker place and buy nothing.
 		MaxSubscriptions: 1024, MaxPayload: 4194304},
 
 	{Name: "console-operator",
@@ -704,7 +705,7 @@ var roleTemplates = []roleFixture{
 		// Reads only, plus the publishes a read actually requires: an inbox for
 		// request/reply, the JetStream API calls the KV browser issues to list
 		// streams, create an ephemeral consumer and fetch values, and the
-		// account-scoped monitoring request behind the site-connectivity view.
+		// account-scoped monitoring endpoints.
 		Publish: []string{
 			"_INBOX.>",
 			"$JS.API.INFO",
@@ -714,27 +715,44 @@ var roleTemplates = []roleFixture{
 			"$JS.API.CONSUMER.CREATE.>",
 			"$JS.API.CONSUMER.MSG.NEXT.>",
 			"$JS.API.DIRECT.GET.>",
-			// How the console knows whether a gateway's leaf node is attached.
-			// CONNZ lists leaf connections and names each by the leaf server's
-			// `server_name`, which is a Thing's code -- so a site is
-			// identifiable, not merely countable. The server scopes the answer
-			// to the caller's own account; see
-			// internal/health/leaf_visibility_test.go.
+			// Account monitoring, which is how an operator asks the hub which
+			// of this organization's leaf nodes are attached: a Publisher or
+			// Button widget aimed at `$SYS.REQ.ACCOUNT.PING.CONNZ` with `{}`.
+			// CONNZ names each leaf connection by the leaf server's
+			// `server_name`, which the agent sets to the Thing's code -- so a
+			// site is identifiable, not merely countable.
+			//
+			// This is a dashboard recipe rather than a built-in view on purpose.
+			// A console badge for it was built and removed: nothing in the
+			// schema marks which Things are gateways, so it rendered on every
+			// device to say "no leaf node attached" about temperature probes,
+			// and it polled a whole account's connection list every 15s to do
+			// it. A widget asks once, when someone actually wants to know.
 			"$SYS.REQ.ACCOUNT.PING.>",
 		},
 		Subscribe: []string{">"},
-		// Server-level monitoring is the operator's, never a tenant's: LEAFZ
-		// there is EVERY account's leaves. Denied explicitly rather than left to
-		// the allow-list above, so the intent is legible on the role screen.
+		// NO $SYS PUBLISH DENY, and this is the considered position rather than
+		// an omission.
 		//
-		// This used to read `$SYS.>`, which also blocked the account-scoped
-		// endpoints the console now needs. DO NOT widen it back and add an allow
-		// beside it -- in NATS a publish DENY beats a publish ALLOW, so
-		// deny `$SYS.>` + allow `$SYS.REQ.ACCOUNT.PING.>` refuses the request,
-		// and it refuses it as a request TIMEOUT with the real reason arriving
-		// asynchronously on the connection's error handler. Nothing points at
-		// permissions. TestDenyingAllOfSysBlocksAccountMonitoring pins all four
-		// shapes against a real server.
-		PublishDeny:      []string{"$SYS.REQ.SERVER.>"},
+		// Server-level monitoring IS the operator's alone -- `SERVER.PING.LEAFZ`
+		// answers for every tenant at once -- but the thing that enforces it is
+		// the ACCOUNT, not a subject rule. Those endpoints are served inside the
+		// $SYS account, and an account is a closed subject namespace: a client
+		// in this account publishing `$SYS.REQ.SERVER.PING.LEAFZ` reaches no
+		// responder, with or without a deny.
+		// TestTenantCannotReachServerEndpoints proves it with a credential that
+		// carries no deny list at all.
+		//
+		// So a deny here would restate the account boundary somewhere weaker,
+		// and it would carry a real hazard to do it: in NATS a publish DENY
+		// beats a publish ALLOW, so the `$SYS.>` deny this role used to ship
+		// silently killed the account-scoped endpoints above, and adding an
+		// allow beside it does not help. The symptom is a bare request timeout
+		// -- the real reason arrives asynchronously on the connection's error
+		// handler and never on the request -- so nothing points at permissions.
+		//
+		// DO NOT "tighten" this by adding one back.
+		// TestDenyingAllOfSysBlocksAccountMonitoring pins all four shapes
+		// against a real server.
 		MaxSubscriptions: 256, MaxPayload: 1048576},
 }
