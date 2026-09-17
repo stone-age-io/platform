@@ -30,43 +30,72 @@ export function useValidation() {
   
   /**
    * Validate NATS subject pattern
-   * 
-   * Rules:
+   *
+   * Rules, and they are the ones NATS actually has:
    * - Cannot be empty
-   * - Cannot have consecutive dots (..)
-   * - Cannot start or end with dot
-   * - Can contain wildcards (* and >)
-   * - Only alphanumeric, dots, dashes, underscores, wildcards, AND curly braces for variables
+   * - Cannot contain whitespace or control characters
+   * - Cannot have an empty token (consecutive dots, or a leading/trailing dot)
+   * - `>` must be the last token; `*` must be alone in its token
+   *
+   * THERE IS DELIBERATELY NO CHARACTER ALLOWLIST. There used to be
+   * (`/^[a-zA-Z0-9._\-*>{}]+$/`) and it rejected every NATS system subject,
+   * because it had no `$`:
+   *
+   *   $SYS.REQ.ACCOUNT.PING.CONNZ   the site-connectivity recipe
+   *   $JS.API.STREAM.LIST           every JetStream API call
+   *   $KV.<bucket>.<key>            every KV subject
+   *
+   * All three are ordinary subjects a console session is allow-listed to
+   * publish to (see internal/demoseed/contract.go), so the form was refusing
+   * input the server would have accepted -- and the message named a list of
+   * permitted characters, which reads like a syntax rule rather than a bug.
+   *
+   * The wider lesson is that the allowlist was a DENY-LIST wearing the other
+   * costume: it could only ever be a guess at the character set NATS uses, and
+   * a guess that is wrong rejects legal input silently and forever. The client
+   * (@nats-io/nats-core, `ConnectionImpl._check`) enforces exactly two things:
+   * non-empty, and no whitespace. nats-server adds no empty tokens and `>`
+   * last. Those are checked here and nothing else is invented.
+   *
+   * `*` alone-in-token is stricter than nats-server, which treats `foo*` as a
+   * literal token rather than an error. Kept deliberately: a literal asterisk
+   * in a subject is vanishingly rare and a mistyped wildcard is not.
    */
   function validateSubject(subject: string): ValidationResult {
     // Empty check
     if (!subject || subject.trim() === '') {
       return { valid: false, error: 'Subject cannot be empty' }
     }
-    
+
+    // Callers store the trimmed value (useWidgetForm), so validate that -- the
+    // whitespace check below is then about whitespace INSIDE the subject,
+    // which is the error that actually reaches the client.
     subject = subject.trim()
-    
+
+    // The client's own rule, and the one the character allowlist used to
+    // enforce as a side effect. Losing it while widening would have traded one
+    // bug for a worse one.
+    if (/\s/.test(subject)) {
+      return { valid: false, error: 'Subject cannot contain whitespace' }
+    }
+
+    // Not rejected by the client, but never intended by a human, and invisible
+    // in a form field if pasted.
+    // eslint-disable-next-line no-control-regex
+    if (/[\x00-\x1f\x7f]/.test(subject)) {
+      return { valid: false, error: 'Subject cannot contain control characters' }
+    }
+
     // Check for consecutive dots
     if (subject.includes('..')) {
       return { valid: false, error: 'Subject cannot contain consecutive dots (..)' }
     }
-    
+
     // Cannot start or end with dot
     if (subject.startsWith('.') || subject.endsWith('.')) {
       return { valid: false, error: 'Subject cannot start or end with a dot' }
     }
-    
-    // Check for invalid characters
-    // Valid: alphanumeric, dots, dashes, underscores, wildcards (* and >), and variables ({})
-    // Grug fix: Allow { and } for variables
-    const validPattern = /^[a-zA-Z0-9._\-*>{}]+$/
-    if (!validPattern.test(subject)) {
-      return { 
-        valid: false, 
-        error: 'Subject contains invalid characters. Allowed: letters, numbers, . - _ * > { }' 
-      }
-    }
-    
+
     // > wildcard must be at end and must be last token
     // Note: We skip this check if variables are present, as {{var}} might resolve to anything
     if (!subject.includes('{{')) {
@@ -233,26 +262,45 @@ export function useValidation() {
     if (!key || key.trim() === '') {
       return { valid: false, error: 'Key cannot be empty' }
     }
-    
+
     key = key.trim()
-    
+
     // Length check
     if (key.length > 255) {
       return { valid: false, error: 'Key cannot exceed 255 characters' }
     }
-    
-    // KV keys cannot contain certain characters
-    // Note: { and } are NOT in this list, so variables are implicitly allowed here.
-    const invalidChars = ['*', '>', ' ', '\t', '\n', '\r']
-    for (const char of invalidChars) {
-      if (key.includes(char)) {
-        return { 
-          valid: false, 
-          error: `Key cannot contain '${char === ' ' ? 'space' : char}'` 
-        }
+
+    // Variables cannot be checked: {{site}} resolves at render time and the
+    // resolved value is what the client sees. Same trade as validateSubject.
+    if (key.includes('{{')) {
+      return { valid: true }
+    }
+
+    // THE OPPOSITE MISTAKE TO validateSubject, found looking for more of them.
+    // This listed five forbidden characters, which let through everything else
+    // -- `$`, `:`, `#`, `@`, `+` and the rest -- all of which @nats-io/kv
+    // refuses at runtime. The form said the key was fine and the write failed
+    // later, with an error further from the field that caused it.
+    //
+    // A KV key IS a subject token, so it is narrower than a subject: the
+    // client's rule is /^[-/=.\w]+$/ plus no leading or trailing dot
+    // (@nats-io/kv, `validateKey`). Mirrored here rather than approximated.
+    //
+    // Wildcards stay rejected, and that is right for this field even though
+    // the client permits them in a SEARCH key: every caller here
+    // (useWidgetForm) is a concrete read or write, and useNatsKv builds its own
+    // watch filter internally rather than taking one from the form.
+    if (!/^[-/=.\w]+$/.test(key)) {
+      return {
+        valid: false,
+        error: 'Key contains invalid characters. Allowed: letters, numbers, . - _ / =',
       }
     }
-    
+
+    if (key.startsWith('.') || key.endsWith('.')) {
+      return { valid: false, error: 'Key cannot start or end with a dot' }
+    }
+
     return { valid: true }
   }
   

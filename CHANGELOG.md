@@ -177,6 +177,33 @@ and this file starts where the versioned releases do.
 
 ### Fixed
 
+- **Widget subject validation rejected every NATS system subject.**
+  `validateSubject` carried a character allowlist with no `$`, so a Publisher or
+  Button widget refused `$SYS.REQ.ACCOUNT.PING.CONNZ` — the site-connectivity
+  recipe documented one release earlier — along with every JetStream
+  (`$JS.API.*`) and KV (`$KV.*`) subject. All three are subjects a console
+  session is explicitly allow-listed to publish to, so the form was refusing
+  input the server would have accepted, and the message blamed the operator's
+  characters rather than the rule.
+
+  The allowlist is gone rather than extended by one character: it was a
+  deny-list in the other costume, a guess at NATS's character set that could
+  only fail silently and permanently. The validator now checks what NATS
+  actually enforces — non-empty, no whitespace, no control characters, no empty
+  tokens, `>` last and `*` alone in its token — and invents nothing else.
+
+- **KV key validation had the opposite defect** and is corrected in the same
+  pass. It named five forbidden characters and let everything else through, so
+  `$`, `:`, `#` and `@` passed the form and were then refused by `@nats-io/kv`
+  at write time, with the error arriving far from the field that caused it. It
+  now mirrors the client's own rule (`/^[-/=.\w]+$/`, no leading or trailing
+  dot). Wildcards stay rejected: every caller writes a concrete key, and the KV
+  watcher builds its own filter internally.
+
+  New `ui/src/composables/useValidation.spec.ts` — 49 cases, the file's first
+  tests. Verified by reverting: reinstating the old allowlist fails nine of
+  them, including all five system subjects.
+
 - **The CA's 90-day expiry warning now reaches the console, which is the only
   surface that reaches anyone who can act on it.** 0.5.0 split the warning
   windows — 30 days for a renewable host certificate, 90 for a CA that can only
