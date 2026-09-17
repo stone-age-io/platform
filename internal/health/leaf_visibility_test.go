@@ -203,14 +203,46 @@ leafnodes {
 }
 `, leafServerName, w.opJWT, w.orgPub, w.orgJWT, w.sysPub, w.sysJWT, leafPort, w.orgPub, remoteCreds))
 
+	// Wait for the leaf to be attached AND NAMED, not merely attached.
+	//
+	// NumLeafNodes() counts the connection, which the hub registers as soon as
+	// the TCP session is accepted. `server_name` arrives later, in the leaf's
+	// own INFO -- so there is a window where the count is 1 and CONNZ reports a
+	// Leafnode entry with an empty name. That window is what every assertion
+	// here actually depends on closing: a site is identified BY its name, and a
+	// nameless leaf is indistinguishable from a leaf for another Thing.
+	//
+	// Waiting on the count was therefore waiting on a proxy for the condition,
+	// and it failed exactly as you would expect a proxy to fail: green on a
+	// developer machine for months, then `name = ""` on a loaded CI runner. Wait
+	// for the fact the test needs.
 	deadline := time.Now().Add(10 * time.Second)
-	for hub.NumLeafNodes() == 0 {
+	for !leafIsNamed(hub, leafServerName) {
 		if time.Now().After(deadline) {
-			t.Fatal("leaf node never attached to the hub")
+			t.Fatalf("no leaf named %q attached to the hub within 10s (NumLeafNodes=%d)",
+				leafServerName, hub.NumLeafNodes())
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 	return hub
+}
+
+// leafIsNamed reports whether the hub holds a leaf connection carrying `name`.
+//
+// Leafz is the server's own view of the same connections CONNZ reports to a
+// client, so this waits on the exact fact the tests go on to assert rather than
+// on something correlated with it.
+func leafIsNamed(hub *natsserver.Server, name string) bool {
+	lz, err := hub.Leafz(&natsserver.LeafzOptions{})
+	if err != nil || lz == nil {
+		return false
+	}
+	for _, leaf := range lz.Leafs {
+		if leaf.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // request asks one monitoring subject as the holder of the creds file at
