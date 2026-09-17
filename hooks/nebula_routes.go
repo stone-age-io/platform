@@ -22,11 +22,12 @@ type NebulaRoutesOptions struct {
 // and admins are meant to perform on their own overlay, neither of which a
 // PocketBase API rule can express.
 //
-// WHY ROTATION IS A ROUTE. `nebula_ca.updateRule` is operator-only, and its
-// comment has said since the authz hardening pass: "There is no tenant-triggered
-// CA rotation today because there is no trigger field for one. Rolling a CA is an
-// operator operation. If that changes, add a route rather than a branch here."
-// pb-nebula v0.3.0 added the trigger field, so that is what this is.
+// WHY ROTATION IS A ROUTE. `nebula_ca.updateRule` is operator-only, and from the
+// authz hardening pass until this route landed its comment said: "There is no
+// tenant-triggered CA rotation today because there is no trigger field for one.
+// Rolling a CA is an operator operation. If that changes, add a route rather than
+// a branch here." pb-nebula v0.3.0 added the trigger field, so that is what this
+// is; the rule comment now points back here.
 //
 // The reason it is not a rule branch is the reason nats_account_routes.go exists:
 // a rule cannot say "this one field and nothing else". An owner/admin branch on

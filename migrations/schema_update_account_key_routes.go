@@ -31,7 +31,8 @@ import (
 //     whole overlay network. Only `validity_years`, `curve` and `organization`
 //     were frozen. Note the branch was commented "can only change rotate_keys"
 //     while nebula_ca HAS NO rotate_keys FIELD, so that comment described an
-//     operation the rule could not perform and the collection does not support.
+//     operation the rule could not perform. (CA rotation does exist now, under a
+//     different field and through a route — see SINCE THIS MIGRATION below.)
 //
 // This was not a cross-role escalation — owner and admin already administer NATS
 // and Nebula — but both rules permitted far more than they claimed, which makes
@@ -49,9 +50,19 @@ import (
 // rejecting anything else. That switch is the allowlist a rule could not express.
 //
 // The account limits stay operator-only deliberately: they are the resource
-// envelope the tenant was sold, so raising them is not a tenant action. Nebula CA
-// rotation has no route because it has no trigger field; rolling a CA is an
-// operator operation.
+// envelope the tenant was sold, so raising them is not a tenant action.
+//
+// SINCE THIS MIGRATION. Nebula CA rotation had no route when this landed, because
+// the collection had no trigger field for one. It has both now: pb-nebula v0.3.0
+// added `rotate`, and
+//
+//	POST /api/org/nebula-ca/rotate   { "step": "prepare" | "commit" | "finish" }
+//
+// (hooks/nebula_routes.go) drives the three steps for owner/admin of the caller's
+// own organization. `nebula_ca.updateRule` did not change for it and should not:
+// the allowlist-versus-deny-list reasoning that put the NATS key operations on a
+// route puts CA rotation on one too, and the record it guards is the trust anchor
+// for the whole overlay.
 //
 // NOT AFFECTED: reads. Both collections remain readable by any role in the
 // organization, which is what the console's account and CA detail views rely on.
