@@ -37,15 +37,45 @@ func repoRoot() (string, error) {
 	return filepath.Join(filepath.Dir(thisFile), "..", ".."), nil
 }
 
+// SkipIfShort skips a test that needs the real PocketBase harness when `-short`
+// is set.
+//
+// WHAT `-short` MEANS IN THIS REPO: skip the tests that stand up a real
+// PocketBase. Nothing else. That is not a style choice, it is where the time
+// actually is -- standing one app up costs the better part of ten seconds
+// because four libraries bootstrap their collections and every migration runs,
+// and `go test ./...` does it about thirty times. `hooks`, `internal/demoseed`
+// and `migrations` are minutes; every other package is seconds.
+//
+// So the real-nats-server tests in internal/health and internal/natsd are
+// deliberately NOT skipped. They cost about ten seconds between them, and they
+// are the ones asserting the server's own trust decisions -- exactly the
+// coverage you least want to drop from the pass you run most often. `-short`
+// buys nothing by skipping them and costs the assertions a mock cannot make.
+//
+// This lives in SetupApp rather than in each test, so a test written next year
+// is in the right set without anyone remembering. The two packages with a
+// TestMain that builds ONE shared app guard it themselves; they have to, since
+// TestMain runs before any test can be skipped.
+func SkipIfShort(t *testing.T) {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("needs a real PocketBase (~10s to boot); run without -short")
+	}
+}
+
 // SetupApp boots a real PocketBase against t.TempDir(), applies every migration,
 // and binds the platform's provisioning hooks. The returned app is ready for
 // record CRUD.
+//
+// Skipped under `-short` -- see SkipIfShort.
 //
 // No NATS server is involved. pb-nats generates keys and signs JWTs locally; the
 // claim publish queues and drains if a server ever appears, which in a test it
 // never does.
 func SetupApp(t *testing.T) *pocketbase.PocketBase {
 	t.Helper()
+	SkipIfShort(t)
 	app, err := NewApp(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

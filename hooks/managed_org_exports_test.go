@@ -1,6 +1,7 @@
 package hooks_test
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -80,6 +81,15 @@ type managedFixture struct {
 var managed managedFixture
 
 func TestMain(m *testing.M) {
+	// flag.Parse() first: testing.Short() reads a flag, and m.Run() is what
+	// normally parses them -- so without this the check below is always false.
+	flag.Parse()
+	if testing.Short() {
+		// Build nothing. Every test that needs this app goes through
+		// requirePair or newCertFixture, and both skip under -short.
+		os.Exit(m.Run())
+	}
+
 	dir, err := os.MkdirTemp("", "managed-exports")
 	if err != nil {
 		panic(err)
@@ -157,8 +167,14 @@ func TestMain(m *testing.M) {
 }
 
 // requirePair fails -- never skips -- when TestMain could not load the pair.
+//
+// The -short skip below is not an exception to that. A fixture that failed to
+// build is a broken test and must be loud; a fixture that was never asked for
+// is a deliberate opt-out. They arrive here looking identical (an empty
+// `managed`), so the opt-out is checked first and explicitly.
 func requirePair(t *testing.T) managedFixture {
 	t.Helper()
+	testutil.SkipIfShort(t)
 	if managed.setupErr != "" {
 		t.Fatalf("fixture setup: %s", managed.setupErr)
 	}

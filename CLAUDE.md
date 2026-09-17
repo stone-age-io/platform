@@ -867,7 +867,25 @@ you, so pushing an absolute one would make the login form an open redirect (the
   `git ls-files '*.go' | while read f; do git show ":$f" > /tmp/x.go; gofmt -l /tmp/x.go; done`.
   Do not "fix" the files `gofmt -l .` lists here, and do not conclude the gate is
   broken.
-- `go test ./...` — Go unit tests (`hooks` and `migrations` have the bulk of them).
+- `go test -short ./...` — **the pass to run while working: ~19s instead of
+  ~11min.** It skips exactly one thing: tests that stand up a real PocketBase.
+  That is where all the time is — booting one costs the better part of ten
+  seconds (four libraries bootstrap, every migration runs) and the suite does it
+  about thirty times, which is the whole of `hooks`, `internal/demoseed` and
+  `migrations`. The skip lives in `testutil.SkipIfShort`, called from `SetupApp`,
+  so a test written next year lands in the right set without anyone remembering;
+  the two packages whose `TestMain` builds one shared app guard it themselves,
+  since `TestMain` runs before any test can skip (and must `flag.Parse()` first,
+  or `testing.Short()` is always false).
+  - **The real-`nats-server` tests are deliberately NOT skipped.** They cost
+    about ten seconds between them and they assert the server's own trust
+    decisions — the coverage you least want to drop from the pass you run most
+    often.
+  - `-short` is a local convenience and never a gate. CI runs
+    `go test -count=1 ./...`, which skips nothing; verified at 0 skips. If a
+    full run ever reports a skip, that is the bug — a test that cannot fail.
+- `go test ./...` — everything, ~11min. What CI runs (`hooks` and `migrations`
+  have the bulk of them).
   Two habits worth keeping: the readiness checks that touch NATS are tested
   against a **real operator-mode `nats-server`** built in the test (see
   `internal/health/nats_test.go`), because the thing being asserted IS the

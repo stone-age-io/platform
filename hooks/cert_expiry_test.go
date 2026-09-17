@@ -19,6 +19,7 @@ import (
 	"platform/hooks"
 	"platform/internal/health"
 	"platform/internal/metrics"
+	"platform/internal/testutil"
 )
 
 // Nebula certificate expiry: the readiness check, the metric, and the one thing
@@ -48,6 +49,9 @@ type certFixture struct {
 // multi-year expiry, which would drown any fixture.
 func newCertFixture(t *testing.T, caOffsets, hostOffsets []time.Duration) certFixture {
 	t.Helper()
+	// TestMain does not build the shared app under -short, so every consumer of
+	// it has to say so itself.
+	testutil.SkipIfShort(t)
 
 	app := managed.app
 	now := time.Now()

@@ -1,6 +1,7 @@
 package demoseed_test
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -30,6 +31,16 @@ const testThings = 60
 var shared core.App
 
 func TestMain(m *testing.M) {
+	// flag.Parse() first: testing.Short() reads a flag, and m.Run() is what
+	// normally parses them -- so without this the check below is always false.
+	flag.Parse()
+	if testing.Short() {
+		// Seed nothing. Every read-only test reaches the app through
+		// sharedApp(t), which skips; the mutating ones build their own through
+		// testutil.SetupApp, which skips too.
+		os.Exit(m.Run())
+	}
+
 	dir, err := os.MkdirTemp("", "demoseed")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "temp dir:", err)
@@ -57,6 +68,22 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+// sharedApp is how every read-only test reaches the seeded app.
+//
+// It exists so there is ONE place that knows the app may not have been built:
+// TestMain skips the seed under -short, and a test reading the package variable
+// directly would nil-deref rather than skip. Added with the -short split; the
+// direct `shared` reads it replaced are why it is an accessor and not a
+// variable.
+func sharedApp(t *testing.T) core.App {
+	t.Helper()
+	testutil.SkipIfShort(t)
+	if shared == nil {
+		t.Fatal("the shared seeded app was not built; TestMain should have failed loudly")
+	}
+	return shared
+}
+
 func count(t *testing.T, app core.App, collection string) int {
 	t.Helper()
 	recs, err := app.FindAllRecords(collection)
@@ -67,7 +94,7 @@ func count(t *testing.T, app core.App, collection string) int {
 }
 
 func TestSeedPopulatesEveryCollectionItClaimsTo(t *testing.T) {
-	app := shared
+	app := sharedApp(t)
 
 	for _, c := range []struct {
 		name string
@@ -96,7 +123,7 @@ func TestSeedPopulatesEveryCollectionItClaimsTo(t *testing.T) {
 // The whole seed is built on organizations.code, and a code is immutable once
 // written — so a run that produced the wrong one could not be repaired in place.
 func TestOrganizationsCarryTheCodesTheHelpdeskDemoJoinsOn(t *testing.T) {
-	app := shared
+	app := sharedApp(t)
 
 	for _, code := range []string{"northwind", "ironbridge", "galewind"} {
 		org, err := app.FindFirstRecordByFilter("organizations", "code = {:c}", dbx.Params{"c": code})
@@ -114,7 +141,7 @@ func TestOrganizationsCarryTheCodesTheHelpdeskDemoJoinsOn(t *testing.T) {
 // does not register the hook — which would produce a demo that looks complete in
 // the inventory screens and has no credentials behind any of it.
 func TestEveryOrganizationIsProvisioned(t *testing.T) {
-	app := shared
+	app := sharedApp(t)
 
 	orgs, err := app.FindAllRecords("organizations")
 	if err != nil {
@@ -142,7 +169,7 @@ func TestEveryOrganizationIsProvisioned(t *testing.T) {
 // default. A Thing seeded without the flag set would be locked out of the API —
 // the exact bug POST /api/org/things was written to fix.
 func TestEveryActiveThingCanActuallyAuthenticate(t *testing.T) {
-	app := shared
+	app := sharedApp(t)
 
 	all, err := app.FindAllRecords("things")
 	if err != nil {
@@ -184,7 +211,7 @@ func TestEveryActiveThingCanActuallyAuthenticate(t *testing.T) {
 // set itself, which could not tell "pb-nats suspended the user" from "pb-nats
 // did nothing".
 func TestDecommissionedThingsHaveTheirCredentialRevoked(t *testing.T) {
-	app := shared
+	app := sharedApp(t)
 
 	inactive, err := app.FindAllRecords("things", dbx.NewExp("active = false"))
 	if err != nil {
@@ -243,7 +270,7 @@ func TestDecommissionedThingsHaveTheirCredentialRevoked(t *testing.T) {
 // Every one of the five console roles should be reachable by logging in, or the
 // demo cannot show what they differ on.
 func TestAllFiveConsoleRolesAreRepresented(t *testing.T) {
-	app := shared
+	app := sharedApp(t)
 
 	seen := map[string]bool{}
 	memberships, err := app.FindAllRecords("memberships")
@@ -269,7 +296,7 @@ func TestAllFiveConsoleRolesAreRepresented(t *testing.T) {
 // read-only. Otherwise the demo ships the trap it exists to illustrate: an
 // auditor who is read-only in PocketBase and can publish anywhere on the bus.
 func TestReadOnlyConsoleRolesGetAReadOnlyNatsRole(t *testing.T) {
-	app := shared
+	app := sharedApp(t)
 
 	memberships, err := app.FindAllRecords("memberships")
 	if err != nil {
@@ -303,7 +330,7 @@ func TestReadOnlyConsoleRolesGetAReadOnlyNatsRole(t *testing.T) {
 // The read-only NATS role must not carry a publish wildcard. This is the actual
 // property the pairing above is trying to buy.
 func TestConsoleReadonlyRoleCannotPublishAnywhere(t *testing.T) {
-	app := shared
+	app := sharedApp(t)
 
 	roles, err := app.FindAllRecords("nats_roles", dbx.NewExp("name = 'console-readonly'"))
 	if err != nil {
@@ -383,7 +410,7 @@ func TestRaisingTheThingCountTopsUp(t *testing.T) {
 // Codes are unique within an organization, which is what the partial indexes
 // enforce and what every cross-app join depends on.
 func TestCodesAreUniqueWithinAnOrganization(t *testing.T) {
-	app := shared
+	app := sharedApp(t)
 
 	for _, collection := range []string{"things", "locations", "thing_types", "location_types"} {
 		recs, err := app.FindAllRecords(collection)
@@ -409,7 +436,7 @@ func TestCodesAreUniqueWithinAnOrganization(t *testing.T) {
 // a first-class participant with its own signed identity; a demo of nothing but
 // probes quietly contradicts it.
 func TestThingsSpanDevicesGatewaysAndApplications(t *testing.T) {
-	app := shared
+	app := sharedApp(t)
 
 	types, err := app.FindAllRecords("thing_types")
 	if err != nil {
@@ -454,7 +481,7 @@ func TestThingsSpanDevicesGatewaysAndApplications(t *testing.T) {
 // says so out loud on this side. access-control's
 // TestSiteCodesMatchThePlatformDemo is its mirror.
 func TestTheAccessControlEstateIsPresentAndJoinable(t *testing.T) {
-	app := shared
+	app := sharedApp(t)
 
 	org, err := app.FindFirstRecordByFilter("organizations", "code = 'northwind'", nil)
 	if err != nil {
@@ -525,7 +552,7 @@ func TestTheAccessControlEstateIsPresentAndJoinable(t *testing.T) {
 // publishes on: acc.{location}.{type}.{thing}. Getting this wrong is invisible —
 // the Thing Type screen renders a plausible subject that nothing is listening to.
 func TestAccessSubjectPrefixesMatchTheWireFormat(t *testing.T) {
-	app := shared
+	app := sharedApp(t)
 
 	for _, tc := range []struct{ code, want string }{
 		{"access-controller", "acc.{location}.ctrl.{thing}"},
@@ -553,7 +580,7 @@ func TestAccessSubjectPrefixesMatchTheWireFormat(t *testing.T) {
 // and two fixtures agreeing on 8102 produces a second kiosk that dies at startup
 // with an address-in-use error while the first one carries on looking healthy.
 func TestTheKioskEstateIsPresentAndJoinable(t *testing.T) {
-	app := shared
+	app := sharedApp(t)
 
 	org, err := app.FindFirstRecordByFilter("organizations", "code = 'northwind'", nil)
 	if err != nil {
@@ -623,7 +650,7 @@ func TestTheKioskEstateIsPresentAndJoinable(t *testing.T) {
 // Adding {location} would render a plausible subject on the Thing Type screen
 // that nothing publishes on and nothing listens to.
 func TestKioskSubjectPrefixesMatchTheWireFormat(t *testing.T) {
-	app := shared
+	app := sharedApp(t)
 
 	for _, code := range []string{"tool-kiosk", "timeclock-terminal"} {
 		tt, err := app.FindFirstRecordByFilter("thing_types", "code = {:c}", dbx.Params{"c": code})
@@ -639,7 +666,7 @@ func TestKioskSubjectPrefixesMatchTheWireFormat(t *testing.T) {
 // Locations need coordinates or the map screens — two of the console's best —
 // come up empty, which is the single most common reason a demo underwhelms.
 func TestTopLevelLocationsHaveCoordinates(t *testing.T) {
-	app := shared
+	app := sharedApp(t)
 
 	recs, err := app.FindAllRecords("locations")
 	if err != nil {
@@ -659,7 +686,7 @@ func TestTopLevelLocationsHaveCoordinates(t *testing.T) {
 // Managed organizations get the export/import pair; unmanaged ones must not.
 // Both states exist in the fixtures on purpose.
 func TestManagedFlagIsSetOnTheOrgsThatClaimIt(t *testing.T) {
-	app := shared
+	app := sharedApp(t)
 
 	want := map[string]bool{"northwind": true, "ironbridge": false, "galewind": true}
 	for code, managed := range want {
@@ -677,7 +704,7 @@ func TestManagedFlagIsSetOnTheOrgsThatClaimIt(t *testing.T) {
 // must resolve its operations. A dangling relation here renders as an empty
 // section in the console rather than an error.
 func TestTheContractGraphIsWhole(t *testing.T) {
-	app := shared
+	app := sharedApp(t)
 
 	ops, err := app.FindAllRecords("thing_type_operations")
 	if err != nil {
@@ -888,7 +915,7 @@ func subjectMatches(pattern, subject string) bool {
 // The one to keep in mind when adding a role: reading a KV bucket and writing one
 // need different permissions, and only the read goes through the JetStream API.
 func TestGatewayRoleCanRunAnEdgeService(t *testing.T) {
-	app := shared
+	app := sharedApp(t)
 
 	roles, err := app.FindAllRecords("nats_roles", dbx.NewExp("name = 'gateway'"))
 	if err != nil {
@@ -938,7 +965,7 @@ func TestGatewayRoleCanRunAnEdgeService(t *testing.T) {
 // Subscribe is `>` on this role, so reading is never the half that breaks. The
 // gap is always on publish, which is the half that looks like it works.
 func TestApplicationRoleCanRunTheKioskController(t *testing.T) {
-	app := shared
+	app := sharedApp(t)
 
 	roles, err := app.FindAllRecords("nats_roles", dbx.NewExp("name = 'application'"))
 	if err != nil {
@@ -969,7 +996,7 @@ func TestApplicationRoleCanRunTheKioskController(t *testing.T) {
 // into a permissions violation, so the kiosk looks healthy and the controller
 // stays empty.
 func TestGatewayRoleCanRunAKioskNode(t *testing.T) {
-	app := shared
+	app := sharedApp(t)
 
 	roles, err := app.FindAllRecords("nats_roles", dbx.NewExp("name = 'gateway'"))
 	if err != nil {
