@@ -3,7 +3,7 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
 import { formatDate } from '@/utils/format'
-import { expiryState, expiryLabel } from '@/utils/expiry'
+import { expiryState, expiryLabel, CA_EXPIRY_WARNING_DAYS } from '@/utils/expiry'
 import { caRotationState } from '@/utils/nebula'
 import { useAuthStore } from '@/stores/auth'
 import type { NebulaCA } from '@/types/pocketbase'
@@ -27,9 +27,15 @@ const isValid = computed(() => {
  * every host fetching a config nobody told it to fetch. So the countdown is
  * worth showing well before it is urgent: by the time a CA is a fortnight out,
  * the remedy no longer fits.
+ *
+ * Hence CA_EXPIRY_WARNING_DAYS (90) rather than the 30-day default this module
+ * uses for renewable credentials. The CA belongs to this organization and only
+ * its owners and admins can rotate it, so this page is the surface that reaches
+ * the party able to act -- /api/ready and /metrics reach the platform operator,
+ * who cannot.
  */
-const expiry = computed(() => expiryState(ca.value?.expires_at))
-const expiryText = computed(() => expiryLabel(ca.value?.expires_at))
+const expiry = computed(() => expiryState(ca.value?.expires_at, CA_EXPIRY_WARNING_DAYS))
+const expiryText = computed(() => expiryLabel(ca.value?.expires_at, CA_EXPIRY_WARNING_DAYS))
 
 /**
  * Where the rotation panel goes.

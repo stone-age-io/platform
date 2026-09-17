@@ -175,6 +175,30 @@ and this file starts where the versioned releases do.
   enabled on `users` and `_superusers`, who are people with real addresses and
   can act on the alert.
 
+### Fixed
+
+- **The CA's 90-day expiry warning now reaches the console, which is the only
+  surface that reaches anyone who can act on it.** 0.5.0 split the warning
+  windows — 30 days for a renewable host certificate, 90 for a CA that can only
+  be rotated — but did it in `hooks/cert_expiry.go` alone. The console kept one
+  constant, so `NebulaCADetailView` badged a CA at 30 days and
+  `CaRotationPanel` did not go urgent until then either.
+
+  That is worse than an inconsistency between two screens. A Nebula CA belongs
+  to a **tenant organization**, and only its owners and admins may rotate one
+  (`POST /api/org/nebula-ca/rotate`) — deliberately, because the wait in the
+  middle of a rotation belongs to whoever operates the devices. The 90-day
+  window existed only on `/api/ready` and `/metrics`, which are the platform
+  operator's surfaces, and the operator cannot rotate a tenant's CA. So the
+  longer warning was delivered exclusively to the party unable to use it, while
+  the party who could got 30 days — less than the procedure needs.
+
+  `ui/src/utils/expiry.ts` gains `CA_EXPIRY_WARNING_DAYS` (90) beside
+  `EXPIRY_WARNING_DAYS` (30), and `expiryState`/`expiryLabel` take the window as
+  their second argument. New `ui/src/utils/expiry.spec.ts` covers both windows
+  and fails if they are ever collapsed back into one constant — the first tests
+  this module has had.
+
 ### Removed
 
 - **`leaf_nodes`, `leaf-sync`, and the collection mirror.** An edge site is a

@@ -25,7 +25,7 @@ import { ref, computed } from 'vue'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { formatDate } from '@/utils/format'
-import { expiryState } from '@/utils/expiry'
+import { expiryState, CA_EXPIRY_WARNING_DAYS } from '@/utils/expiry'
 import { caRotationState, rotateCA, type RotationStep } from '@/utils/nebula'
 import type { NebulaCA } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
@@ -46,8 +46,13 @@ const state = computed(() => caRotationState(props.ca))
  * middle to outlast every host fetching a config nobody told it to fetch. So an
  * approaching expiry is the one thing that makes this panel urgent while
  * nothing is in flight.
+ *
+ * CA_EXPIRY_WARNING_DAYS (90), never the 30-day default. This panel is the
+ * screen the only party who can rotate this CA -- an owner or admin of its own
+ * organization -- actually looks at, so going urgent at 30 days would be going
+ * urgent about a month after the remedy stopped fitting.
  */
-const expiry = computed(() => expiryState(props.ca.expires_at))
+const expiry = computed(() => expiryState(props.ca.expires_at, CA_EXPIRY_WARNING_DAYS))
 const expiringSoon = computed(() => expiry.value === 'expiring' || expiry.value === 'expired')
 
 /** The one step that is legal next, given where the certificates say we are. */

@@ -57,6 +57,17 @@ const certExpiryWindow = 30 * 24 * time.Hour
 //
 // So these are not a tunable and a copy of it. 30 days' notice on a CA is
 // notice that the remedy no longer fits.
+//
+// Mirrored by CA_EXPIRY_WARNING_DAYS in ui/src/utils/expiry.ts, and unlike
+// certExpiryWindow above that mirror is NOT merely about two screens agreeing.
+// A Nebula CA belongs to a TENANT organization and only its owners and admins
+// may rotate one (POST /api/org/nebula-ca/rotate) — the wait in the middle
+// belongs to whoever operates the devices. This window only reaches /api/ready
+// and /metrics, which are the platform OPERATOR's surfaces, and the operator
+// cannot rotate a tenant's CA. So the console is the only warning the party who
+// can act ever sees. It badged CAs at 30 days for a while, which meant the 90
+// went exclusively to whoever could do nothing with it; ui/src/utils/
+// expiry.spec.ts now fails if the two console windows collapse back together.
 const caExpiryWindow = 90 * 24 * time.Hour
 
 // certKind labels one family of certificate. These are the metric's `kind`
