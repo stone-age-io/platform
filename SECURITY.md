@@ -44,10 +44,11 @@ phrased as "the UI lets role X do Y" is a UI bug; a finding phrased as "`curl` a
 role X does Y" is a security bug.
 
 Those rules are plain strings in a JSON file, with no compiler and no type
-checker. `scripts/test-authz.sh` stands up a throwaway server and asserts 175
-authorization behaviours against it, and CI runs it on every pull request. If you
-find a hole, a failing check in that script is the most useful possible bug
-report.
+checker. `scripts/test-authz.sh` stands up a throwaway server and asserts every
+authorization behaviour it covers against it, and CI runs it on every pull
+request. The count lives in `EXPECTED_CHECKS` at the top of the script and is
+deliberately not repeated here, so the two cannot disagree. If you find a hole, a
+failing check in that script is the most useful possible bug report.
 
 **Credentials live in rows, not behind hidden fields.** `nats_users.creds_file`
 and `nebula_hosts.config_yaml` are deliberately readable: the identity that owns

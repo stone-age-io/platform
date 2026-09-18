@@ -88,10 +88,13 @@ routine "bump everything" pass must not drag them along:
   dies before type checking. `vue-tsc` 3.3.10 is the newest there is; 6.0 is the
   ceiling until the Vue tooling catches up.
 
-None of the three has an automated guard. Vitest covers pure logic only (see
-**Testing**), so nothing exercises a rendered map, a theme token or a built
-bundle — `vue-tsc && vite build` stays green while the UI renders wrong. That is
-exactly why these are written down rather than left to be rediscovered.
+The only automated guard is the `Assert the deliberately pinned majors` step in
+`.github/workflows/ci.yml`, which fails the build if any of the four package
+majors moves. That catches the upgrade and nothing else: Vitest covers pure logic
+only (see **Testing**), so nothing exercises a rendered map, a theme token or a
+built bundle — `vue-tsc && vite build` stays green while the UI renders wrong,
+whatever the versions say. That is exactly why these are written down rather than
+left to be rediscovered.
 
 ### Database
 - SQLite (managed by PocketBase, stored in `pb_data/`)

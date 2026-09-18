@@ -52,11 +52,12 @@ jobs:
         working-directory: ui
         run: npm ci
 
-      # Four dependencies in ui/package.json are deliberately held back, and
-      # the reasons are written down at the top of ui/tailwind.config.js and in
-      # CLAUDE.md. Neither has any other guard: there is no frontend test
-      # runner, so `vue-tsc && vite build` stays green while the console renders
-      # wrong. That is exactly why the check is here.
+      # Four packages in ui/package.json are deliberately held back, across the
+      # three pins CLAUDE.md describes (tailwind and daisyui move together). The
+      # reasons are written down at the top of ui/tailwind.config.js and in
+      # CLAUDE.md. This step is their only guard: the frontend test runner below
+      # covers pure logic only, so `vue-tsc && vite build` stays green while the
+      # console renders wrong. That is exactly why the check is here.
       #
       #   Tailwind 3 / daisyUI 4 -> v5 renames the theme CSS variables AND
       #     changes them from bare OKLCH components to complete colors, so all
@@ -92,8 +93,9 @@ jobs:
 
       # Pure-logic unit tests: widget defaults, the capability map, twin drift.
       # No DOM and no component mounting -- all of it is reachable without one,
-      # and  stays green while any of it is wrong, which
-      # is the gap this closes. Runs before the build so a logic regression
+      # and `vue-tsc && vite build` stays green while any of it is wrong, which
+      # is the gap this closes. It does NOT cover rendering: nothing here mounts
+      # a map, a theme or a widget. Runs before the build so a logic regression
       # fails fast rather than after a 16-second bundle.
       - name: Frontend unit tests
         working-directory: ui
