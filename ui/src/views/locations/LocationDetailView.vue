@@ -356,54 +356,54 @@ onUnmounted(() => cleanupMap())
         <!-- Left Column (Metadata & Geo Map) -->
         <div class="lg:col-span-5 flex flex-col gap-6">
           <BaseCard title="Basic Information">
-            <dl class="space-y-4">
-              <!-- First, for the same reason as on a Thing: what the site looks
-                   like on arrival is the fastest confirmation you are in the
-                   right place. Click for the full image -- a 400x400 thumb will
-                   not show which door it is. -->
-              <div>
-                <dt class="text-sm font-medium text-base-content/70">Photo</dt>
-                <dd class="mt-1">
-                  <RecordPhoto
-                    v-if="location.photo"
-                    :record="location"
-                    :filename="location.photo"
-                    thumb="400x400"
-                    :size="160"
-                    zoomable
-                    :alt="`Photo of ${location.name || 'this site'}`"
-                  />
-                  <span v-else class="text-sm text-base-content/40">—</span>
-                </dd>
+            <!-- The photo is a column beside the fields rather than a row above
+                 them; see the note on ThingDetailView for why, and why it is
+                 wrapped rather than given the order class directly. -->
+            <div class="flex flex-col sm:flex-row sm:items-start gap-5">
+              <div v-if="location.photo" class="shrink-0 sm:order-last">
+                <RecordPhoto
+                  :record="location"
+                  :filename="location.photo"
+                  thumb="400x400"
+                  :size="140"
+                  zoomable
+                  :alt="`Photo of ${location.name || 'this site'}`"
+                />
               </div>
-              <div>
-                <dt class="text-sm font-medium text-base-content/70">Description</dt>
-                <dd class="mt-1 text-sm">{{ location.description || '-' }}</dd>
-              </div>
-              <div class="grid grid-cols-2 gap-4">
+
+              <dl class="space-y-4 flex-1 min-w-0">
                 <div>
-                  <dt class="text-sm font-medium text-base-content/70">Code</dt>
-                  <dd class="mt-1">
-                    <code v-if="location.code" class="text-sm bg-base-200 px-2 py-0.5 rounded font-mono">{{ location.code }}</code>
-                    <span v-else class="text-sm text-base-content/40">—</span>
-                  </dd>
+                  <dt class="text-sm font-medium text-base-content/70">Description</dt>
+                  <dd class="mt-1 text-sm">{{ location.description || '-' }}</dd>
                 </div>
-                <div>
-                  <dt class="text-sm font-medium text-base-content/70">Parent</dt>
-                  <dd class="mt-1">
-                    <router-link v-if="location.expand?.parent" :to="`/locations/${location.parent}`" class="link link-primary hover:no-underline flex items-center gap-1">
-                      📍 {{ location.expand.parent.name }}
-                    </router-link>
-                    <span v-else class="text-sm text-base-content/40">Root location</span>
-                  </dd>
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <dt class="text-sm font-medium text-base-content/70">Code</dt>
+                    <dd class="mt-1">
+                      <code v-if="location.code" class="text-sm bg-base-200 px-2 py-0.5 rounded font-mono">{{ location.code }}</code>
+                      <span v-else class="text-sm text-base-content/40">—</span>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt class="text-sm font-medium text-base-content/70">Parent</dt>
+                    <dd class="mt-1">
+                      <router-link v-if="location.expand?.parent" :to="`/locations/${location.parent}`" class="link link-primary hover:no-underline flex items-center gap-1">
+                        📍 {{ location.expand.parent.name }}
+                      </router-link>
+                      <span v-else class="text-sm text-base-content/40">Root location</span>
+                    </dd>
+                  </div>
                 </div>
-              </div>
+              </dl>
+            </div>
+
+            <!-- Full-width below the photo, not sharing the squeezed column;
+                 see the measured note on ThingDetailView. -->
+            <dl class="grid grid-cols-2 gap-4 mt-4">
               <!-- Both timestamps, not only Created. This is the record side of
                    the activity feed: the feed reports an update and the record
                    has to carry something to correlate that against. -->
-              <div class="grid grid-cols-2 gap-4">
-                <RecordTimestamps :created="location.created" :updated="location.updated" />
-              </div>
+              <RecordTimestamps :created="location.created" :updated="location.updated" />
             </dl>
           </BaseCard>
 

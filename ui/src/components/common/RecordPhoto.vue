@@ -134,7 +134,7 @@ useEscapeKey(zoomOpen, () => {
   -->
   <Teleport to="body">
     <dialog v-if="zoomOpen" class="modal modal-open">
-      <div class="modal-box max-w-4xl p-0 bg-base-100 overflow-hidden">
+      <div class="modal-box w-fit max-w-4xl p-0 bg-base-100 overflow-hidden">
         <div class="flex items-center justify-between px-4 py-2 border-b border-base-300">
           <span class="text-sm font-medium truncate">{{ alt || 'Photo' }}</span>
           <button type="button" class="btn btn-sm btn-circle btn-ghost" aria-label="Close" @click="zoomOpen = false">
@@ -142,14 +142,21 @@ useEscapeKey(zoomOpen, () => {
           </button>
         </div>
         <!-- object-contain here, unlike the thumbnail: this is the view where
-             the whole frame matters, so nothing may be cropped out of it. The
-             viewport cap keeps a tall photo from running off the screen. -->
+             the whole frame matters, so nothing may be cropped out of it.
+
+             The height cap is derived from the chrome rather than picked as a
+             fraction. daisyUI caps .modal-box at calc(100vh - 5em) and this box
+             is overflow-hidden, so an image tall enough to push past that is
+             CLIPPED with no way to scroll to the rest. Leaving 10rem covers
+             that 5em plus the title bar with room to spare at every viewport
+             height -- and on a desktop it is also taller than the 75vh it
+             replaces, so the picture gets bigger rather than smaller. -->
         <div class="flex items-center justify-center bg-base-200">
           <img
             v-if="fullUrl"
             :src="fullUrl"
             :alt="alt"
-            class="max-h-[75vh] max-w-full object-contain"
+            class="max-h-[calc(100vh-10rem)] max-w-full object-contain"
           />
           <div v-else class="h-64 flex items-center justify-center">
             <span class="loading loading-spinner loading-md"></span>

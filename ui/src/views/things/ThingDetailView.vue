@@ -276,62 +276,97 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         <div class="space-y-6">
           <BaseCard title="Basic Information">
-            <dl class="space-y-4">
-              <!-- First, because it is the fastest way to confirm you are
-                   looking at the right record -- which is the same job it does
-                   after a label scan. An em-dash when there is none, matching
-                   every other empty field in this card rather than leaving a
-                   large blank plate. -->
-              <div>
-                <dt class="text-sm font-medium text-base-content/70">Photo</dt>
-                <dd class="mt-1">
-                  <RecordPhoto
-                    v-if="thing.photo"
-                    :record="thing"
-                    :filename="thing.photo"
-                    thumb="400x400"
-                    :size="160"
-                    zoomable
-                    :alt="`Photo of ${thing.name || 'this thing'}`"
-                  />
-                  <span v-else class="text-sm text-base-content/40">—</span>
-                </dd>
+            <!--
+              The photo is a COLUMN BESIDE the fields, not a row above them.
+
+              It shipped first as a full-width `Photo` entry at the top of this
+              list, which left a 160px band of empty card to its right and
+              pushed every field below it down for no gain. Beside them it
+              fills that gutter instead and the card is roughly half as tall.
+              Dropping the `Photo` label costs nothing -- it was only telling
+              the reader that a photograph is a photograph.
+
+              It stacks ABOVE the fields on a phone (DOM order, plus
+              sm:order-last to move it right once there is room), because a
+              narrow screen has no gutter to fill and the photo is the fastest
+              confirmation you are on the right record.
+
+              Wrapped in a div rather than given the order class directly:
+              RecordPhoto has a fragment root -- the plate and its Teleported
+              dialog -- so class fallthrough does not apply to it.
+
+              With no photo the list simply takes the full width. That is
+              better than the em-dash the labelled version had to render, since
+              there is no longer a field sitting empty.
+            -->
+            <div class="flex flex-col sm:flex-row sm:items-start gap-5">
+              <div v-if="thing.photo" class="shrink-0 sm:order-last">
+                <RecordPhoto
+                  :record="thing"
+                  :filename="thing.photo"
+                  thumb="400x400"
+                  :size="140"
+                  zoomable
+                  :alt="`Photo of ${thing.name || 'this thing'}`"
+                />
               </div>
-              <div>
-                <dt class="text-sm font-medium text-base-content/70">Description</dt>
-                <dd class="mt-1 text-sm">{{ thing.description || '-' }}</dd>
-              </div>
-              <div class="grid grid-cols-2 gap-4">
+
+              <dl class="space-y-4 flex-1 min-w-0">
                 <div>
-                  <dt class="text-sm font-medium text-base-content/70">Type</dt>
-                  <dd class="mt-1">
-                    <span v-if="thing.expand?.type" class="badge badge-neutral">{{ thing.expand.type.name }}</span>
-                    <span v-else class="text-sm text-base-content/40">—</span>
-                  </dd>
+                  <dt class="text-sm font-medium text-base-content/70">Description</dt>
+                  <dd class="mt-1 text-sm">{{ thing.description || '-' }}</dd>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <dt class="text-sm font-medium text-base-content/70">Type</dt>
+                    <dd class="mt-1">
+                      <span v-if="thing.expand?.type" class="badge badge-neutral">{{ thing.expand.type.name }}</span>
+                      <span v-else class="text-sm text-base-content/40">—</span>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt class="text-sm font-medium text-base-content/70">Code</dt>
+                    <dd class="mt-1">
+                      <code v-if="thing.code" class="text-sm bg-base-200 px-2 py-0.5 rounded font-mono">{{ thing.code }}</code>
+                      <span v-else class="text-sm text-base-content/40">—</span>
+                    </dd>
+                  </div>
                 </div>
                 <div>
-                  <dt class="text-sm font-medium text-base-content/70">Code</dt>
+                  <dt class="text-sm font-medium text-base-content/70">Location</dt>
                   <dd class="mt-1">
-                    <code v-if="thing.code" class="text-sm bg-base-200 px-2 py-0.5 rounded font-mono">{{ thing.code }}</code>
-                    <span v-else class="text-sm text-base-content/40">—</span>
+                    <router-link v-if="thing.expand?.location" :to="`/locations/${thing.location}`" class="link link-primary hover:no-underline flex items-center gap-1">
+                      📍 {{ thing.expand.location.name }}
+                    </router-link>
+                    <span v-else class="text-sm text-base-content/40">No location assigned</span>
                   </dd>
                 </div>
-              </div>
-              <div>
-                <dt class="text-sm font-medium text-base-content/70">Location</dt>
-                <dd class="mt-1">
-                  <router-link v-if="thing.expand?.location" :to="`/locations/${thing.location}`" class="link link-primary hover:no-underline flex items-center gap-1">
-                    📍 {{ thing.expand.location.name }}
-                  </router-link>
-                  <span v-else class="text-sm text-base-content/40">No location assigned</span>
-                </dd>
-              </div>
+              </dl>
+            </div>
+
+            <!--
+              Timestamps span the FULL card, below the photo, rather than
+              sharing the squeezed column with the fields above.
+
+              Measured, not guessed: this card sits in the page's two-column
+              grid, so a NARROWER viewport gives it a NARROWER body. With the
+              photo taking 140px beside them, the two timestamp columns came to
+              108px each at a 1440px viewport -- "Sep 19, 2026 6:40:11 PM"
+              needs about 125px, so both columns wrapped to three lines on one
+              of the commonest laptop widths. Below the photo they get the full
+              body width and stop wrapping, and the card is still far shorter
+              than the stacked version this replaced.
+
+              A second <dl> rather than one list split across two containers:
+              each is a complete description list, which is what the element is
+              for, and RecordTimestamps needs a <dl> parent to emit its dt/dd
+              pairs into.
+            -->
+            <dl class="grid grid-cols-2 gap-4 mt-4">
               <!-- Both timestamps, not only Created. This is the record side of
                    the activity feed: the feed reports an update and the record
                    has to carry something to correlate that against. -->
-              <div class="grid grid-cols-2 gap-4">
-                <RecordTimestamps :created="thing.created" :updated="thing.updated" />
-              </div>
+              <RecordTimestamps :created="thing.created" :updated="thing.updated" />
             </dl>
           </BaseCard>
 
