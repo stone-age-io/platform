@@ -5,7 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useUIStore } from '@/stores/ui'
 import { useLeafletMap, type MapMarkerInput } from '@/composables/useLeafletMap'
 import type { Location } from '@/types/pocketbase'
-import LocationMapDrawer from '@/components/locations/LocationMapDrawer.vue'
+import LocationMapDrawer, { type SiteDescendant } from '@/components/locations/LocationMapDrawer.vue'
 
 const props = withDefaults(defineProps<{ searchQuery?: string }>(), {
   searchQuery: ''
@@ -17,60 +17,181 @@ const { initMap, renderMarkers, setSelectedMarker, updateTheme, fitAllMarkers, i
 
 const loading = ref(true)
 const locations = ref<Location[]>([])
-const selectedLocation = ref<Location | null>(null)
+const selectedLocations = ref<Location[]>([])
 const isMobile = ref(false)
 const mapContainerId = 'location-list-map-container'
 
-const filteredLocations = computed(() => {
-  const q = props.searchQuery.toLowerCase().trim()
-  if (!q) return locations.value
-  return locations.value.filter(l => {
-    const nameMatch = l.name?.toLowerCase().includes(q)
-    const codeMatch = l.code?.toLowerCase().includes(q)
-    const descMatch = l.description?.toLowerCase().includes(q)
-    const typeMatch = l.expand?.type?.name?.toLowerCase().includes(q)
-    const parentMatch = (l.expand?.parent as Location)?.name?.toLowerCase().includes(q)
-    return nameMatch || codeMatch || descMatch || typeMatch || parentMatch
-  })
+function isMapped(l: Location): boolean {
+  const c = l.coordinates
+  return !!c && (c.lat !== 0 || c.lon !== 0)
+}
+
+const byId = computed(() => new Map(locations.value.map(l => [l.id, l])))
+
+const childrenByParent = computed(() => {
+  const map = new Map<string, Location[]>()
+  for (const l of locations.value) {
+    if (!l.parent) continue
+    const siblings = map.get(l.parent)
+    if (siblings) siblings.push(l)
+    else map.set(l.parent, [l])
+  }
+  for (const siblings of map.values()) {
+    siblings.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+  }
+  return map
 })
+
+/**
+ * The pin a location belongs to: its OUTERMOST mapped ancestor, or itself when
+ * nothing above it has coordinates.
+ *
+ * This is the whole change. A campus, its buildings, their floors and their
+ * rooms all carry coordinates within a few metres of each other, so one pin per
+ * record is a pile at every address -- and "Room 302" is not a fact at map
+ * scale anyway. Interior geography is what `floorplan` and `floorplan_position`
+ * are for.
+ *
+ * Outermost rather than "no parent", because whether the root is mapped is a
+ * tenant modelling choice we do not control. Put coordinates on the buildings
+ * and not on the campus and a roots-only rule shows an empty map with no
+ * explanation; this rule promotes the buildings instead. Intermediate ancestors
+ * without coordinates are walked THROUGH, not stopped at, so a room under an
+ * unmapped floor still folds onto its building.
+ */
+function siteIdFor(l: Location): string | null {
+  let outermost: string | null = isMapped(l) ? l.id : null
+  const seen = new Set<string>([l.id])
+  let p = l.parent ? byId.value.get(l.parent) : undefined
+  // The form refuses to re-parent a location under its own descendant, but a
+  // cycle reaching this computed would hang the tab rather than misdraw a pin.
+  while (p && !seen.has(p.id)) {
+    seen.add(p.id)
+    if (isMapped(p)) outermost = p.id
+    p = p.parent ? byId.value.get(p.parent) : undefined
+  }
+  return outermost
+}
+
+/** Every location the map could draw, folded or not. */
+const mappedLocations = computed(() => locations.value.filter(isMapped))
+
+/** One marker each when idle: the locations that are their own site. */
+const sites = computed(() =>
+  mappedLocations.value.filter(l => siteIdFor(l) === l.id)
+)
+
+function subtreeOf(rootId: string): SiteDescendant[] {
+  const out: SiteDescendant[] = []
+  const seen = new Set<string>([rootId])
+  const walk = (id: string, depth: number) => {
+    for (const child of childrenByParent.value.get(id) ?? []) {
+      if (seen.has(child.id)) continue
+      seen.add(child.id)
+      out.push({ location: child, depth })
+      walk(child.id, depth + 1)
+    }
+  }
+  walk(rootId, 0)
+  return out
+}
+
+const foldedCount = computed(() =>
+  sites.value.reduce((n, s) => n + subtreeOf(s.id).length, 0)
+)
+
+function matchesQuery(l: Location, q: string): boolean {
+  const nameMatch = l.name?.toLowerCase().includes(q)
+  const codeMatch = l.code?.toLowerCase().includes(q)
+  const descMatch = l.description?.toLowerCase().includes(q)
+  const typeMatch = l.expand?.type?.name?.toLowerCase().includes(q)
+  const parentMatch = (l.expand?.parent as Location | undefined)?.name?.toLowerCase().includes(q)
+  return !!(nameMatch || codeMatch || descMatch || typeMatch || parentMatch)
+}
+
+/**
+ * Sites when idle; every matching mapped location when searching.
+ *
+ * The flatten mirrors the list view, which shows roots only until you type and
+ * then searches the whole tree -- and the two share one search box on one
+ * screen, so a map that folded while the list flattened would put two
+ * disagreeing counts side by side. The stacking that reintroduces is exactly
+ * what the clustering below is for.
+ */
+const markerLocations = computed(() => {
+  const q = props.searchQuery.toLowerCase().trim()
+  if (!q) return sites.value
+  return mappedLocations.value.filter(l => matchesQuery(l, q))
+})
+
+const isSearching = computed(() => props.searchQuery.trim().length > 0)
+
+const markersForMap = computed<MapMarkerInput[]>(() =>
+  markerLocations.value.map(l => {
+    // The folded count belongs on the tooltip only when the pin actually covers
+    // those records. While searching it does not -- a matching sub-location is
+    // its own pin -- so the number would be a claim about the map that is false.
+    const folded = isSearching.value ? 0 : subtreeOf(l.id).length
+    return {
+      id: l.id,
+      lat: l.coordinates!.lat,
+      lon: l.coordinates!.lon,
+      label: folded > 0 ? `${l.name} (${folded})` : l.name,
+    }
+  })
+)
+
+/** The subtree for the drawer's single-selection mode. */
+const selectedDescendants = computed<SiteDescendant[]>(() =>
+  selectedLocations.value.length === 1 ? subtreeOf(selectedLocations.value[0].id) : []
+)
 
 function checkMobile() {
   isMobile.value = window.innerWidth < 768
 }
 
 function handleMarkerClick(id: string) {
-  if (selectedLocation.value?.id === id) {
+  if (selectedLocations.value.length === 1 && selectedLocations.value[0].id === id) {
     closeDrawer()
     return
   }
-  const loc = locations.value.find(l => l.id === id)
+  const loc = byId.value.get(id)
   if (!loc) return
-  selectedLocation.value = loc
+  selectedLocations.value = [loc]
   setSelectedMarker(id)
   if (!isMobile.value) nextTick(() => invalidateSize())
 }
 
-function toMarkers(locs: Location[]): MapMarkerInput[] {
-  return locs
-    .filter(l => l.coordinates && (l.coordinates.lat !== 0 || l.coordinates.lon !== 0))
-    .map(l => ({
-      id: l.id,
-      lat: l.coordinates!.lat,
-      lon: l.coordinates!.lon,
-      label: l.name,
-    }))
+function handleClusterClick(ids: string[]) {
+  const matched = ids
+    .map(id => byId.value.get(id))
+    .filter((l): l is Location => !!l)
+  if (matched.length === 0) {
+    closeDrawer()
+    return
+  }
+  selectedLocations.value = matched
+  setSelectedMarker(null)
+  if (!isMobile.value) nextTick(() => invalidateSize())
+}
+
+function handleSelectFromList(locationId: string) {
+  const loc = byId.value.get(locationId)
+  if (!loc) return
+  selectedLocations.value = [loc]
+  setSelectedMarker(locationId)
 }
 
 function handleMapClick(event: MouseEvent) {
   if (isMobile.value) return
-  if (!selectedLocation.value) return
+  if (selectedLocations.value.length === 0) return
   const target = event.target as HTMLElement
   if (target.closest('.leaflet-marker-icon') || target.closest('.location-map-drawer')) return
   closeDrawer()
 }
 
 function closeDrawer() {
-  selectedLocation.value = null
+  selectedLocations.value = []
   setSelectedMarker(null)
   if (!isMobile.value) nextTick(() => invalidateSize())
 }
@@ -80,18 +201,13 @@ async function loadData() {
 
   loading.value = true
   try {
-    const result = await pb.collection('locations').getFullList<Location>({
-      filter: 'coordinates != ""',
+    // Every location, not just the mapped ones. Folding needs the full ancestor
+    // chain -- an unmapped floor between a mapped room and its mapped building
+    // has to be walked through -- and the drawer's subtree needs the unmapped
+    // rooms, which are real places whether or not anyone gave them a latitude.
+    locations.value = await pb.collection('locations').getFullList<Location>({
       expand: 'type,parent',
     })
-
-    locations.value = result.filter(l => {
-      const lat = l.coordinates?.lat ?? 0
-      const lon = l.coordinates?.lon ?? 0
-      return lat !== 0 || lon !== 0
-    })
-
-    renderMarkers(toMarkers(filteredLocations.value), handleMarkerClick, { fitBounds: true })
   } catch (err) {
     console.error('Failed to load map data:', err)
   } finally {
@@ -105,10 +221,15 @@ watch(() => authStore.currentOrgId, () => {
   loadData()
 })
 
-watch(filteredLocations, (next) => {
-  renderMarkers(toMarkers(next), handleMarkerClick, { fitBounds: true })
-  if (selectedLocation.value && !next.some(l => l.id === selectedLocation.value!.id)) {
+watch(markersForMap, (next) => {
+  renderMarkers(next, handleMarkerClick, { fitBounds: true })
+  if (selectedLocations.value.length === 0) return
+  const visibleIds = new Set(next.map(m => m.id))
+  const stillVisible = selectedLocations.value.filter(l => visibleIds.has(l.id))
+  if (stillVisible.length === 0) {
     closeDrawer()
+  } else if (stillVisible.length !== selectedLocations.value.length) {
+    selectedLocations.value = stillVisible
   }
 })
 
@@ -119,13 +240,18 @@ onMounted(async () => {
   // inventory, so awaiting loadData() first put a getFullList round trip (plus
   // two relation expansions) in front of MapLibre's own chain -- style, then
   // TileJSON, then glyphs and sprite, then tiles -- and the map sat as a flat
-  // sheet of theme colour for all of it. loadData() renders the markers itself
-  // once the map exists.
+  // sheet of theme colour for all of it.
+  //
+  // onClusterClick both enables clustering and takes over the click: folding
+  // handles pins stacked by hierarchy, and this handles pins stacked by
+  // geography -- adjacent sites that no amount of folding will separate.
   initMap(mapContainerId, {
     isDarkMode: uiStore.theme === 'dark',
+    onClusterClick: handleClusterClick,
     zoomControlPosition: 'bottomleft',
   })
   await loadData()
+  renderMarkers(markersForMap.value, handleMarkerClick, { fitBounds: true })
 })
 
 onUnmounted(() => {
@@ -139,21 +265,32 @@ onUnmounted(() => {
 
     <!-- Stats Overlay (Top Left) -->
     <div class="absolute top-4 left-4 z-[400]">
+      <!-- Two counts, because one pin is no longer one location. Saying only
+           "12 mapped" over a folded map would quietly redefine what the number
+           counts; naming the folded records keeps the badge honest about what
+           is on screen and what is behind it. -->
       <div class="badge badge-lg bg-base-100/90 backdrop-blur border-base-300 shadow-sm gap-2">
         <span>📍</span>
-        <span class="font-bold">{{ filteredLocations.length }}</span>
-        <span v-if="props.searchQuery && filteredLocations.length !== locations.length" class="text-xs text-base-content/70">of {{ locations.length }} mapped</span>
-        <span v-else class="text-xs text-base-content/70">mapped</span>
+        <template v-if="isSearching">
+          <span class="font-bold">{{ markerLocations.length }}</span>
+          <span class="text-xs text-base-content/70">of {{ mappedLocations.length }} matched</span>
+        </template>
+        <template v-else>
+          <span class="font-bold">{{ sites.length }}</span>
+          <span class="text-xs text-base-content/70">
+            {{ sites.length === 1 ? 'site' : 'sites' }}<template v-if="foldedCount > 0"> &middot; {{ foldedCount }} sub-locations</template>
+          </span>
+        </template>
       </div>
     </div>
 
     <!-- Map Controls (Top Right) -->
-    <div v-if="filteredLocations.length > 0" class="absolute top-[10px] right-[10px] z-[400] flex flex-col gap-2">
+    <div v-if="markerLocations.length > 0" class="absolute top-[10px] right-[10px] z-[400] flex flex-col gap-2">
       <button
         class="btn btn-sm btn-square bg-base-100 border-base-300 shadow-sm hover:bg-base-200"
         @click="fitAllMarkers()"
-        title="Fit all locations"
-        aria-label="Fit all locations in view"
+        :title="isSearching ? 'Fit all matches' : 'Fit all sites'"
+        :aria-label="isSearching ? 'Fit all matches in view' : 'Fit all sites in view'"
       >
         <span class="text-lg leading-none pb-1">⊡</span>
       </button>
@@ -168,7 +305,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Empty State: no mapped locations at all -->
-    <div v-if="!loading && locations.length === 0" class="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+    <div v-if="!loading && mappedLocations.length === 0" class="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
       <div class="bg-base-100 p-6 rounded-lg shadow-xl text-center border border-base-200 pointer-events-auto max-w-sm">
         <span class="text-4xl">🗺️</span>
         <h3 class="font-bold text-lg mt-2">No Mapped Locations</h3>
@@ -179,7 +316,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Empty State: search has no matches -->
-    <div v-else-if="!loading && filteredLocations.length === 0 && props.searchQuery" class="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+    <div v-else-if="!loading && markerLocations.length === 0 && isSearching" class="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
       <div class="bg-base-100 p-6 rounded-lg shadow-xl text-center border border-base-200 pointer-events-auto max-w-sm">
         <span class="text-4xl">🔍</span>
         <h3 class="font-bold text-lg mt-2">No matching locations</h3>
@@ -189,13 +326,15 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Location Drawer -->
+    <!-- Location Drawer (adapts: site list when a cluster, detail when one) -->
     <LocationMapDrawer
-      v-if="selectedLocation"
-      :location="selectedLocation"
+      v-if="selectedLocations.length > 0"
+      :locations="selectedLocations"
+      :descendants="selectedDescendants"
       :is-mobile="isMobile"
       class="location-map-drawer"
       @close="closeDrawer"
+      @select="handleSelectFromList"
     />
   </div>
 </template>
@@ -209,7 +348,8 @@ onUnmounted(() => {
 :deep(.marker-selected) {
   filter: hue-rotate(180deg) saturate(1.5) drop-shadow(0 0 8px rgba(116, 128, 255, 0.8));
 }
-/* Cluster marker theme-aware overrides (three shades of primary) */
+/* Cluster marker theme-aware overrides (three shades of primary). These shipped
+   before clustering was ever switched on here and were inert until now. */
 :deep(.marker-cluster) { background-color: oklch(var(--p) / 0.25); }
 :deep(.marker-cluster div) { background-color: oklch(var(--p) / 0.7); color: oklch(var(--pc)); font-weight: 600; }
 :deep(.marker-cluster-medium div) { background-color: oklch(var(--p) / 0.85); }
