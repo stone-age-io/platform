@@ -11,6 +11,19 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-19
+
+**A tenant can finally see who changed what.** `activity` is a new org-scoped
+feed at `/activity` — actor, action, record, timestamp — readable by every role
+in an organization. It is not the audit log, and the difference is the point:
+`audit_logs` stays operator-only and carries full record snapshots, while this
+carries none at all.
+
+**It also fixes a regression that made 0.7.0 uninstallable from scratch.**
+`bootstrap` died partway through on a fresh database. Existing deployments were
+never affected — but if you tried 0.7.0 as a first install, this is the release
+that works. See **Fixed**.
+
 ### Fixed
 
 - **`bootstrap` could not complete on a fresh 0.7.0 install.** Tightening
@@ -2040,7 +2053,8 @@ repository public. Each of these was reproduced before being fixed.
 - `scripts/test-authz.sh` grew from 135 to 147 checks, covering the membership
   lifecycle, the code uniqueness constraint, and the frozen leaf-node code.
 
-[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/stone-age-io/platform/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/stone-age-io/platform/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/stone-age-io/platform/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/stone-age-io/platform/compare/v0.5.0...v0.5.1
