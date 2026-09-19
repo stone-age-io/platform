@@ -68,14 +68,21 @@ die() { echo "FATAL: $*" >&2; exit 1; }
 # ---------------------------------------------------------------- test harness
 
 # j <json> <key> -> top-level value ('' if absent)
+#
+# String(v) is load-bearing. console.log hands a non-string to util.inspect,
+# which COLOURS numbers and booleans -- so `j` returned a value wrapped in ANSI
+# escapes and every comparison against a count or a boolean silently stopped
+# matching. It cost 17 of the 194 checks, and it depends on the Node build and
+# the environment rather than on anything in this repo, so CI stayed green while
+# a local run failed. assert_json_plain below is the canary.
 j() {
-  node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const v=JSON.parse(s)['$2'];console.log(v===undefined||v===null?'':v)}catch(e){console.log('')}})" <<<"$1"
+  node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const v=JSON.parse(s)['$2'];console.log(v===undefined||v===null?'':String(v))}catch(e){console.log('')}})" <<<"$1"
 }
 
 # jn <json> <js-expr> -> expression evaluated against the parsed body as `o`
 # e.g. jn "$RBODY" 'o.items[0].id'
 jn() {
-  node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const o=JSON.parse(s);const v=($2);console.log(v===undefined||v===null?'':v)}catch(e){console.log('')}})" <<<"$1"
+  node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const o=JSON.parse(s);const v=($2);console.log(v===undefined||v===null?'':String(v))}catch(e){console.log('')}})" <<<"$1"
 }
 
 # expect <label> <expected-http, |-separated> <actual-http> <body>
@@ -110,6 +117,27 @@ req() {
 for tool in go curl node; do
   command -v "$tool" >/dev/null 2>&1 || die "$tool is required but not on PATH"
 done
+
+# The canary for the j/jn helpers. They are the only JSON parser in this script,
+# so a helper that corrupts its output does not fail loudly -- it degrades a
+# comparison into a mismatch, and the check reports whatever its else branch
+# says. That has happened: console.log colours numbers and booleans, so every
+# count and every flag came back wrapped in ANSI escapes and 17 checks went red
+# for no reason while one went green for no reason.
+#
+# This runs BEFORE the counted checks and dies rather than incrementing FAIL,
+# because a broken parser invalidates the run rather than failing one assertion.
+assert_json_plain() {
+  local got want
+  for pair in 'n|4|{"n":4}' 'b|true|{"b":true}' 's|hi|{"s":"hi"}'; do
+    IFS='|' read -r key want body <<<"$pair"
+    got=$(j "$body" "$key")
+    [ "$got" = "$want" ] || die "the j() helper mangled $body -- got $(printf %q "$got"), want $(printf %q "$want"). Comparisons in this script cannot be trusted; see the note above j()."
+  done
+  got=$(jn '{"items":[1,2]}' 'o.items.length')
+  [ "$got" = "2" ] || die "the jn() helper mangled a length -- got $(printf %q "$got"), want 2."
+}
+assert_json_plain
 
 if curl -s -o /dev/null -m 2 "$API/health"; then
   die "something is already listening on port $PORT. Re-run with PORT=<free port>."
@@ -239,10 +267,16 @@ echo "=== 1. is_operator freeze (THE critical hole) ==="
 req PATCH "/collections/users/records/$BOB" "$TB" '{"is_operator":true}'
 expect "member cannot self-grant is_operator" "403|400|404" "$RCODE" "$RBODY"
 req GET "/collections/users/records/$BOB" "$TB"
-if [ "$(j "$RBODY" is_operator)" = "true" ]; then
-  no "is_operator actually got set!"
-else
+# Assert the SAFE value, never the unsafe one. `j` returns an empty string for
+# an absent field, an unparseable body or a request that failed outright, so
+# `!= "true"` passes on every one of those without the record having been read
+# at all. This was the only inverted check in the file and it was therefore the
+# only one the ANSI bug turned into a silent PASS instead of a noisy FAIL -- on
+# the section this script calls THE critical hole.
+if [ "$(j "$RBODY" is_operator)" = "false" ]; then
   ok "is_operator still false after the attempt"
+else
+  no "is_operator got set, or the record could not be read back to prove it did not"
 fi
 req PATCH "/collections/users/records/$BOB" "$TB" '{"name":"Bob Renamed"}'
 expect "normal profile update still works" 200 "$RCODE" "$RBODY"
