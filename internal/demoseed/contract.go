@@ -639,9 +639,24 @@ var roleTemplates = []roleFixture{
 	//
 	// The lists are subtree-coarse throughout (`telemetry.>`, not one subject per
 	// device), so a role grants a KIND of participation rather than an identity's
-	// exact contract. Narrowing per thing is a per-user `publish_permissions`
-	// edit, which is owner/admin-only precisely because it is equivalent to
-	// granting NATS permissions.
+	// exact contract.
+	//
+	// **A per-user edit cannot narrow one of these roles.** pb-nats UNIONS the
+	// role's lists with the user's own (`applyPermissions` in
+	// internal/jwt/generator.go) for allow and deny alike, so adding
+	// `telemetry.dev-1.>` to a device already holding `telemetry.>` changes
+	// nothing, and a deny cannot subtract "every device except this one" --
+	// NATS evaluates allow then deny with no specificity ranking, `*` matches a
+	// WHOLE token, and there is no negation. Narrowing is possible, but it is a
+	// property of the role: a role carrying only the shared parts (limits,
+	// response permission, JetStream access) unions with a per-user allow list
+	// to exactly that identity's subtree. None of the roles below are built
+	// that way, and doing so needs a subject grammar from which
+	// `<kind>.<code>` is derivable at provisioning time, which the free-text
+	// `subject_prefix` on a thing type does not give.
+	//
+	// Either way the per-user fields are owner/admin-only, precisely because
+	// writing them is equivalent to granting NATS permissions.
 	{Name: "device", IsDefault: true,
 		Description:      "A field device: publishes its own telemetry and status, listens for commands addressed to it.",
 		Publish:          []string{"telemetry.>", "event.>", "asset.>", "line.>", "turbine.>", "status.>", "acc.>", "_INBOX.>"},

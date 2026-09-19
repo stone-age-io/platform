@@ -1,12 +1,28 @@
-// Subject template resolver — TS mirror of internal/subjectresolver/resolver.go.
-// Keep the reserved variable set and behavior in sync with the Go package.
+// Subject template resolver. There is no Go counterpart — this file is the only
+// implementation. (It claimed to mirror internal/subjectresolver/resolver.go for
+// as long as it existed; that package has never been written, so "keep the two in
+// sync" was an instruction nobody could follow.) The contract it implements is
+// documented in platform-docs: docs/thing-types.md and docs/connectivity.md.
 
 export const VAR_ORG = '{org}'
 export const VAR_LOCATION = '{location}'
 export const VAR_THING = '{thing}'
 export const VAR_THING_TYPE_CODE = '{thing_type_code}'
 
-export const DEFAULT_PREFIX = `${VAR_LOCATION}.${VAR_THING_TYPE_CODE}.${VAR_THING}`
+// Family-first, and the order is load-bearing in two ways.
+//
+// The documented default has always been `{thing_type_code}.{location}.{thing}`
+// (docs/thing-types.md, docs/connectivity.md) so that ONE JetStream stream can
+// bind `sensor.>` and capture every sensor across every site. This constant said
+// `{location}` first and disagreed with both pages.
+//
+// It also has to lead with a literal token, because resolveRolePattern() below
+// substitutes `{location}` with `*` whenever no location is supplied. Leading
+// with `{location}` therefore yields patterns like `*.sensor.*`, and a
+// wildcard-leading subject filter intersects every literal-rooted one — JetStream
+// refuses to create two streams whose filters overlap, so no two thing types
+// could ever own a stream apiece.
+export const DEFAULT_PREFIX = `${VAR_THING_TYPE_CODE}.${VAR_LOCATION}.${VAR_THING}`
 
 export interface ThingContext {
   org?: string
