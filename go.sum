@@ -104,8 +104,8 @@ github.com/rogpeppe/go-internal v1.11.0/go.mod h1:ddIwULY96R17DhadqLgMfk9H9tvdUz
 github.com/russross/blackfriday/v2 v2.1.0/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=
 github.com/sagikazarmark/locafero v0.12.0 h1:/NQhBAkUb4+fH1jivKHWusDYFjMOOKU88eegjfxfHb4=
 github.com/sagikazarmark/locafero v0.12.0/go.mod h1:sZh36u/YSZ918v0Io+U9ogLYQJ9tLLBmM4eneO6WwsI=
-github.com/skeeeon/pb-audit v0.2.0 h1:XZ8VuXKasJZ7LCje34DDrgcSMw5rxwSvtiOW58FLJco=
-github.com/skeeeon/pb-audit v0.2.0/go.mod h1:SxFiaL6i8asVlgpdZ9LQ2SXgQrS7FjcV4Q9/11XbFvg=
+github.com/skeeeon/pb-audit v0.2.1 h1:xtKLvSSJGANbXCHijpo+f/GfYmLtgWGgqzmQVMcWCNU=
+github.com/skeeeon/pb-audit v0.2.1/go.mod h1:SxFiaL6i8asVlgpdZ9LQ2SXgQrS7FjcV4Q9/11XbFvg=
 github.com/skeeeon/pb-nats v0.2.1 h1:DtiD/BhdP4Z6itzg0L7LD7U39F4YpI6KVcZZcVtjac8=
 github.com/skeeeon/pb-nats v0.2.1/go.mod h1:3HWYpwr/Rq+aoILi5ywiQ5e1r7e7Pxu9zvJv+++Z0xM=
 github.com/skeeeon/pb-nebula v0.3.2 h1:Us9PfMvVamJVqAxnXoDpB9CDE26AmyVc4rUSmS6I1Ms=

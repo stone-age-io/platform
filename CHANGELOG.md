@@ -11,6 +11,131 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-19
+
+**`audit_logs` was holding every credential this platform ever minted, in
+plaintext.** Not a suspicion — creating one NATS identity wrote the full
+`.creds` file, NKEY seed included, into two audit rows. This release closes
+that, and the fix needs one manual step on any existing deployment (see
+**Upgrading**).
+
+The cause is two correct decisions meeting. pb-audit snapshotted
+`Record.PublicExport()` into `before_changes`/`after_changes` — every field a
+collection does not mark `hidden` — and this platform deliberately does not
+hide `nats_users.creds_file` or `nebula_hosts.config_yaml`, because the
+identity that owns them has to read them back, and **row scoping** is what
+decides who sees which row. That reasoning is right for `nats_users`. It does
+not transfer to `audit_logs`, which has no row scoping at all: one flat
+collection holding a copy of every record. So a value protected by scoping was
+not protected once it landed there — outside at-rest encryption, which covers
+the `seed`/`private_key` columns rather than the credential files derived from
+them, and never expiring, retention being off by default. It also outlived
+rotation: the credential replaced *because* it leaked stayed in
+`before_changes`.
+
+Audit rows now record **`changed_fields`** — the names of the fields that
+moved — and keep full values only for the eleven collections whose diffs a
+human actually reads. "user X updated nats_users/abc123, fields: [creds_file,
+jwt]" answers who, what and when without being the credential.
+
+Also here: a cross-tenant relation could be created by moving a record's
+`organization` rather than its relations, and a failure to provision an
+organization's NATS account or Nebula CA was reported to nobody.
+
+### Upgrading
+
+**Existing audit rows still hold the credentials.** The migration adds the new
+column and changes what is written from here on; it deliberately does not
+delete anything. That is the audit trail, and clearing it is a decision with a
+backup attached rather than something that should happen silently on deploy.
+
+Either set `audit.retention` in `config.yaml` and let the rows age out, or,
+once you have a backup and have decided the trail can lose those values:
+
+```sql
+UPDATE audit_logs SET before_changes = NULL, after_changes = NULL
+ WHERE collection_name IN ('nats_users','nebula_hosts','nats_accounts',
+                           'nebula_ca','invites');
+```
+
+Rotating afterwards is worth considering for anything in there. The NATS side
+is cheap and central (`regenerate`, and the account JWT's revocation cutoff is
+permanent). The Nebula side is not: there is no CRL, so an old `config_yaml`
+holds a live host key until its certificate expires or its fingerprint reaches
+every peer's `pki.blocklist`.
+
+One behaviour change worth knowing before deploy: **creating an organization
+now fails loudly if its NATS account or Nebula CA cannot be provisioned**,
+where it previously returned success. If your deployment has been quietly
+producing half-provisioned organizations, this is where you find out.
+
+### Security
+
+- **Audit snapshots no longer carry credentials.** As above. The collections
+  that keep full values are listed in `auditSnapshotCollections` (`main.go`)
+  and guarded by `audit_snapshots_test.go`, which reads `schema.json` and fails
+  if a listed collection has an unhidden credential-bearing field — adding
+  `nats_users` to that list would restore the archive in one line, with no
+  visible symptom, so the guard is a test rather than a comment.
+
+  `nats_roles` **is** on the list, deliberately: it holds the
+  publish/subscribe permission templates, so its diff records someone changing
+  what an identity may do on the bus, and it carries no secret.
+
+- **A record could take its relations into another tenant.**
+  `hooks/relation_tenancy.go` refuses a relation pointing into another
+  organization's records, and skipped ids that had not changed on the grounds
+  that they were checked once. That premise fails when the record's *own*
+  `organization` moves: everything it keeps was checked against the
+  organization it used to have. A `nats_users` row could be moved from org A to
+  org B while keeping org A's `account_id`, and pb-nats signs the user JWT with
+  whatever `account_id` names.
+
+  Not reachable through the record API — every org-scoped update rule freezes
+  `organization` — and reachable through exactly the two paths that guard binds
+  model hooks to cover: a superuser editing in the PocketBase dashboard, and a
+  route writing with `app.Save()`.
+
+### Fixed
+
+- **Organization provisioning failed silently.** A missing collection was
+  skipped by an `if err == nil` with no else, and a failed save was a log line.
+  Creating an organization whose NATS account could not be written returned
+  success, and what you got was a tenant that can never issue a device
+  credential — first noticed as a device that cannot connect, later, for no
+  stated reason.
+
+  Failures now reach the caller. The work still runs before `e.Next()` and only
+  the error is deferred until after it: returning early would skip the handlers
+  bound later and cost the owner their membership row, which is worse than the
+  bug. Provisioning is also create-if-missing and bound to update as well as
+  create, so **re-saving the organization retries it** — an error with no
+  remedy is not a fix.
+
+### Changed
+
+- **pb-audit v0.1.0 → v0.2.1.** Adds `changed_fields`, makes value snapshots
+  opt-in per collection, gives `update` success events a real before state (so
+  a programmatic `app.Save()` produces a diff rather than only confirming a
+  commit), and creates the audit collection with nil API rules instead of
+  `@request.auth.type = 'admin'` — PocketBase v0.22 syntax that predates
+  `_superusers`. That last one does not affect this platform, which defines
+  `audit_logs` in its own `schema.json`.
+
+- `audit_logs` gains a `changed_fields` column
+  (`schema_update_audit_changed_fields.go`). Auth events do not carry one:
+  there is no before state to compare.
+
+- The "has `schema.json` been imported" check is now one list and one walk
+  (`hooks/schema_fields.go`), shared by `bootstrap` and the `schema` readiness
+  check. Both carried their own copy of an identical field list, which is the
+  parallel-list failure this codebase has paid for before.
+
+### Removed
+
+- `internal/demoseed`'s unused `stamp` helper — the one genuinely unreachable
+  function in the tree.
+
 ## [0.6.0] - 2026-09-17
 
 **An edge site is a Thing.** The `leaf_nodes` collection, the `leaf-sync`
@@ -1860,7 +1985,8 @@ repository public. Each of these was reproduced before being fixed.
 - `scripts/test-authz.sh` grew from 135 to 147 checks, covering the membership
   lifecycle, the code uniqueness constraint, and the frozen leaf-node code.
 
-[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/stone-age-io/platform/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/stone-age-io/platform/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/stone-age-io/platform/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/stone-age-io/platform/compare/v0.4.0...v0.5.0
