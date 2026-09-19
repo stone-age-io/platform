@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=194         # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=209         # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -1505,6 +1505,107 @@ expect "an org owner cannot delete the organization record" "403|400|404" "$RCOD
 req DELETE "/collections/organizations/records/$ORG3" "$SU"
 expect "an operator CAN delete it (so the deny is a role check, not a broken rule)" "200|204" "$RCODE" "$RBODY"
 req PATCH "/collections/users/records/$ALICE" "$SU" "{\"current_organization\":\"$ORG\"}"
+
+echo ""
+echo "=== 21. the tenant activity feed ==="
+# The feed mirrors other collections, so it inherits none of their scoping --
+# that is the lesson audit_logs taught. Two properties matter: it is org-scoped
+# like the inventory it describes, and NOBODY can write it through the API,
+# because a forgeable log is not a log.
+#
+# This section is also the only coverage of the REQUEST-hook producer. The Go
+# harness does record CRUD rather than serving HTTP, so the hooks that capture
+# the actor only ever fire here, against a real server.
+#
+# Its own member, deliberately. Section 19 deletes bob\'s membership to exercise
+# hooks/membership_lifecycle.go, which blanks his current_organization -- so a
+# shared fixture is not a fixture by the time we get here. Same lesson the suite
+# already learned about captured baselines.
+MOLLY=$(mkuser molly@test.local)
+req POST /collections/memberships/records "$SU" \
+  "{\"user\":\"$MOLLY\",\"organization\":\"$ORG\",\"role\":\"member\"}"
+[ -z "$(j "$RBODY" id)" ] && die "activity member membership failed: $RBODY"
+req PATCH "/collections/users/records/$MOLLY" "$SU" "{\"current_organization\":\"$ORG\",\"name\":\"Molly Member\"}"
+TM=$(login molly@test.local)
+
+req POST /collections/locations/records "$TM" \
+  "{\"name\":\"Activity Test Site\",\"organization\":\"$ORG\"}"
+expect "member CAN create a location (the write the feed describes)" 200 "$RCODE" "$RBODY"
+ACT_LOC=$(j "$RBODY" id)
+
+# The feed entry is written AFTER e.Next(), which includes writing the HTTP
+# response -- so the client can get its 200 before the row lands. That is
+# inherent to best-effort post-commit logging and is not worth a transaction to
+# remove; it does mean a read racing the write needs a beat.
+sleep 1
+
+req GET "/collections/activity/records?filter=(resource_id='$ACT_LOC')" "$TM"
+expect "member can read the activity feed" 200 "$RCODE" "$RBODY"
+if [ "$(jn "$RBODY" 'o.items.length')" = "1" ]; then
+  ok "the create produced exactly one feed entry"
+else
+  no "expected one feed entry for the create, got $(jn "$RBODY" 'o.items.length')"
+fi
+if [ "$(jn "$RBODY" 'o.items[0].actor')" = "$MOLLY" ]; then
+  ok "the entry is attributed to the acting member (request hooks carry the actor)"
+else
+  no "feed entry actor was $(jn "$RBODY" 'o.items[0].actor'), expected molly ($MOLLY)"
+fi
+if [ "$(jn "$RBODY" 'o.items[0].actor_label')" = "Molly Member" ]; then
+  ok "the entry snapshots the actor name"
+else
+  no "actor_label was $(jn "$RBODY" 'o.items[0].actor_label')"
+fi
+if [ "$(jn "$RBODY" 'o.items[0].resource_label')" = "Activity Test Site" ]; then
+  ok "the entry snapshots the record label"
+else
+  no "resource_label was $(jn "$RBODY" 'o.items[0].resource_label')"
+fi
+
+# Every role in the org reads it -- org-scoped, no role branch, same as the
+# inventory it describes. dashboard included, deliberately: it can already read
+# every record the feed names.
+req GET "/collections/activity/records" "$TV"
+expect "viewer can read the activity feed" 200 "$RCODE" "$RBODY"
+req GET "/collections/activity/records" "$TG"
+expect "dashboard can read the activity feed (org-scoped, not role-scoped)" 200 "$RCODE" "$RBODY"
+
+# The boundary. Eve has her own organization and legitimately has her own feed,
+# so the assertion is that none of what she sees belongs to THIS organization --
+# not that she sees nothing, which would pass just as well if the feed were
+# empty for everyone.
+req GET "/collections/activity/records?perPage=200" "$TE"
+expect "another tenant CAN read her own feed (so the deny below is scoping)" 200 "$RCODE" "$RBODY"
+if [ "$(jn "$RBODY" "o.items.filter(function(i){return i.organization==='$ORG'}).length")" = "0" ]; then
+  ok "another tenant sees none of this organization activity"
+else
+  no "cross-tenant leak: eve saw entries belonging to $ORG"
+fi
+
+# Append-only by construction: all three write rules are nil, so not even an
+# owner can forge or rewrite history. Paired with the reads above, which prove
+# the deny is a write restriction rather than the collection being unreachable.
+req POST /collections/activity/records "$TA" \
+  "{\"organization\":\"$ORG\",\"action\":\"created\",\"resource\":\"thing\",\"actor_label\":\"forged\"}"
+expect "owner cannot forge a feed entry" "403|400|404" "$RCODE" "$RBODY"
+req GET "/collections/activity/records?filter=(resource_id='$ACT_LOC')" "$TA"
+ACT_FIRST=$(jn "$RBODY" 'o.items[0].id')
+req PATCH "/collections/activity/records/$ACT_FIRST" "$TA" "{\"actor_label\":\"rewritten\"}"
+expect "owner cannot rewrite a feed entry" "403|400|404" "$RCODE" "$RBODY"
+req DELETE "/collections/activity/records/$ACT_FIRST" "$TA"
+expect "owner cannot delete a feed entry" "403|400|404" "$RCODE" "$RBODY"
+
+# Deleting the described record leaves the entry readable -- the labels are
+# snapshots, which is why `actor` and `resource_id` are plain text rather than
+# relations that would blank.
+req DELETE "/collections/locations/records/$ACT_LOC" "$TA"
+expect "owner CAN delete the location" "200|204" "$RCODE" "$RBODY"
+req GET "/collections/activity/records?filter=(resource_id='$ACT_LOC')" "$TM"
+if [ "$(jn "$RBODY" 'o.items[0].resource_label')" = "Activity Test Site" ]; then
+  ok "the feed still names the deleted record (labels are snapshots)"
+else
+  no "resource_label after delete was $(jn "$RBODY" 'o.items[0].resource_label')"
+fi
 
 # ----------------------------------------------------------------------- result
 

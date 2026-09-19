@@ -91,7 +91,16 @@ export const useAuthStore = defineStore('auth', () => {
       // console navigates to. If a read ever needs to be a boundary, it has to
       // be a branch in schema.json; adding it here would be theatre.
       viewInventory: isAdmin || role === 'member' || role === 'viewer',
-      // Things and locations — the day-to-day inventory work, open to members.
+      // The tenant activity feed. Same role set as viewInventory, and a separate
+    // entry only so the route and the sidebar can say what they mean --
+    // gating an Activity screen on `viewInventory` is a lie the next reader has
+    // to decode. It is NOT a boundary and must not be mistaken for one: the
+    // feed is org-scoped in schema.json with no role branch, so every role in
+    // the organization can read it over the API, `dashboard` included. That is
+    // deliberate -- the feed only describes records those roles can already
+    // read. Tightening this line would be theatre.
+    viewActivity: isAdmin || role === 'member' || role === 'viewer',
+    // Things and locations — the day-to-day inventory work, open to members.
       // Deliberately excludes `viewer`: this is the capability every create /
       // edit control is gated on.
       manageInventory: isAdmin || role === 'member',

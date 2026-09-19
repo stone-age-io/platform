@@ -310,6 +310,35 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
     `auditSnapshotCollections` (`main.go`). See the credential bullet under
     **Roles & Authorization** for why that list is short and why it is an
     allowlist.
+7b. **Tenant activity feed** (`activity`) - who changed what in the console,
+    org-scoped and readable by every role. NOT `audit_logs`, which stays
+    operator-only: this carries no record values at all, only actor, action,
+    resource and snapshotted labels.
+    - **The invariant: an entry is visible to exactly those who could read the
+      record it describes.** A flat collection mirroring other collections
+      inherits none of their scoping — the lesson `audit_logs` taught. So the
+      feed covers only the five tenant collections whose own reads are
+      org-scoped with no role branch (`things`, `locations`, `thing_types`,
+      `location_types`, `thing_type_operations`) and NOT `memberships`,
+      `invites`, `nats_roles` or `nebula_networks`, whose reads stop at
+      owner/admin. Adding to `activityCollections` is an authorization change,
+      pinned by `hooks/activity_internal_test.go`.
+    - **Bound to the REQUEST hooks, because they are the only layer that knows
+      the actor.** `core.RecordEvent` carries a `Context`, but nothing in
+      PocketBase ever puts auth into it — the only `context.WithValue` calls in
+      the framework are its own tests, which is why pb-audit passes `nil` for
+      request info on its success hooks.
+    - **The id is the one field captured AFTER `e.Next()`**: a new record has no
+      id until PocketBase assigns it during the save. Everything else is the
+      pre-write snapshot, so an entry describes what the request asked for
+      rather than what the request plus every server-side hook did.
+    - `actor` is plain text, not a relation: a non-cascade relation is *blanked*
+      on user delete, one write per row. Labels are snapshots for the same
+      reason — a log that changes when a record is renamed is not a log.
+    - Write rules are all `nil`, so the log cannot be forged or edited through
+      the API. Deliberately no changed-field list, no retention cron and no
+      transaction dance — `hooks/activity.go` says why.
+
 8. **Maps** - Leaflet maps over an OpenFreeMap vector basemap (WebGL), with floorplan overlays
 9. **PWA** - Service worker, manifest, installable
 10. **Keyboard Shortcuts** - Configurable keyboard shortcuts with modal reference
@@ -1041,6 +1070,7 @@ you, so pushing an absolute one would make the login form an open redirect (the
 - `hooks/leaf_config_routes.go` - `GET /api/me/leaf-config` (bound to `things`, no record id): everything an agent needs to stand up a NATS leaf server, including the `$SYS` account JWT the leaf's MEMORY resolver cannot fetch. The JetStream domain is computed from the Thing's code rather than stored
 - `hooks/thing_routes.go` - `POST /api/org/things`: Thing + optional NATS/Nebula identity in one transaction; member-level for inventory, owner/admin for the identity half
 - `hooks/nebula_routes.go` - `POST /api/org/nebula-ca/rotate` (owner/admin, three steps) and `GET /api/org/nebula/cert-audit`. Both are routes for the same reason `nats_account_routes.go` is: a PocketBase rule cannot say "this one field and nothing else", and the audit needs a Nebula certificate parsed, which the browser cannot do
+- `hooks/activity.go` - the tenant activity feed. The collection list IS the safety argument (see feature 7b); bound to the request hooks because they are the only layer carrying the actor, and best-effort because an observation must never cost the user their write
 - `hooks/relation_tenancy.go` - the one hook-based enforcement in the platform: no relation may point into another organization's records. Derived from the schema rather than listing the nineteen relations, bound to the MODEL hooks, and applied to superusers too. See the invariants-vs-permissions bullet under **Roles & Authorization**
 - `hooks/org_provisioning.go` - every organization's NATS account and Nebula CA. Create-if-missing and bound to update as well as create, so re-saving the organization RETRIES a failed provision; failures are returned rather than logged, and returned AFTER `e.Next()` so a NATS outage cannot cost the owner their membership row
 - `hooks/schema_fields.go` - the fields that exist only once `schema.json` has been imported, shared by `bootstrap` (fatal) and the `schema` readiness check (a Fail). One list, because PocketBase discards a write to a missing field in silence and two copies drift

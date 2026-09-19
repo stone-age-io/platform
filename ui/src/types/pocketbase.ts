@@ -316,6 +316,32 @@ export interface NebulaHost extends AuthRecord {
 }
 
 // Audit Log
+/**
+ * One line in the tenant activity feed: who changed what in the console, and
+ * when.
+ *
+ * Deliberately NOT AuditLog. That is the operator forensic trail -- full
+ * before/after snapshots, no organization column, `is_operator = true` to read.
+ * This is org-scoped, carries no record values at all, and covers only the
+ * collections every role in an organization can already read. See
+ * hooks/activity.go for the invariant that decides which.
+ *
+ * `actor` is a plain id rather than a relation, so there is nothing to expand:
+ * a relation would be blanked when the user is deleted and the line would lose
+ * its attribution. `actor_label` and `resource_label` are snapshots taken at
+ * write time for the same reason -- render those, not a lookup.
+ */
+export interface Activity extends BaseRecord {
+  organization: string
+  actor?: string
+  actor_type?: 'user' | 'superuser'
+  actor_label?: string
+  action: 'created' | 'updated' | 'deleted' | 'provisioned'
+  resource: string
+  resource_id?: string
+  resource_label?: string
+}
+
 export interface AuditLog extends BaseRecord {
   event_type: 'create_request' | 'update_request' | 'delete_request' | 'create' | 'update' | 'delete' | 'auth'
   collection_name: string

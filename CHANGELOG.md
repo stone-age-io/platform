@@ -11,6 +11,61 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`bootstrap` could not complete on a fresh 0.7.0 install.** Tightening
+  `hooks/relation_tenancy.go` in 0.7.0 so that moving a record between
+  organizations re-checks the relations it keeps had a consequence nothing
+  caught: adopting the pre-seeded `$SYS` records is exactly such a move, from
+  blank to the System org. The NATS user was linked while its role was still
+  unlinked, so the check compared a user now in the System org against a role
+  that was still blank and refused it — `bootstrap` died with *"the role_id
+  field must reference a record in the same organization"*, leaving an install
+  with no NATS identity and no operator context.
+
+  The guard was right; the order was wrong. Link what is pointed AT before what
+  points at it: account, then role, then user.
+
+  **Existing deployments were unaffected** — `linkSingleton` short-circuits on
+  records that are already linked, so no re-check happens on an upgrade. Only a
+  first-time `bootstrap` against 0.7.0 hit it.
+
+  Nothing caught it because nothing ran the command: the Go suite never invokes
+  `bootstrap`, and `scripts/test-authz.sh` stands its server up with
+  `superuser upsert` + `migrate up` + `serve`. There is now a test.
+
+### Added
+
+- **A tenant activity feed.** `activity` answers "who on my team changed this
+  device, and when" — org-scoped, readable by every role, and surfaced at
+  `/activity` in the console. It records the actor, the action, the record and
+  a snapshot of both labels. It records **no values at all**.
+
+  It is deliberately not `audit_logs`, which stays operator-only. That is the
+  forensic trail: full before/after snapshots, no organization column, and a
+  read on it inherits the exposure of every collection in
+  `auditSnapshotCollections` at once.
+
+  **The invariant is that an entry is visible to exactly those who could read
+  the record it describes.** A flat collection that mirrors other collections
+  inherits none of their scoping, which is what `audit_logs` taught the hard
+  way in 0.7.0. So the feed covers only the five tenant collections whose own
+  reads are org-scoped with no role branch — things, locations, and the three
+  type collections — and not memberships, invites, NATS roles or Nebula
+  networks, whose reads stop at owner/admin. Adding to that list is an
+  authorization change, and a test reads `schema.json` to say so.
+
+  The feed is append-only by construction: all three write rules are nil, so
+  nothing can forge or rewrite it through the API, and `actor` is a plain id
+  rather than a relation so that deleting a user does not quietly rewrite every
+  line that mentions them.
+
+  Deliberately absent, each because it was drafted and cut for being more
+  machinery than the feature earns: a changed-field list (pb-audit already
+  computes one for these same writes), a retention cron (the row count is now a
+  metric — measure first), and a transaction dance for the batch API (disabled
+  by default; the cost if enabled is one phantom row in an observation log).
+
 ## [0.7.0] - 2026-09-19
 
 **`audit_logs` was holding every credential this platform ever minted, in

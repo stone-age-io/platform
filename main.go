@@ -299,8 +299,15 @@ func main() {
 	// on the platform — and there is no reason to keep a second copy of any of
 	// it in a queryable collection. The hidden flags on those fields are the
 	// primary defence; this is belt and braces.
+	//
+	// The activity feed is excluded for a different reason: it is itself derived
+	// from audited writes, so auditing it doubles the audit volume for every
+	// console action -- two rows for the write, then two more for the feed entry
+	// describing it -- and audit.retention is off by default. It carries no
+	// information the audit row for the same write does not already have.
 	auditOptions.EventFilter = func(collectionName, eventType string) bool {
-		return collectionName != "nats_system_operator"
+		return collectionName != "nats_system_operator" &&
+			collectionName != hooks.ActivityCollection
 	}
 
 	// Which collections keep their VALUES in the audit trail. Everything else
@@ -404,6 +411,12 @@ func main() {
 	// and never overwritten after that. A new one is added by appending it to this
 	// call -- see hooks/email_templates.go.
 	hooks.RegisterEmailTemplates(app, hooks.OrgInviteEmail)
+
+	// The tenant-facing activity feed: who changed what in the console, and when.
+	// Bound to the REQUEST hooks because they are the only layer that knows the
+	// actor -- see hooks/activity.go for why, and for the invariant that decides
+	// which collections it covers.
+	hooks.RegisterActivity(app)
 
 	// Makes `active` on things mean something. The authRule only stops
 	// new logins; this invalidates outstanding tokens and revokes the device's

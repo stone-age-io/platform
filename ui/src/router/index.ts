@@ -126,6 +126,11 @@ const routes: RouteRecordRaw[] = [
       { path: 'nebula/hosts/:id/edit', name: 'NebulaHostEdit', component: () => import('@/views/nebula/NebulaHostFormView.vue'), meta: { title: 'Edit Host', requiresCapability: 'manageInfrastructure' } },
       
       // Audit
+      // The tenant activity feed. A capability rather than requiresOperator:
+      // `activity` IS org-scoped, unlike audit_logs below. The capability is
+      // navigation only -- the read rule in schema.json is the boundary.
+      { path: 'activity', name: 'Activity', component: () => import('@/views/activity/ActivityView.vue'), meta: { title: 'Activity', requiresCapability: 'viewActivity' } },
+
       // audit_logs has no organization field, so its read rule is operators only.
       // Without this gate the page loads and renders an empty list for everyone else.
       { path: 'audit', name: 'AuditLogs', component: () => import('@/views/audit/AuditLogView.vue'), meta: { title: 'Audit Log', requiresOperator: true } },

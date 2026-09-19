@@ -122,6 +122,10 @@ func (c *dbCollector) Collect(ch chan<- prometheus.Metric) {
 		"locations",
 		"thing_types",
 		"location_types",
+		// Counted rather than given a retention job. The feed grows with human
+		// clicks, not device traffic, so the question "does this need pruning"
+		// is better answered by a graph than by a cron nobody has sized.
+		ActivityCollection,
 		c.opts.NatsAccountCollection,
 		c.opts.NatsUserCollection,
 		c.opts.NebulaHostCollection,

@@ -83,6 +83,11 @@ const menuItems = computed(() => {
     )
   }
 
+  // Beside the inventory it describes, and gated on its own capability so the
+  // line says what it means. Every role that reaches Things and Locations also
+  // reaches this.
+  if (can.viewActivity) items.push({ label: 'Activity', icon: '🧭', path: '/activity' })
+
   if (can.manageInfrastructure) {
     items.push(
       {

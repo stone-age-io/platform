@@ -198,6 +198,15 @@ func RegisterThingRoutes(app *pocketbase.PocketBase, opts ThingRoutesOptions) {
 				return txErr
 			}
 
+			// This route writes with txApp.Save(), so the activity request hooks
+			// never see it. Without this call every Thing created through the
+			// console would be absent from the tenant feed while its later edits
+			// appeared -- a feed showing changes to devices that were, as far as
+			// it knew, never created. Recorded after the transaction, so the feed
+			// never describes a Thing that did not land.
+			RecordActivity(re.App, re, orgID, ActionProvisioned, "thing",
+				created.Id, created.GetString("name"))
+
 			// The password is returned exactly once — PocketBase stores only its
 			// hash, so this response is the only chance to record it.
 			return re.JSON(200, map[string]any{

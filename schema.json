@@ -4290,5 +4290,158 @@
     "indexes": [
       "CREATE UNIQUE INDEX `idx_email_templates_key` ON `email_templates` (`key`)"
     ]
+  },
+  {
+    "id": "pbc_activity_feed",
+    "name": "activity",
+    "type": "base",
+    "system": false,
+    "listRule": "// Users see their active organization activity feed.\n// Sentinel guard: in PocketBase an empty string equals an empty string, so a\n// blank organization must never scope a read. This collection makes that\n// unconstructible anyway -- organization is required and cascade, so it can\n// never be blank -- but the membership clause stays, because that is the half\n// that cannot be tidied away by a later comparison. Do not put an apostrophe\n// in a rule comment: quotes are tokenized before comments are stripped, so one\n// stray apostrophe re-pairs every quote after it and the rule stops parsing.\n// See migrations/schema_update_tenancy_sentinel.go.\n(@request.auth.collectionName = \"users\" && @request.auth.current_organization != \"\" && organization = @request.auth.current_organization && @request.auth.memberships_via_user.organization ?= @request.auth.current_organization)",
+    "viewRule": "// Users see their active organization activity feed.\n// Sentinel guard: in PocketBase an empty string equals an empty string, so a\n// blank organization must never scope a read. This collection makes that\n// unconstructible anyway -- organization is required and cascade, so it can\n// never be blank -- but the membership clause stays, because that is the half\n// that cannot be tidied away by a later comparison. Do not put an apostrophe\n// in a rule comment: quotes are tokenized before comments are stripped, so one\n// stray apostrophe re-pairs every quote after it and the rule stops parsing.\n// See migrations/schema_update_tenancy_sentinel.go.\n(@request.auth.collectionName = \"users\" && @request.auth.current_organization != \"\" && organization = @request.auth.current_organization && @request.auth.memberships_via_user.organization ?= @request.auth.current_organization)",
+    "createRule": null,
+    "updateRule": null,
+    "deleteRule": null,
+    "fields": [
+      {
+        "autogeneratePattern": "[a-z0-9]{15}",
+        "hidden": false,
+        "id": "text3208210256",
+        "max": 15,
+        "min": 15,
+        "name": "id",
+        "pattern": "^[a-z0-9]+$",
+        "presentable": false,
+        "primaryKey": true,
+        "required": true,
+        "system": true,
+        "type": "text"
+      },
+      {
+        "cascadeDelete": true,
+        "collectionId": "pbc_2873630990",
+        "hidden": false,
+        "id": "relation3253625724",
+        "maxSelect": 1,
+        "minSelect": 0,
+        "name": "organization",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "relation"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text1148540665",
+        "max": 255,
+        "min": 0,
+        "name": "actor",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "hidden": false,
+        "id": "select3163973082",
+        "maxSelect": 1,
+        "name": "actor_type",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "select",
+        "values": [
+          "user",
+          "superuser"
+        ]
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text706984828",
+        "max": 255,
+        "min": 0,
+        "name": "actor_label",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "hidden": false,
+        "id": "select1204587666",
+        "maxSelect": 1,
+        "name": "action",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "select",
+        "values": [
+          "created",
+          "updated",
+          "deleted",
+          "provisioned"
+        ]
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text3163681814",
+        "max": 64,
+        "min": 0,
+        "name": "resource",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text2301795621",
+        "max": 64,
+        "min": 0,
+        "name": "resource_id",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text622602970",
+        "max": 255,
+        "min": 0,
+        "name": "resource_label",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "hidden": false,
+        "id": "autodate2990389176",
+        "name": "created",
+        "onCreate": true,
+        "onUpdate": false,
+        "presentable": false,
+        "system": false,
+        "type": "autodate"
+      }
+    ],
+    "indexes": [
+      "CREATE INDEX `idx_activity_org_created` ON `activity` (`organization`, `created`)"
+    ]
   }
 ]
