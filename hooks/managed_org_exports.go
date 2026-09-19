@@ -5,6 +5,7 @@ import (
 	"log"
 	"strings"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
 )
@@ -103,7 +104,7 @@ func reconcile(rec *core.Record, desired []field) []string {
 // the token shape does not retroactively fix existing imports. Whatever makes
 // that switch has to touch every managed org, or re-save them.
 func ensureManagedExports(app core.App, opts ManagedOrgExportsOptions, org *core.Record) error {
-	account, _ := app.FindFirstRecordByFilter(opts.AccountCollection, "organization = {:org}", map[string]interface{}{"org": org.Id})
+	account, _ := app.FindFirstRecordByFilter(opts.AccountCollection, "organization = {:org}", dbx.Params{"org": org.Id})
 	if account == nil {
 		return fmt.Errorf("no NATS account for organization yet")
 	}
@@ -116,7 +117,7 @@ func ensureManagedExports(app core.App, opts ManagedOrgExportsOptions, org *core
 	if operatorOrg == nil {
 		return fmt.Errorf("no operator organization exists (re-run bootstrap with --operator-org)")
 	}
-	hubAccount, _ := app.FindFirstRecordByFilter(opts.AccountCollection, "organization = {:org}", map[string]interface{}{"org": operatorOrg.Id})
+	hubAccount, _ := app.FindFirstRecordByFilter(opts.AccountCollection, "organization = {:org}", dbx.Params{"org": operatorOrg.Id})
 	if hubAccount == nil {
 		return fmt.Errorf("operator organization has no NATS account")
 	}
@@ -141,7 +142,7 @@ func ensureManagedExports(app core.App, opts ManagedOrgExportsOptions, org *core
 		{"description", "Service events exported to the operator hub account"},
 	}
 
-	existingExport, _ := app.FindFirstRecordByFilter(exportCol.Id, "account_id = {:acct} && name = {:name}", map[string]interface{}{
+	existingExport, _ := app.FindFirstRecordByFilter(exportCol.Id, "account_id = {:acct} && name = {:name}", dbx.Params{
 		"acct": account.Id,
 		"name": managedExportName,
 	})
@@ -191,7 +192,7 @@ func ensureManagedExports(app core.App, opts ManagedOrgExportsOptions, org *core
 		{"description", fmt.Sprintf("Service events from managed org '%s'", org.GetString("name"))},
 	}
 
-	existingImport, _ := app.FindFirstRecordByFilter(importCol.Id, "account_id = {:acct} && name = {:name}", map[string]interface{}{
+	existingImport, _ := app.FindFirstRecordByFilter(importCol.Id, "account_id = {:acct} && name = {:name}", dbx.Params{
 		"acct": hubAccount.Id,
 		"name": importName,
 	})
@@ -217,8 +218,8 @@ func ensureManagedExports(app core.App, opts ManagedOrgExportsOptions, org *core
 // removeManagedExports tears down the export/import pair for an org that is
 // no longer managed (or was deleted). Missing pieces are silently fine.
 func removeManagedExports(app core.App, opts ManagedOrgExportsOptions, org *core.Record) {
-	if account, _ := app.FindFirstRecordByFilter(opts.AccountCollection, "organization = {:org}", map[string]interface{}{"org": org.Id}); account != nil {
-		rec, _ := app.FindFirstRecordByFilter(opts.ExportCollection, "account_id = {:acct} && name = {:name}", map[string]interface{}{
+	if account, _ := app.FindFirstRecordByFilter(opts.AccountCollection, "organization = {:org}", dbx.Params{"org": org.Id}); account != nil {
+		rec, _ := app.FindFirstRecordByFilter(opts.ExportCollection, "account_id = {:acct} && name = {:name}", dbx.Params{
 			"acct": account.Id,
 			"name": managedExportName,
 		})
@@ -232,7 +233,7 @@ func removeManagedExports(app core.App, opts ManagedOrgExportsOptions, org *core
 	}
 
 	// The import name embeds the org id, so it's findable without the hub account.
-	rec, _ := app.FindFirstRecordByFilter(opts.ImportCollection, "name = {:name}", map[string]interface{}{"name": hubImportName(org.Id)})
+	rec, _ := app.FindFirstRecordByFilter(opts.ImportCollection, "name = {:name}", dbx.Params{"name": hubImportName(org.Id)})
 	if rec != nil {
 		if err := app.Delete(rec); err != nil {
 			log.Printf("❌ Failed to delete hub import for '%s': %v", org.GetString("name"), err)

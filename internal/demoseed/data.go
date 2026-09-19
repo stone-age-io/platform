@@ -33,10 +33,6 @@ func date(title string) map[string]any {
 	return map[string]any{"type": "string", "format": "date", "title": title}
 }
 
-func stamp(title string) map[string]any {
-	return map[string]any{"type": "string", "format": "date-time", "title": title}
-}
-
 func enum(title string, vals ...string) map[string]any {
 	out := make([]any, len(vals))
 	for i, v := range vals {

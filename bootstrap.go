@@ -7,6 +7,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/spf13/cobra"
@@ -102,11 +103,7 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 			// every platform flag, because record.Set() on a field that does not
 			// exist is a silent no-op in PocketBase: no operator, no is_system_org,
 			// no is_operator_org, and no error anywhere.
-			requireSchemaFields(app, []collectionFields{
-				{"users", []string{"is_operator"}},
-				{orgColName, []string{"is_system_org", "is_operator_org"}},
-				{memberColName, []string{"role"}},
-			})
+			requireSchemaFields(app, hooks.PlatformSchemaFields(orgColName, memberColName))
 
 			// Resolve the user before asking for a password: on a re-run the
 			// account already exists and the password is never used, so there is
@@ -154,7 +151,7 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 			}
 
 			var org *core.Record
-			existingOrg, _ := app.FindFirstRecordByFilter(orgColName, "name = {:name}", map[string]interface{}{"name": orgName})
+			existingOrg, _ := app.FindFirstRecordByFilter(orgColName, "name = {:name}", dbx.Params{"name": orgName})
 			if existingOrg != nil {
 				log.Printf("🏢 Organization '%s' already exists.", orgName)
 				org = existingOrg
@@ -212,7 +209,7 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 
 			nebulaCol, _ := app.FindCollectionByNameOrId("nebula_ca")
 			if nebulaCol != nil {
-				existingCA, _ := app.FindFirstRecordByFilter(nebulaCol.Id, "organization = {:org}", map[string]interface{}{"org": org.Id})
+				existingCA, _ := app.FindFirstRecordByFilter(nebulaCol.Id, "organization = {:org}", dbx.Params{"org": org.Id})
 				if existingCA == nil {
 					ca := core.NewRecord(nebulaCol)
 					ca.Set("name", orgName+" CA")
@@ -286,30 +283,17 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 	app.RootCmd.AddCommand(cmd)
 }
 
-// collectionFields names the fields bootstrap requires on one collection.
-type collectionFields struct {
-	collection string
-	fields     []string
-}
-
 // requireSchemaFields aborts unless every listed field exists. Bootstrap writes
 // platform flags that only exist once schema.json has been imported, and a write
 // to a missing field is silently discarded — so without this check the operator
 // gets a "Bootstrap complete!" that produced no platform operator at all.
-func requireSchemaFields(app *pocketbase.PocketBase, want []collectionFields) {
-	var missing []string
-	for _, w := range want {
-		col, err := app.FindCollectionByNameOrId(w.collection)
-		if err != nil {
-			missing = append(missing, fmt.Sprintf("collection %q", w.collection))
-			continue
-		}
-		for _, f := range w.fields {
-			if col.Fields.GetByName(f) == nil {
-				missing = append(missing, w.collection+"."+f)
-			}
-		}
-	}
+//
+// The list and the walk are hooks.PlatformSchemaFields / hooks.MissingFields,
+// shared with the `schema` readiness check, which asks the identical question.
+// What stays here is the reaction: this one is fatal, because bootstrap has
+// nothing useful to do afterwards.
+func requireSchemaFields(app *pocketbase.PocketBase, want []hooks.CollectionFields) {
+	missing := hooks.MissingFields(app, want)
 	if len(missing) == 0 {
 		return
 	}
@@ -359,7 +343,7 @@ func linkSingleton(app *pocketbase.PocketBase, colName, orgID, label, nameField,
 		return false
 	}
 
-	if linked, _ := app.FindFirstRecordByFilter(col.Id, "organization = {:org}", map[string]interface{}{"org": orgID}); linked != nil {
+	if linked, _ := app.FindFirstRecordByFilter(col.Id, "organization = {:org}", dbx.Params{"org": orgID}); linked != nil {
 		log.Printf("ℹ️ %s already linked to this organization", label)
 		return true
 	}
@@ -386,7 +370,7 @@ func linkSingleton(app *pocketbase.PocketBase, colName, orgID, label, nameField,
 // ensureOwnerMembership creates the admin user's Owner membership in the
 // given organization if it doesn't already exist.
 func ensureOwnerMembership(app *pocketbase.PocketBase, memberCol *core.Collection, user, org *core.Record) {
-	existing, _ := app.FindFirstRecordByFilter(memberCol.Id, "user = {:user} && organization = {:org}", map[string]interface{}{
+	existing, _ := app.FindFirstRecordByFilter(memberCol.Id, "user = {:user} && organization = {:org}", dbx.Params{
 		"user": user.Id,
 		"org":  org.Id,
 	})
@@ -419,7 +403,7 @@ func ensureOperatorOrg(app *pocketbase.PocketBase, orgCol *core.Collection, user
 
 	// A same-named org may predate the flag (e.g. created via the UI).
 	// Adopt it instead of tripping the unique name index.
-	org, _ := app.FindFirstRecordByFilter(orgCol.Id, "name = {:name}", map[string]interface{}{"name": name})
+	org, _ := app.FindFirstRecordByFilter(orgCol.Id, "name = {:name}", dbx.Params{"name": name})
 	if org == nil {
 		org = core.NewRecord(orgCol)
 		org.Set("name", name)

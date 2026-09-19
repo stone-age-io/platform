@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
@@ -92,7 +93,7 @@ func RegisterOrgCode(app *pocketbase.PocketBase, orgCollection string) {
 		}
 
 		existing, _ := e.App.FindFirstRecordByFilter(
-			orgCollection, "code = {:code}", map[string]interface{}{"code": code})
+			orgCollection, "code = {:code}", dbx.Params{"code": code})
 		if existing != nil {
 			if derived {
 				return apis.NewBadRequestError(fmt.Sprintf(

@@ -48,11 +48,7 @@ func registerPlatformChecks(app core.App, reg *health.Registry, opts Observabili
 	// that state record.Set() on a platform flag is a silent no-op, which is
 	// how `bootstrap` used to "succeed" while writing nothing.
 	reg.Register("schema", func(ctx context.Context) health.Result {
-		missing := missingSchemaFields(app, []collectionFields{
-			{"users", []string{"is_operator"}},
-			{opts.OrgCollection, []string{"is_system_org", "is_operator_org"}},
-			{opts.MembershipCollection, []string{"role"}},
-		})
+		missing := MissingFields(app, PlatformSchemaFields(opts.OrgCollection, opts.MembershipCollection))
 		if len(missing) > 0 {
 			return health.Fail(
 				"schema.json has not been imported: missing "+strings.Join(missing, ", "),
@@ -266,34 +262,6 @@ func registerPlatformChecks(app core.App, reg *health.Registry, opts Observabili
 			)
 		}
 	})
-}
-
-// collectionFields pairs a collection with the fields a check expects on it.
-type collectionFields struct {
-	collection string
-	fields     []string
-}
-
-// missingSchemaFields returns "collection.field" for each expected field that is
-// not present. A missing collection reports all of its fields, which reads
-// better than a separate "collection not found" case.
-func missingSchemaFields(app core.App, want []collectionFields) []string {
-	var missing []string
-	for _, cf := range want {
-		col, err := app.FindCollectionByNameOrId(cf.collection)
-		if err != nil || col == nil {
-			for _, f := range cf.fields {
-				missing = append(missing, cf.collection+"."+f)
-			}
-			continue
-		}
-		for _, f := range cf.fields {
-			if col.Fields.GetByName(f) == nil {
-				missing = append(missing, cf.collection+"."+f)
-			}
-		}
-	}
-	return missing
 }
 
 // unknownMigrations returns applied migration files that this binary does not
