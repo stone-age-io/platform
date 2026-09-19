@@ -1658,6 +1658,16 @@
       },
       {
         "hidden": false,
+        "id": "json2943805833",
+        "maxSize": 100000,
+        "name": "changed_fields",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
+      },
+      {
+        "hidden": false,
         "id": "json2123753343",
         "maxSize": 2000000,
         "name": "before_changes",

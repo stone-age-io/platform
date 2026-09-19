@@ -294,16 +294,21 @@ func main() {
 	// existing config.yaml does not silently lose the setting.
 	auditOptions.LogToConsole = viper.GetBool("audit.log_to_console") || viper.GetBool("audit.log_console")
 
-	// Never audit the NATS root operator record. pb-audit snapshots the whole
-	// record into before_changes/after_changes via PublicExport(), so anything
-	// not flagged hidden in schema.json ends up copied into audit_logs. That
-	// record holds the root of the entire NATS chain of trust — its seed signs
-	// every account and user JWT on the platform — and there is no reason to
-	// keep a second copy of it in a queryable collection. The hidden flags on
-	// those fields are the primary defence; this is belt and braces.
+	// Never audit the NATS root operator record. That record holds the root of
+	// the entire NATS chain of trust — its seed signs every account and user JWT
+	// on the platform — and there is no reason to keep a second copy of any of
+	// it in a queryable collection. The hidden flags on those fields are the
+	// primary defence; this is belt and braces.
 	auditOptions.EventFilter = func(collectionName, eventType string) bool {
 		return collectionName != "nats_system_operator"
 	}
+
+	// Which collections keep their VALUES in the audit trail. Everything else
+	// records the NAMES of the fields that moved. See auditSnapshotCollections.
+	auditOptions.SnapshotCollections = auditSnapshotCollections(
+		orgCollection, membershipCollection,
+		natsOptions.RoleCollectionName, nebulaOptions.NetworkCollectionName,
+	)
 
 	// Retention policy (optional)
 	maxAgeStr := viper.GetString("audit.retention.max_age")
@@ -654,5 +659,60 @@ func main() {
 
 	if err := app.Start(); err != nil {
 		log.Fatal(err)
+	}
+}
+
+// auditSnapshotCollections names the collections whose before/after VALUES are
+// written into audit_logs. Every other collection records `changed_fields`
+// only -- the NAMES of the fields that moved.
+//
+// WHY THIS LIST IS SHORT. A pb-audit snapshot is PublicExport(): every field
+// a collection does not mark `hidden`. Two of this platform's fields are
+// deliberately not hidden, because the identity owning them has to read them
+// back — `nats_users.creds_file`, which contains the user's NKEY seed, and
+// `nebula_hosts.config_yaml`, which carries the host private key inline. The
+// credential note in the authorization section of CLAUDE.md is right that
+// ROW SCOPING is what protects those, and that hiding them would break the
+// browser's NATS connection and the config download for no gain. But
+// audit_logs has no row scoping: it is one flat collection holding a copy of
+// every record. So a value protected by scoping is not protected here, and
+// before this list existed every credential the platform had ever minted was
+// sitting in audit_logs in plaintext — outside at-rest encryption, which
+// covers the `seed` and `private_key` columns rather than the credential
+// files derived from them, and outliving rotation, since the creds replaced
+// because they leaked stay in before_changes.
+//
+// So: name the collections whose diffs a human actually reads, and leave out
+// anything holding a credential, a JWT, a certificate or a bearer token.
+// An allowlist, because a list of fields to redact stops covering a
+// sensitive field the moment someone adds one, and does so silently — the
+// same reason every write rule in schema.json names the roles it admits.
+//
+// Deliberately absent, and why: nats_users, nebula_hosts, nats_accounts,
+// nebula_ca (credentials, JWTs, certificates); invites (`token` is a bearer
+// credential); nats_account_exports / nats_account_imports (platform-
+// reconciled, read-only in the console, and carrying account tokens);
+// nats_publish_queue (internal churn nobody reads a diff of).
+//
+// nats_roles IS here on purpose: it holds the publish/subscribe permission
+// templates, so a diff of it is a record of someone changing what an
+// identity may do on the bus. That is among the most worthwhile diffs on the
+// platform, and the collection carries no secret.
+//
+// Guarded by TestAuditSnapshotCollectionsHoldNoCredentials, which reads
+// schema.json: the whole point of the list is which collections are NOT on it.
+func auditSnapshotCollections(orgCollection, membershipCollection, natsRoleCollection, nebulaNetworkCollection string) []string {
+	return []string{
+		orgCollection,
+		membershipCollection,
+		"users",
+		"things",
+		"locations",
+		"thing_types",
+		"location_types",
+		"thing_type_operations",
+		natsRoleCollection,
+		nebulaNetworkCollection,
+		hooks.EmailTemplatesCollection,
 	}
 }
