@@ -304,6 +304,12 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
 5. **Resource Inventory** - Things and Locations with type definitions and metadata
 6. **Digital Twin** - Live state via NATS KV buckets, revision history
 7. **Audit Logging** - Comprehensive audit trail with searchable viewer
+    (operator-only: `audit_logs` has no `organization` column, so there is
+    nothing to scope a tenant read on). Every event records `changed_fields`;
+    full before/after values only for the collections in
+    `auditSnapshotCollections` (`main.go`). See the credential bullet under
+    **Roles & Authorization** for why that list is short and why it is an
+    allowlist.
 8. **Maps** - Leaflet maps over an OpenFreeMap vector basemap (WebGL), with floorplan overlays
 9. **PWA** - Service worker, manifest, installable
 10. **Keyboard Shortcuts** - Configurable keyboard shortcuts with modal reference
@@ -613,15 +619,75 @@ Rules to follow when touching authorization:
   lists, and on the Location detail view, were ungated, so a `member` saw a
   Delete the server then refused (`deleteRule` is owner/admin). Any control
   whose rule differs from its screen's entry capability needs its own `v-if`.
+- **Hooks enforce INVARIANTS; rules enforce PERMISSIONS; routes handle what a
+  rule cannot express.** "The API rules are the only enforcement layer" is about
+  permissions, and `hooks/relation_tenancy.go` is the one deliberate exception —
+  worth knowing where the line is, because the temptation to move authorization
+  into hooks recurs. It refuses a relation pointing into another organization's
+  records, which no rule *can* express (PocketBase traverses a STORED field, but
+  `@request.body.account_id` is a raw submitted string with no target to
+  traverse into). pb-nats signs the user JWT with whatever `account_id` names,
+  so without it an owner could mint themselves a credential inside another
+  tenant's account. It is DERIVED from the schema rather than listing the
+  nineteen relations, binds the MODEL hooks so it covers `app.Save()` routes as
+  well as REST, and applies to superusers — a cross-tenant relation is corrupt
+  data whoever wrote it.
+
+  Three reasons not to generalise this into a permission system. Audit and
+  enforcement need **opposite failure modes** — an audit hook must never block a
+  write, an enforcement hook must always block one, which is the same Before vs
+  `After*Success` distinction `hooks/membership_lifecycle.go` already turns on.
+  Hooks **cannot be a read boundary**: `OnRecordsListRequest` hands you
+  `Records` and `Result` after the rule-scoped query has run, so filtering there
+  gives wrong `TotalItems` and broken pagination, and there is no pre-query hook
+  to inject a scope. And a second authoritative layer means "can role X do Y"
+  has two answers. Tenant-defined roles, if they ever land, belong in the rules:
+  make `memberships.role` a relation to an org-scoped role collection with
+  boolean capability columns and let the rules traverse it, the way
+  `organization.owner = @request.auth.id` already does.
+
+  **The unchanged-id shortcut inside that guard is off when the record's own
+  `organization` moves.** Ids already present in `Original()` are skipped as
+  "checked once" — but checked against the organization it *used to have*, so a
+  record could be walked into another tenant keeping every relation it held.
+  Unreachable through the record API (every org-scoped update rule freezes
+  `organization`) and reachable through exactly the two paths the model-hook
+  binding exists for. `TestRelationTenancy` pins it, and the reload in that
+  subtest is load-bearing: a record built in memory has no `Original()`, so the
+  shortcut never engages and the gap does not reproduce.
 - **`?`-prefixed operators are row-correlated** on the same relation path, so
   `memberships_via_user.organization ?= X && memberships_via_user.role ?= "owner"`
   matches one membership row. Without `?`, the condition must hold for *all*
   related rows.
-- **Credentials are protected by row scoping, not hidden fields.**
-  `nats_users.creds_file` and `nebula_hosts.config_yaml` stay readable because the
-  identity that owns them needs them (the browser's NATS connection and the admin
-  download button). The read rules restrict *which rows* a caller sees. Do not add
-  `hidden: true` to them — it breaks both and buys nothing.
+- **Credentials are protected by row scoping, not hidden fields — and that
+  doctrine is about the RECORD API only.** `nats_users.creds_file` and
+  `nebula_hosts.config_yaml` stay readable because the identity that owns them
+  needs them (the browser's NATS connection and the admin download button). The
+  read rules restrict *which rows* a caller sees. Do not add `hidden: true` to
+  them — it breaks both and buys nothing.
+
+  **It does NOT transfer to anything that holds COPIES of records**, and
+  `audit_logs` is exactly that: one flat collection, no `organization` column,
+  no row scoping, operator-read. pb-audit snapshots `Record.PublicExport()` —
+  every field a collection does not mark hidden — so for as long as it
+  snapshotted everything, the two correct decisions above combined into a
+  plaintext archive of every credential the platform had ever minted. Verified,
+  not inferred: creating one NATS identity wrote the full `.creds` file, NKEY
+  seed included, into two audit rows. That archive also sat outside at-rest
+  encryption (which covers the `seed`/`private_key` columns, the hidden ones,
+  not the credential files derived from them) and never expired, retention
+  being off by default.
+
+  Closed by pb-audit v0.2.0: values are opt-in per collection and everything
+  else records `changed_fields`, the NAMES of the fields that moved. The
+  allowlist is `auditSnapshotCollections` in `main.go` and it is guarded by
+  `audit_snapshots_test.go`, which reads `schema.json` and fails if a listed
+  collection has an unhidden credential-bearing field. Adding `nats_users` to
+  that list restores the archive in one line, with no symptom — which is why
+  the guard exists rather than a comment.
+
+  **The review question this yields:** not *"is this field hidden"* but
+  **"does anything copy this record somewhere the row rules do not reach."**
 - **At-rest encryption covers minting keys, not issued credentials, and that is
   deliberate.** `encryption_key` protects the operator seed, account seeds and
   signing keys, and the Nebula CA key. It does NOT protect `creds_file` or
@@ -637,10 +703,21 @@ Rules to follow when touching authorization:
 
   What that buys is worth knowing precisely: a stolen database with the key held
   elsewhere yields **no ability to mint new identities** and **every existing
-  credential**. Rotating the NATS side is central and cheap (`regenerate`, and
-  the account JWT's revocation cutoff is permanent); rotating the Nebula side
-  needs re-issue plus a blocklist entry in every peer plus redelivery, because
-  there is no CRL. Don't "fix" this by encrypting the column; state the boundary
+  credential** — plus, in any database that predates the audit change above and
+  has not had those rows cleared or aged out, **every historical one too**,
+  including credentials rotated *because* they leaked. The NATS side survives
+  that (the account JWT's revocation cutoff is by issue time and permanent);
+  the Nebula side does not, since there is no CRL and an old `config_yaml`
+  holds a live host key until the certificate expires or its fingerprint is
+  blocklisted. The `UPDATE` that clears them is written out in
+  `migrations/schema_update_audit_changed_fields.go`, deliberately as a comment
+  rather than as migration code: that is the audit trail, and deleting it is a
+  decision with a backup attached rather than something that should happen
+  silently on deploy.
+
+  Rotating the NATS side is central and cheap (`regenerate`); rotating the
+  Nebula side needs re-issue plus a blocklist entry in every peer plus
+  redelivery. Don't "fix" this by encrypting the column; state the boundary
   and let disk encryption, encrypted backups and single-tenant deployments carry
   the at-rest threat. See SECURITY.md.
 - **A gateway reads nothing in `nats_*` or `nebula_*` beyond its own identity.**
@@ -936,6 +1013,9 @@ you, so pushing an absolute one would make the login form an open redirect (the
 - `hooks/leaf_config_routes.go` - `GET /api/me/leaf-config` (bound to `things`, no record id): everything an agent needs to stand up a NATS leaf server, including the `$SYS` account JWT the leaf's MEMORY resolver cannot fetch. The JetStream domain is computed from the Thing's code rather than stored
 - `hooks/thing_routes.go` - `POST /api/org/things`: Thing + optional NATS/Nebula identity in one transaction; member-level for inventory, owner/admin for the identity half
 - `hooks/nebula_routes.go` - `POST /api/org/nebula-ca/rotate` (owner/admin, three steps) and `GET /api/org/nebula/cert-audit`. Both are routes for the same reason `nats_account_routes.go` is: a PocketBase rule cannot say "this one field and nothing else", and the audit needs a Nebula certificate parsed, which the browser cannot do
+- `hooks/relation_tenancy.go` - the one hook-based enforcement in the platform: no relation may point into another organization's records. Derived from the schema rather than listing the nineteen relations, bound to the MODEL hooks, and applied to superusers too. See the invariants-vs-permissions bullet under **Roles & Authorization**
+- `hooks/org_provisioning.go` - every organization's NATS account and Nebula CA. Create-if-missing and bound to update as well as create, so re-saving the organization RETRIES a failed provision; failures are returned rather than logged, and returned AFTER `e.Next()` so a NATS outage cannot cost the owner their membership row
+- `hooks/schema_fields.go` - the fields that exist only once `schema.json` has been imported, shared by `bootstrap` (fatal) and the `schema` readiness check (a Fail). One list, because PocketBase discards a write to a missing field in silence and two copies drift
 - `hooks/client_config_routes.go` - `GET /api/client-config`: deployment facts the SPA cannot be compiled with (browser-facing NATS WebSocket URLs). Authed (`users`) — there is no pre-login need, so no reason to publish the bus address
 - `internal/health/` - readiness engine: check registry, background prober, and the unauthenticated NATS reachability (`DialInfo`) + operator-trust (`CheckCreds`) probes
 - `internal/metrics/` - Prometheus exposition, plus the optional Bearer/Basic scrape token. The agent repo carries a copy of this and of `internal/health`: duplicated rather than extracted into a shared module, because two small copies that drift are cheaper to live with than a third repo to version, and the two processes check different things
