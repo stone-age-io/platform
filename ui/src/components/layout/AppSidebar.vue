@@ -9,6 +9,7 @@ import { useNatsStore } from '@/stores/nats'
 import { useBrandingStore } from '@/stores/branding'
 import { pb } from '@/utils/pb'
 import BrandLogo from '@/components/common/BrandLogo.vue'
+import OrgLogo from '@/components/common/OrgLogo.vue'
 import { useEscapeKey } from '@/composables/useEscapeKey'
 
 const router = useRouter()
@@ -52,7 +53,6 @@ const filteredMemberships = computed(() => {
   )
 })
 
-const orgInitial = computed(() => authStore.currentOrg?.name?.[0]?.toUpperCase() || '?')
 const userInitial = computed(() => authStore.user?.name?.[0]?.toUpperCase() || 'U')
 
 const homeRoute = computed(() => '/')
@@ -360,10 +360,13 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
           :class="{ 'justify-center': effectiveCompact }"
           role="button"
         >
-          <!-- Org Initial Square -->
-          <div class="w-8 h-8 rounded-md bg-primary/15 text-primary border border-primary/20 flex items-center justify-center flex-shrink-0">
-            <span class="text-xs font-bold">{{ orgInitial }}</span>
-          </div>
+          <!-- The organization's own mark, falling back to its initial. This is
+               the only place a tenant's logo appears in the chrome, and in
+               compact mode it is the ONLY org identity on screen at all -- which
+               is exactly why a single letter was not enough: two organizations
+               beginning with the same letter were indistinguishable at the
+               moment identity matters most. -->
+          <OrgLogo :org="authStore.currentOrg" :size="32" />
 
           <!-- Org Info -->
           <div v-show="!effectiveCompact" class="flex flex-col truncate flex-1 text-left min-w-0">
@@ -409,8 +412,13 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
                   :class="{ 'active': authStore.currentOrgId === membership.organization }"
                   class="justify-between rounded-none px-4 py-2 border-b border-base-200/50"
                 >
+                  <!-- The dot is SELECTION, the logo is IDENTITY; they are not
+                       the same signal and the row needs both. The organization
+                       record is already expanded on every membership, so a mark
+                       per row costs nothing but the image. -->
                   <div class="flex items-center gap-2 truncate">
                     <span class="w-2 h-2 rounded-full flex-shrink-0" :class="authStore.currentOrgId === membership.organization ? 'bg-current' : 'bg-transparent border border-base-content/30'"></span>
+                    <OrgLogo :org="membership.expand?.organization" :size="20" fallback="blank" />
                     <span class="truncate">{{ membership.expand?.organization?.name }}</span>
                   </div>
                 </a>

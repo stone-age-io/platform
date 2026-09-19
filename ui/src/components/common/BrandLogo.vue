@@ -1,8 +1,34 @@
 <script setup lang="ts">
+/**
+ * The OPERATOR's mark: the branding overlay's logo, or the default platform
+ * SVG. Deliberately NOT the active organization's -- that is OrgLogo, and it
+ * belongs in the org switcher.
+ *
+ * WHY THIS IS WORTH A COMMENT. This component used to resolve
+ * `org logo > branding > default`. That priority arrived in adb8ca4 for
+ * ui/src/views/badge/BadgeView.vue -- a printable employee identity card, where
+ * showing the EMPLOYING organization's mark was exactly right. c19a78e deleted
+ * that view, and the priority outlived its only justified consumer.
+ *
+ * What it left behind was a logo captioned with somebody else's name:
+ * AppSidebar renders this immediately beside `brandingStore.appName`, so an
+ * organization with a logo got its mark labelled with the operator's product
+ * name. It also made the one fixed landmark in the chrome move -- this is the
+ * router-link to `/` -- so it changed on every org switch, duplicating the
+ * switcher sitting directly below it. And LoginView already disagreed, having
+ * no org context to resolve, so the logo swapped the instant you authenticated.
+ *
+ * QrLabelModal never had the bug: it reaches past this component to
+ * `branding.logoUrl` directly, because on a sticker in a public hallway whose
+ * brand is printed is a decision somebody had to make on purpose. The
+ * distinction was understood; this component had just never been told.
+ *
+ * So a tenant's identity lives in the org switcher, where switching it is the
+ * control. If per-organization white-labelling ever lands it has to move the
+ * app NAME as well -- that is a feature, not a logo.
+ */
 import { computed } from 'vue'
 import { useBrandingStore } from '@/stores/branding'
-import { useAuthStore } from '@/stores/auth'
-import { pb } from '@/utils/pb'
 
 interface Props {
   size?: number | string
@@ -13,41 +39,20 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const brandingStore = useBrandingStore()
-const authStore = useAuthStore()
 
 const sizePx = computed(() => (typeof props.size === 'number' ? `${props.size}px` : props.size))
-
-// Pick a thumb size that comfortably covers the rendered size at 2x DPR.
-const thumb = computed(() => {
-  const px = typeof props.size === 'number' ? props.size : parseInt(props.size as string, 10) || 48
-  return px <= 50 ? '100x100' : '200x200'
-})
-
-// Resolution priority: org logo > global branding override > default platform SVG.
-const orgLogoUrl = computed(() => {
-  const org = authStore.currentOrg
-  if (!org?.logo) return null
-  return pb.files.getURL(org as any, org.logo, { thumb: thumb.value })
-})
-
-const resolvedLogoUrl = computed(() => orgLogoUrl.value || brandingStore.logoUrl)
-
-const resolvedAlt = computed(() => {
-  if (orgLogoUrl.value) return authStore.currentOrg?.name || brandingStore.appName
-  return brandingStore.appName
-})
 </script>
 
 <template>
   <!--
-    Custom logo (org or global branding overlay): rendered as <img> so the file's
-    own colors are preserved. The .brand-logo-img class is a hook for theme.css —
-    operators can swap the source per theme via `content: url(...)`.
+    Branding overlay logo: rendered as <img> so the file's own colors are
+    preserved. The .brand-logo-img class is a hook for theme.css — operators can
+    swap the source per theme via `content: url(...)`.
   -->
   <img
-    v-if="resolvedLogoUrl"
-    :src="resolvedLogoUrl"
-    :alt="resolvedAlt"
+    v-if="brandingStore.logoUrl"
+    :src="brandingStore.logoUrl"
+    :alt="brandingStore.appName"
     :style="{ width: sizePx, height: sizePx }"
     class="brand-logo-img object-contain"
   />
