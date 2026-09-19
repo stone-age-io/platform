@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"strings"
+	"testing"
+)
 
 // orgCodeFor is what keeps `bootstrap` and the backfill in
 // migrations/schema_update_org_code.go assigning the same code to the same
@@ -40,5 +44,48 @@ func TestDefaultInfrastructureNamesDeriveToTheOldPinnedCodes(t *testing.T) {
 	}
 	if got := orgCodeFor("Operator", operatorOrgCode); got != operatorOrgCode {
 		t.Errorf("operator org: got %q, want %q", got, operatorOrgCode)
+	}
+}
+
+// The `bootstrap` command had NO test coverage until this one, and it cost a
+// shipped regression: v0.7.0 tightened hooks/relation_tenancy.go to re-check
+// every relation when a record's own organization moves, which is precisely
+// what adopting the pre-seeded $SYS records does. Linking the NATS user while
+// its role was still unlinked compared a user now in the System org against a
+// role still blank, and bootstrap died with "the role_id field must reference a
+// record in the same organization" -- leaving an install with no working NATS
+// identity and no operator context.
+//
+// Nothing caught it: the full Go suite never runs this command, and
+// scripts/test-authz.sh stands its server up with `superuser upsert` +
+// `migrate up` + `serve` and skips bootstrap entirely.
+//
+// This asserts the ORDER rather than the outcome, because the order is the
+// fix: link what is pointed AT before what points at it. An outcome test
+// against a real database would be a second harness; the ordering is the thing
+// that can silently regress when someone tidies the block.
+func TestBootstrapLinksNatsTargetsBeforeTheUserThatPointsAtThem(t *testing.T) {
+	source, err := os.ReadFile("bootstrap.go")
+	if err != nil {
+		t.Fatalf("read bootstrap.go: %v", err)
+	}
+
+	body := string(source)
+	roleAt := strings.Index(body, `natsOpts.RoleCollectionName, org.Id, "NATS Role"`)
+	userAt := strings.Index(body, `natsOpts.UserCollectionName, org.Id, "NATS User"`)
+	accountAt := strings.Index(body, `natsOpts.AccountCollectionName, org.Id, "NATS Account"`)
+
+	if roleAt < 0 || userAt < 0 || accountAt < 0 {
+		t.Fatal("could not find the linkSingleton calls; this guard no longer describes bootstrap")
+	}
+
+	if accountAt > userAt {
+		t.Error("the NATS account is linked after the user that points at it via account_id; " +
+			"relation tenancy will refuse the adoption")
+	}
+	if roleAt > userAt {
+		t.Error("the NATS role is linked after the user that points at it via role_id; " +
+			"relation tenancy will refuse the adoption with " +
+			`"the role_id field must reference a record in the same organization"`)
 	}
 }

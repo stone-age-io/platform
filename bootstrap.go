@@ -197,14 +197,28 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 			// them at once instead of fixing one per run.
 			var problems []string
 
+			// ORDER IS LOAD-BEARING: link what is POINTED AT before what points.
+			//
+			// The $SYS user carries account_id and role_id. hooks/relation_tenancy.go
+			// refuses a relation into another organization, and it re-checks every
+			// relation when the record's own organization moves -- which is exactly
+			// what adoption does, from "" to the System org. So linking the user
+			// while its role is still unlinked compares the user (now System) against
+			// a role that is still blank, and the adoption is refused with "the
+			// role_id field must reference a record in the same organization".
+			//
+			// That is the guard working, not a false positive: mid-adoption the two
+			// records genuinely do disagree. The fix is to finish the targets first.
+			// It surfaced only against a real `bootstrap` run, which is why
+			// TestBootstrapLinksTheSystemNatsRecords now exists.
 			if !linkSingleton(app, natsOpts.AccountCollectionName, org.Id, "NATS Account", "name", orgName) {
 				problems = append(problems, "NATS Account not linked — new organizations cannot be provisioned")
 			}
-			if !linkSingleton(app, natsOpts.UserCollectionName, org.Id, "NATS User", "nats_username", orgName) {
-				problems = append(problems, "NATS User not linked — the console cannot connect to NATS")
-			}
 			if !linkSingleton(app, natsOpts.RoleCollectionName, org.Id, "NATS Role", "name", orgName) {
 				problems = append(problems, "NATS Role not linked — permission templates are unavailable")
+			}
+			if !linkSingleton(app, natsOpts.UserCollectionName, org.Id, "NATS User", "nats_username", orgName) {
+				problems = append(problems, "NATS User not linked — the console cannot connect to NATS")
 			}
 
 			nebulaCol, _ := app.FindCollectionByNameOrId("nebula_ca")
