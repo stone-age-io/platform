@@ -634,6 +634,17 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
     - **One photo, not a gallery.** `maxSelect: 1` is a decision: 1 -> N is a
       column migration (PocketBase stores a multi-file field as JSON, not TEXT),
       and a gallery nobody asked for is the worse mistake.
+    - **It lives in the Basic Information card and clicks through to the full
+      image** -- not in the page header, and not on list rows. Both of those
+      shipped first and were wrong for the same reason: they spend prominent
+      space on a thumbnail small enough to recognise a device but too small to
+      answer anything, while the question a photo actually gets asked (read the
+      serial off that label, see which way the panel faces, which door is it)
+      needs the full frame. So the card entry is a field like any other -- an
+      em-dash when there is none, matching its neighbours rather than leaving a
+      large blank plate -- and `zoomable` opens the stored image with no thumb
+      parameter at all. The full-size URL resolves only on open, so a page with
+      several photos does not fetch full copies of images nobody clicked.
     - **Not SVG**, though `locations.floorplan` allows it: this field is camera
       output, and there is no reason to re-widen the decoder surface
       `schema_update_floorplan_mime_types.go` narrowed.

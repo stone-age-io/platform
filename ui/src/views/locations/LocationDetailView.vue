@@ -317,17 +317,6 @@ onUnmounted(() => cleanupMap())
 
         <div class="flex flex-col sm:flex-row justify-between items-start gap-4">
           <div class="flex items-center gap-3">
-            <!-- What the site looks like on arrival. hide-when-empty for the
-                 same reason as the Thing header: optional content should not
-                 leave a permanent gap on the screen that only reads it. -->
-            <RecordPhoto
-              :record="location"
-              :filename="location.photo"
-              thumb="400x400"
-              :size="64"
-              hide-when-empty
-              :alt="`Photo of ${location.name || 'this site'}`"
-            />
             <h1 class="text-3xl font-bold break-words">{{ location.name || 'Unnamed' }}</h1>
             <span v-if="location.expand?.type" class="badge badge-lg badge-ghost">{{ location.expand.type.name }}</span>
           </div>
@@ -368,6 +357,25 @@ onUnmounted(() => cleanupMap())
         <div class="lg:col-span-5 flex flex-col gap-6">
           <BaseCard title="Basic Information">
             <dl class="space-y-4">
+              <!-- First, for the same reason as on a Thing: what the site looks
+                   like on arrival is the fastest confirmation you are in the
+                   right place. Click for the full image -- a 400x400 thumb will
+                   not show which door it is. -->
+              <div>
+                <dt class="text-sm font-medium text-base-content/70">Photo</dt>
+                <dd class="mt-1">
+                  <RecordPhoto
+                    v-if="location.photo"
+                    :record="location"
+                    :filename="location.photo"
+                    thumb="400x400"
+                    :size="160"
+                    zoomable
+                    :alt="`Photo of ${location.name || 'this site'}`"
+                  />
+                  <span v-else class="text-sm text-base-content/40">—</span>
+                </dd>
+              </div>
               <div>
                 <dt class="text-sm font-medium text-base-content/70">Description</dt>
                 <dd class="mt-1 text-sm">{{ location.description || '-' }}</dd>

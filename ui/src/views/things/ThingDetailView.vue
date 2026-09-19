@@ -217,18 +217,6 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
         </div>
         <div class="flex flex-col sm:flex-row justify-between items-start gap-4">
           <div class="flex items-center gap-3">
-            <!-- hide-when-empty: this sits beside the title, and a "No photo"
-                 plate on every unphotographed device would be a permanent
-                 reproach on a screen where the photo is optional. The form is
-                 where its absence is worth stating. -->
-            <RecordPhoto
-              :record="thing"
-              :filename="thing.photo"
-              thumb="400x400"
-              :size="64"
-              hide-when-empty
-              :alt="`Photo of ${thing.name || 'this thing'}`"
-            />
             <h1 class="text-3xl font-bold break-words">{{ thing.name || 'Unnamed Thing' }}</h1>
             <span v-if="thing.active === false" class="badge badge-error badge-outline gap-1">
               Deactivated
@@ -289,6 +277,26 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
         <div class="space-y-6">
           <BaseCard title="Basic Information">
             <dl class="space-y-4">
+              <!-- First, because it is the fastest way to confirm you are
+                   looking at the right record -- which is the same job it does
+                   after a label scan. An em-dash when there is none, matching
+                   every other empty field in this card rather than leaving a
+                   large blank plate. -->
+              <div>
+                <dt class="text-sm font-medium text-base-content/70">Photo</dt>
+                <dd class="mt-1">
+                  <RecordPhoto
+                    v-if="thing.photo"
+                    :record="thing"
+                    :filename="thing.photo"
+                    thumb="400x400"
+                    :size="160"
+                    zoomable
+                    :alt="`Photo of ${thing.name || 'this thing'}`"
+                  />
+                  <span v-else class="text-sm text-base-content/40">—</span>
+                </dd>
+              </div>
               <div>
                 <dt class="text-sm font-medium text-base-content/70">Description</dt>
                 <dd class="mt-1 text-sm">{{ thing.description || '-' }}</dd>
