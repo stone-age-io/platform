@@ -342,6 +342,13 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
     - **The JetStream domain is the Thing's code**, computed and never stored. A
       stored column could disagree with the code, and the disagreement surfaced
       as a site that simply stopped appearing.
+    - **`hub_domain` is cached by the agent, so changing it is not a live change.**
+      The route serves it, but the agent stores it in its platform session file and
+      re-fetches only when that is empty. A deployment that moves its hub's
+      JetStream domain will not reach running agents until each re-runs
+      `agent -leaf-config` — which is defensible, since such a move invalidates
+      every leaf's generated `nats-leaf.conf` anyway, but it is not something a
+      console action can push.
     - **Site liveness is asked of NATS, never stored** — no heartbeat, no
       `leaf_status` bucket. A heartbeat travels over the very link whose failure
       it reports. It is a dashboard widget recipe against
@@ -365,8 +372,29 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
     retention configs in step, since whoever creates a bucket first defines it.
     The platform server **cannot** provision them: it holds the operator only and
     has no reach into an org's account.
+    - **The twin is now a preset over a general mechanism, not the mechanism.**
+      Since agent v0.2.0 the agent takes lists — `sync.mirrors` (hub→edge) and
+      `sync.relays` (edge→hub) — and `sync.twin: true` expands to these two
+      buckets. Everything below still holds for the twin; it now also holds for
+      any bucket a site declares. (The old `twin.enabled` is rejected by name.)
+    - **`TWIN_BUCKET_CONFIG` reaches further than its name.** The agent's copy
+      (`bucketConfig()`, formerly `twinBucketConfig()`) is the shape it gives
+      **every** bucket it creates locally, not just the twin's. Changing retention
+      here changes the default for user-declared buckets too.
+    - **Non-twin buckets have no creator but the console.** The agent creates only
+      the *local* side of a declared bucket and requires the hub side to already
+      exist; only the two preset names are exempt. This server cannot create it
+      either (no credential in the org's account). So for any bucket beyond the
+      twin, the console or `stone` CLI — something holding a user credential — is
+      the only thing that can make it. Agent-side a missing hub bucket is reported,
+      not created: `agent_edge_sync_up{bucket,direction}` goes to 0 and the
+      agent's `sync` check warns.
     - **Do not merge the buckets.** One writer per bucket is the whole safety
       property; two ends writing one bucket does not pick a loser, it oscillates.
+      On the agent this stopped being structural when the lists arrived — it is now
+      a config check that **refuses to start** and names the bucket. Worth knowing
+      here because the console creates buckets too: a bucket declared in both
+      directions is a boot failure at the site, not a silent mess.
     - **Four jobs, four homes.** Reported state → `twin`. Setpoints and config →
       `twin_desired`. Commands ("reboot") → a message on `cmd.>`, never a durable
       KV value. Ranges, thresholds, alarms → a rule-router rule. The last two are
