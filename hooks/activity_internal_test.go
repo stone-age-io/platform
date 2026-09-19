@@ -205,7 +205,16 @@ func TestActivityNounsAllHaveAConsoleRoute(t *testing.T) {
 // at column zero. Deliberately anchored on the declaration rather than matching
 // keys across the whole file: `'thing': {` is not a distinctive enough shape to
 // grep for on its own.
-var resourceRoutesRe = regexp.MustCompile(`(?s)const RESOURCE_ROUTES\b[^\n]*\{\n(.*?)\n\}`)
+//
+// `\r?\n`, NOT `\n`. This reads a .vue file off disk, and .gitattributes pins
+// only *.sh, *.go, Dockerfile, *.yaml and *.yml to LF -- so with
+// core.autocrlf=true (the Windows default) the worktree copy of ActivityView.vue
+// is CRLF while git stores LF. A bare `\n` therefore fails to match on every
+// Windows checkout and matches in CI, which is the worst of both: the test can
+// never pass locally and always passes on the machine nobody is watching, so a
+// genuinely broken hooks package hides behind a red run people have learned to
+// ignore. Any future test that reads a UI source file needs the same tolerance.
+var resourceRoutesRe = regexp.MustCompile(`(?s)const RESOURCE_ROUTES\b[^\n]*\{\r?\n(.*?)\r?\n\}`)
 
 // One quoted key per entry.
 var routeKeyRe = regexp.MustCompile(`(?m)^\s*'([^']+)':\s*\{`)
