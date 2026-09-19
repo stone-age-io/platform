@@ -132,6 +132,36 @@ func TestRelationTenancy(t *testing.T) {
 		}
 	})
 
+	// Moving the record's own organization re-checks everything it already
+	// holds. The unchanged-id shortcut inside the guard is an optimization over
+	// "this was checked against the organization it had"; once that organization
+	// moves, the premise is gone. This passed for as long as the shortcut was
+	// unconditional, and it is the one case the model-hook binding exists for --
+	// no API rule is involved, because every org-scoped update rule already
+	// freezes `organization`. The reload is load-bearing: a record built in
+	// memory has no Original(), so the shortcut never engages and the gap does
+	// not reproduce.
+	t.Run("moving a record between orgs re-checks the relations it keeps", func(t *testing.T) {
+		rec := f.newNatsUser(t, "emigrant", f.accountA)
+		if err := f.app.Save(rec); err != nil {
+			t.Fatalf("a NATS user in org A pointing at org A's account must save: %v", err)
+		}
+
+		fresh, err := f.app.FindRecordById("nats_users", rec.Id)
+		if err != nil {
+			t.Fatalf("reload: %v", err)
+		}
+
+		fresh.Set("organization", f.orgB.Id)
+		err = f.app.Save(fresh)
+		if err == nil {
+			t.Fatal("moved a NATS user into org B while it kept org A's account_id; expected a rejection")
+		}
+		if !strings.Contains(err.Error(), "account_id") {
+			t.Errorf("the error should name the offending field, got: %v", err)
+		}
+	})
+
 	// The paired "can". Without it a blanket refusal would pass the test above.
 	t.Run("a NATS user accepts its own org's account", func(t *testing.T) {
 		if err := f.app.Save(f.newNatsUser(t, "resident", f.accountA)); err != nil {

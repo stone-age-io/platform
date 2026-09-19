@@ -84,6 +84,19 @@ func checkRelationTenancy(app core.App, record *core.Record) error {
 
 	recordOrg := record.GetString(orgFieldName)
 
+	// Whether the record's OWN organization is moving. When it is, nothing
+	// already on the record has been checked against the organization it is
+	// about to have, so the unchanged-id shortcut below has to be switched off.
+	// Leaving it on meant a record could be walked into another tenant while
+	// keeping every relation it already held — the account that signs its JWT
+	// included — and this guard would pass it, because each id was "unchanged".
+	// Unreachable through the record API, where every org-scoped update rule
+	// carries `@request.body.organization:changed = false`, and reachable
+	// through exactly the two paths this file binds model hooks to cover: a
+	// superuser editing in the PocketBase dashboard, and a route using
+	// app.Save().
+	orgMoved := record.Original().GetString(orgFieldName) != recordOrg
+
 	for _, field := range collection.Fields {
 		rel, ok := field.(*core.RelationField)
 		if !ok || rel.Name == orgFieldName {
@@ -98,10 +111,13 @@ func checkRelationTenancy(app core.App, record *core.Record) error {
 
 		// On an update, ids already present before this write have been checked
 		// once and cost a query to check again. On a create Original() is empty,
-		// so everything set is examined.
+		// so everything set is examined — as is everything when the record's own
+		// organization is moving, since "checked once" was against the old one.
 		previous := make(map[string]struct{})
-		for _, id := range record.Original().GetStringSlice(rel.Name) {
-			previous[id] = struct{}{}
+		if !orgMoved {
+			for _, id := range record.Original().GetStringSlice(rel.Name) {
+				previous[id] = struct{}{}
+			}
 		}
 
 		// GetStringSlice covers both cardinalities, so maxSelect never has to be
