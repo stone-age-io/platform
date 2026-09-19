@@ -9,6 +9,7 @@ import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 import ListPager from '@/components/ui/ListPager.vue'
+import UserAvatar from '@/components/common/UserAvatar.vue'
 
 const router = useRouter() // Added
 const authStore = useAuthStore()
@@ -202,13 +203,7 @@ onUnmounted(() => {
         <!-- Custom cell for name -->
         <template #cell-expand.user.name="{ item }">
           <div class="flex items-center gap-3">
-            <div class="avatar placeholder">
-              <div class="bg-neutral text-neutral-content rounded-full w-10">
-                <span class="text-xs">
-                  {{ item.expand?.user?.name?.[0]?.toUpperCase() || '?' }}
-                </span>
-              </div>
-            </div>
+            <UserAvatar :user="item.expand?.user" :size="40" />
             <div>
               <div class="font-medium">
                 {{ item.expand?.user?.name || 'Unknown User' }}
@@ -223,13 +218,7 @@ onUnmounted(() => {
         <!-- Custom mobile card for name -->
         <template #card-expand.user.name="{ item }">
           <div class="flex items-center gap-3">
-            <div class="avatar placeholder">
-              <div class="bg-neutral text-neutral-content rounded-full w-12">
-                <span class="text-sm">
-                  {{ item.expand?.user?.name?.[0]?.toUpperCase() || '?' }}
-                </span>
-              </div>
-            </div>
+            <UserAvatar :user="item.expand?.user" :size="48" />
             <div>
               <div class="font-semibold text-base">
                 {{ item.expand?.user?.name || 'Unknown User' }}

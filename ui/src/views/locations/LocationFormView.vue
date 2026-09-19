@@ -8,6 +8,7 @@ import { useToast } from '@/composables/useToast'
 import type { Location, LocationType } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import MetadataEditor from '@/components/common/MetadataEditor.vue'
+import ImageUploadField from '@/components/common/ImageUploadField.vue'
 import RecordPicker from '@/components/common/RecordPicker.vue'
 import { flattenLocationTree, type LocationNode } from '@/utils/locations'
 import type { PickerOption } from '@/types/picker'
@@ -44,9 +45,17 @@ const formData = ref({
 
 const metadataEditor = ref<InstanceType<typeof MetadataEditor> | null>(null)
 
-// File upload
+// Image uploads.
+//
+// The loaded record is kept whole rather than a pair of resolved URLs:
+// ImageUploadField resolves its own (every file field is protected and needs a
+// file token), so all this view has to hold is what Save should do -- a staged
+// file, or a staged removal, per field.
+const loadedLocation = ref<Location | null>(null)
 const floorplanFile = ref<File | null>(null)
-const currentFloorplan = ref<string | null>(null)
+const floorplanRemoved = ref(false)
+const photoFile = ref<File | null>(null)
+const photoRemoved = ref(false)
 
 // Relation options
 const locationTypes = ref<LocationType[]>([])
@@ -138,10 +147,7 @@ async function loadLocation() {
       metadata: location.metadata && Object.keys(location.metadata).length ? location.metadata : null,
     }
     
-    // Store current floorplan
-    if (location.floorplan) {
-      currentFloorplan.value = pb.files.getURL(location, location.floorplan)
-    }
+    loadedLocation.value = location
   } catch (err: any) {
     toast.error('Failed to load location')
     router.push('/locations')
@@ -150,15 +156,6 @@ async function loadLocation() {
   }
 }
 
-/**
- * Handle file selection
- */
-function handleFileChange(event: Event) {
-  const target = event.target as HTMLInputElement
-  if (target.files && target.files.length > 0) {
-    floorplanFile.value = target.files[0]
-  }
-}
 
 /**
  * Commit a metadata JSON tab left mid-edit. False (with a toast) if it doesn't
@@ -249,9 +246,20 @@ async function handleSubmit() {
       formDataToSend.append('metadata', '')
     }
     
-    // Floorplan file
+    // Images. An empty value clears a single-file field (PocketBase normalizes
+    // it to an empty slice, core/field_file.go); omitting the key entirely
+    // leaves the stored file alone. Those are three different intents and all
+    // three have to be expressible, which is why each field has a `removed`
+    // flag rather than relying on the absence of a staged file.
     if (floorplanFile.value) {
       formDataToSend.append('floorplan', floorplanFile.value)
+    } else if (floorplanRemoved.value) {
+      formDataToSend.append('floorplan', '')
+    }
+    if (photoFile.value) {
+      formDataToSend.append('photo', photoFile.value)
+    } else if (photoRemoved.value) {
+      formDataToSend.append('photo', '')
     }
     
     let record: Location
@@ -446,32 +454,53 @@ onMounted(() => {
             </div>
           </BaseCard>
           
+          <BaseCard title="Site Photo">
+            <div class="flex flex-col items-center gap-2">
+              <ImageUploadField
+                v-model:file="photoFile"
+                v-model:removed="photoRemoved"
+                :source="
+                  loadedLocation?.photo
+                    ? { record: loadedLocation, filename: loadedLocation.photo, thumb: '400x400' }
+                    : null
+                "
+                :size="180"
+                add-label="Add photo"
+              >
+                <template #fallback>
+                  <span class="text-xs text-base-content/50 px-2 text-center">No photo</span>
+                </template>
+              </ImageUploadField>
+              <p class="text-xs text-base-content/60 text-center max-w-xs">
+                What the site looks like on arrival. Large images are scaled down before upload.
+              </p>
+            </div>
+          </BaseCard>
+
           <BaseCard title="Floorplan">
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Upload Floorplan Image</span>
-                <span class="label-text-alt">Optional</span>
-              </label>
-              
-              <!-- Current floorplan preview -->
-              <div v-if="currentFloorplan && !floorplanFile" class="mb-4">
-                <p class="text-sm text-base-content/70 mb-2">Current floorplan:</p>
-                <img 
-                  :src="currentFloorplan" 
-                  alt="Current floorplan"
-                  class="max-w-xs rounded border border-base-300"
-                />
-              </div>
-              
-              <input 
-                type="file"
-                accept="image/*"
-                @change="handleFileChange"
-                class="file-input file-input-bordered"
-              />
-              <label class="label">
-                <span class="label-text-alt">Accepts: JPG, PNG, SVG, GIF, WebP</span>
-              </label>
+            <div class="flex flex-col items-center gap-2">
+              <!-- Accepts SVG, which the photo field deliberately does not: a
+                   floorplan is frequently exported as a drawing rather than
+                   photographed. -->
+              <ImageUploadField
+                v-model:file="floorplanFile"
+                v-model:removed="floorplanRemoved"
+                :source="
+                  loadedLocation?.floorplan
+                    ? { record: loadedLocation, filename: loadedLocation.floorplan }
+                    : null
+                "
+                :size="180"
+                accept="image/jpeg,image/png,image/svg+xml,image/gif,image/webp"
+                add-label="Add floorplan"
+              >
+                <template #fallback>
+                  <span class="text-xs text-base-content/50 px-2 text-center">No floorplan</span>
+                </template>
+              </ImageUploadField>
+              <p class="text-xs text-base-content/60 text-center max-w-xs">
+                Accepts JPG, PNG, SVG, GIF or WebP. Used as the backdrop for placing things.
+              </p>
             </div>
           </BaseCard>
           

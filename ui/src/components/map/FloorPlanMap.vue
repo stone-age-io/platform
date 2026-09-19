@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useFloorPlan } from '@/composables/useFloorPlan'
-import { pb } from '@/utils/pb'
+import { fileUrl } from '@/utils/fileToken'
 import type { Thing, Location } from '@/types/pocketbase'
 import ThingMapDrawer from '@/components/things/ThingMapDrawer.vue'
 import FloorPlanPositionDrawer from '@/components/map/FloorPlanPositionDrawer.vue'
@@ -36,20 +36,50 @@ function checkMobile() {
   isMobile.value = window.innerWidth < 768
 }
 
-const loadMap = () => {
+// Guards against an out-of-order load. `locations.floorplan` is a protected
+// file, so building its URL now awaits a file token, and navigating between two
+// locations can leave two loads in flight -- without this the slower one wins
+// and the map shows the previous location's plan.
+let floorplanLoad = 0
+
+const loadMap = async () => {
   // Reset interaction state when the floor plan changes (e.g. navigating locations).
   selectedThingId.value = null
   showPositionDrawer.value = false
   positionMode.value = false
 
+  const seq = ++floorplanLoad
+
   if (!props.location?.floorplan) return
   loading.value = true
 
-  const imageUrl = pb.files.getURL(props.location, props.location.floorplan)
+  // Protected: a URL without a file token is a guaranteed 404. The server
+  // checks it against the locations viewRule, so a floor plan is now readable
+  // only inside the organization that owns the site -- the URL on its own is no
+  // longer enough.
+  const imageUrl = await fileUrl({
+    record: props.location,
+    filename: props.location.floorplan,
+  })
+  if (seq !== floorplanLoad) return
+  if (!imageUrl) {
+    loading.value = false
+    return
+  }
+
   const img = new Image()
   img.onload = () => {
+    if (seq !== floorplanLoad) return
     initFloorPlan('floorplan-container', imageUrl, img.width, img.height)
     renderAll()
+    loading.value = false
+  }
+  // Without this the spinner runs forever on any failed load. That was always
+  // true; protection makes it reachable -- an expired token or a revoked
+  // membership now fails here rather than never.
+  img.onerror = () => {
+    if (seq !== floorplanLoad) return
+    console.warn('Failed to load floor plan image')
     loading.value = false
   }
   img.src = imageUrl
@@ -110,13 +140,13 @@ function handleMapBgClick(event: MouseEvent) {
 onMounted(() => {
   checkMobile()
   window.addEventListener('resize', checkMobile)
-  loadMap()
+  void loadMap()
 })
 onUnmounted(() => window.removeEventListener('resize', checkMobile))
 
 watch(() => props.things, renderAll, { deep: true })
 watch(positionMode, renderAll)
-watch(() => props.location?.floorplan, loadMap)
+watch(() => props.location?.floorplan, () => void loadMap())
 </script>
 
 <template>

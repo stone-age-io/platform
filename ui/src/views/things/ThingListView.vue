@@ -12,6 +12,7 @@ import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 import ListPager from '@/components/ui/ListPager.vue'
+import RecordPhoto from '@/components/common/RecordPhoto.vue'
 import ThingMapViz from '@/components/things/ThingMapViz.vue'
 import QrLabelModal from '@/components/common/QrLabelModal.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -379,17 +380,30 @@ onUnmounted(() => {
           is the exception, not a value you scan down a column for.
         -->
         <template #cell-name="{ item }">
-          <div>
-            <div class="font-medium flex items-center gap-2">
-              <span :class="{ 'text-base-content/50': item.active === false }">
-                {{ item.name || 'Unnamed' }}
-              </span>
-              <span v-if="item.active === false" class="badge badge-error badge-outline badge-sm">
-                Deactivated
-              </span>
-            </div>
-            <div v-if="item.description" :title="item.description" class="text-sm text-base-content/60 line-clamp-1">
-              {{ item.description }}
+          <div class="flex items-center gap-3">
+            <!-- NOT hide-when-empty here, unlike the detail header: in a list
+                 the box has to be claimed whether or not the row has a photo,
+                 or the names sit on two different left edges. 100x100 is the
+                 thumb PocketBase serves for any file field. -->
+            <RecordPhoto
+              :record="item"
+              :filename="item.photo"
+              thumb="100x100"
+              :size="40"
+              :alt="item.name || 'Thing'"
+            />
+            <div class="min-w-0">
+              <div class="font-medium flex items-center gap-2">
+                <span :class="{ 'text-base-content/50': item.active === false }">
+                  {{ item.name || 'Unnamed' }}
+                </span>
+                <span v-if="item.active === false" class="badge badge-error badge-outline badge-sm">
+                  Deactivated
+                </span>
+              </div>
+              <div v-if="item.description" :title="item.description" class="text-sm text-base-content/60 line-clamp-1">
+                {{ item.description }}
+              </div>
             </div>
           </div>
         </template>

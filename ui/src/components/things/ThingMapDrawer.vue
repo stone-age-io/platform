@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import type { Thing, Location } from '@/types/pocketbase'
+import RecordPhoto from '@/components/common/RecordPhoto.vue'
 
 const props = defineProps<{
   things: Thing[]
@@ -58,7 +59,21 @@ function goToLocation(loc: Location) {
     <!-- Header (single / detail mode) -->
     <div v-else class="flex items-center justify-between p-4 border-b border-base-300 bg-base-200/30 shrink-0">
       <div class="flex items-center gap-3 min-w-0">
-        <span class="text-lg shrink-0">📦</span>
+        <!-- The photo replaces the generic icon when there is one. This is the
+             "which of these boxes is it" moment on a floorplan, and a real
+             picture answers it better than 📦 does. Falls back to the icon
+             rather than to an empty plate, so a thing without a photo looks
+             deliberate instead of broken. -->
+        <RecordPhoto
+          v-if="single.photo"
+          :record="single"
+          :filename="single.photo"
+          thumb="100x100"
+          :size="40"
+          hide-when-empty
+          :alt="single.name || 'Thing'"
+        />
+        <span v-else class="text-lg shrink-0">📦</span>
         <div class="min-w-0">
           <h3 class="font-bold text-sm truncate">{{ single.name || 'Unnamed' }}</h3>
           <span v-if="single.expand?.type" class="text-xs text-base-content/60">{{ single.expand.type.name }}</span>

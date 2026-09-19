@@ -7,9 +7,9 @@ import { useAuthStore } from '@/stores/auth'
 import { useUIStore } from '@/stores/ui'
 import { useNatsStore } from '@/stores/nats'
 import { useBrandingStore } from '@/stores/branding'
-import { pb } from '@/utils/pb'
 import BrandLogo from '@/components/common/BrandLogo.vue'
 import OrgLogo from '@/components/common/OrgLogo.vue'
+import UserAvatar from '@/components/common/UserAvatar.vue'
 import { useEscapeKey } from '@/composables/useEscapeKey'
 
 const router = useRouter()
@@ -253,13 +253,6 @@ onUnmounted(() => {
   window.removeEventListener('click', handleClickOutside)
 })
 
-function getAvatarUrl() {
-  if (!authStore.user?.avatar) return null
-  return pb.files.getURL(authStore.user, (authStore.user as any).avatar, {
-    thumb: '100x100',
-    token: pb.authStore.token
-  })
-}
 
 function closeDrawer() {
   const drawer = document.getElementById('sidebar-drawer') as HTMLInputElement
@@ -541,14 +534,7 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
           role="button"
         >
           <!-- User Avatar -->
-          <div class="avatar placeholder">
-            <div v-if="getAvatarUrl()" class="w-8 rounded-full">
-              <img :src="getAvatarUrl()!" alt="User avatar" />
-            </div>
-            <div v-else class="bg-neutral text-neutral-content rounded-full w-8">
-              <span class="text-xs font-bold">{{ userInitial }}</span>
-            </div>
-          </div>
+          <UserAvatar :user="authStore.user" :size="32" :fallback-initial="userInitial" />
 
           <!-- User Info -->
           <div v-show="!effectiveCompact" class="flex flex-col truncate flex-1 text-left min-w-0">

@@ -8,6 +8,7 @@ import { pb } from '@/utils/pb'
 import type { Membership, NatsUser, User, Organization } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import RecordPicker from '@/components/common/RecordPicker.vue'
+import UserAvatar from '@/components/common/UserAvatar.vue'
 import type { PickerOption } from '@/types/picker'
 
 /**
@@ -171,11 +172,7 @@ onMounted(loadData)
         
         <div class="flex flex-col sm:flex-row justify-between items-start gap-4">
           <div class="flex items-center gap-3">
-            <div class="avatar placeholder">
-              <div class="bg-neutral text-neutral-content rounded-full w-12 border-2 border-base-300">
-                <span class="text-xl">{{ membership.expand.user.name?.[0]?.toUpperCase() || 'U' }}</span>
-              </div>
-            </div>
+            <UserAvatar :user="membership.expand.user" :size="48" fallback-initial="U" class="border-2 border-base-300" />
             <div>
               <h1 class="text-3xl font-bold break-words">{{ membership.expand.user.name || 'Unknown User' }}</h1>
               <div class="flex items-center gap-2 mt-1">
@@ -210,11 +207,7 @@ onMounted(loadData)
               <div>
                 <dt class="text-xs font-bold text-base-content/50 uppercase tracking-widest mb-2">Onboarding</dt>
                 <div v-if="membership.expand.invited_by" class="flex items-center gap-3 p-3 bg-base-200/50 rounded-xl border border-base-300">
-                  <div class="avatar placeholder">
-                    <div class="bg-primary text-primary-content rounded-full w-8">
-                      <span class="text-xs">{{ membership.expand.invited_by.name?.[0] || '?' }}</span>
-                    </div>
-                  </div>
+                  <UserAvatar :user="membership.expand.invited_by" :size="32" tone="primary" />
                   <div class="flex flex-col">
                     <span class="text-xs text-base-content/60">Invited By</span>
                     <span class="text-sm font-bold">{{ membership.expand.invited_by.name || membership.expand.invited_by.email }}</span>

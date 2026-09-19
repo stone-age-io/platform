@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import type { User } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import ImageUploadField from '@/components/common/ImageUploadField.vue'
 import RecordPicker from '@/components/common/RecordPicker.vue'
 import type { PickerOption } from '@/types/picker'
 import { generateRandomPassword } from '@/utils/password'
@@ -35,15 +36,12 @@ const isReservedOrg = computed(
   () => !!existingRecord.value?.is_system_org || !!existingRecord.value?.is_operator_org
 )
 
-// Logo state
-// - logoFile: a newly-selected File (null if user hasn't picked anything new)
-// - logoPreviewUrl: object URL for newly-selected file, OR resolved URL for the
-//   existing record's stored logo
-// - removeExistingLogo: when true on edit, clear the stored logo on save
+// Logo state. ImageUploadField owns the picker, the preview and the object-URL
+// lifetime; this view owns only what Save should do.
+// - logoFile: a newly-selected File, or null
+// - removeExistingLogo: on edit, clear the stored logo on save
 const logoFile = ref<File | null>(null)
-const logoPreviewUrl = ref<string | null>(null)
 const removeExistingLogo = ref(false)
-const logoFileInputRef = ref<HTMLInputElement | null>(null)
 const existingRecord = ref<any>(null)
 
 // Owner selection state
@@ -98,40 +96,12 @@ async function loadData() {
       managed: !!record.managed,
       owner: record.owner,
     }
-    if (record.logo) {
-      logoPreviewUrl.value = pb.files.getURL(record, record.logo, { thumb: '200x200' })
-    }
   } catch (err: any) {
     toast.error('Failed to load organization')
     router.push('/organizations')
   } finally {
     loading.value = false
   }
-}
-
-function onLogoSelected(e: Event) {
-  const file = (e.target as HTMLInputElement).files?.[0]
-  if (!file) return
-  logoFile.value = file
-  removeExistingLogo.value = false
-  // Revoke any previous object URL we created for a prior selection
-  if (logoPreviewUrl.value && logoPreviewUrl.value.startsWith('blob:')) {
-    URL.revokeObjectURL(logoPreviewUrl.value)
-  }
-  logoPreviewUrl.value = URL.createObjectURL(file)
-}
-
-function clearLogo() {
-  if (logoPreviewUrl.value && logoPreviewUrl.value.startsWith('blob:')) {
-    URL.revokeObjectURL(logoPreviewUrl.value)
-  }
-  logoFile.value = null
-  logoPreviewUrl.value = null
-  // Only mark for removal if there was a stored logo
-  if (existingRecord.value?.logo) {
-    removeExistingLogo.value = true
-  }
-  if (logoFileInputRef.value) logoFileInputRef.value.value = ''
 }
 
 async function createNewUser(): Promise<string | null> {
@@ -336,38 +306,32 @@ onMounted(() => {
                 <label class="label">
                   <span class="label-text">Logo</span>
                 </label>
-                <div class="flex items-center gap-4">
-                  <div class="w-16 h-16 rounded-lg border border-base-300 bg-base-200 flex items-center justify-center overflow-hidden flex-shrink-0">
-                    <img
-                      v-if="logoPreviewUrl"
-                      :src="logoPreviewUrl"
-                      alt="Logo preview"
-                      class="w-full h-full object-contain"
-                    />
-                    <span v-else class="text-xs text-base-content/50">No logo</span>
-                  </div>
-                  <div class="flex flex-col gap-2 flex-1">
-                    <input
-                      ref="logoFileInputRef"
-                      type="file"
-                      accept="image/png,image/jpeg,image/svg+xml,image/gif,image/webp"
-                      class="file-input file-input-bordered file-input-sm w-full"
-                      :disabled="loading"
-                      @change="onLogoSelected"
-                    />
-                    <div class="flex items-center justify-between">
-                      <span class="text-xs text-base-content/60">Square image. PNG, JPG, SVG, GIF, or WEBP.</span>
-                      <button
-                        v-if="logoPreviewUrl"
-                        type="button"
-                        class="btn btn-xs btn-ghost text-error"
-                        :disabled="loading"
-                        @click="clearLogo"
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  </div>
+                <div class="flex flex-col items-center gap-2">
+                  <!--
+                    Accepts SVG, unlike the photo fields: a logo is usually
+                    supplied as vector artwork, and it is rendered on a fixed
+                    neutral plate rather than decoded as a photograph.
+                    maxDimension is left at the default -- OrgLogo only ever
+                    draws this at chrome size.
+                  -->
+                  <ImageUploadField
+                    v-model:file="logoFile"
+                    v-model:removed="removeExistingLogo"
+                    :source="
+                      existingRecord?.logo
+                        ? { record: existingRecord, filename: existingRecord.logo, thumb: '200x200' }
+                        : null
+                    "
+                    :size="96"
+                    accept="image/png,image/jpeg,image/svg+xml,image/gif,image/webp"
+                    :disabled="loading"
+                    add-label="Add logo"
+                  >
+                    <template #fallback>
+                      <span class="text-xs text-base-content/50">No logo</span>
+                    </template>
+                  </ImageUploadField>
+                  <span class="text-xs text-base-content/60">Square image. PNG, JPG, SVG, GIF, or WEBP.</span>
                 </div>
               </div>
             </div>

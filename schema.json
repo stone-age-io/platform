@@ -1090,6 +1090,26 @@
         "type": "text"
       },
       {
+        "hidden": false,
+        "id": "file347571224",
+        "maxSelect": 1,
+        "maxSize": 2097152,
+        "mimeTypes": [
+          "image/jpeg",
+          "image/png",
+          "image/webp"
+        ],
+        "name": "photo",
+        "presentable": false,
+        "protected": true,
+        "required": false,
+        "system": false,
+        "thumbs": [
+          "400x400"
+        ],
+        "type": "file"
+      },
+      {
         "cascadeDelete": false,
         "collectionId": "pbc_247972991",
         "hidden": false,
@@ -1385,7 +1405,7 @@
         ],
         "name": "avatar",
         "presentable": false,
-        "protected": false,
+        "protected": true,
         "required": false,
         "system": false,
         "thumbs": null,
@@ -2078,10 +2098,30 @@
         ],
         "name": "floorplan",
         "presentable": false,
-        "protected": false,
+        "protected": true,
         "required": false,
         "system": false,
         "thumbs": [],
+        "type": "file"
+      },
+      {
+        "hidden": false,
+        "id": "file347571224",
+        "maxSelect": 1,
+        "maxSize": 2097152,
+        "mimeTypes": [
+          "image/jpeg",
+          "image/png",
+          "image/webp"
+        ],
+        "name": "photo",
+        "presentable": false,
+        "protected": true,
+        "required": false,
+        "system": false,
+        "thumbs": [
+          "400x400"
+        ],
         "type": "file"
       },
       {
@@ -3464,7 +3504,7 @@
         ],
         "name": "logo",
         "presentable": false,
-        "protected": false,
+        "protected": true,
         "required": false,
         "system": false,
         "thumbs": [

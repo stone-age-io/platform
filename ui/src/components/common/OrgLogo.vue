@@ -16,14 +16,17 @@
  * is carrying the identity on its own -- see the `fallback` prop, where the
  * contrast measurements that settled it are written down.
  *
- * NO NETWORK OF ITS OWN. Every caller already holds a full organization record:
- * `authStore.currentOrg` for the trigger, `membership.expand.organization` for
- * each row of the switcher. pb.files.getURL needs only the record's collection
- * and id, both of which an expanded record carries, so rendering a logo per row
- * costs nothing beyond the image itself.
+ * NO RECORD FETCH OF ITS OWN. Every caller already holds a full organization
+ * record: `authStore.currentOrg` for the trigger,
+ * `membership.expand.organization` for each row of the switcher. pb.files needs
+ * only the record's collection and id, both of which an expanded record
+ * carries, so rendering a logo per row costs nothing beyond the image. The one
+ * request it does make is for a file token, and that is cached across every
+ * caller on the page (utils/fileToken.ts), so a switcher listing ten
+ * organizations still makes at most one.
  */
 import { computed } from 'vue'
-import { pb } from '@/utils/pb'
+import { useFileUrl } from '@/composables/useFileUrl'
 import type { Organization } from '@/types/pocketbase'
 
 interface Props {
@@ -61,10 +64,14 @@ const sizePx = computed(() => `${props.size}px`)
 // this component renders is chrome-sized, so 100x100 covers it even at 2x DPR;
 // asking for a thumb the field does not declare would make PocketBase generate
 // one per request.
-const logoUrl = computed(() => {
+//
+// Protected, so resolving the URL is async: see useFileUrl. The server checks
+// the token against the organizations viewRule, which is operator-or-member --
+// exactly the set of organizations the switcher can list in the first place.
+const logoUrl = useFileUrl(() => {
   const org = props.org
-  if (!org?.logo) return null
-  return pb.files.getURL(org as any, org.logo, { thumb: '100x100' })
+  if (!org?.logo || !org.id) return null
+  return { record: org as { id: string }, filename: org.logo, thumb: '100x100' }
 })
 
 // '?' rather than a blank square: an organization whose name has not loaded yet

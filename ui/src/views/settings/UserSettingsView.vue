@@ -10,6 +10,8 @@ import { pb } from '@/utils/pb'
 import type { User, NatsUser } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import RecordPicker from '@/components/common/RecordPicker.vue'
+import UserAvatar from '@/components/common/UserAvatar.vue'
+import ImageUploadField from '@/components/common/ImageUploadField.vue'
 import type { PickerOption } from '@/types/picker'
 
 const authStore = useAuthStore()
@@ -21,9 +23,17 @@ const { validateWebSocketUrl } = useValidation()
 
 // --- Profile State ---
 const profileForm = ref({ name: '' })
-const avatarFile = ref<File | null>(null)
-const avatarPreview = ref<string | null>(null)
 const profileLoading = ref(false)
+
+// --- Avatar State ---
+//
+// ImageUploadField owns the picker, the preview and the object-URL lifetime;
+// this view owns only what Save should do. Three states, and they have to stay
+// distinguishable: the stored avatar, a locally-chosen replacement, and a
+// pending REMOVAL -- the last cannot be expressed by clearing the first two, or
+// it is silently dropped on save.
+const avatarFile = ref<File | null>(null)
+const avatarRemoved = ref(false)
 
 // --- Password State ---
 const passwordForm = ref({ oldPassword: '', password: '', passwordConfirm: '' })
@@ -59,22 +69,10 @@ const isFakeMembership = computed(() => {
 function initProfile() {
   if (authStore.user) {
     profileForm.value.name = authStore.user.name || ''
-    if (authStore.user.avatar) {
-      avatarPreview.value = pb.files.getURL(authStore.user, authStore.user.avatar, { token: pb.authStore.token })
-    }
   }
 }
 
-function handleFileChange(event: Event) {
-  const target = event.target as HTMLInputElement
-  if (target.files && target.files.length > 0) {
-    const file = target.files[0]
-    avatarFile.value = file
-    const reader = new FileReader()
-    reader.onload = (e) => { avatarPreview.value = e.target?.result as string }
-    reader.readAsDataURL(file)
-  }
-}
+
 
 async function updateProfile() {
   if (!authStore.user) return
@@ -82,17 +80,23 @@ async function updateProfile() {
   try {
     const formData = new FormData()
     formData.append('name', profileForm.value.name)
-    if (avatarFile.value) formData.append('avatar', avatarFile.value)
-    
+    if (avatarFile.value) {
+      formData.append('avatar', avatarFile.value)
+    } else if (avatarRemoved.value) {
+      // An empty value clears a single-file field: PocketBase normalizes it to
+      // an empty slice and stores "" (core/field_file.go, normalizeValue).
+      formData.append('avatar', '')
+    }
+
     const collectionName = authStore.user.collectionName || 'users'
     const updatedUser = await pb.collection(collectionName).update(authStore.user.id, formData)
-    
+
+    // The store record is what UserAvatar reads, here and in the sidebar, so
+    // assigning it is what repaints both. No URL to rebuild.
     authStore.user = updatedUser as unknown as User
-    if (updatedUser.avatar) {
-      avatarPreview.value = pb.files.getURL(updatedUser, updatedUser.avatar, { token: pb.authStore.token })
-    }
     toast.success('Profile updated')
     avatarFile.value = null
+    avatarRemoved.value = false
   } catch (err: any) {
     toast.error(err.message)
   } finally {
@@ -225,9 +229,7 @@ onMounted(() => {
   loadIdentities()
 })
 
-function triggerAvatarUpload() {
-  document.getElementById('avatar-upload')?.click()
-}
+
 
 // Reload identities if user switches org while on Settings page
 watch(() => authStore.currentOrgId, loadIdentities)
@@ -262,15 +264,29 @@ watch(() => authStore.currentOrgId, loadIdentities)
 
       <form @submit.prevent="updateProfile" class="flex flex-col md:flex-row gap-8 items-start">
         <div class="flex flex-col items-center gap-3 shrink-0 mx-auto md:mx-0">
-          <div class="avatar placeholder">
-            <div class="w-24 md:w-32 rounded-full ring ring-primary ring-offset-base-100 ring-offset-2 overflow-hidden bg-neutral text-neutral-content">
-              <img v-if="avatarPreview" :src="avatarPreview" alt="Avatar" class="object-cover w-full h-full" />
-              <span v-else class="text-4xl font-bold">{{ profileForm.name?.[0]?.toUpperCase() || 'U' }}</span>
-            </div>
-          </div>
-          
-          <input id="avatar-upload" type="file" accept="image/*" class="hidden" @change="handleFileChange" />
-          <button type="button" @click="triggerAvatarUpload" class="btn btn-xs btn-outline">Change Avatar</button>
+          <!-- The fallback is UserAvatar, so the settings page draws the same
+               initial circle the sidebar and Members list do rather than a
+               second opinion of what "no avatar" looks like. -->
+          <ImageUploadField
+            v-model:file="avatarFile"
+            v-model:removed="avatarRemoved"
+            :source="
+              authStore.user?.avatar
+                ? { record: authStore.user, filename: authStore.user.avatar, thumb: '100x100' }
+                : null
+            "
+            shape="circle"
+            :size="128"
+            add-label="Add Avatar"
+          >
+            <template #fallback>
+              <UserAvatar
+                :user="authStore.user"
+                :size="128"
+                :fallback-initial="profileForm.name?.[0]?.toUpperCase() || 'U'"
+              />
+            </template>
+          </ImageUploadField>
         </div>
 
         <div class="flex-1 w-full grid grid-cols-1 md:grid-cols-2 gap-4">

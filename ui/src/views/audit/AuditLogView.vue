@@ -8,6 +8,7 @@ import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 import ListPager from '@/components/ui/ListPager.vue'
+import UserAvatar from '@/components/common/UserAvatar.vue'
 
 // Pagination
 const {
@@ -238,11 +239,7 @@ onUnmounted(() => {
         <!-- User Column -->
         <template #cell-expand.user.name="{ item }">
           <div class="flex items-center gap-2">
-            <div class="avatar placeholder">
-              <div class="bg-neutral text-neutral-content rounded-full w-8">
-                <span class="text-xs">{{ item.expand?.user?.name?.[0] || 'S' }}</span>
-              </div>
-            </div>
+            <UserAvatar :user="item.expand?.user" :size="32" fallback-initial="S" />
             <div class="flex flex-col">
               <span class="text-sm font-medium">
                 {{ item.expand?.user?.name || item.expand?.user?.email || 'System' }}
@@ -252,11 +249,7 @@ onUnmounted(() => {
         </template>
         <template #card-expand.user.name="{ item }">
           <div class="flex items-center gap-2 font-medium">
-            <div class="avatar placeholder">
-              <div class="bg-neutral text-neutral-content rounded-full w-6">
-                <span class="text-xs">{{ item.expand?.user?.name?.[0] || 'S' }}</span>
-              </div>
-            </div>
+            <UserAvatar :user="item.expand?.user" :size="24" fallback-initial="S" />
             {{ item.expand?.user?.name || item.expand?.user?.email || 'System' }}
           </div>
         </template>

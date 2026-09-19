@@ -570,6 +570,86 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
       `/staff/scan`; nothing fetches the decoded string as a destination, and there
       is deliberately **no resolver service**.
 
+18. **Uploaded files are protected, all of them** - every file field on the
+    platform sets `protected: true` (`users.avatar`, `organizations.logo`,
+    `locations.floorplan`, `things.photo`, `locations.photo`). An unprotected
+    PocketBase file URL is served to **anyone**, with no auth and no expiry --
+    the only obstacle is the random suffix on the stored filename, so the URL is
+    a non-revocable bearer credential that leaks through Referer headers,
+    screenshots, proxy logs and support tickets for the life of the record.
+    Protected, `apis/file.go` resolves the `token` query param to an auth record
+    and runs `CanAccessRecord` against the collection's **viewRule** -- the same
+    boundary the rest of the API enforces.
+    - **The auth token is NOT a file token.** `/api/files` accepts only
+      `core.TokenTypeFile`, minted by `POST /api/files/token`. Two avatar call
+      sites passed `pb.authStore.token` for years and "worked" only because the
+      field was unprotected and the param was ignored. Copy that onto a
+      protected field and you get a 404 with nothing in the console.
+    - **The migration derives its list by walking the live schema**
+      (`migrations/schema_update_protected_files.go`), so a file field added
+      next year is protected on upgrade by a migration written today. A
+      hardcoded list splits adding an upload field into two halves that fail
+      independently and silently: set the flag in `schema.json` and fresh
+      installs are fine, forget the migration and every EXISTING deployment
+      keeps serving it in the clear. `TestEveryFileFieldInTheSchemaIsProtected`
+      is the matching guard.
+    - **The token is cached and deliberately NOT reactive**
+      (`ui/src/utils/fileToken.ts`). `fileToken.duration` is 180s; a reactive
+      token would change every derived URL on rotation and re-fetch every image
+      on the page every three minutes, forever, on a screen nobody is touching
+      -- and `dashboard` is an appliance login for an unattended display. URLs
+      resolve once per record (`useFileUrl`), so a rotation reaches only images
+      that mount after it. `logout()` clears it: it outlives
+      `authStore.clear()` by up to its full duration and is a bearer credential
+      for every file the previous session could read.
+    - Section 22 of `scripts/test-authz.sh` proves it at the HTTP layer, which
+      is the only layer where the flag means anything -- a unit test can assert
+      `protected: true` all day while the server hands over the bytes.
+
+19. **Thing and location photos** - one image of the physical object
+    (`things.photo`, `locations.photo`), for the moment somebody is standing in
+    front of it after scanning its label. `ScannerWidget` and the helpdesk scan
+    flow are the surfaces it exists for; the install context it carries
+    otherwise lives in one technician's head and leaves when they do.
+    - **`things.photo` is EDIT-ONLY.** Creating a Thing goes through
+      `POST /api/org/things`, a JSON provisioning route that writes the Thing
+      and its identities in one server-side transaction; it cannot carry a
+      multipart upload, and bolting a second client call onto it is the pattern
+      that route exists to have removed. `locations.photo` works on create too,
+      because locations use the plain record API with FormData.
+    - **The photo is a separate request from the rest of a Thing edit**, and
+      must stay one. That body's null-vs-ABSENT distinction is load-bearing --
+      the member branch of `things.updateRule` requires
+      `nats_user:changed = false`, and a field omitted from a JSON body counts
+      as unchanged. FormData has no null and no way to omit: everything is a
+      string and an empty one CLEARS the field, so rebuilding that body as
+      FormData turns a member's ordinary inventory edit into a 404.
+    - **No rule change was needed, and that is asserted rather than assumed.**
+      The member branch freezes `organization`, `code`, `nats_user`,
+      `nebula_host` and `active` and nothing else, so an ordinary inventory
+      field is writable by `member` and not by `viewer` or `dashboard`. Section
+      23 of `scripts/test-authz.sh` checks it against a live server, including
+      that a multipart upload cannot smuggle a frozen field alongside the photo
+      -- `-F` is a different parse path from every other check in that file.
+    - **One photo, not a gallery.** `maxSelect: 1` is a decision: 1 -> N is a
+      column migration (PocketBase stores a multi-file field as JSON, not TEXT),
+      and a gallery nobody asked for is the worse mistake.
+    - **Not SVG**, though `locations.floorplan` allows it: this field is camera
+      output, and there is no reason to re-widen the decoder surface
+      `schema_update_floorplan_mime_types.go` narrowed.
+    - **The browser downscales before upload** (`ui/src/utils/imageResize.ts`),
+      so the 2 MiB cap is a backstop rather than the mechanism -- a phone
+      produces 3-5 MB and would otherwise be rejected outright. Files live in
+      `pb_data/storage` with no object store configured and ride in every
+      backup, which matters most on the two collections with thousands of rows.
+    - **Thumb sizes are a closed set.** PocketBase serves `100x100` for any file
+      field whether declared or not; every other size must be in the field's own
+      `thumbs` list or the request silently serves the full original.
+      `TestPhotoThumbsAreDeclared` pins the 400x400 the detail views ask for.
+    - Deliberately **not** on the QR label (print, bare code, minimal), not in
+      `leaf-config` (agents do not need it), and not in
+      `auditSnapshotCollections`.
+
 ## Roles & Authorization
 
 **PocketBase API rules in `schema.json` are the only enforcement layer.** pb-nats
@@ -993,9 +1073,21 @@ you, so pushing an absolute one would make the login form an open redirect (the
   mounting except `ConfirmDialog` and `QrLabelModal`, where the DOM contract IS
   the subject. Covers the pure logic `vue-tsc && vite build` cannot protect:
   `twinDrift`, `useSubscriptionManager`, `useEscapeKey`, the `can` capability
-  map, dashboard import/export, `createDefaultWidget`, and the JSON Schema
-  round trip in `schemaFields` + `inferSchema`. A spec that needs a DOM opts in
+  map, dashboard import/export, `createDefaultWidget`, the JSON Schema
+  round trip in `schemaFields` + `inferSchema`, the file-token cache, and
+  `targetDimensions`. A spec that needs a DOM opts in
   with `// @vitest-environment jsdom` on its first line.
+  - **The file-token cache is tested through `fileUrl()`, not through the
+    getter it wraps.** Every failure mode there is SILENT -- a missing cache is
+    a burst of requests nobody sees, a missing reset hands one user's
+    credential to the next, a missing expiry skew breaks an image only for the
+    caller unlucky enough to ask in a token's last second. None of them throws.
+    Asserting through the public surface means the tests survive the caching
+    moving and still fail if the behaviour does.
+  - **`imageResize` is split so the judgement is testable and only the plumbing
+    is not.** vitest runs in node and jsdom does not implement `canvas.toBlob`,
+    so the drawing half cannot be covered here at all; every decision therefore
+    lives in `targetDimensions`, which is pure arithmetic.
   - **A form that edits a document needs a ROUND-TRIP assertion, not a render
     test.** `SchemaBuilder` reads a JSON Schema into an internal `Field` struct
     and writes it back out, so any keyword `schemaToFields` does not read is
@@ -1024,6 +1116,17 @@ you, so pushing an absolute one would make the login form an open redirect (the
   `git ls-files '*.go' | while read f; do git show ":$f" > /tmp/x.go; gofmt -l /tmp/x.go; done`.
   Do not "fix" the files `gofmt -l .` lists here, and do not conclude the gate is
   broken.
+- **A test that reads a UI source file must be line-ending tolerant.**
+  `.gitattributes` pins `*.sh`, `*.go`, `Dockerfile`, `*.yaml` and `*.yml` to
+  LF and nothing else, so with `core.autocrlf=true` a `.vue` or `.ts` file is
+  **CRLF in a Windows worktree and LF in git**. `TestActivityNounsAllHaveAConsoleRoute`
+  matched `\{\n` against `ActivityView.vue` and therefore could never pass on a
+  Windows checkout and always passed in CI -- the worst pairing available,
+  because a genuinely broken `hooks` package hides behind a red run people have
+  learned to ignore. Fixed with `\r?\n`, and verified against both line endings
+  rather than just the one on this machine. Match `\r?\n`, or strip `\r` before
+  matching; do not add `*.vue text eol=lf` to `.gitattributes` to dodge it,
+  which rewrites every contributor's worktree to fix one regex.
 - `go test -short ./...` — **the pass to run while working: ~19s instead of
   ~11min.** It skips exactly one thing: tests that stand up a real PocketBase.
   That is where all the time is — booting one costs the better part of ten
@@ -1099,6 +1202,10 @@ you, so pushing an absolute one would make the login form an open redirect (the
 - `internal/metrics/` - Prometheus exposition, plus the optional Bearer/Basic scrape token. The agent repo carries a copy of this and of `internal/health`: duplicated rather than extracted into a shared module, because two small copies that drift are cheaper to live with than a third repo to version, and the two processes check different things
 - `hooks/observability.go` + `hooks/readiness.go` + `hooks/metrics.go` - the Control Plane's `/api/ready` + `/metrics` routes, its checks, and its collectors
 - `hooks/cert_expiry.go` - the one scan behind both the `nebula_cert_expiry` check and the `stone_age_certificate*` metrics, so the two cannot disagree. **Two windows, not one**: hosts at 30 days (they renew themselves), the CA at 90 (it cannot be renewed at all, only rotated, and rotation needs months). `TestCAGetsALongerWarningWindowThanAHost` stops them collapsing back together
+- `ui/src/utils/fileToken.ts` - the file-token cache and the only place that mints one, plus `fileUrl()` for imperative callers. Every uploaded file is protected, so a URL without a token is a guaranteed 404. Deliberately non-reactive: see feature 18
+- `ui/src/composables/useFileUrl.ts` - the reactive twin, for a component rendering straight from a prop. Resolves once per record, never per token rotation
+- `ui/src/components/common/ImageUploadField.vue` - the one image picker, replacing three hand-rolled copies that had already drifted (one leaked object URLs, one had no removal path at all). Staged like every other field: choosing and removing both take effect on Save
+- `ui/src/components/common/UserAvatar.vue` / `RecordPhoto.vue` - the read-only halves. UserAvatar is for people (initial-circle fallback, and a viewRule that is NOT org-scoped, so it belongs only on owner/admin or operator screens); RecordPhoto is for things and locations
 - `ui/src/utils/nebula.ts` - rotation state derived from the CA's certificates (never a stored status), the rotation call, and the `/32` audit fetch. The audit swallows its own failure and returns an empty set: it drives an advisory badge, and a list view that refused to render because an advisory endpoint was down would be the worse outcome
 - `ui/src/utils/managedExports.ts` - names the platform-provisioned export/import pair so the console can present them read-only; mirrors `managedExportName` in `hooks/managed_org_exports.go`, and `hooks/managed_org_exports_test.go` reads this file to keep the two honest
 - `internal/health/leaf_visibility_test.go` - what a tenant can learn about its own leaf nodes, asserted against a real hub with a real leaf attached. Nothing in the platform ships a view on it — site connectivity is a dashboard widget recipe — but the recipe only works if these three nats-server behaviours hold: CONNZ names leaves by `server_name`, the **account** (not any permission we write) blocks the operator-wide `SERVER.PING.*` endpoints, and a publish DENY beats a publish ALLOW

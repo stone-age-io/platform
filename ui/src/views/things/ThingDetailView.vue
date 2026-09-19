@@ -14,6 +14,7 @@ import { TWIN_BUCKET, TWIN_DESIRED_BUCKET } from '@/utils/twin'
 import MetadataCard from '@/components/common/MetadataCard.vue'
 import ExpiryBadge from '@/components/common/ExpiryBadge.vue'
 import RecordTimestamps from '@/components/common/RecordTimestamps.vue'
+import RecordPhoto from '@/components/common/RecordPhoto.vue'
 import QrLabelModal from '@/components/common/QrLabelModal.vue'
 import { useEscapeKey } from '@/composables/useEscapeKey'
 
@@ -216,6 +217,18 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
         </div>
         <div class="flex flex-col sm:flex-row justify-between items-start gap-4">
           <div class="flex items-center gap-3">
+            <!-- hide-when-empty: this sits beside the title, and a "No photo"
+                 plate on every unphotographed device would be a permanent
+                 reproach on a screen where the photo is optional. The form is
+                 where its absence is worth stating. -->
+            <RecordPhoto
+              :record="thing"
+              :filename="thing.photo"
+              thumb="400x400"
+              :size="64"
+              hide-when-empty
+              :alt="`Photo of ${thing.name || 'this thing'}`"
+            />
             <h1 class="text-3xl font-bold break-words">{{ thing.name || 'Unnamed Thing' }}</h1>
             <span v-if="thing.active === false" class="badge badge-error badge-outline gap-1">
               Deactivated

@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
+import { useFileUrl } from '@/composables/useFileUrl'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import { formatDate } from '@/utils/format'
@@ -41,9 +42,12 @@ const isOperator = computed(() => authStore.isOperator)
 
 const id = route.params.id as string
 
-const logoUrl = computed(() => {
-  if (!org.value?.logo) return null
-  return pb.files.getURL(org.value as any, org.value.logo, { thumb: '200x200' })
+// Protected, so resolving the URL needs a file token: see useFileUrl. The 200x200
+// thumb is one the `logo` field declares (schema.json).
+const logoUrl = useFileUrl(() => {
+  const record = org.value
+  if (!record?.logo) return null
+  return { record, filename: record.logo, thumb: '200x200' }
 })
 
 async function loadData() {

@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=209         # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=228         # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -1606,6 +1606,186 @@ if [ "$(jn "$RBODY" 'o.items[0].resource_label')" = "Activity Test Site" ]; then
 else
   no "resource_label after delete was $(jn "$RBODY" 'o.items[0].resource_label')"
 fi
+
+echo ""
+echo "=== 22. uploaded files are protected, not just unguessable ==="
+# Every file field on the platform is `protected` (schema.json,
+# migrations/schema_update_protected_files.go). Without that flag PocketBase
+# serves /api/files/... to ANYONE -- no auth, no expiry, no revocation -- and
+# the only thing between a stranger and a customer's floor plan is the random
+# suffix on the stored filename. That is a bearer credential leaking through
+# every Referer header, screenshot and proxy log for the life of the record.
+#
+# This is checked here rather than in Go because the flag only means anything
+# at the HTTP layer: a unit test can assert `protected: true` all day while
+# apis/file.go serves the bytes regardless. Only a real request proves it.
+#
+# A location, because floorplan is the file that actually matters.
+req POST /collections/locations/records "$TA" \
+  "{\"name\":\"Protected File Site\",\"code\":\"PFS1\",\"organization\":\"$ORG\"}"
+PF_LOC=$(j "$RBODY" id)
+[ -z "$PF_LOC" ] && die "protected-file location create failed: $RBODY"
+
+# A 1x1 PNG, uploaded multipart -- `req` only speaks JSON.
+PF_PNG="$WORK/floorplan.png"
+printf '\211PNG\r\n\032\n\0\0\0\rIHDR\0\0\0\1\0\0\0\1\10\6\0\0\0\37\25\304\211\0\0\0\nIDATx\234c\370\17\0\1\1\1\0\30\335\215\260\0\0\0\0IEND\256B`\202' > "$PF_PNG"
+# curl here is a NATIVE Windows binary under Git Bash and cannot resolve an
+# MSYS path like /tmp/xxx, so -F reads nothing and dies with exit 26 -- which
+# surfaces as HTTP 000 and looks like a server problem rather than a path one.
+# Same accommodation as the powershell process kill in cleanup().
+PF_UPLOAD="$PF_PNG"
+if [ -n "$EXT" ] && command -v cygpath >/dev/null 2>&1; then
+  PF_UPLOAD="$(cygpath -w "$PF_PNG")"
+fi
+PF_UP=$(curl -s -w '\n%{http_code}' -X PATCH "$API/collections/locations/records/$PF_LOC" \
+  -H "Authorization: $TA" -F "floorplan=@$PF_UPLOAD;type=image/png")
+expect "owner can upload a floorplan" 200 "$(tail -n1 <<<"$PF_UP")" "$PF_UP"
+PF_FILE=$(j "$(sed '$d' <<<"$PF_UP")" floorplan)
+[ -z "$PF_FILE" ] && die "floorplan upload returned no filename: $PF_UP"
+PF_URL="$API/files/locations/$PF_LOC/$PF_FILE"
+
+# The whole point: the URL alone is not enough any more.
+expect "anonymous cannot fetch the file by URL alone" "403|404" \
+  "$(curl -s -o /dev/null -w '%{http_code}' "$PF_URL")" ""
+
+# The mistake the UI used to make. The AUTH token is not a FILE token, and
+# /api/files does not accept one -- this passed silently while the field was
+# unprotected because the param was simply ignored.
+expect "the auth token is not accepted as a file token" "403|404" \
+  "$(curl -s -o /dev/null -w "%{http_code}" "$PF_URL?token=$TA")" ""
+
+# Paired allow, so the denials above cannot be a blanket refusal: a real file
+# token from a member of the owning organization works.
+req POST /files/token "$TA"
+PF_TOK=$(j "$RBODY" token)
+[ -z "$PF_TOK" ] && die "owner could not mint a file token: $RBODY"
+expect "owner CAN fetch it with a real file token" 200 \
+  "$(curl -s -o /dev/null -w '%{http_code}' "$PF_URL?token=$PF_TOK")" ""
+
+# ...and so can a viewer, because locations reads are org-scoped with no role
+# branch. A file token does not widen what its holder can read; it carries the
+# holder's own identity into apis/file.go, which re-runs the collection's
+# viewRule against it.
+req POST /files/token "$TV"
+PF_TOK_V=$(j "$RBODY" token)
+expect "viewer CAN fetch it (reads are org-scoped, not role-scoped)" 200 \
+  "$(curl -s -o /dev/null -w '%{http_code}' "$PF_URL?token=$PF_TOK_V")" ""
+
+# The tenancy proof, and the reason this section exists. Eve owns OtherOrg, so
+# she can mint a perfectly valid file token -- it just does not resolve to a
+# record she may view. Before protection this same request returned the bytes.
+TE=$(login eve@test.local)
+[ -z "$TE" ] && die "eve login failed: $RBODY"
+req POST /files/token "$TE"
+PF_TOK_E=$(j "$RBODY" token)
+[ -z "$PF_TOK_E" ] && die "eve could not mint a file token: $RBODY"
+expect "another tenant's valid file token does NOT open the floorplan" "403|404" \
+  "$(curl -s -o /dev/null -w '%{http_code}' "$PF_URL?token=$PF_TOK_E")" ""
+
+# The thumb path is a separate branch in apis/file.go; it must not bypass the
+# check. `100x100` is PocketBase's built-in default size, served for any file
+# field whether or not the field declares it.
+expect "the thumbnail path is protected too" "403|404" \
+  "$(curl -s -o /dev/null -w '%{http_code}' "$PF_URL?thumb=100x100")" ""
+expect "owner CAN fetch the thumbnail with a file token" 200 \
+  "$(curl -s -o /dev/null -w '%{http_code}' "$PF_URL?thumb=100x100&token=$PF_TOK")" ""
+
+req DELETE "/collections/locations/records/$PF_LOC" "$TA"
+
+echo ""
+echo "=== 23. inventory photos are an inventory field, not an admin one ==="
+# `things.photo` and `locations.photo` were added with NO rule change, on the
+# claim that the existing branches already say the right thing: the member
+# branch of things.updateRule freezes organization, code, nats_user,
+# nebula_host and active, and nothing else, so an ordinary inventory field is
+# writable by member and not by viewer or dashboard.
+#
+# That claim is exactly the kind this suite exists to check. "No rule change
+# needed" is a statement ABOUT the rules, and the only thing that can confirm
+# it is a real request -- a reviewer reading the branch can reach the same
+# wrong conclusion twice.
+
+# Molly, not bob: section 17 deletes bob's membership on purpose, so $TB is no
+# longer a member by the time we get here. Section 21 already had to mint its
+# own member for the same reason -- reusing hers rather than making a third.
+#
+# A tiny PNG, and a native path for it: curl here is a Windows binary under Git
+# Bash and cannot read an MSYS /tmp path (see section 22).
+PH_PNG="$WORK/photo.png"
+printf '\211PNG\r\n\032\n\0\0\0\rIHDR\0\0\0\1\0\0\0\1\10\6\0\0\0\37\25\304\211\0\0\0\nIDATx\234c\370\17\0\1\1\1\0\30\335\215\260\0\0\0\0IEND\256B`\202' > "$PH_PNG"
+PH_UPLOAD="$PH_PNG"
+if [ -n "$EXT" ] && command -v cygpath >/dev/null 2>&1; then
+  PH_UPLOAD="$(cygpath -w "$PH_PNG")"
+fi
+
+# upload <token> <collection> <record-id> -> RCODE
+upload_photo() {
+  RCODE=$(curl -s -o /dev/null -w '%{http_code}' -X PATCH \
+    "$API/collections/$2/records/$3" -H "Authorization: $1" \
+    -F "photo=@$PH_UPLOAD;type=image/png")
+}
+
+upload_photo "$TM" things "$THING"
+expect "member CAN set a thing photo (it is an inventory field)" 200 "$RCODE" ""
+upload_photo "$TV" things "$THING"
+expect "viewer cannot set a thing photo" "403|400|404" "$RCODE" ""
+upload_photo "$TG" things "$THING"
+expect "dashboard cannot set a thing photo" "403|400|404" "$RCODE" ""
+
+# The same three on locations, whose update rule is a different branch.
+req POST /collections/locations/records "$TM" \
+  "{\"name\":\"Photo Site\",\"code\":\"PHS1\",\"organization\":\"$ORG\"}"
+PH_LOC=$(j "$RBODY" id)
+[ -z "$PH_LOC" ] && die "photo location create failed: $RBODY"
+upload_photo "$TM" locations "$PH_LOC"
+expect "member CAN set a location photo" 200 "$RCODE" ""
+upload_photo "$TV" locations "$PH_LOC"
+expect "viewer cannot set a location photo" "403|400|404" "$RCODE" ""
+
+# Writing a photo must not be a way to reach the fields the member branch
+# freezes: -F sends multipart, which is a different parse path from the JSON
+# body every other check in this file uses, and the rule is evaluated against
+# whatever that path produces.
+RCODE=$(curl -s -o /dev/null -w '%{http_code}' -X PATCH \
+  "$API/collections/things/records/$THING" -H "Authorization: $TM" \
+  -F "photo=@$PH_UPLOAD;type=image/png" -F "active=false")
+expect "member cannot smuggle the active flag in beside a photo upload" "403|400|404" "$RCODE" ""
+# Read the CURRENT link immediately before the attempt, and aim at a different
+# one. `nats_user:changed = false` is satisfied by re-sending the value a field
+# already holds, so an attempt that names the existing link is allowed --
+# correctly -- and proves nothing about the rule. The first version of this
+# check did exactly that and passed for that reason.
+req GET "/collections/things/records/$THING" "$TM"
+PH_CUR_NATS=$(j "$RBODY" nats_user)
+if [ "$PH_CUR_NATS" = "$DEV_NATS" ]; then PH_OTHER_NATS="$BOB_NATS"; else PH_OTHER_NATS="$DEV_NATS"; fi
+RCODE=$(curl -s -o /dev/null -w '%{http_code}' -X PATCH \
+  "$API/collections/things/records/$THING" -H "Authorization: $TM" \
+  -F "photo=@$PH_UPLOAD;type=image/png" -F "nats_user=$PH_OTHER_NATS")
+expect "member cannot smuggle a nats_user RELINK in beside a photo upload" "403|400|404" "$RCODE" ""
+
+# And the file itself is protected, like every other upload field. This is the
+# guard that would catch a new file field added without the flag -- the Go test
+# checks the schema, this checks what the server actually serves.
+req GET "/collections/things/records/$THING" "$TM"
+PH_FILE=$(j "$RBODY" photo)
+if [ -n "$PH_FILE" ]; then
+  ok "the photo survived the member upload"
+  PH_URL="$API/files/things/$THING/$PH_FILE"
+  expect "a thing photo is not served without a file token" "403|404" \
+    "$(curl -s -o /dev/null -w '%{http_code}' "$PH_URL")" ""
+  req POST /files/token "$TM"
+  PH_TOK=$(j "$RBODY" token)
+  expect "...and IS served with one" 200 \
+    "$(curl -s -o /dev/null -w '%{http_code}' "$PH_URL?token=$PH_TOK")" ""
+  req POST /files/token "$TE"
+  PH_TOK_E=$(j "$RBODY" token)
+  expect "another tenant's file token does not open a thing photo" "403|404" \
+    "$(curl -s -o /dev/null -w '%{http_code}' "$PH_URL?token=$PH_TOK_E")" ""
+else
+  no "the member upload did not stick, so the file checks below cannot run"
+fi
+
+req DELETE "/collections/locations/records/$PH_LOC" "$TA"
 
 # ----------------------------------------------------------------------- result
 

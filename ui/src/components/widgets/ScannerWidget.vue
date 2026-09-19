@@ -74,6 +74,18 @@
         <!-- PB Result -->
         <div v-if="pbResult !== null" class="result-section">
           <div class="result-section-label">PocketBase</div>
+          <!-- Above the fields, not beside them: the point of the photo is to be
+               seen before anything is read. -->
+          <div v-if="scannedPhoto" class="flex justify-center mb-2">
+            <RecordPhoto
+              :record="scannedPhoto.record"
+              :filename="scannedPhoto.filename"
+              thumb="400x400"
+              :size="140"
+              hide-when-empty
+              alt="Photo of the scanned record"
+            />
+          </div>
           <div v-for="(rows, idx) in flattenedPbItems" :key="idx" class="result-entries">
             <div v-for="row in rows" :key="row.key" class="result-entry">
               <span class="entry-key">{{ row.key }}</span>
@@ -142,6 +154,7 @@ import { Kvm } from '@nats-io/kv'
 import { useNatsStore } from '@/stores/nats'
 import { useAuthStore } from '@/stores/auth'
 import { pb } from '@/utils/pb'
+import RecordPhoto from '@/components/common/RecordPhoto.vue'
 import { encodeString, decodeBytes } from '@/utils/encoding'
 import type { WidgetConfig } from '@/types/dashboard'
 import { evaluateRules } from './scannerRules'
@@ -164,6 +177,11 @@ const scannedValue = ref('')
 const errorMessage = ref('')
 const kvRecord = ref<Record<string, any> | null>(null)
 const pbResult = ref<any>(null)
+
+// The raw lookup items, kept alongside the cleaned ones. `pbResult` strips the
+// collection identity (and now `photo`) so the key/value list stays readable,
+// but RecordPhoto needs exactly those fields to build a file URL.
+const pbRawItems = ref<any[]>([])
 const publishedSubject = ref<string | null>(null)
 const publishedPayload = ref<string | null>(null)
 const publishError = ref<string | null>(null)
@@ -221,6 +239,21 @@ function flattenRecord(obj: Record<string, any>, prefix = ''): { key: string; va
 const flattenedKvRecord = computed(() =>
   kvRecord.value ? flattenRecord(kvRecord.value) : []
 )
+
+/**
+ * The photo to show beside a scan result, if the scanned record has one.
+ *
+ * This is the surface the photo field exists for: somebody has just scanned a
+ * label on a device in front of them, and a name is a poor answer to "is this
+ * the right one". Only the FIRST hit is shown -- a scan that matches several
+ * records is a filter problem, and a row of thumbnails would imply a choice
+ * this widget does not offer.
+ */
+const scannedPhoto = computed(() => {
+  const hit = pbRawItems.value.find((item) => typeof item?.photo === 'string' && item.photo)
+  if (!hit?.id) return null
+  return { record: hit, filename: hit.photo as string }
+})
 
 const flattenedPbItems = computed(() =>
   pbItems.value.map(item => flattenRecord(item))
@@ -317,6 +350,7 @@ function reset() {
   state.value = 'idle'
   kvRecord.value = null
   pbResult.value = null
+  pbRawItems.value = []
   publishedSubject.value = null
   publishedPayload.value = null
   publishError.value = null
@@ -374,7 +408,23 @@ async function performLookup(value: string) {
       const filter = replacePlaceholder(cfg.value.pbFilter || '', value)
       const options: any = { requestKey: null }
       if (filter) options.filter = filter
-      if (cfg.value.pbFields) options.fields = cfg.value.pbFields
+      if (cfg.value.pbFields) {
+        // A configured field list would otherwise silently drop the photo and
+        // the collection identity it needs, and the symptom is a scan result
+        // that simply never shows an image -- with nothing to suggest the field
+        // list is why. These are added, never removed, so the operator's own
+        // choice of fields is untouched; `photo` is then hidden from the
+        // key/value rows below and rendered as the image instead.
+        options.fields = [
+          ...new Set([
+            ...cfg.value.pbFields.split(',').map((f: string) => f.trim()).filter(Boolean),
+            'id',
+            'photo',
+            'collectionId',
+            'collectionName',
+          ]),
+        ].join(',')
+      }
 
       const result = await withTimeout(
         pb.collection(cfg.value.pbCollection).getList(1, 10, options),
@@ -382,10 +432,13 @@ async function performLookup(value: string) {
         'PB lookup'
       )
       if (result.items.length > 0) {
+        pbRawItems.value = result.items
         pbResult.value = result.items.map((item: any) => {
           const clean: Record<string, any> = {}
           for (const [k, v] of Object.entries(item)) {
-            if (!['collectionId', 'collectionName', 'expand'].includes(k)) {
+            // `photo` joins this list because it is rendered as an image above;
+            // a row reading `photo  IMG_4021_aB3xY.jpg` is noise next to it.
+            if (!['collectionId', 'collectionName', 'expand', 'photo'].includes(k)) {
               clean[k] = v
             }
           }

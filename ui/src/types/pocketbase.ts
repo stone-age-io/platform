@@ -101,6 +101,10 @@ export interface Thing extends AuthRecord {
   organization?: string
   name?: string
   description?: string
+  // One image of the physical device, for the moment somebody is standing in
+  // front of it after scanning its label. Edit-only: POST /api/org/things is a
+  // JSON provisioning route and cannot carry an upload.
+  photo?: string
   type?: string // Thing Type ID
   code?: string
   location?: string // Location ID
@@ -132,6 +136,7 @@ export interface Location extends BaseRecord {
   type?: string // Location Type ID
   code?: string
   floorplan?: string
+  photo?: string
   parent?: string // Parent Location ID
   coordinates?: {
     lat: number

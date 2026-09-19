@@ -13,6 +13,7 @@ import { useUIStore } from '@/stores/ui'
 import { useNatsStore } from '@/stores/nats'
 import { useAuthStore } from '@/stores/auth'
 import RecordTimestamps from '@/components/common/RecordTimestamps.vue'
+import RecordPhoto from '@/components/common/RecordPhoto.vue'
 import MetadataCard from '@/components/common/MetadataCard.vue'
 import QrLabelModal from '@/components/common/QrLabelModal.vue'
 import type { Location, LocationType, Thing } from '@/types/pocketbase'
@@ -316,6 +317,17 @@ onUnmounted(() => cleanupMap())
 
         <div class="flex flex-col sm:flex-row justify-between items-start gap-4">
           <div class="flex items-center gap-3">
+            <!-- What the site looks like on arrival. hide-when-empty for the
+                 same reason as the Thing header: optional content should not
+                 leave a permanent gap on the screen that only reads it. -->
+            <RecordPhoto
+              :record="location"
+              :filename="location.photo"
+              thumb="400x400"
+              :size="64"
+              hide-when-empty
+              :alt="`Photo of ${location.name || 'this site'}`"
+            />
             <h1 class="text-3xl font-bold break-words">{{ location.name || 'Unnamed' }}</h1>
             <span v-if="location.expand?.type" class="badge badge-lg badge-ghost">{{ location.expand.type.name }}</span>
           </div>

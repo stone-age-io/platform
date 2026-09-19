@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { pb } from '@/utils/pb'
+import { resetFileToken } from '@/utils/fileToken'
 import type { User, Membership, Organization, SuperUser, NatsUser } from '@/types/pocketbase'
 import type { AuthProviderInfo } from 'pocketbase'
 
@@ -192,6 +193,13 @@ export const useAuthStore = defineStore('auth', () => {
   
   async function logout() {
     pb.authStore.clear()
+    // The file token is a separate credential with its own lifetime and is NOT
+    // cleared by authStore.clear(). It stays valid for up to its full duration
+    // (180s), and it is a bearer credential for every file the session that
+    // minted it could read -- so without this the next person to log in on this
+    // tab would be handed the previous one's token and could see files their own
+    // account cannot.
+    resetFileToken()
     user.value = null
     memberships.value = []
     currentOrgId.value = null

@@ -8,6 +8,7 @@ import { useToast } from '@/composables/useToast'
 import type { Thing, ThingType, Location, NatsUser, NatsAccount, NatsRole, NebulaHost, NebulaNetwork } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import MetadataEditor from '@/components/common/MetadataEditor.vue'
+import ImageUploadField from '@/components/common/ImageUploadField.vue'
 import NatsUserFormView from '@/views/nats/NatsUserFormView.vue'
 import NebulaHostFormView from '@/views/nebula/NebulaHostFormView.vue'
 import LocationFormView from '@/views/locations/LocationFormView.vue'
@@ -51,6 +52,13 @@ const formData = ref({
 })
 
 const metadataEditor = ref<InstanceType<typeof MetadataEditor> | null>(null)
+
+// Photo state (edit mode only -- see the Photo card in the template for why).
+// The loaded record is kept whole: ImageUploadField resolves its own URL,
+// because every file field is protected and needs a file token.
+const loadedThing = ref<Thing | null>(null)
+const photoFile = ref<File | null>(null)
+const photoRemoved = ref(false)
 
 // The inventory schema declared by the selected thing type, if it has one.
 // Absent (the common case today) means MetadataEditor shows free-form
@@ -242,6 +250,7 @@ async function loadThing() {
 
   try {
     const thing = await pb.collection('things').getOne<Thing>(thingId)
+    loadedThing.value = thing
 
     formData.value = {
       name: thing.name || '',
@@ -396,6 +405,31 @@ async function handleUpdate() {
     }
 
     await pb.collection('things').update(thingId!, data)
+
+    // The photo goes in its OWN request, deliberately, rather than being folded
+    // into the body above.
+    //
+    // That body's null-vs-ABSENT distinction is load-bearing: the member branch
+    // of things.updateRule requires `nats_user:changed = false`, and a field
+    // omitted from a JSON body counts as unchanged. FormData has no way to omit
+    // a field and no null -- everything is a string, and an empty one CLEARS
+    // the field. Rebuilding this body as FormData would therefore turn a
+    // member's ordinary inventory edit into a 404, which is the exact failure
+    // the comment above already warns about.
+    //
+    // Sent after the main update, so a failure here costs the photo rather than
+    // the edit.
+    if (photoFile.value || photoRemoved.value) {
+      const photoData = new FormData()
+      photoData.append('photo', photoFile.value ?? '')
+      try {
+        await pb.collection('things').update(thingId!, photoData)
+      } catch (err: any) {
+        toast.warning('Saved, but the photo could not be uploaded')
+        console.warn('photo upload failed', err)
+      }
+    }
+
     toast.success('Thing updated')
     router.push('/things')
   } catch (err: any) {
@@ -809,6 +843,44 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
             <!-- None mode -->
             <div v-if="!isEdit && nebulaMode === 'none'" class="text-sm text-base-content/50 py-2">
               No Nebula VPN connectivity.
+            </div>
+          </BaseCard>
+
+          <!--
+            Photo: EDIT ONLY.
+
+            Creating a Thing goes through POST /api/org/things, a JSON
+            provisioning route that writes the Thing and its NATS/Nebula
+            identities in one server-side transaction. It cannot carry a
+            multipart upload, and bolting a second client call onto it is
+            exactly the pattern that route exists to have removed -- three
+            unguarded calls whose partial failure orphaned a signed credential.
+
+            It also matches how the photo gets taken. The record is created at a
+            desk; the device is photographed where it is installed, which is a
+            different day and usually a different person.
+          -->
+          <BaseCard v-if="isEdit" title="Photo">
+            <div class="flex flex-col items-center gap-2">
+              <ImageUploadField
+                v-model:file="photoFile"
+                v-model:removed="photoRemoved"
+                :source="
+                  loadedThing?.photo
+                    ? { record: loadedThing, filename: loadedThing.photo, thumb: '400x400' }
+                    : null
+                "
+                :size="180"
+                add-label="Add photo"
+              >
+                <template #fallback>
+                  <span class="text-xs text-base-content/50 px-2 text-center">No photo</span>
+                </template>
+              </ImageUploadField>
+              <p class="text-xs text-base-content/60 text-center max-w-xs">
+                What this looks like where it is installed &mdash; the answer to
+                &ldquo;is this the right one&rdquo; after scanning its label.
+              </p>
             </div>
           </BaseCard>
 
