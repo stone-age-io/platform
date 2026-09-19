@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -145,4 +146,76 @@ func stripRuleComments(rule string) string {
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+// The console's "Open record" button resolves a feed entry to a route by the
+// product NOUN this file snapshots into `resource` -- RESOURCE_ROUTES in
+// ui/src/views/activity/ActivityView.vue. That map is a hand-copied set of the
+// values below, so it can drift, and drift here is silent: adding a sixth
+// collection to activityCollections gives its entries a feed row with no way to
+// reach the record, and nothing errors at either end.
+//
+// Same trick, and the same reason, as managed_org_exports_test.go: the copy is
+// fine, the copy going stale is not. The direction that matters is
+// Go -> TypeScript (a noun with no route), but a route keyed on a noun the
+// server never writes is also worth catching -- it is dead code that reads like
+// coverage.
+func TestActivityNounsAllHaveAConsoleRoute(t *testing.T) {
+	dir, ok := callerDir(t)
+	if !ok {
+		t.Fatal("cannot resolve caller path")
+	}
+	path := filepath.Join(dir, "..", "ui", "src", "views", "activity", "ActivityView.vue")
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	block := resourceRoutesRe.FindSubmatch(raw)
+	if block == nil {
+		t.Fatalf("RESOURCE_ROUTES not found in %s.\n"+
+			"If it moved or was reformatted, update resourceRoutesRe -- do NOT delete this test: it is the "+
+			"only thing tying the feed's nouns to the console routes that resolve them.", path)
+	}
+
+	routed := map[string]bool{}
+	for _, m := range routeKeyRe.FindAllSubmatch(block[1], -1) {
+		routed[string(m[1])] = true
+	}
+	if len(routed) == 0 {
+		t.Fatal("parsed RESOURCE_ROUTES but found no keys; this test would pass vacuously")
+	}
+
+	for collection, noun := range activityCollections {
+		if !routed[noun] {
+			t.Errorf("collection %q reports itself as %q, which RESOURCE_ROUTES does not resolve; "+
+				"a feed entry for it offers no way to open the record", collection, noun)
+		}
+		delete(routed, noun)
+	}
+
+	for noun := range routed {
+		t.Errorf("RESOURCE_ROUTES resolves %q, which no collection in activityCollections reports; "+
+			"the server never writes that noun, so the branch is dead", noun)
+	}
+}
+
+// The object literal's body, from the opening brace to the line that closes it
+// at column zero. Deliberately anchored on the declaration rather than matching
+// keys across the whole file: `'thing': {` is not a distinctive enough shape to
+// grep for on its own.
+var resourceRoutesRe = regexp.MustCompile(`(?s)const RESOURCE_ROUTES\b[^\n]*\{\n(.*?)\n\}`)
+
+// One quoted key per entry.
+var routeKeyRe = regexp.MustCompile(`(?m)^\s*'([^']+)':\s*\{`)
+
+// callerDir returns the directory holding this test file.
+func callerDir(t *testing.T) (string, bool) {
+	t.Helper()
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		return "", false
+	}
+	return filepath.Dir(thisFile), true
 }

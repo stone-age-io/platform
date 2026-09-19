@@ -5,6 +5,7 @@ import { pb } from '@/utils/pb'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import RecordTimestamps from '@/components/common/RecordTimestamps.vue'
 import type { ThingTypeCapability, ThingTypeOperation } from '@/types/pocketbase'
 
 // An operation is a verb a Thing Type declares: a name, what kind of exchange it
@@ -44,6 +45,11 @@ const form = ref({
 
 const availableCapabilities: ThingTypeCapability[] = ['publish', 'subscribe', 'request', 'reply']
 
+// Captured on load so the heading can show when this record was created and
+// last changed; undefined on the create path, where the list does not render.
+const createdAt = ref<string | undefined>()
+const updatedAt = ref<string | undefined>()
+
 async function loadData() {
   if (!id || props.embedded) return
   loading.value = true
@@ -55,6 +61,8 @@ async function loadData() {
       subject_suffix: rec.subject_suffix,
       description: rec.description || '',
     }
+    createdAt.value = rec.created
+    updatedAt.value = rec.updated
   } catch {
     toast.error('Failed to load operation')
     router.push('/things/operations')
@@ -113,6 +121,13 @@ onMounted(async () => {
         </ul>
       </div>
       <h1 class="text-3xl font-bold">{{ isEdit ? 'Edit' : 'Create' }} Operation</h1>
+      <!-- thing_types, location_types and thing_type_operations are in the
+           activity feed (hooks/activity.go) but have no detail view, so this
+           form is their detail surface and the only place a feed entry can be
+           correlated against the record itself. -->
+      <dl v-if="isEdit" class="grid grid-cols-2 gap-4 max-w-sm mt-3">
+        <RecordTimestamps :created="createdAt" :updated="updatedAt" />
+      </dl>
     </div>
 
     <form @submit.prevent="submit" class="space-y-6">

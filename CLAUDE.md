@@ -338,6 +338,26 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
     - Write rules are all `nil`, so the log cannot be forged or edited through
       the API. Deliberately no changed-field list, no retention cron and no
       transaction dance — `hooks/activity.go` says why.
+    - **The console's "Open record" button is gated on the capability the
+      TARGET route needs, not the one that opened the feed.** Every role in an
+      org reads the feed, but the three type collections have no detail view —
+      their only route is the edit form behind `manageDefinitions` — so an
+      ungated link would bounce a `viewer` to `/`. `RESOURCE_ROUTES` in
+      `ui/src/views/activity/ActivityView.vue` maps each snapshotted noun to a
+      route plus its capability, and `TestActivityNounsAllHaveAConsoleRoute`
+      reads that file so adding a sixth collection to `activityCollections`
+      cannot silently ship entries with no way to reach the record. Nothing
+      in the dialog is a live join: the label and the noun are both snapshots,
+      which the dialog says out loud so an accurate feed does not read as a
+      stale one.
+    - **Both timestamps on every covered entity's detail surface.** A feed that
+      reports an update is only useful beside a record that admits when it
+      changed, so `RecordTimestamps.vue` (relative headline, exact underneath —
+      the same shape the feed uses) is on the Thing and Location detail views
+      and on the three type FORM views, which are those collections' only
+      detail surface. No "never edited" marker: PocketBase's autodate fields
+      each call `types.NowDateTime()` separately, so `created === updated` on
+      an untouched record is a coin flip.
 
 8. **Maps** - Leaflet maps over an OpenFreeMap vector basemap (WebGL), with floorplan overlays
 9. **PWA** - Service worker, manifest, installable

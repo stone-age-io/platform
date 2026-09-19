@@ -13,6 +13,7 @@ import KvDashboard from '@/components/nats/KvDashboard.vue'
 import { TWIN_BUCKET, TWIN_DESIRED_BUCKET } from '@/utils/twin'
 import MetadataCard from '@/components/common/MetadataCard.vue'
 import ExpiryBadge from '@/components/common/ExpiryBadge.vue'
+import RecordTimestamps from '@/components/common/RecordTimestamps.vue'
 import QrLabelModal from '@/components/common/QrLabelModal.vue'
 import { useEscapeKey } from '@/composables/useEscapeKey'
 
@@ -303,6 +304,12 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
                   </router-link>
                   <span v-else class="text-sm text-base-content/40">No location assigned</span>
                 </dd>
+              </div>
+              <!-- Both timestamps, not only Created. This is the record side of
+                   the activity feed: the feed reports an update and the record
+                   has to carry something to correlate that against. -->
+              <div class="grid grid-cols-2 gap-4">
+                <RecordTimestamps :created="thing.created" :updated="thing.updated" />
               </div>
             </dl>
           </BaseCard>

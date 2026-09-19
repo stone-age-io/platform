@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import MetadataSchemaCard from '@/components/common/MetadataSchemaCard.vue'
+import RecordTimestamps from '@/components/common/RecordTimestamps.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -27,6 +28,11 @@ const form = ref({
 const metadataSchema = ref<Record<string, any> | null>(null)
 const metadataSchemaCard = ref<InstanceType<typeof MetadataSchemaCard> | null>(null)
 
+// Captured on load so the heading can show when this record was created and
+// last changed; undefined on the create path, where the list does not render.
+const createdAt = ref<string | undefined>()
+const updatedAt = ref<string | undefined>()
+
 async function loadData() {
   if (!id) return
   loading.value = true
@@ -39,6 +45,8 @@ async function loadData() {
     }
     const raw = record.metadata_schema
     metadataSchema.value = (typeof raw === 'string' ? JSON.parse(raw) : raw) || null
+    createdAt.value = record.created
+    updatedAt.value = record.updated
   } catch (err: any) {
     toast.error('Failed to load type')
     router.push('/locations/types')
@@ -88,6 +96,13 @@ onMounted(() => {
         </ul>
       </div>
       <h1 class="text-3xl font-bold">{{ isEdit ? 'Edit' : 'Create' }} Location Type</h1>
+      <!-- thing_types, location_types and thing_type_operations are in the
+           activity feed (hooks/activity.go) but have no detail view, so this
+           form is their detail surface and the only place a feed entry can be
+           correlated against the record itself. -->
+      <dl v-if="isEdit" class="grid grid-cols-2 gap-4 max-w-sm mt-3">
+        <RecordTimestamps :created="createdAt" :updated="updatedAt" />
+      </dl>
     </div>
 
     <form @submit.prevent="submit" class="space-y-6">

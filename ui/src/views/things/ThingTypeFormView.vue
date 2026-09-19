@@ -9,6 +9,7 @@ import { DEFAULT_PREFIX } from '@/utils/subjectResolver'
 import ThingTypeOperationFormView from '@/views/things/ThingTypeOperationFormView.vue'
 import MetadataSchemaCard from '@/components/common/MetadataSchemaCard.vue'
 import RecordPicker from '@/components/common/RecordPicker.vue'
+import RecordTimestamps from '@/components/common/RecordTimestamps.vue'
 import type { PickerOption } from '@/types/picker'
 import type { ThingTypeOperation } from '@/types/pocketbase'
 import { useEscapeKey } from '@/composables/useEscapeKey'
@@ -36,6 +37,11 @@ const metadataSchema = ref<Record<string, any> | null>(null)
 const metadataSchemaCard = ref<InstanceType<typeof MetadataSchemaCard> | null>(null)
 
 const availableOperations = ref<ThingTypeOperation[]>([])
+
+// Captured on load so the heading can show when this record was created and
+// last changed; undefined on the create path, where the <dl> does not render.
+const createdAt = ref<string | undefined>()
+const updatedAt = ref<string | undefined>()
 
 const operationOptions = computed<PickerOption[]>(() =>
   availableOperations.value.map(op => ({
@@ -86,6 +92,8 @@ async function loadData() {
     }
     const raw = record.metadata_schema
     metadataSchema.value = (typeof raw === 'string' ? JSON.parse(raw) : raw) || null
+    createdAt.value = record.created
+    updatedAt.value = record.updated
   } catch (err: any) {
     toast.error('Failed to load type')
     router.push('/things/types')
@@ -141,6 +149,13 @@ useEscapeKey(showOperationModal, () => { showOperationModal.value = false })
         </ul>
       </div>
       <h1 class="text-3xl font-bold">{{ isEdit ? 'Edit' : 'Create' }} Thing Type</h1>
+      <!-- thing_types, location_types and thing_type_operations are in the
+           activity feed (hooks/activity.go) but have no detail view, so this
+           form is their detail surface and the place a feed entry gets
+           correlated against the record. -->
+      <dl v-if="isEdit" class="grid grid-cols-2 gap-4 max-w-sm mt-3">
+        <RecordTimestamps :created="createdAt" :updated="updatedAt" />
+      </dl>
     </div>
 
     <!-- Form -->

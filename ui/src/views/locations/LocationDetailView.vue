@@ -12,7 +12,7 @@ import { usePagination } from '@/composables/usePagination'
 import { useUIStore } from '@/stores/ui'
 import { useNatsStore } from '@/stores/nats'
 import { useAuthStore } from '@/stores/auth'
-import { formatDate } from '@/utils/format'
+import RecordTimestamps from '@/components/common/RecordTimestamps.vue'
 import MetadataCard from '@/components/common/MetadataCard.vue'
 import QrLabelModal from '@/components/common/QrLabelModal.vue'
 import type { Location, LocationType, Thing } from '@/types/pocketbase'
@@ -378,9 +378,11 @@ onUnmounted(() => cleanupMap())
                   </dd>
                 </div>
               </div>
-              <div>
-                <dt class="text-sm font-medium text-base-content/70">Created</dt>
-                <dd class="mt-1 text-sm">{{ formatDate(location.created) }}</dd>
+              <!-- Both timestamps, not only Created. This is the record side of
+                   the activity feed: the feed reports an update and the record
+                   has to carry something to correlate that against. -->
+              <div class="grid grid-cols-2 gap-4">
+                <RecordTimestamps :created="location.created" :updated="location.updated" />
               </div>
             </dl>
           </BaseCard>
