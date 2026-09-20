@@ -81,9 +81,21 @@ const columns: Column<Activity>[] = [
   // Widths are CSS values, not Tailwind classes: ResponsiveList binds them to
   // `style="width: …"`, so `w-44` here is a declaration the browser drops and
   // the column silently falls back to its share of the fixed layout.
+  //
+  // "What" is the one column left un-widthed, so it absorbs the slack -- it
+  // holds record names, which is the only free-text content here. "Who" used to
+  // share that job and should not have: it holds a person's name, which is
+  // bounded, so on a wide screen it took a quarter of the table and left a gap
+  // between a name and the badge beside it that the eye had to travel. 16rem
+  // fits a long name plus the "platform" badge a superuser actor carries.
+  //
+  // "Kind" keeps 10rem despite holding one short badge: the longest noun in
+  // RESOURCE_ROUTES below is "thing operation", and in a fixed-layout table a
+  // badge that does not fit wraps INSIDE the badge rather than widening the
+  // column.
   { key: 'created', label: 'When', sortable: '-created', width: '11rem' },
-  { key: 'actor_label', label: 'Who', sortable: 'actor_label' },
-  { key: 'action', label: 'Did', sortable: 'action', width: '8rem' },
+  { key: 'actor_label', label: 'Who', sortable: 'actor_label', width: '16rem' },
+  { key: 'action', label: 'Did', sortable: 'action', width: '7rem' },
   { key: 'resource_label', label: 'What', sortable: 'resource_label' },
   { key: 'resource', label: 'Kind', sortable: 'resource', width: '10rem', class: 'hidden xl:table-cell' },
 ]
