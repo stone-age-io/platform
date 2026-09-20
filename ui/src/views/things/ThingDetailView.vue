@@ -380,25 +380,50 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
         
         <div class="space-y-6">
           <BaseCard>
+            <!--
+              The three controls used to sit up here in a row under
+              "Connectivity", which is one heading over two identities. Two of
+              them were download buttons with the same 📥 on them, and the NATS
+              one hid its label below 640px, so a phone showed 📥 / 🔄 /
+              📥 Config -- two downloads, one of them unlabelled, for different
+              files. Each now sits in the section that names what it acts on,
+              with a label that fits because it has a row to itself.
+
+              This is not a mobile fix that costs the desktop something. The
+              card lives in `lg:grid-cols-2`, so it is 394px of content on a
+              1280px desktop against 295px on a phone -- close enough that one
+              layout genuinely serves both, and measuring both confirmed it
+              (552px and 557px tall). It costs 56px either way, which buys the
+              two labels and the touch targets.
+            -->
             <template #header>
-              <div class="flex justify-between items-center mb-2">
-                <h3 class="card-title text-base">Connectivity</h3>
-                <div class="flex gap-2">
-                  <template v-if="thing.expand?.nats_user">
-                    <button @click="downloadNatsCreds" class="btn btn-sm btn-outline h-8 min-h-0" title="Download .creds file">
-                      <span class="text-lg">📥</span>
-                      <span class="hidden sm:inline">.creds</span>
-                    </button>
-                    <button @click="showRegenerateModal = true" class="btn btn-sm btn-outline btn-error h-8 min-h-0" title="Regenerate credentials">🔄</button>
-                  </template>
-                  <button v-if="thing.expand?.nebula_host" @click="downloadNebulaConfig" class="btn btn-sm btn-outline h-8 min-h-0" title="Download Nebula config">📥 Config</button>
-                </div>
-              </div>
+              <h3 class="card-title text-base mb-2">Connectivity</h3>
             </template>
 
-            <!-- NATS Section -->
-            <div class="mb-1">
+            <!-- NATS Section.
+
+                 flex-wrap rather than a breakpoint: at 393px and up the label
+                 and both buttons share the row, and at 320px they do not fit,
+                 so the buttons take their own line. Measured, the wrap costs
+                 nothing at all until it is needed -- 557px at 360px wide with
+                 it and without it -- which is the argument for wrapping over a
+                 `flex-col sm:flex-row`, since that one pays 64px on every
+                 phone to fix the narrowest. -->
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
               <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider">NATS</span>
+              <!-- Same condition the section body below uses, so the two
+                   not-expanded states show a heading with no controls under
+                   it rather than a download for something unreadable. -->
+              <div v-if="thing.expand?.nats_user" class="connectivity-actions flex gap-2">
+                <button @click="downloadNatsCreds" class="btn btn-sm btn-outline" title="Download .creds file">
+                  <span>📥</span>
+                  <span>.creds</span>
+                </button>
+                <button @click="showRegenerateModal = true" class="btn btn-sm btn-outline btn-error" title="Regenerate credentials">
+                  <span>🔄</span>
+                  <span>Regenerate</span>
+                </button>
+              </div>
             </div>
             <div v-if="thing.expand?.nats_user" class="flex flex-col gap-3">
               <div class="bg-base-200 rounded-lg p-3 border border-base-300">
@@ -458,9 +483,15 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
             <!-- Divider -->
             <div class="border-t border-base-300 my-4"></div>
 
-            <!-- Nebula Section -->
-            <div class="mb-1">
+            <!-- Nebula Section. See the NATS heading above for the wrap. -->
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
               <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Nebula</span>
+              <div v-if="thing.expand?.nebula_host" class="connectivity-actions flex gap-2">
+                <button @click="downloadNebulaConfig" class="btn btn-sm btn-outline" title="Download Nebula config">
+                  <span>📥</span>
+                  <span>Config</span>
+                </button>
+              </div>
             </div>
             <div v-if="thing.expand?.nebula_host" class="flex flex-col gap-4">
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -542,6 +573,22 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
 </template>
 
 <style scoped>
+/*
+  The connectivity controls, sized for a thumb below `lg` -- the same rule and
+  the same breakpoint as ListPager, for the same reason: these render at every
+  width, so the size has to be conditional, and `lg` is where this app stops
+  drawing touch layouts. `btn-sm` is 32px, under both guidelines.
+
+  The buttons also dropped a redundant `h-8 min-h-0`, which set the height
+  `btn-sm` was already setting.
+*/
+@media (max-width: 1023px) {
+  .connectivity-actions .btn {
+    height: 44px;
+    min-height: 44px;
+  }
+}
+
 .custom-scrollbar::-webkit-scrollbar {
   width: 4px;
   height: 4px;
