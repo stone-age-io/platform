@@ -12,20 +12,25 @@ import (
 // image of the physical object, for the moment somebody is standing in front of
 // it wondering whether this is the right one.
 //
-// WHY A THING NEEDS ONE. The QR labels (QrLabelModal) carry a bare code and
-// there is deliberately no resolver service, so scanning a sticker in a hallway
-// resolves to a record inside an already-authenticated session -- a name, a
-// type, a location. A name is a poor answer to "is this the box in front of
-// me", and the install context that would answer it ("grey unit behind the
-// panel, third from left") currently lives in one technician's head and leaves
-// when they do. ScannerWidget and the helpdesk scan flow are the surfaces this
-// is for; the detail views are where it gets set.
+// WHY A THING NEEDS ONE. A record's name, type and location describe it but do
+// not show it, and the install context that would ("grey unit behind the panel,
+// third from left") currently lives in one technician's head and leaves when
+// they do. The thing and location DETAIL views are where it is set and the only
+// place it is shown -- it was briefly also in ScannerWidget and ThingMapDrawer
+// and was removed from both, because after scanning a label you are already
+// looking at the device, and a 40px thumbnail beside a name answers nothing.
 //
-// ONE PHOTO, NOT A GALLERY. `maxSelect: 1` is a decision rather than a default:
-// going 1 -> N later is not only a UI change, PocketBase stores a multi-file
-// field as JSON rather than TEXT, so it is a column migration. Shipping a
-// gallery nobody asked for is the worse of the two mistakes, and a second photo
-// has no obvious reader today.
+// ONE PHOTO, NOT A GALLERY -- and the column type is NOT the reason. An earlier
+// version of this comment said going 1 -> N was blocked by the move from TEXT to
+// JSON; that is wrong. core.normalizeSingleVsMultipleFieldChanges rebuilds the
+// column and wraps every existing value in json_array(...), and the deterministic
+// field id below means a plain re-import applies the change, so going up is
+// cheap. Two things argue for staying at 1. An array has no primary element, so
+// anything showing "the" photo silently becomes photo[0] -- whatever was uploaded
+// first. And coming back down is destructive: multiple -> single keeps
+// json_extract(..., '$[#-1]'), the LAST file, and PocketBase deliberately leaves
+// the rest orphaned in pb_data/storage, in every backup, forever. Cheap to add
+// once a second photo has a reader; expensive to undo once every record has five.
 //
 // NOT SVG, though locations.floorplan allows it. An SVG "photo" is not a
 // photograph, and SVG reaching an image decoder is the same family of problem

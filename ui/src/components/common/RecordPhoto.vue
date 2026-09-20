@@ -10,13 +10,17 @@
  * page); and it may have one that is ready. Drawing the empty state during
  * resolution makes a photographed device look unphotographed for a moment and
  * then flicker -- so `pending` renders the same neutral plate as `empty`,
- * sized identically, and only the caption differs.
+ * sized identically, and only the caption differs. That middle state is what
+ * this component is really for now, and it is reachable on every cold load.
  *
- * THE FALLBACK IS NOT DECORATION. Most things will not have a photo for a long
- * time, so what gets drawn when there is none is what this component mostly
- * does. It claims the same box either way, because a list where only some rows
- * have photos would otherwise have its text on two different left edges -- the
- * same reasoning as OrgLogo's 'blank' fallback.
+ * CALLERS GATE; THE EMPTY PLATE IS A BACKSTOP. Both call sites are detail views
+ * and both wrap this in `v-if="record.photo"`, so a record without one lets the
+ * fields take the full width instead of parking a grey square in the layout.
+ * The `No photo` branch below therefore renders only if some future caller
+ * mounts this ungated -- kept because an unexplained empty box is the worse
+ * failure, not because anything reaches it today. A `hideWhenEmpty` prop used
+ * to exist for the two callers that DID mount it ungated (ScannerWidget,
+ * ThingMapDrawer); both were removed, and it went with them.
  *
  * NOT FOR PEOPLE. A user's face is UserAvatar, which has an initial-circle
  * fallback and a viewRule that is not org-scoped. Pointing this at `users`
@@ -40,8 +44,6 @@ interface Props {
   thumb?: '100x100' | '400x400'
   /** Rendered edge length in px. Square, because the thumbs are. */
   size?: number
-  /** Hide the box entirely when there is no photo, instead of a placeholder. */
-  hideWhenEmpty?: boolean
   /**
    * Click the thumbnail to open the FULL image in a dialog.
    *
@@ -59,7 +61,6 @@ const props = withDefaults(defineProps<Props>(), {
   filename: '',
   thumb: '400x400',
   size: 96,
-  hideWhenEmpty: false,
   zoomable: false,
   alt: '',
 })
@@ -102,7 +103,6 @@ useEscapeKey(zoomOpen, () => {
   -->
   <component
     :is="zoomable && hasPhoto ? 'button' : 'div'"
-    v-if="hasPhoto || !hideWhenEmpty"
     :type="zoomable && hasPhoto ? 'button' : undefined"
     :aria-label="zoomable && hasPhoto ? `View ${alt || 'photo'} full size` : undefined"
     class="rounded-lg border border-base-300 bg-base-200 overflow-hidden flex items-center justify-center flex-shrink-0"

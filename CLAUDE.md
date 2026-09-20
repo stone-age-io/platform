@@ -608,9 +608,9 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
 
 19. **Thing and location photos** - one image of the physical object
     (`things.photo`, `locations.photo`), for the moment somebody is standing in
-    front of it after scanning its label. `ScannerWidget` and the helpdesk scan
-    flow are the surfaces it exists for; the install context it carries
-    otherwise lives in one technician's head and leaves when they do.
+    front of it wondering whether this is the right one. It lives on the thing
+    and location DETAIL views and deliberately nowhere else; the install context
+    it carries otherwise lives in one technician's head and leaves when they do.
     - **`things.photo` is EDIT-ONLY.** Creating a Thing goes through
       `POST /api/org/things`, a JSON provisioning route that writes the Thing
       and its identities in one server-side transaction; it cannot carry a
@@ -631,18 +631,32 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
       23 of `scripts/test-authz.sh` checks it against a live server, including
       that a multipart upload cannot smuggle a frozen field alongside the photo
       -- `-F` is a different parse path from every other check in that file.
-    - **One photo, not a gallery.** `maxSelect: 1` is a decision: 1 -> N is a
-      column migration (PocketBase stores a multi-file field as JSON, not TEXT),
-      and a gallery nobody asked for is the worse mistake.
+    - **One photo, not a gallery -- and the migration is NOT the reason.** An
+      earlier version of this note said 1 -> N was blocked by the column type;
+      that is wrong and it pointed at the wrong risk. PocketBase's
+      `normalizeSingleVsMultipleFieldChanges`
+      (`core/collection_record_table_sync.go`) rebuilds the column AND wraps
+      each existing value in `json_array(...)`, and both fields carry the
+      deterministic id `file347571224`, so a plain re-import migration applies
+      it. Going up is cheap. The reasons to stay at 1 are that **an array has no
+      primary element** -- anything rendering "the" photo silently becomes
+      `photo[0]`, i.e. whatever was uploaded first -- and that **coming back
+      down is destructive**: multiple -> single keeps
+      `json_extract(..., '$[#-1]')`, the LAST file, and PocketBase deliberately
+      leaves the others orphaned in `pb_data/storage`, riding every backup
+      forever. Cheap to add once a second photo has a reader; expensive to undo
+      once every record has five. Revisit as a designated primary plus ordering,
+      never as a bare `maxSelect` bump.
     - **It lives in the Basic Information card and clicks through to the full
       image** -- not in the page header, and not on list rows. Both of those
       shipped first and were wrong for the same reason: they spend prominent
       space on a thumbnail small enough to recognise a device but too small to
       answer anything, while the question a photo actually gets asked (read the
       serial off that label, see which way the panel faces, which door is it)
-      needs the full frame. So the card entry is a field like any other -- an
-      em-dash when there is none, matching its neighbours rather than leaving a
-      large blank plate -- and `zoomable` opens the stored image with no thumb
+      needs the full frame. It sits in the card's right-hand gutter beside the
+      fields (stacking above them on a phone, where there is no gutter), the
+      caller gates it with `v-if` so a record without one simply lets the fields
+      take the full width, and `zoomable` opens the stored image with no thumb
       parameter at all. The full-size URL resolves only on open, so a page with
       several photos does not fetch full copies of images nobody clicked.
     - **Not SVG**, though `locations.floorplan` allows it: this field is camera
@@ -660,6 +674,16 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
     - Deliberately **not** on the QR label (print, bare code, minimal), not in
       `leaf-config` (agents do not need it), and not in
       `auditSnapshotCollections`.
+    - **Also not in `ScannerWidget` or `ThingMapDrawer`** -- both shipped in
+      `a7412ea` and were removed. If you have just scanned the label you are
+      already looking at the device, so the photo answers a question nobody is
+      asking; and a 40px thumbnail standing in for the drawer's 📦 tells you
+      less than the name already above it. The scanner's cost was the larger
+      one and is the part worth remembering: to render a photo at all it had to
+      force `id`, `photo`, `collectionId` and `collectionName` into the
+      operator's configured `pbFields` list, then strip `photo` back out of the
+      key/value rows -- an accommodation in a widget's data path for a
+      decoration. Re-adding either brings that back.
 
 ## Roles & Authorization
 
