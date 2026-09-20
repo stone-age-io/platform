@@ -66,11 +66,34 @@ nats:
   jetstream_domain: "hub"
 
   log_to_console: false
-  # Default limits for new organizations
+  # Fair-use ceilings stamped into every new organization's signed account JWT,
+  # which is the only place a tenant cannot edit them. Applied at PROVISIONING
+  # time only: changing a number here does not reach an account that already
+  # exists, which has to be edited on the nats_accounts record.
+  #
+  # The two storage numbers do different jobs and should not be tuned together.
+  # Disk tracks what the plan is sold with. Memory is a blast-radius limit -- a
+  # memory-backed stream competes for the RAM every other tenant on the box
+  # needs, so it is the one breach not confined to the account that caused it.
+  # Keep it small and identical across plans.
+  #
+  # Connections and subscriptions are headroom, not a fence. Their breach mode
+  # is a device that cannot connect or a subscription that quietly fails, so a
+  # tight value takes a site offline to save nothing. Set them well above any
+  # modelled load and alarm on approach instead. Note clients behind an edge
+  # leaf node do NOT count toward max_connections: the hub sees one leaf
+  # connection per site, so this counts browsers, the stone CLI, and devices
+  # that dial the hub directly.
+  #
+  # -1 means unlimited. 0 on either JetStream field disables JetStream for the
+  # account entirely, taking the digital twin with it -- never use 0 to mean
+  # "no limit".
   default_limits:
-    max_connections: 10
-    max_subscriptions: 50
-    max_payload: 1048576
+    max_connections: 100
+    max_subscriptions: 5000
+    max_payload: 1048576                      # matches nats-server's own default
+    max_jetstream_disk_storage: 5368709120    # 5 GiB
+    max_jetstream_memory_storage: 67108864    # 64 MiB
   # Optional AES-256-GCM at-rest encryption for operator/account/user
   # private_key, seed, and signing_keys_private fields. Must be exactly 32
   # characters when set; empty disables encryption. Prefer providing this via

@@ -109,9 +109,16 @@ func setDefaults() {
 	viper.SetDefault("nats.leaf_url", "")
 	viper.SetDefault("nats.jetstream_domain", "hub")
 	viper.SetDefault("nats.log_to_console", false)
-	viper.SetDefault("nats.default_limits.max_connections", 10)
-	viper.SetDefault("nats.default_limits.max_subscriptions", 50)
+	// Fair-use ceilings stamped into every new organization's signed account
+	// JWT. config.yaml carries the reasoning; the short version is that disk
+	// tracks what the plan is sold with, memory is a blast-radius limit that is
+	// the same for everyone, and the connection and subscription numbers are
+	// headroom to alarm on rather than a fence.
+	viper.SetDefault("nats.default_limits.max_connections", 100)
+	viper.SetDefault("nats.default_limits.max_subscriptions", 5000)
 	viper.SetDefault("nats.default_limits.max_payload", 1048576)
+	viper.SetDefault("nats.default_limits.max_jetstream_disk_storage", 5*1024*1024*1024)
+	viper.SetDefault("nats.default_limits.max_jetstream_memory_storage", 64*1024*1024)
 	viper.SetDefault("nats.export_collection_name", "nats_account_exports")
 	viper.SetDefault("nats.import_collection_name", "nats_account_imports")
 	// Run a NATS server inside this process instead of alongside it. Off by
@@ -362,13 +369,15 @@ func main() {
 
 	// Platform-owned hooks: auto-provision NATS account + Nebula CA per new org.
 	hooks.RegisterOrgProvisioning(app, hooks.OrgProvisioningOptions{
-		OrgCollection:                orgCollection,
-		NatsAccountCollection:        natsOptions.AccountCollectionName,
-		NebulaCACollection:           nebulaOptions.CACollectionName,
-		NatsMaxConnections:           viper.GetInt("nats.default_limits.max_connections"),
-		NatsMaxSubscriptions:         viper.GetInt("nats.default_limits.max_subscriptions"),
-		NatsMaxPayload:               viper.GetInt("nats.default_limits.max_payload"),
-		NebulaDefaultCAValidityYears: viper.GetInt("nebula.default_ca_validity_years"),
+		OrgCollection:                 orgCollection,
+		NatsAccountCollection:         natsOptions.AccountCollectionName,
+		NebulaCACollection:            nebulaOptions.CACollectionName,
+		NatsMaxConnections:            viper.GetInt("nats.default_limits.max_connections"),
+		NatsMaxSubscriptions:          viper.GetInt("nats.default_limits.max_subscriptions"),
+		NatsMaxPayload:                viper.GetInt("nats.default_limits.max_payload"),
+		NatsMaxJetStreamDiskStorage:   viper.GetInt64("nats.default_limits.max_jetstream_disk_storage"),
+		NatsMaxJetStreamMemoryStorage: viper.GetInt64("nats.default_limits.max_jetstream_memory_storage"),
+		NebulaDefaultCAValidityYears:  viper.GetInt("nebula.default_ca_validity_years"),
 	})
 
 	// Platform-owned hooks: managed orgs export their service-event subtree

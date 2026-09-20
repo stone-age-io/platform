@@ -151,13 +151,15 @@ func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
 
 	hooks.RegisterOrgCode(app, orgCollection)
 	hooks.RegisterOrgProvisioning(app, hooks.OrgProvisioningOptions{
-		OrgCollection:                orgCollection,
-		NatsAccountCollection:        natsOpts.AccountCollectionName,
-		NebulaCACollection:           nebulaOpts.CACollectionName,
-		NatsMaxConnections:           10,
-		NatsMaxSubscriptions:         50,
-		NatsMaxPayload:               1048576,
-		NebulaDefaultCAValidityYears: 5,
+		OrgCollection:                 orgCollection,
+		NatsAccountCollection:         natsOpts.AccountCollectionName,
+		NebulaCACollection:            nebulaOpts.CACollectionName,
+		NatsMaxConnections:            100,
+		NatsMaxSubscriptions:          5000,
+		NatsMaxPayload:                1048576,
+		NatsMaxJetStreamDiskStorage:   5 * 1024 * 1024 * 1024,
+		NatsMaxJetStreamMemoryStorage: 64 * 1024 * 1024,
+		NebulaDefaultCAValidityYears:  5,
 	})
 	// Registered here rather than in the test that needs it, and it must still be
 	// bound before app.Bootstrap() below.

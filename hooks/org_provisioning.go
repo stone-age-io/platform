@@ -22,6 +22,17 @@ type OrgProvisioningOptions struct {
 	NatsMaxSubscriptions int
 	NatsMaxPayload       int
 
+	// JetStream ceilings, in bytes, and the two do different jobs. Disk tracks
+	// what the account's plan is sold with. Memory is a blast-radius limit: a
+	// memory-backed stream competes for the RAM every other tenant on the box
+	// needs, so its breach is the one that is not confined to the account that
+	// caused it -- keep it small and the same for every plan.
+	//
+	// -1 is unlimited. 0 disables JetStream for the account outright, which
+	// takes the digital twin with it, so it is never the value you want here.
+	NatsMaxJetStreamDiskStorage   int64
+	NatsMaxJetStreamMemoryStorage int64
+
 	NebulaDefaultCAValidityYears int
 }
 
@@ -129,10 +140,14 @@ func ensureOrgNatsAccount(app core.App, opts OrgProvisioningOptions, org *core.R
 	rec.Set("active", true)
 	rec.Set("max_connections", opts.NatsMaxConnections)
 	rec.Set("max_subscriptions", opts.NatsMaxSubscriptions)
+	// max_data stays unlimited because it is the wrong shape for the thing the
+	// price sheet promises: it is a CUMULATIVE byte cap in the account JWT, not
+	// a monthly one, so it cannot express a bandwidth allowance. A per-month
+	// figure has to be measured from $SYS, not fenced here.
 	rec.Set("max_data", -1)
 	rec.Set("max_payload", opts.NatsMaxPayload)
-	rec.Set("max_jetstream_disk_storage", -1)
-	rec.Set("max_jetstream_memory_storage", -1)
+	rec.Set("max_jetstream_disk_storage", opts.NatsMaxJetStreamDiskStorage)
+	rec.Set("max_jetstream_memory_storage", opts.NatsMaxJetStreamMemoryStorage)
 
 	if err := app.Save(rec); err != nil {
 		return fmt.Errorf("create the NATS account for organization %q: %w", orgName, err)
