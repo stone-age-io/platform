@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useNatsStore } from '@/stores/nats'
 import { useJetStreamManager } from '@/composables/useJetStreamManager'
 import { formatBytes } from '@/utils/format'
+import { sortBy } from '@/utils/clientSort'
 import type { StreamSummary, JetStreamAccountSummary } from '@/types/jetstream'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
@@ -20,6 +21,10 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 const searchQuery = ref('')
 
+// Alphabetical by default. JetStream answers in whatever order it holds them,
+// which is stable enough to look deliberate and arbitrary enough to be useless.
+const sort = ref('name')
+
 // Client-side search
 const filteredStreams = computed(() => {
   const q = searchQuery.value.toLowerCase().trim()
@@ -31,16 +36,28 @@ const filteredStreams = computed(() => {
   )
 })
 
+// Client-side sort, over the filtered set and BEFORE the slice. Sorting
+// paginatedStreams instead would order rows that were already the wrong twenty
+// -- on page one as much as page two -- and hide it completely on any account
+// whose streams fit on a single page. Safe here only because listStreams()
+// returns the whole account: see utils/clientSort.
+const sortedStreams = computed(() => sortBy(filteredStreams.value, sort.value))
+
 // Client-side pagination
 const currentPage = ref(1)
 const itemsPerPage = 20
 const totalPages = computed(() => Math.max(1, Math.ceil(filteredStreams.value.length / itemsPerPage)))
 const paginatedStreams = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage
-  return filteredStreams.value.slice(start, start + itemsPerPage)
+  return sortedStreams.value.slice(start, start + itemsPerPage)
 })
 
 watch(searchQuery, () => { currentPage.value = 1 })
+
+function onSort(next: string) {
+  sort.value = next
+  currentPage.value = 1 // a new order makes the old page number meaningless
+}
 
 // Subjects is the one column left un-widthed, so it absorbs the slack. It is
 // the only column here whose content has no bound -- a stream can carry one
@@ -53,13 +70,18 @@ watch(searchQuery, () => { currentPage.value = 1 })
 // alone would have changed nothing. A cap inside a fixed-layout column is a
 // second opinion about width that cannot agree with the first; the truncate and
 // its title tooltip stay, and they now bite at the column edge.
+//
+// A leading `-` means "descending on the first click", the same convention the
+// dated lists use. For a size or a count that is the end worth opening on: the
+// question these columns get asked is which stream is eating the disk, never
+// which one is emptiest.
 const columns: Column<StreamSummary>[] = [
-  { key: 'name', label: 'Name', mobileLabel: 'Name' },
-  { key: 'subjects', label: 'Subjects', mobileLabel: 'Subjects', format: (v: string[]) => v.join(', ') },
-  { key: 'retention', width: '7rem', label: 'Retention', mobileLabel: 'Retention' },
-  { key: 'messages', width: '9rem', label: 'Messages', mobileLabel: 'Msgs', format: (v: number) => v.toLocaleString() },
-  { key: 'bytes', width: '7rem', label: 'Size', mobileLabel: 'Size', format: (v: number) => formatBytes(v) },
-  { key: 'consumers', width: '7rem', label: 'Consumers', mobileLabel: 'Cons' },
+  { key: 'name', sortable: 'name', label: 'Name', mobileLabel: 'Name' },
+  { key: 'subjects', sortable: 'subjects', label: 'Subjects', mobileLabel: 'Subjects', format: (v: string[]) => v.join(', ') },
+  { key: 'retention', sortable: 'retention', width: '7rem', label: 'Retention', mobileLabel: 'Retention' },
+  { key: 'messages', sortable: '-messages', width: '9rem', label: 'Messages', mobileLabel: 'Msgs', format: (v: number) => v.toLocaleString() },
+  { key: 'bytes', sortable: '-bytes', width: '7rem', label: 'Size', mobileLabel: 'Size', format: (v: number) => formatBytes(v) },
+  { key: 'consumers', sortable: '-consumers', width: '7rem', label: 'Consumers', mobileLabel: 'Cons' },
 ]
 
 async function loadData() {
@@ -200,6 +222,8 @@ watch(() => natsStore.isConnected, (connected) => {
           :items="paginatedStreams"
           :columns="columns"
           :loading="loading"
+          :sort="sort"
+          @update:sort="onSort"
           @row-click="handleRowClick"
         >
           <template #cell-name="{ item }">

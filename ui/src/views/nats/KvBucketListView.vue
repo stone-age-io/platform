@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useNatsStore } from '@/stores/nats'
 import { useJetStreamManager, formatNanos } from '@/composables/useJetStreamManager'
 import { formatBytes } from '@/utils/format'
+import { sortBy } from '@/utils/clientSort'
 import type { KvBucketSummary } from '@/types/jetstream'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
@@ -19,6 +20,10 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 const searchQuery = ref('')
 
+// Alphabetical by default. JetStream answers in whatever order it holds them,
+// which is stable enough to look deliberate and arbitrary enough to be useless.
+const sort = ref('name')
+
 const filteredBuckets = computed(() => {
   const q = searchQuery.value.toLowerCase().trim()
   if (!q) return buckets.value
@@ -28,26 +33,42 @@ const filteredBuckets = computed(() => {
   )
 })
 
+// Client-side sort, over the filtered set and BEFORE the slice -- sorting
+// paginatedBuckets would order rows that were already the wrong twenty, on page
+// one as much as page two, and hide it entirely on any account whose buckets fit
+// on a single page. Safe here only because listKvBuckets() returns the whole
+// account: see utils/clientSort.
+const sortedBuckets = computed(() => sortBy(filteredBuckets.value, sort.value))
+
 const currentPage = ref(1)
 const itemsPerPage = 20
 const totalPages = computed(() => Math.max(1, Math.ceil(filteredBuckets.value.length / itemsPerPage)))
 const paginatedBuckets = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage
-  return filteredBuckets.value.slice(start, start + itemsPerPage)
+  return sortedBuckets.value.slice(start, start + itemsPerPage)
 })
 
 watch(searchQuery, () => { currentPage.value = 1 })
+
+function onSort(next: string) {
+  sort.value = next
+  currentPage.value = 1 // a new order makes the old page number meaningless
+}
 
 const columns: Column<KvBucketSummary>[] = [
   // 'auto', not omitted: omitting it means 28% for column 0 (see Column.width).
   // This is the only free-text column here -- name plus a clamped description --
   // so it takes the slack and every other column keeps exactly what it declares.
-  { key: 'name', width: 'auto', label: 'Name', mobileLabel: 'Name' },
-  { key: 'values', width: '8rem', label: 'Keys', mobileLabel: 'Keys', format: (v: number) => v.toLocaleString() },
-  { key: 'bytes', width: '8rem', label: 'Size', mobileLabel: 'Size', format: (v: number) => formatBytes(v) },
-  { key: 'history', width: '7rem', label: 'History', mobileLabel: 'History' },
-  { key: 'storage', width: '7rem', label: 'Storage', mobileLabel: 'Storage' },
-  { key: 'ttl', width: '8rem', label: 'TTL', mobileLabel: 'TTL', format: (v: number) => v ? formatNanos(v) : 'None' },
+  { key: 'name', sortable: 'name', width: 'auto', label: 'Name', mobileLabel: 'Name' },
+  // `-` on the three "how big" columns so the first click opens on the end
+  // worth looking at. TTL keeps plain ascending: 0 renders as "None", and
+  // descending would open on the buckets that never expire, which is the least
+  // interesting answer the column has.
+  { key: 'values', sortable: '-values', width: '8rem', label: 'Keys', mobileLabel: 'Keys', format: (v: number) => v.toLocaleString() },
+  { key: 'bytes', sortable: '-bytes', width: '8rem', label: 'Size', mobileLabel: 'Size', format: (v: number) => formatBytes(v) },
+  { key: 'history', sortable: '-history', width: '7rem', label: 'History', mobileLabel: 'History' },
+  { key: 'storage', sortable: 'storage', width: '7rem', label: 'Storage', mobileLabel: 'Storage' },
+  { key: 'ttl', sortable: 'ttl', width: '8rem', label: 'TTL', mobileLabel: 'TTL', format: (v: number) => v ? formatNanos(v) : 'None' },
 ]
 
 async function loadData() {
@@ -151,6 +172,8 @@ watch(() => natsStore.isConnected, (connected) => {
           :items="paginatedBuckets"
           :columns="columns"
           :loading="loading"
+          :sort="sort"
+          @update:sort="onSort"
           @row-click="handleRowClick"
         >
           <template #cell-name="{ item }">

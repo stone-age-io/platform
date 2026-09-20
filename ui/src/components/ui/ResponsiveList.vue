@@ -148,9 +148,18 @@ function widthOf(col: Column<T>, index: number): string | undefined {
   return col.width ?? (index === 0 ? '28%' : undefined)
 }
 
-// Sorting is server-side for every view that uses it, for the same reason search
-// is: sorting the twenty rows already on screen answers a different question than
-// the one the reader asked, and does it silently.
+// Sorting is server-side for every PocketBase-backed view, for the same reason
+// search is: those views hold ONE PAGE, so ordering it in the browser sorts the
+// twenty rows it happens to have rather than the set the reader asked about, and
+// says nothing about the difference.
+//
+// The two JetStream lists are the exception, and not a relaxation of that rule
+// but the same rule reaching a different answer: they hold the WHOLE set, since
+// listStreams() and listKvBuckets() return everything in the account and the
+// paging is a slice taken afterwards. `utils/clientSort` orders the full set and
+// the slice comes after. This component neither knows nor cares which kind it is
+// talking to -- it renders the control and reports the change, and the view owns
+// what happens next.
 const sortableColumns = computed(() => props.columns.filter(c => c.sortable))
 
 /** The field name without its direction prefix. */

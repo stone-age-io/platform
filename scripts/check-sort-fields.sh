@@ -10,7 +10,12 @@
 # too. That exact failure has already taken two screens down in this console
 # (Members and Invitations, sorted by a `created` that neither collection had).
 #
-# So every `sortable:` value in ui/src/views is asked of a real server here.
+# So every `sortable:` value in ui/src/views is asked of a real server here --
+# every one aimed at a collection, that is. The two JetStream lists sort a
+# complete in-memory array (see ui/src/utils/clientSort.ts); their terms are
+# property names on a DTO, not fields of a collection, so there is nothing to
+# ask and they are reported as skipped. Those are covered by clientSort.spec.ts
+# instead.
 #
 #   ./scripts/check-sort-fields.sh
 #   PORT=18124 ./scripts/check-sort-fields.sh   # if the default port is busy
@@ -38,6 +43,7 @@ WORK="$(mktemp -d)"
 SRV_PID=""
 PASS=0
 FAIL=0
+SKIP=0
 
 cleanup() {
   if [ -n "$SRV_PID" ]; then
@@ -98,6 +104,17 @@ for (const file of walk(root).filter(f => f.endsWith('.vue'))) {
   const src = fs.readFileSync(file, 'utf8')
   const terms = [...src.matchAll(/sortable: '([^']+)'/g)].map(m => m[1].replace(/^-/, ''))
   if (!terms.length) continue
+  // A view that imports clientSort orders a COMPLETE in-memory array -- the two
+  // JetStream lists, whose rows come from NATS and never from a collection. There
+  // is no collection to ask and no server-side term to get wrong, so the failure
+  // this script exists to catch cannot happen there. Keyed on the import rather
+  // than on a filename list or a magic comment, because the import IS the
+  // mechanism: a view cannot stop client-sorting and still match, and one that
+  // merely forgot its usePagination call still fails below.
+  if (/from '@\/utils\/clientSort'/.test(src)) {
+    console.log(`-\t${terms.length}\t${file}`)
+    continue
+  }
   const coll = src.match(/usePagination<[^>]*>\('([a-z_]+)'/)
   if (!coll) {
     console.log(`?\t?\t${file}\tno usePagination call to name a collection`)
@@ -109,9 +126,14 @@ ENDNODE
 
 [ -s "$WORK/terms.txt" ] || die "found no sortable columns to check -- did the extraction break?"
 
-echo "=== checking $(wc -l < "$WORK/terms.txt" | tr -d ' ') sort terms ==="
+echo "=== checking $(awk -F'\t' '$1 != "-"' "$WORK/terms.txt" | wc -l | tr -d ' ') sort terms against the server ==="
 
 while IFS=$'\t' read -r coll field file note; do
+  if [ "$coll" = "-" ]; then
+    echo "  skip  $file: $field client-sorted term(s), no collection to ask"
+    SKIP=$((SKIP + field))
+    continue
+  fi
   if [ "$coll" = "?" ]; then
     echo "  FAIL  $file: $note"
     FAIL=$((FAIL + 1))
@@ -129,7 +151,7 @@ done < "$WORK/terms.txt"
 
 echo
 if [ "$FAIL" -eq 0 ]; then
-  echo "OK: $PASS sort terms all resolve"
+  echo "OK: $PASS sort terms all resolve ($SKIP client-sorted, not checkable here)"
   exit 0
 fi
 echo "$FAIL of $((PASS + FAIL)) sort terms are not fields of their collection"
