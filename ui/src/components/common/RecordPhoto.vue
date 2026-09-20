@@ -3,28 +3,27 @@
 /**
  * The photo on a thing or a location, wherever one is shown read-only.
  *
- * It exists because the answer to "is there a photo" has THREE states and the
- * obvious two-state rendering gets one of them wrong. A record may have no
- * photo; it may have one that is still resolving (every file field is
- * protected, so the URL needs a file token, which is a round trip on a cold
- * page); and it may have one that is ready. Drawing the empty state during
- * resolution makes a photographed device look unphotographed for a moment and
- * then flicker -- so `pending` renders the same neutral plate as `empty`,
- * sized identically, and only the caption differs. That middle state is what
- * this component is really for now, and it is reachable on every cold load.
+ * TWO STATES, NOT THREE. A photo here is either resolving or ready. "No photo"
+ * is not a state this draws -- it renders nothing at all. Both call sites
+ * already gate on `v-if="record.photo"`, and that outer gate is load-bearing
+ * rather than redundant: it also drops the flex wrapper, so the card's `gap-5`
+ * does not leave a phantom column where a photo would have been. This
+ * component's own `v-if` is the backstop for a caller that forgets.
  *
- * CALLERS GATE; THE EMPTY PLATE IS A BACKSTOP. Both call sites are detail views
- * and both wrap this in `v-if="record.photo"`, so a record without one lets the
- * fields take the full width instead of parking a grey square in the layout.
- * The `No photo` branch below therefore renders only if some future caller
- * mounts this ungated -- kept because an unexplained empty box is the worse
- * failure, not because anything reaches it today. A `hideWhenEmpty` prop used
- * to exist for the two callers that DID mount it ungated (ScannerWidget,
- * ThingMapDrawer); both were removed, and it went with them.
+ * RESOLVING STILL NEEDS THE PLATE, which is the one piece of this worth
+ * keeping. Every file field is protected, so the URL needs a file token, and
+ * that is a round trip on a cold page. Rendering nothing during it and the
+ * image afterwards makes the card jump, so the bordered box is drawn at its
+ * final size the moment we know there IS a photo, and the image lands inside
+ * it.
+ *
+ * Gone with the two ungated callers (ScannerWidget, ThingMapDrawer): a
+ * `hideWhenEmpty` prop, a `No photo` caption, and the `<component :is>` root
+ * that existed only to become a plain div when there was nothing to click.
  *
  * NOT FOR PEOPLE. A user's face is UserAvatar, which has an initial-circle
  * fallback and a viewRule that is not org-scoped. Pointing this at `users`
- * would draw an empty plate for every colleague a caller cannot read.
+ * would draw a plate for every colleague a caller cannot read.
  */
 import { computed, ref } from 'vue'
 import { useFileUrl } from '@/composables/useFileUrl'
@@ -91,35 +90,28 @@ useEscapeKey(zoomOpen, () => {
 
 <template>
   <!--
-    A button when there is a photo to open, a plain div otherwise. Deliberately
-    not a div with a click handler: the zoom is a real control and has to be
-    reachable by keyboard and announced as activatable, which only a button gets
-    for free.
+    Always a button, never a div with a click handler: the zoom is a real
+    control and has to be reachable by keyboard and announced as activatable,
+    which only a button gets for free. It can be unconditional now because
+    nothing renders at all unless there is a photo to open.
   -->
-  <component
-    :is="hasPhoto ? 'button' : 'div'"
-    :type="hasPhoto ? 'button' : undefined"
-    :aria-label="hasPhoto ? `View ${alt || 'photo'} full size` : undefined"
-    class="rounded-lg border border-base-300 bg-base-200 overflow-hidden flex items-center justify-center flex-shrink-0"
-    :class="
-      hasPhoto
-        ? 'cursor-zoom-in hover:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary transition-colors'
-        : ''
-    "
+  <button
+    v-if="hasPhoto"
+    type="button"
+    :aria-label="`View ${alt || 'photo'} full size`"
+    class="rounded-lg border border-base-300 bg-base-200 overflow-hidden flex items-center justify-center flex-shrink-0 cursor-zoom-in hover:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary transition-colors"
     :style="{ width: SIZE_PX, height: SIZE_PX }"
-    @click="hasPhoto ? (zoomOpen = true) : undefined"
+    @click="zoomOpen = true"
   >
     <!-- object-cover: these are camera photos and the box is square, so
          letterboxing every one of them inside a bordered plate reads as a
          broken image. ImageUploadField makes the opposite call for the opposite
-         reason -- there, the point is checking what you uploaded. -->
+         reason -- there, the point is checking what you uploaded.
+
+         Nothing inside while the token resolves: the bordered box is the
+         loading state, at the size the image will be. -->
     <img v-if="url" :src="url" :alt="alt" class="w-full h-full object-cover" />
-    <!-- Same plate whether the photo is absent or still resolving: see the note
-         at the top about the third state. -->
-    <span v-else-if="!hasPhoto" class="text-[10px] text-base-content/40 px-1 text-center">
-      No photo
-    </span>
-  </component>
+  </button>
 
   <!--
     Teleported to <body>, the same shape QrLabelModal uses: the daisyUI CSS
