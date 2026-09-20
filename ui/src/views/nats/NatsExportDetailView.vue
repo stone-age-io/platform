@@ -6,6 +6,7 @@ import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { formatDate } from '@/utils/format'
 import type { NatsAccountExport } from '@/types/pocketbase'
+import DangerZone from '@/components/common/DangerZone.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ManagedRecordNotice from '@/components/common/ManagedRecordNotice.vue'
 import { isManagedExport } from '@/utils/managedExports'
@@ -89,7 +90,6 @@ onMounted(loadExport)
           </div>
           <div v-if="!managed" class="flex gap-2 w-full sm:w-auto">
             <router-link :to="`/nats/exports/${exportRecord.id}/edit`" class="btn btn-primary flex-1 sm:flex-initial">Edit</router-link>
-            <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial" :disabled="deleting">Delete</button>
           </div>
         </div>
       </div>
@@ -177,6 +177,18 @@ onMounted(loadExport)
           </BaseCard>
         </div>
       </div>
+
+      <!-- The same `managed` gate the header row carries: a platform-provisioned
+           export is rewritten on every organization save, so offering to delete
+           it would offer a change reconciliation silently undoes. -->
+      <DangerZone
+        v-if="!managed"
+        title="Delete this export"
+      >
+        <button @click="handleDelete" class="btn btn-error" :disabled="deleting">
+          Delete Export
+        </button>
+      </DangerZone>
     </template>
   </div>
 </template>

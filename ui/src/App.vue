@@ -112,6 +112,7 @@ watch(() => authStore.currentOrgId, async (orgId) => {
     :confirm-text="confirmState.options.confirmText"
     :cancel-text="confirmState.options.cancelText"
     :variant="confirmState.options.variant"
+    :require-text="confirmState.options.requireText"
     @confirm="handleConfirm"
     @cancel="handleCancel"
   />

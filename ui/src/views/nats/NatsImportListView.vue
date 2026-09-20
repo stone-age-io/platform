@@ -3,9 +3,6 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
 import { useServerSearch } from '@/composables/useServerSearch'
-import { useToast } from '@/composables/useToast'
-import { useConfirm } from '@/composables/useConfirm'
-import { pb } from '@/utils/pb'
 import { formatDate } from '@/utils/format'
 import type { NatsAccountImport } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
@@ -16,8 +13,6 @@ import ManagedRecordNotice from '@/components/common/ManagedRecordNotice.vue'
 import { isManagedImport } from '@/utils/managedExports'
 
 const router = useRouter()
-const toast = useToast()
-const { confirm } = useConfirm()
 
 const {
   items: imports,
@@ -61,8 +56,6 @@ function onSort(next: string) {
   page.value = 1 // a new order makes the old page number meaningless
   loadImports()
 }
-
-const deleting = ref(false)
 
 function truncateKey(key: string): string {
   if (!key || key.length <= 16) return key
@@ -111,28 +104,6 @@ async function loadImports() {
 
 function handleRowClick(imp: NatsAccountImport) {
   router.push(`/nats/imports/${imp.id}`)
-}
-
-async function handleDelete(imp: NatsAccountImport) {
-  const confirmed = await confirm({
-    title: 'Delete Import',
-    message: `Are you sure you want to delete "${imp.name}"?`,
-    details: 'This account will lose access to the imported subject.',
-    confirmText: 'Delete',
-    variant: 'danger'
-  })
-  if (!confirmed) return
-
-  deleting.value = true
-  try {
-    await pb.collection('nats_account_imports').delete(imp.id)
-    toast.success('Import deleted')
-    loadImports()
-  } catch (err: any) {
-    toast.error(err.message || 'Failed to delete import')
-  } finally {
-    deleting.value = false
-  }
 }
 
 function handleOrgChange() {
@@ -283,13 +254,6 @@ onUnmounted(() => {
             >
               Edit
             </router-link>
-            <button
-              @click="handleDelete(item)"
-              class="btn btn-xs text-error flex-1 sm:flex-initial"
-              :disabled="deleting"
-            >
-              Delete
-            </button>
           </template>
         </template>
       </ResponsiveList>

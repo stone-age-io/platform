@@ -6,6 +6,7 @@ import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { formatDate } from '@/utils/format'
 import type { NatsUser } from '@/types/pocketbase'
+import DangerZone from '@/components/common/DangerZone.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import { useEscapeKey } from '@/composables/useEscapeKey'
 import SubjectChip from '@/components/common/SubjectChip.vue'
@@ -80,7 +81,8 @@ async function handleDelete() {
     message: `Are you sure you want to delete "${user.value.nats_username}"?`,
     details: 'This will invalidate any credentials issued to this user.',
     confirmText: 'Delete',
-    variant: 'danger'
+    variant: 'danger',
+    requireText: user.value.nats_username || undefined,
   })
   if (!confirmed) return
 
@@ -223,9 +225,6 @@ useEscapeKey(showReenableModal, () => { showReenableModal.value = false })
             <router-link :to="`/nats/users/${user.id}/edit`" class="btn btn-primary flex-1 sm:flex-initial">
               Edit
             </router-link>
-            <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial" :disabled="deleting">
-              Delete
-            </button>
           </div>
         </div>
       </div>
@@ -442,6 +441,14 @@ useEscapeKey(showReenableModal, () => { showReenableModal.value = false })
           </BaseCard>
         </div>
       </div>
+
+      <DangerZone
+        title="Delete this NATS user"
+      >
+        <button @click="handleDelete" class="btn btn-error" :disabled="deleting">
+          Delete NATS User
+        </button>
+      </DangerZone>
     </template>
 
     <!-- Regenerate Modal -->

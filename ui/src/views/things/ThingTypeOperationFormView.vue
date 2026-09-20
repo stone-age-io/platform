@@ -4,6 +4,8 @@ import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
+import DangerZone from '@/components/common/DangerZone.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import RecordTimestamps from '@/components/common/RecordTimestamps.vue'
 import type { ThingTypeCapability, ThingTypeOperation } from '@/types/pocketbase'
@@ -34,6 +36,38 @@ const toast = useToast()
 
 const id = route.params.id as string | undefined
 const isEdit = computed(() => !!id && !props.embedded)
+const { confirm } = useConfirm()
+
+const deleting = ref(false)
+
+// Delete lives here rather than on the list row: a row button is aimed by
+// position, and position moves under sort, search and pagination. This form is
+// this collection's only detail surface, so it is also the only other place it
+// could go.
+async function handleDelete() {
+  // isEdit, not id: this view is ALSO embedded as a modal inside the thing-type
+  // form, where route.params.id is a thing_type id and belongs to nothing here.
+  if (!isEdit.value || !id) return
+  const confirmed = await confirm({
+    title: 'Delete Operation',
+    message: `Are you sure you want to delete "${form.value.name}"?`,
+    details: 'Thing Types still linking this operation will be left with a dangling reference.',
+    confirmText: 'Delete',
+    variant: 'danger',
+  })
+  if (!confirmed) return
+  deleting.value = true
+  try {
+    await pb.collection('thing_type_operations').delete(id)
+    toast.success('Deleted')
+    router.push('/things/operations')
+  } catch (err: any) {
+    toast.error(err.message)
+  } finally {
+    deleting.value = false
+  }
+}
+
 const loading = ref(false)
 
 const form = ref({
@@ -188,5 +222,14 @@ onMounted(async () => {
         </button>
       </div>
     </form>
+
+    <DangerZone
+      v-if="isEdit"
+      title="Delete this operation"
+    >
+      <button type="button" @click="handleDelete" class="btn btn-error" :disabled="deleting">
+        Delete Operation
+      </button>
+    </DangerZone>
   </div>
 </template>

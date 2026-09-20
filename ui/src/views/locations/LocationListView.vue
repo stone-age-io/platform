@@ -2,7 +2,6 @@
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from '@/composables/useToast'
-import { useConfirm } from '@/composables/useConfirm'
 import { pb } from '@/utils/pb'
 import { formatDate } from '@/utils/format'
 import type { Location } from '@/types/pocketbase'
@@ -16,14 +15,12 @@ import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const toast = useToast()
-const { confirm } = useConfirm()
 const authStore = useAuthStore()
 
-// Reachable by `viewer`, which writes nothing. Delete is decommissionInventory
-// (owner/admin) -- it was ungated here, so members saw a button the server
-// refused.
+// Reachable by `viewer`, which writes nothing, so Edit needs its own gate.
+// Delete is decommissionInventory (owner/admin) and is no longer on the row --
+// it lives in the danger zone on the detail view.
 const canWrite = computed(() => authStore.can.manageInventory)
-const canDelete = computed(() => authStore.can.decommissionInventory)
 
 // View Mode
 const viewMode = ref<'list' | 'map'>('list')
@@ -32,7 +29,6 @@ const viewMode = ref<'list' | 'map'>('list')
 const allLocations = ref<Location[]>([])
 const loading = ref(false)
 const searchQuery = ref('')
-const deleting = ref(false)
 
 // Pagination State (Client-Side)
 const currentPage = ref(1)
@@ -129,29 +125,6 @@ const columns: Column<Location>[] = [
 // Actions
 function handleRowClick(location: Location) {
   router.push(`/locations/${location.id}`)
-}
-
-async function handleDelete(location: Location) {
-  const confirmed = await confirm({
-    title: 'Delete Location',
-    message: `Are you sure you want to delete "${location.name}"?`,
-    details: 'Sub-locations and things at this location will not be deleted but will lose their parent reference.',
-    confirmText: 'Delete',
-    variant: 'danger'
-  })
-  if (!confirmed) return
-
-  deleting.value = true
-  try {
-    await pb.collection('locations').delete(location.id)
-    toast.success('Location deleted')
-    // Remove locally to avoid reload
-    allLocations.value = allLocations.value.filter(l => l.id !== location.id)
-  } catch (err: any) {
-    toast.error(err.message || 'Failed to delete location')
-  } finally {
-    deleting.value = false
-  }
 }
 
 function handleOrgChange() {
@@ -335,8 +308,7 @@ onUnmounted(() => {
 
             <template #actions="{ item }">
               <router-link v-if="canWrite" :to="`/locations/${item.id}/edit`" class="btn btn-xs flex-1 sm:flex-initial" @click.stop>Edit</router-link>
-              <button v-if="canDelete" @click.stop="handleDelete(item)" class="btn btn-xs text-error flex-1 sm:flex-initial" :disabled="deleting">Delete</button>
-              <router-link v-if="!canWrite && !canDelete" :to="`/locations/${item.id}`" class="btn btn-xs flex-1 sm:flex-initial" @click.stop>View</router-link>
+              <router-link v-if="!canWrite" :to="`/locations/${item.id}`" class="btn btn-xs flex-1 sm:flex-initial" @click.stop>View</router-link>
             </template>
           </ResponsiveList>
 

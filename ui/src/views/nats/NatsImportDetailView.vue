@@ -6,6 +6,7 @@ import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { formatDate } from '@/utils/format'
 import type { NatsAccountImport } from '@/types/pocketbase'
+import DangerZone from '@/components/common/DangerZone.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ManagedRecordNotice from '@/components/common/ManagedRecordNotice.vue'
 import { isManagedImport } from '@/utils/managedExports'
@@ -99,7 +100,6 @@ onMounted(loadImport)
           </div>
           <div v-if="!managed" class="flex gap-2 w-full sm:w-auto">
             <router-link :to="`/nats/imports/${importRecord.id}/edit`" class="btn btn-primary flex-1 sm:flex-initial">Edit</router-link>
-            <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial" :disabled="deleting">Delete</button>
           </div>
         </div>
       </div>
@@ -197,6 +197,16 @@ onMounted(loadImport)
           </BaseCard>
         </div>
       </div>
+
+      <!-- See the export view: a `managed` record is reconciled, not edited. -->
+      <DangerZone
+        v-if="!managed"
+        title="Delete this import"
+      >
+        <button @click="handleDelete" class="btn btn-error" :disabled="deleting">
+          Delete Import
+        </button>
+      </DangerZone>
     </template>
   </div>
 </template>

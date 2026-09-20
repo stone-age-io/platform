@@ -4,7 +4,6 @@ import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
 import { useServerSearch } from '@/composables/useServerSearch'
 import { useToast } from '@/composables/useToast'
-import { useConfirm } from '@/composables/useConfirm'
 import { pb } from '@/utils/pb'
 import { formatDate } from '@/utils/format'
 import type { Thing } from '@/types/pocketbase'
@@ -18,15 +17,13 @@ import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const toast = useToast()
-const { confirm } = useConfirm()
 const authStore = useAuthStore()
 
-// This screen is reachable by `viewer`, which writes nothing. Create/edit is
-// manageInventory; delete is decommissionInventory, which members do NOT hold
-// either -- the Delete button here was ungated and the server was rejecting it
-// for every member who clicked it.
+// This screen is reachable by `viewer`, which writes nothing, so Edit needs
+// its own gate. Delete is not here at all any more -- it is decommissionInventory
+// and lives in the danger zone on the detail view, which is also the only place
+// it can be aimed at a record the reader has actually looked at.
 const canWrite = computed(() => authStore.can.manageInventory)
-const canDelete = computed(() => authStore.can.decommissionInventory)
 
 // View Mode
 const viewMode = ref<'list' | 'map'>('list')
@@ -81,8 +78,6 @@ function onSort(next: string) {
   loadThings()
 }
 
-const deleting = ref(false)
-
 // Labels for the CURRENT FILTER, not the current page. The search box is the
 // selection mechanism -- row checkboxes would need select-all, select-across-
 // pages and a selection store, for a workflow that is almost always already a
@@ -91,8 +86,8 @@ const deleting = ref(false)
 //
 // No capability gate: this reads records the caller can already read, so its
 // entry capability is the screen's. A control only needs its own v-if when its
-// rule differs from the one that let the reader in -- which is why Delete has
-// one and this does not.
+// rule differs from the one that let the reader in -- which is why Edit has one
+// and this does not.
 const showLabelModal = ref(false)
 const loadingLabels = ref(false)
 const labelRecords = ref<{ code: string; name: string; kind: 'thing' }[]>([])
@@ -173,31 +168,6 @@ async function loadThings() {
  */
 function handleRowClick(thing: Thing) {
   router.push(`/things/${thing.id}`)
-}
-
-/**
- * Handle delete
- */
-async function handleDelete(thing: Thing) {
-  const confirmed = await confirm({
-    title: 'Delete Thing',
-    message: `Are you sure you want to delete "${thing.name}"?`,
-    details: 'This action cannot be undone.',
-    confirmText: 'Delete',
-    variant: 'danger'
-  })
-  if (!confirmed) return
-
-  deleting.value = true
-  try {
-    await pb.collection('things').delete(thing.id)
-    toast.success('Thing deleted')
-    loadThings()
-  } catch (err: any) {
-    toast.error(err.message || 'Failed to delete thing')
-  } finally {
-    deleting.value = false
-  }
 }
 
 /**
@@ -441,16 +411,8 @@ onUnmounted(() => {
           >
             Edit
           </router-link>
-          <button
-            v-if="canDelete"
-            @click="handleDelete(item)"
-            class="btn btn-xs text-error flex-1 sm:flex-initial"
-            :disabled="deleting"
-          >
-            Delete
-          </button>
           <router-link
-            v-if="!canWrite && !canDelete"
+            v-if="!canWrite"
             :to="`/things/${item.id}`"
             class="btn btn-xs flex-1 sm:flex-initial"
           >

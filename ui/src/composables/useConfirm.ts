@@ -10,6 +10,12 @@ interface ConfirmOptions {
   confirmText?: string
   cancelText?: string
   variant?: 'danger' | 'warning' | 'info'
+  /**
+   * Gate the confirm button behind typing this string exactly. Pass a record's
+   * code where it has one and its name where it does not -- see ConfirmDialog's
+   * own note for why it is only on the irreversible deletes.
+   */
+  requireText?: string
 }
 
 /**
@@ -70,7 +76,8 @@ export function useConfirm() {
           details: options.details,
           confirmText: options.confirmText || 'Confirm',
           cancelText: options.cancelText || 'Cancel',
-          variant: options.variant || 'danger'
+          variant: options.variant || 'danger',
+          requireText: options.requireText
         },
         resolve
       }

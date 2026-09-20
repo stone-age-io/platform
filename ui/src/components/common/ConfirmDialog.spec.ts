@@ -219,3 +219,89 @@ describe('ConfirmDialog dismissal', () => {
     wrapper.unmount()
   })
 })
+
+describe('ConfirmDialog typed gate', () => {
+  // Every failure mode here is SILENT. A gate that does not disable lets the
+  // click through and nothing says so; a gate that never opens looks like a
+  // broken button; a gate that survives a cancel arms the NEXT record, and the
+  // dialog is a single shared instance in App.vue, so the next record is a
+  // different one. None of them throws.
+
+  it('is absent unless a record asks for it', () => {
+    const wrapper = mountDialog()
+    expect(document.querySelector('.confirm-gate')).toBeNull()
+    expect(q('.btn-confirm').attributes('disabled')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('holds the confirm button shut until the text matches', async () => {
+    const wrapper = mountDialog({ requireText: 'gw-01' })
+    expect(q('.btn-confirm').attributes('disabled')).toBeDefined()
+
+    await q('.confirm-gate-input').setValue('gw-0')
+    expect(q('.btn-confirm').attributes('disabled')).toBeDefined()
+
+    await q('.confirm-gate-input').setValue('gw-01')
+    expect(q('.btn-confirm').attributes('disabled')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('does not confirm on a click while the gate is shut', async () => {
+    const wrapper = mountDialog({ requireText: 'gw-01' })
+    await q('.btn-confirm').trigger('click')
+    expect(wrapper.emitted('confirm')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('treats a different case as a different string', async () => {
+    const wrapper = mountDialog({ requireText: 'gw-01' })
+    await q('.confirm-gate-input').setValue('GW-01')
+    expect(q('.btn-confirm').attributes('disabled')).toBeDefined()
+    wrapper.unmount()
+  })
+
+  it('forgives whitespace from a paste', async () => {
+    const wrapper = mountDialog({ requireText: 'gw-01' })
+    await q('.confirm-gate-input').setValue('  gw-01 ')
+    expect(q('.btn-confirm').attributes('disabled')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('renders the required string so the reader can see which record this is', () => {
+    const wrapper = mountDialog({ requireText: 'gw-01' })
+    expect(q('.confirm-gate-token').text()).toBe('gw-01')
+    wrapper.unmount()
+  })
+
+  it('starts empty on every open, so a cancelled delete cannot arm the next one', async () => {
+    const wrapper = mountDialog({ requireText: 'gw-01' })
+    await q('.confirm-gate-input').setValue('gw-01')
+    expect(q('.btn-confirm').attributes('disabled')).toBeUndefined()
+
+    await wrapper.setProps({ modelValue: false })
+    await wrapper.setProps({ modelValue: true })
+    await nextTick()
+
+    expect((q('.confirm-gate-input').element as HTMLInputElement).value).toBe('')
+    expect(q('.btn-confirm').attributes('disabled')).toBeDefined()
+    wrapper.unmount()
+  })
+
+  // Mounted closed and then opened, because the focus move lives in a watch
+  // on modelValue -- mounting already-open never fires it.
+  it('focuses the gate rather than a button', async () => {
+    const wrapper = mountDialog({ modelValue: false, requireText: 'gw-01' })
+    await wrapper.setProps({ modelValue: true })
+    await nextTick()
+    expect(document.activeElement).toBe(q('.confirm-gate-input').element)
+    wrapper.unmount()
+  })
+
+  it('still cancels on Escape with the gate shut', async () => {
+    const wrapper = mountDialog({ requireText: 'gw-01' })
+    await dialog(wrapper).trigger('keydown', { key: 'Escape' })
+    expect(wrapper.emitted('cancel')).toHaveLength(1)
+    wrapper.unmount()
+  })
+})
+

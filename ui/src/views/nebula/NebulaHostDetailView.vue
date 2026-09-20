@@ -7,6 +7,7 @@ import { useConfirm } from '@/composables/useConfirm'
 import { formatDate } from '@/utils/format'
 import { fetchStaleHostIds, expectedCertNetwork } from '@/utils/nebula'
 import type { NebulaHost } from '@/types/pocketbase'
+import DangerZone from '@/components/common/DangerZone.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import JsonViewer from '@/components/common/JsonViewer.vue'
 import { useEscapeKey } from '@/composables/useEscapeKey'
@@ -60,7 +61,8 @@ async function handleDelete() {
     message: `Are you sure you want to delete "${host.value.hostname}"?`,
     details: 'This will invalidate the host certificate. The host will no longer be able to connect to the overlay network.',
     confirmText: 'Delete',
-    variant: 'danger'
+    variant: 'danger',
+    requireText: host.value.hostname || undefined,
   })
   if (!confirmed) return
 
@@ -161,9 +163,6 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
             <router-link :to="`/nebula/hosts/${host.id}/edit`" class="btn btn-primary flex-1 sm:flex-initial">
               Edit
             </router-link>
-            <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial" :disabled="deleting">
-              Delete
-            </button>
           </div>
         </div>
       </div>
@@ -383,6 +382,14 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
           </BaseCard>
         </div>
       </div>
+
+      <DangerZone
+        title="Delete this host"
+      >
+        <button @click="handleDelete" class="btn btn-error" :disabled="deleting">
+          Delete Host
+        </button>
+      </DangerZone>
     </template>
 
     <!-- Regenerate Modal -->

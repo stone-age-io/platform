@@ -7,7 +7,9 @@ import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import { formatDate } from '@/utils/format'
 import type { Organization, User, NatsAccount } from '@/types/pocketbase'
+import { useConfirm } from '@/composables/useConfirm'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import DangerZone from '@/components/common/DangerZone.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 
 const router = useRouter()
@@ -22,6 +24,37 @@ interface OrganizationWithExpand extends Organization {
 }
 
 const org = ref<OrganizationWithExpand | null>(null)
+const { confirm } = useConfirm()
+const deleting = ref(false)
+
+// Moved off the list row. Deleting an organization blanks rather than cascades
+// -- every relation into it that is non-cascade and non-required is emptied,
+// which orphans the entire inventory -- so the confirm carries the typed gate.
+// The code is the org's own namespace root and is immutable, which makes it the
+// one string that cannot have drifted from what the reader is looking at.
+async function handleDelete() {
+  if (!org.value) return
+  const confirmed = await confirm({
+    title: 'Delete Organization',
+    message: `Are you sure you want to delete "${org.value.name}"?`,
+    details: 'This will delete ALL data associated with this organization including users, things, locations, and configurations. This action cannot be undone.',
+    confirmText: 'Delete Organization',
+    variant: 'danger',
+    requireText: org.value.code || org.value.name || undefined,
+  })
+  if (!confirmed) return
+
+  deleting.value = true
+  try {
+    await pb.collection('organizations').delete(org.value.id)
+    toast.success('Organization deleted')
+    router.push('/organizations')
+  } catch (err: any) {
+    toast.error(err.message)
+  } finally {
+    deleting.value = false
+  }
+}
 const stats = ref({ members: 0, things: 0 })
 const loading = ref(true)
 
@@ -348,6 +381,14 @@ onMounted(() => loadData())
           </BaseCard>
         </div>
       </div>
+
+      <DangerZone
+        title="Delete this organization"
+      >
+        <button @click="handleDelete" class="btn btn-error" :disabled="deleting">
+          Delete Organization
+        </button>
+      </DangerZone>
     </template>
   </div>
 </template>

@@ -7,6 +7,7 @@ import { useConfirm } from '@/composables/useConfirm'
 import { formatDate } from '@/utils/format'
 import type { NebulaNetwork, NebulaHost } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
+import DangerZone from '@/components/common/DangerZone.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 
@@ -122,9 +123,6 @@ onMounted(() => {
             <router-link :to="`/nebula/networks/${network.id}/edit`" class="btn btn-primary flex-1 sm:flex-initial">
               Edit
             </router-link>
-            <button @click="handleDelete" class="btn btn-error flex-1 sm:flex-initial" :disabled="deleting">
-              Delete
-            </button>
           </div>
         </div>
       </div>
@@ -230,6 +228,13 @@ onMounted(() => {
         </ResponsiveList>
       </BaseCard>
 
+      <DangerZone
+        title="Delete this network"
+      >
+        <button @click="handleDelete" class="btn btn-error" :disabled="deleting">
+          Delete Network
+        </button>
+      </DangerZone>
     </template>
   </div>
 </template>

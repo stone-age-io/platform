@@ -15,6 +15,7 @@ import MetadataCard from '@/components/common/MetadataCard.vue'
 import ExpiryBadge from '@/components/common/ExpiryBadge.vue'
 import RecordTimestamps from '@/components/common/RecordTimestamps.vue'
 import RecordPhoto from '@/components/common/RecordPhoto.vue'
+import DangerZone from '@/components/common/DangerZone.vue'
 import QrLabelModal from '@/components/common/QrLabelModal.vue'
 import { useEscapeKey } from '@/composables/useEscapeKey'
 
@@ -176,7 +177,11 @@ async function handleDelete() {
     message: `Are you sure you want to delete "${thing.value.name}"?`,
     details: 'This action cannot be undone.',
     confirmText: 'Delete',
-    variant: 'danger'
+    variant: 'danger',
+    // The code where there is one, the name where there is not. Code is
+    // optional on things, and a gate that quietly vanishes on the records
+    // without one would be worse than having no gate at all.
+    requireText: thing.value.code || thing.value.name || undefined,
   })
   if (!confirmed) return
 
@@ -246,14 +251,6 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
               :disabled="togglingActive"
             >
               {{ thing.active === false ? 'Reactivate' : 'Deactivate' }}
-            </button>
-            <button
-              v-if="authStore.can.decommissionInventory"
-              @click="handleDelete"
-              class="btn btn-error flex-1 sm:flex-initial"
-              :disabled="deleting"
-            >
-              Delete
             </button>
           </div>
         </div>
@@ -509,6 +506,15 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
           </div>
         </div>
       </div>
+
+      <DangerZone
+        v-if="authStore.can.decommissionInventory"
+        title="Delete this thing"
+      >
+        <button @click="handleDelete" class="btn btn-error" :disabled="deleting">
+          Delete Thing
+        </button>
+      </DangerZone>
     </template>
 
     <dialog class="modal" :class="{ 'modal-open': showRegenerateModal }">

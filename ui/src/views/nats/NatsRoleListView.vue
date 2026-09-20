@@ -3,9 +3,6 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
 import { useServerSearch } from '@/composables/useServerSearch'
-import { useToast } from '@/composables/useToast'
-import { useConfirm } from '@/composables/useConfirm'
-import { pb } from '@/utils/pb'
 import { formatDate } from '@/utils/format'
 import type { NatsRole } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
@@ -14,8 +11,6 @@ import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 import ListPager from '@/components/ui/ListPager.vue'
 
 const router = useRouter()
-const toast = useToast()
-const { confirm } = useConfirm()
 
 // Pagination
 const {
@@ -62,8 +57,6 @@ function onSort(next: string) {
   loadRoles()
 }
 
-const deleting = ref(false)
-
 // Column configuration
 const columns: Column<NatsRole>[] = [
   {
@@ -107,31 +100,6 @@ async function loadRoles() {
  */
 function handleRowClick(role: NatsRole) {
   router.push(`/nats/roles/${role.id}`)
-}
-
-/**
- * Handle delete
- */
-async function handleDelete(role: NatsRole) {
-  const confirmed = await confirm({
-    title: 'Delete NATS Role',
-    message: `Are you sure you want to delete "${role.name}"?`,
-    details: 'Users with this role will not be deleted but may lose their permissions.',
-    confirmText: 'Delete',
-    variant: 'danger'
-  })
-  if (!confirmed) return
-
-  deleting.value = true
-  try {
-    await pb.collection('nats_roles').delete(role.id)
-    toast.success('Role deleted')
-    loadRoles()
-  } catch (err: any) {
-    toast.error(err.message || 'Failed to delete role')
-  } finally {
-    deleting.value = false
-  }
 }
 
 /**
@@ -268,13 +236,6 @@ onUnmounted(() => {
           >
             Edit
           </router-link>
-          <button 
-            @click="handleDelete(item)" 
-            class="btn btn-xs text-error flex-1 sm:flex-initial"
-            :disabled="deleting"
-          >
-            Delete
-          </button>
         </template>
       </ResponsiveList>
       

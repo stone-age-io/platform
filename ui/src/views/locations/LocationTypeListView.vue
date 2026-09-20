@@ -3,9 +3,6 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
 import { useServerSearch } from '@/composables/useServerSearch'
-import { useToast } from '@/composables/useToast'
-import { useConfirm } from '@/composables/useConfirm'
-import { pb } from '@/utils/pb'
 import { formatDate } from '@/utils/format'
 import type { LocationType } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
@@ -14,8 +11,6 @@ import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 import ListPager from '@/components/ui/ListPager.vue'
 
 const router = useRouter()
-const toast = useToast()
-const { confirm } = useConfirm()
 
 // Pagination
 const {
@@ -60,7 +55,6 @@ function onSort(next: string) {
   page.value = 1 // a new order makes the old page number meaningless
   loadData()
 }
-const deleting = ref(false)
 
 const columns: Column<LocationType>[] = [
   { key: 'name', sortable: 'name', label: 'Name', mobileLabel: 'Name' },
@@ -82,27 +76,6 @@ async function loadData() {
 
 function handleRowClick(item: LocationType) {
   router.push(`/locations/types/${item.id}/edit`)
-}
-
-async function handleDelete(item: LocationType) {
-  const confirmed = await confirm({
-    title: 'Delete Location Type',
-    message: `Are you sure you want to delete "${item.name}"?`,
-    details: 'Locations using this type will not be deleted but will lose their type reference.',
-    confirmText: 'Delete',
-    variant: 'danger'
-  })
-  if (!confirmed) return
-  deleting.value = true
-  try {
-    await pb.collection('location_types').delete(item.id)
-    toast.success('Deleted')
-    loadData()
-  } catch (err: any) {
-    toast.error(err.message)
-  } finally {
-    deleting.value = false
-  }
 }
 
 function handleOrgChange() {
@@ -201,7 +174,6 @@ onUnmounted(() => {
 
         <template #actions="{ item }">
           <router-link :to="`/locations/types/${item.id}/edit`" class="btn btn-xs flex-1 sm:flex-initial">Edit</router-link>
-          <button @click.stop="handleDelete(item)" class="btn btn-xs text-error flex-1 sm:flex-initial" :disabled="deleting">Delete</button>
         </template>
       </ResponsiveList>
 

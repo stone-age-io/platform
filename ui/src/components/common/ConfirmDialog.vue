@@ -33,6 +33,30 @@
         <div class="confirm-body">
           <p :id="messageId" class="confirm-message">{{ message }}</p>
           <p v-if="details" class="confirm-details">{{ details }}</p>
+
+          <!--
+            The typed gate. The required string is rendered rather than merely
+            described, and stays selectable: the point is to make you read which
+            record this is, not to test your typing. It is deliberately NOT a
+            <form> -- Enter inside a bare input does nothing, so there is no
+            submit path that could bypass the disabled check below.
+          -->
+          <div v-if="requireText" class="confirm-gate">
+            <label :for="gateId" class="confirm-gate-label">
+              Type <code class="confirm-gate-token">{{ requireText }}</code> to confirm
+            </label>
+            <input
+              :id="gateId"
+              ref="gateEl"
+              v-model="typed"
+              type="text"
+              class="confirm-gate-input"
+              autocomplete="off"
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck="false"
+            />
+          </div>
         </div>
 
         <div class="confirm-actions">
@@ -47,6 +71,7 @@
             class="btn-confirm"
             :class="variantClass"
             type="button"
+            :disabled="!gateOpen"
             @click="confirm"
           >
             {{ confirmText }}
@@ -68,6 +93,18 @@ interface Props {
   confirmText?: string
   cancelText?: string
   variant?: 'danger' | 'warning' | 'info'
+  /**
+   * When set, the confirm button stays disabled until the user types this
+   * string exactly. Reserved for deletes that cannot be undone by re-creating
+   * the record -- a Thing, a Location, a Nebula host, a NATS user, an
+   * organization. Cheap and reversible actions do not get it: friction that has
+   * not been earned only teaches people to type past it.
+   *
+   * The caller passes a record's `code` where there is one and its name where
+   * there is not, because `code` is optional on every collection that has one.
+   * A gate that silently disappears on some records is worse than no gate.
+   */
+  requireText?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -98,8 +135,19 @@ const variantClass = computed(() => `variant-${props.variant}`)
 const uid = useId()
 const titleId = `confirm-title-${uid}`
 const messageId = `confirm-message-${uid}`
+const gateId = `confirm-gate-${uid}`
 
 const dialogEl = ref<HTMLElement | null>(null)
+const gateEl = ref<HTMLInputElement | null>(null)
+
+// What the user has typed into the gate, if there is one.
+const typed = ref('')
+
+// Trimmed but NOT case-folded: surrounding whitespace is a paste artefact,
+// while a different case is a different string and the reader should see that
+// it did not match. With no gate this is always true, so the disabled binding
+// on the confirm button needs no second branch.
+const gateOpen = computed(() => !props.requireText || typed.value.trim() === props.requireText)
 
 // What had focus before the dialog opened, so it can be given back. Without
 // this, dismissing a confirm drops focus to the top of the document and a
@@ -159,9 +207,20 @@ watch(
   async (open) => {
     if (open) {
       previouslyFocused = document.activeElement as HTMLElement | null
+      // Every open starts from empty, or a cancelled delete would leave the
+      // gate satisfied for the next record the same dialog is reused for --
+      // and it IS reused: one instance in App.vue serves the whole console.
+      typed.value = ''
       await nextTick()
-      // The container, not a button: see the template comment. Nothing is
-      // pre-selected, so Enter cannot confirm a destructive action by accident.
+      // With a gate, focus its input: a text field is not a pre-selected
+      // action, Enter inside it does nothing, and the alternative is making
+      // the user Tab to the only control they have to touch. Without one, the
+      // container rather than a button, per the template comment -- nothing is
+      // pre-selected, so Enter cannot confirm by accident.
+      if (props.requireText && gateEl.value) {
+        gateEl.value.focus()
+        return
+      }
       dialogEl.value?.focus()
       return
     }
@@ -180,6 +239,10 @@ function restoreFocus() {
 onBeforeUnmount(restoreFocus)
 
 function confirm() {
+  // The button is already disabled while the gate is closed. This is the same
+  // check again because a disabled attribute is a rendering detail and this
+  // function is the actual door.
+  if (!gateOpen.value) return
   emit('confirm')
   emit('update:modelValue', false)
 }
@@ -253,6 +316,9 @@ function cancel() {
 
 .confirm-body {
   padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .confirm-message {
@@ -312,6 +378,53 @@ function cancel() {
 
 .btn-confirm.variant-info { background: oklch(var(--in)); }
 .btn-confirm.variant-info:hover { background: oklch(var(--in) / 0.8); }
+
+/* A shut gate drops the variant colour entirely rather than dimming it: a
+   40%-opacity red still reads as an armed destructive button, which is the one
+   thing this state must not say. The :hover pair has to be overridden too, or
+   the variant rules above light it back up on the way past. */
+.btn-confirm:disabled,
+.btn-confirm:disabled:hover {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: oklch(var(--bc) / 0.25);
+}
+
+.confirm-gate {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.confirm-gate-label {
+  font-size: 13px;
+  color: oklch(var(--bc) / 0.7);
+}
+
+.confirm-gate-token {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: oklch(var(--bc) / 0.12);
+  color: oklch(var(--bc));
+  user-select: all;
+}
+
+.confirm-gate-input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 14px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid oklch(var(--bc) / 0.25);
+  background: oklch(var(--b1));
+  color: oklch(var(--bc));
+}
+
+.confirm-gate-input:focus-visible {
+  outline: 2px solid oklch(var(--bc));
+  outline-offset: 1px;
+}
 
 /* A keyboard user must be able to see which button they are about to press,
    and this dialog is where that matters most. The container takes focus on

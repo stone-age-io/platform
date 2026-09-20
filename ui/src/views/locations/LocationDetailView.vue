@@ -15,6 +15,7 @@ import { useAuthStore } from '@/stores/auth'
 import RecordTimestamps from '@/components/common/RecordTimestamps.vue'
 import RecordPhoto from '@/components/common/RecordPhoto.vue'
 import MetadataCard from '@/components/common/MetadataCard.vue'
+import DangerZone from '@/components/common/DangerZone.vue'
 import QrLabelModal from '@/components/common/QrLabelModal.vue'
 import type { Location, LocationType, Thing } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
@@ -253,7 +254,11 @@ async function handleDelete() {
     message: `Are you sure you want to delete "${location.value.name}"?`,
     details: 'Sub-locations and things at this location will not be deleted.',
     confirmText: 'Delete',
-    variant: 'danger'
+    variant: 'danger',
+    // The code where there is one, the name where there is not: code is
+    // optional here, and a gate that quietly vanishes on the records without
+    // one would be worse than having no gate at all.
+    requireText: location.value.code || location.value.name || undefined,
   })
   if (!confirmed) return
 
@@ -336,16 +341,6 @@ onUnmounted(() => cleanupMap())
             >
               Edit
             </router-link>
-            <!-- decommissionInventory, matching locations.deleteRule. This was
-                 ungated, so a member got a Delete button the server refused. -->
-            <button
-              v-if="authStore.can.decommissionInventory"
-              @click="handleDelete"
-              class="btn btn-error flex-1 sm:flex-initial"
-              :disabled="deleting"
-            >
-              Delete
-            </button>
           </div>
         </div>
       </div>
@@ -592,6 +587,17 @@ onUnmounted(() => cleanupMap())
         </template>
 
       </div>
+
+      <!-- decommissionInventory, matching locations.deleteRule. This was
+           ungated, so a member got a Delete button the server refused. -->
+      <DangerZone
+        v-if="authStore.can.decommissionInventory"
+        title="Delete this location"
+      >
+        <button @click="handleDelete" class="btn btn-error" :disabled="deleting">
+          Delete Location
+        </button>
+      </DangerZone>
 
       <QrLabelModal
         v-if="showLabelModal"

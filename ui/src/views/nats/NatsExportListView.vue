@@ -3,9 +3,6 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
 import { useServerSearch } from '@/composables/useServerSearch'
-import { useToast } from '@/composables/useToast'
-import { useConfirm } from '@/composables/useConfirm'
-import { pb } from '@/utils/pb'
 import { formatDate } from '@/utils/format'
 import type { NatsAccountExport } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
@@ -16,8 +13,6 @@ import ManagedRecordNotice from '@/components/common/ManagedRecordNotice.vue'
 import { isManagedExport } from '@/utils/managedExports'
 
 const router = useRouter()
-const toast = useToast()
-const { confirm } = useConfirm()
 
 const {
   items: exports,
@@ -62,8 +57,6 @@ function onSort(next: string) {
   loadExports()
 }
 
-const deleting = ref(false)
-
 const columns: Column<NatsAccountExport>[] = [
   {
     key: 'name',
@@ -99,28 +92,6 @@ async function loadExports() {
 
 function handleRowClick(exp: NatsAccountExport) {
   router.push(`/nats/exports/${exp.id}`)
-}
-
-async function handleDelete(exp: NatsAccountExport) {
-  const confirmed = await confirm({
-    title: 'Delete Export',
-    message: `Are you sure you want to delete "${exp.name}"?`,
-    details: 'Accounts importing this subject will lose access.',
-    confirmText: 'Delete',
-    variant: 'danger'
-  })
-  if (!confirmed) return
-
-  deleting.value = true
-  try {
-    await pb.collection('nats_account_exports').delete(exp.id)
-    toast.success('Export deleted')
-    loadExports()
-  } catch (err: any) {
-    toast.error(err.message || 'Failed to delete export')
-  } finally {
-    deleting.value = false
-  }
 }
 
 function handleOrgChange() {
@@ -267,13 +238,6 @@ onUnmounted(() => {
             >
               Edit
             </router-link>
-            <button
-              @click="handleDelete(item)"
-              class="btn btn-xs text-error flex-1 sm:flex-initial"
-              :disabled="deleting"
-            >
-              Delete
-            </button>
           </template>
         </template>
       </ResponsiveList>

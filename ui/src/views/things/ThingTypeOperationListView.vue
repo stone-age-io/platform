@@ -3,9 +3,6 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
 import { useServerSearch } from '@/composables/useServerSearch'
-import { useToast } from '@/composables/useToast'
-import { useConfirm } from '@/composables/useConfirm'
-import { pb } from '@/utils/pb'
 import { formatDate } from '@/utils/format'
 import type { ThingTypeOperation } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
@@ -14,8 +11,6 @@ import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 import ListPager from '@/components/ui/ListPager.vue'
 
 const router = useRouter()
-const toast = useToast()
-const { confirm } = useConfirm()
 
 const {
   items,
@@ -60,8 +55,6 @@ function onSort(next: string) {
   loadData()
 }
 
-const deleting = ref(false)
-
 const columns: Column<ThingTypeOperation>[] = [
   { key: 'name', sortable: 'name', label: 'Name', mobileLabel: 'Name' },
   { key: 'capability', sortable: 'capability', label: 'Capability', mobileLabel: 'Capability' },
@@ -75,27 +68,6 @@ async function loadData() {
 
 function handleRowClick(item: ThingTypeOperation) {
   router.push(`/things/operations/${item.id}/edit`)
-}
-
-async function handleDelete(item: ThingTypeOperation) {
-  const confirmed = await confirm({
-    title: 'Delete Operation',
-    message: `Are you sure you want to delete "${item.name}"?`,
-    details: 'Thing Types still linking this operation will be left with a dangling reference.',
-    confirmText: 'Delete',
-    variant: 'danger'
-  })
-  if (!confirmed) return
-  deleting.value = true
-  try {
-    await pb.collection('thing_type_operations').delete(item.id)
-    toast.success('Deleted')
-    loadData()
-  } catch (err: any) {
-    toast.error(err.message)
-  } finally {
-    deleting.value = false
-  }
 }
 
 function handleOrgChange() {
@@ -186,7 +158,6 @@ onUnmounted(() => {
 
         <template #actions="{ item }">
           <router-link :to="`/things/operations/${item.id}/edit`" class="btn btn-xs flex-1 sm:flex-initial">Edit</router-link>
-          <button @click.stop="handleDelete(item)" class="btn btn-xs text-error flex-1 sm:flex-initial" :disabled="deleting">Delete</button>
         </template>
       </ResponsiveList>
 
