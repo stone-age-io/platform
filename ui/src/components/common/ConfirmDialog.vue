@@ -96,13 +96,16 @@ interface Props {
   /**
    * When set, the confirm button stays disabled until the user types this
    * string exactly. Reserved for deletes that cannot be undone by re-creating
-   * the record -- a Thing, a Location, a Nebula host, a NATS user, an
-   * organization. Cheap and reversible actions do not get it: friction that has
-   * not been earned only teaches people to type past it.
+   * the record -- a Thing, a Location, a Nebula host, a Nebula network, a NATS
+   * user, an organization. Cheap and reversible actions do not get it: friction
+   * that has not been earned only teaches people to type past it.
    *
    * The caller passes a record's `code` where there is one and its name where
    * there is not, because `code` is optional on every collection that has one.
-   * A gate that silently disappears on some records is worse than no gate.
+   * A gate that silently disappears on some records is worse than no gate --
+   * which is why the fallback is spelled out at each call site rather than
+   * inferred here, and why the one collection whose name is REQUIRED
+   * (nebula_networks) passes it with no fallback at all.
    */
   requireText?: string
 }

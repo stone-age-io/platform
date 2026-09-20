@@ -73,7 +73,11 @@ async function handleDelete() {
     message: `Are you sure you want to delete "${network.value.name}"?`,
     details: 'All hosts in this network will lose connectivity.',
     confirmText: 'Delete',
-    variant: 'danger'
+    variant: 'danger',
+    // The name, with no code fallback: nebula_networks has no code column,
+    // and name is required by both the schema and the type -- so unlike the
+    // other gated deletes there is no blank case to fall through to.
+    requireText: network.value.name,
   })
   if (!confirmed) return
 
