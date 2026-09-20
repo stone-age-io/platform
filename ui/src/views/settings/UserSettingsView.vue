@@ -280,11 +280,12 @@ watch(() => authStore.currentOrgId, loadIdentities)
             add-label="Add Avatar"
           >
             <template #fallback>
-              <UserAvatar
-                :user="authStore.user"
-                :size="128"
-                :fallback-initial="profileForm.name?.[0]?.toUpperCase() || 'U'"
-              />
+              <!-- Not derived from profileForm: this looked like a live preview
+                   that tracked the name as you typed it, and it never was.
+                   UserAvatar takes the letter from the RECORD's name-or-email
+                   and only reaches fallbackInitial when it has neither, which a
+                   signed-in user never is. -->
+              <UserAvatar :user="authStore.user" :size="128" fallback-initial="U" />
             </template>
           </ImageUploadField>
         </div>

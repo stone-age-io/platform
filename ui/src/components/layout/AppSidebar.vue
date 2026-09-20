@@ -53,8 +53,6 @@ const filteredMemberships = computed(() => {
   )
 })
 
-const userInitial = computed(() => authStore.user?.name?.[0]?.toUpperCase() || 'U')
-
 const homeRoute = computed(() => '/')
 
 const menuItems = computed(() => {
@@ -534,7 +532,11 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
           role="button"
         >
           <!-- User Avatar -->
-          <UserAvatar :user="authStore.user" :size="32" :fallback-initial="userInitial" />
+          <!-- "U" rather than a computed first-letter: UserAvatar takes the
+               initial from name-or-email itself, so a fallback derived from the
+               name can never be reached. This one covers only the moment before
+               the user record has hydrated. -->
+          <UserAvatar :user="authStore.user" :size="32" fallback-initial="U" />
 
           <!-- User Info -->
           <div v-show="!effectiveCompact" class="flex flex-col truncate flex-1 text-left min-w-0">

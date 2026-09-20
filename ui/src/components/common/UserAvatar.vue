@@ -56,10 +56,20 @@ interface Props {
    */
   tone?: 'neutral' | 'primary'
   /**
-   * The letter to draw when there is no name to take one from. Callers mean
-   * different things by an absent user: AuditLogView attributes those rows to
-   * the platform itself and passes 'S', so the circle has to be able to say
-   * something other than "unknown".
+   * The letter to draw when there is no name AND no email to take one from.
+   * Callers mean different things by an absent user: AuditLogView attributes
+   * those rows to the platform itself and passes 'S', so the circle has to be
+   * able to say something other than "unknown".
+   *
+   * IT IS NARROWER THAN IT LOOKS, and two call sites got it wrong. `initial`
+   * below prefers `name || email`, so this fires only when the record has
+   * NEITHER -- an absent user, or one that has not hydrated yet. A signed-in
+   * user always has an email (`AuthRecord.email` is required), so a value
+   * DERIVED from a name is dead code here: whenever the derivation would yield
+   * a letter, this component has already yielded the same one itself. Pass a
+   * literal. AppSidebar computed one off `authStore.user.name` and
+   * UserSettingsView computed one off the live form field, apparently to track
+   * the name as you typed it; neither could ever be observed.
    */
   fallbackInitial?: string
 }
