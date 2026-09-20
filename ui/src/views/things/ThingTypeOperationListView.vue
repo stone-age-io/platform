@@ -61,7 +61,8 @@ const columns: Column<ThingTypeOperation>[] = [
   // so it takes the slack and every other column keeps exactly what it declares.
   { key: 'name', sortable: 'name', width: 'auto', label: 'Name', mobileLabel: 'Name' },
   { key: 'capability', sortable: 'capability', width: '7rem', label: 'Capability', mobileLabel: 'Capability' },
-  { key: 'subject_suffix', sortable: 'subject_suffix', width: '11rem', label: 'Subject Suffix', mobileLabel: 'Suffix' },
+  { key: 'subject_suffix',
+    cardWide: true, sortable: 'subject_suffix', width: '11rem', label: 'Subject Suffix', mobileLabel: 'Suffix' },
   { key: 'created', sortable: '-created', width: '8rem', label: 'Created', mobileLabel: 'Created', format: (val) => formatDate(val, 'PP') },
 ]
 

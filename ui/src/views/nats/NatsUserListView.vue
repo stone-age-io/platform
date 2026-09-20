@@ -88,12 +88,14 @@ const columns: Column<NatsUser>[] = [
   },
   {
     key: 'expand.account_id.name',
+    cardWide: true,
     sortable: 'account_id.name',
     label: 'Account',
     mobileLabel: 'Account',
   },
   {
     key: 'expand.role_id.name',
+    cardWide: true,
     sortable: 'role_id.name',
     label: 'Role',
     mobileLabel: 'Role',

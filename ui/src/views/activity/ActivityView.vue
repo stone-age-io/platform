@@ -94,9 +94,11 @@ const columns: Column<Activity>[] = [
   // badge that does not fit wraps INSIDE the badge rather than widening the
   // column.
   { key: 'created', label: 'When', sortable: '-created', width: '11rem' },
-  { key: 'actor_label', label: 'Who', sortable: 'actor_label', width: '16rem' },
+  { key: 'actor_label',
+    cardWide: true, label: 'Who', sortable: 'actor_label', width: '16rem' },
   { key: 'action', label: 'Did', sortable: 'action', width: '7rem' },
-  { key: 'resource_label', label: 'What', sortable: 'resource_label' },
+  { key: 'resource_label',
+    cardWide: true, label: 'What', sortable: 'resource_label' },
   { key: 'resource', label: 'Kind', sortable: 'resource', width: '10rem', class: 'hidden xl:table-cell' },
 ]
 

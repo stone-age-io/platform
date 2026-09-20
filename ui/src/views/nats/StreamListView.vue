@@ -77,7 +77,8 @@ function onSort(next: string) {
 // which one is emptiest.
 const columns: Column<StreamSummary>[] = [
   { key: 'name', sortable: 'name', label: 'Name', mobileLabel: 'Name' },
-  { key: 'subjects', sortable: 'subjects', label: 'Subjects', mobileLabel: 'Subjects', format: (v: string[]) => v.join(', ') },
+  { key: 'subjects',
+    cardWide: true, sortable: 'subjects', label: 'Subjects', mobileLabel: 'Subjects', format: (v: string[]) => v.join(', ') },
   { key: 'retention', sortable: 'retention', width: '7rem', label: 'Retention', mobileLabel: 'Retention' },
   { key: 'messages', sortable: '-messages', width: '9rem', label: 'Messages', mobileLabel: 'Msgs', format: (v: number) => v.toLocaleString() },
   { key: 'bytes', sortable: '-bytes', width: '7rem', label: 'Size', mobileLabel: 'Size', format: (v: number) => formatBytes(v) },

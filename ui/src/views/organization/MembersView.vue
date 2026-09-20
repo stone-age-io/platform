@@ -77,6 +77,7 @@ const columns: Column<Membership>[] = [
   },
   {
     key: 'expand.user.email',
+    cardWide: true,
     sortable: 'user.email',
     label: 'Email',
     mobileLabel: 'Email',

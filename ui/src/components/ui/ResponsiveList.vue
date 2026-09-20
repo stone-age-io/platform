@@ -12,6 +12,28 @@ export interface Column<T = any> {
   class?: string
   mobileLabel?: string
   /**
+   * Give this field the whole width of the mobile card instead of half of it.
+   *
+   * The card lays its fields out two to a row, which on a 393px phone (iPhone
+   * 14 Pro, and the narrowest common size) leaves each value between 105px and
+   * 129px depending on how long its label is -- about thirteen characters. That
+   * is plenty for what most of these columns hold: a date, a count, an enum, a
+   * badge, an IP, a CIDR, a code. It is not close to enough for the ones that
+   * hold a NAME: 'Kansas City Distribution Center' showed 62% of itself and cut
+   * off mid-word.
+   *
+   * So the rule is about the VALUE, not the column's importance: a field whose
+   * value is another record's name, an email address or a NATS subject has no
+   * length bound and takes the full row. Everything else pairs up.
+   *
+   * Do not reach for this to make a field stand out. Every wide field is a row
+   * the short fields no longer share, and a card with all of them wide is just
+   * the one-column layout, which was measured and rejected: forcing one column
+   * on the KV bucket list cost 36px a card to widen five values that already
+   * fit.
+   */
+  cardWide?: boolean
+  /**
    * Desktop column width, e.g. '8rem' or '20%'. Optional -- see widthOf().
    *
    * The table is `table-fixed`, so a column WITHOUT a width does not shrink to
@@ -366,7 +388,7 @@ function handleClick(item: T) {
             <div 
               v-for="col in columns.slice(1)" 
               :key="col.key"
-              :class="col.class"
+              :class="[col.class, col.cardWide ? 'col-span-2' : '']"
               class="flex items-center gap-1.5 overflow-hidden"
             >
               <!-- Fixed Label: Now handled by ResponsiveList only -->

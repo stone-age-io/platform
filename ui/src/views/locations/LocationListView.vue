@@ -116,8 +116,10 @@ async function loadLocations() {
 // Columns
 const columns: Column<Location>[] = [
   { key: 'name', label: 'Name', mobileLabel: 'Name' },
-  { key: 'expand.type.name', label: 'Type', mobileLabel: 'Type' },
-  { key: 'expand.parent.name', label: 'Parent', mobileLabel: 'Parent', class: 'hidden md:table-cell' },
+  { key: 'expand.type.name',
+    cardWide: true, label: 'Type', mobileLabel: 'Type' },
+  { key: 'expand.parent.name',
+    cardWide: true, label: 'Parent', mobileLabel: 'Parent', class: 'hidden md:table-cell' },
   { key: 'code', width: '11rem', label: 'Code', mobileLabel: 'Code' },
   { key: 'created', width: '8rem', label: 'Created', mobileLabel: 'Created', format: (value) => formatDate(value, 'PP') },
 ]

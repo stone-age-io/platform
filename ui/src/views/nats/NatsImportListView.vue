@@ -71,6 +71,7 @@ const columns: Column<NatsAccountImport>[] = [
   },
   {
     key: 'subject',
+    cardWide: true,
     sortable: 'subject',
     label: 'Subject',
     mobileLabel: 'Subject',

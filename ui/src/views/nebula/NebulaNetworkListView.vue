@@ -75,6 +75,7 @@ const columns: Column<NebulaNetwork>[] = [
   },
   {
     key: 'expand.ca_id.name',
+    cardWide: true,
     sortable: 'ca_id.name',
     label: 'Certificate Authority',
     mobileLabel: 'CA',

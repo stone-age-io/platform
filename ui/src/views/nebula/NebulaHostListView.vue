@@ -92,6 +92,7 @@ const columns: Column<NebulaHost>[] = [
   },
   {
     key: 'expand.network_id.name',
+    cardWide: true,
     sortable: 'network_id.name',
     label: 'Network',
     mobileLabel: 'Network',

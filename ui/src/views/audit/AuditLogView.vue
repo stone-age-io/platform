@@ -68,6 +68,7 @@ const columns: Column<AuditLog>[] = [
   },
   {
     key: 'expand.user.name',
+    cardWide: true,
     sortable: 'user.name',
     label: 'User',
     mobileLabel: 'User',
@@ -80,6 +81,7 @@ const columns: Column<AuditLog>[] = [
   },
   {
     key: 'collection_name',
+    cardWide: true,
     sortable: 'collection_name',
     label: 'Collection',
     mobileLabel: 'Collection',

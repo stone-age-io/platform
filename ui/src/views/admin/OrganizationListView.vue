@@ -66,7 +66,8 @@ function onSort(next: string) {
 
 const columns: Column<OrganizationWithExpand>[] = [
   { key: 'name', sortable: 'name', width: 'auto', label: 'Name', mobileLabel: 'Name' },
-  { key: 'expand.owner.email', sortable: 'owner.email', width: '20rem', label: 'Owner', mobileLabel: 'Owner' },
+  { key: 'expand.owner.email',
+    cardWide: true, sortable: 'owner.email', width: '20rem', label: 'Owner', mobileLabel: 'Owner' },
   { key: 'active', width: '7rem', label: 'Status', mobileLabel: 'Status' },
   { key: 'created', sortable: '-created', width: '8rem', label: 'Created', mobileLabel: 'Created', format: (v) => formatDate(v, 'PP') },
 ]

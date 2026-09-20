@@ -122,6 +122,7 @@ const columns: Column<Invitation>[] = [
   },
   {
     key: 'token',
+    cardWide: true,
     label: 'Token',
     mobileLabel: 'Token',
   },
@@ -135,6 +136,7 @@ const columns: Column<Invitation>[] = [
   },
   {
     key: 'expand.invited_by.name',
+    cardWide: true,
     sortable: 'invited_by.name',
     label: 'Invited By',
     mobileLabel: 'Invited By',

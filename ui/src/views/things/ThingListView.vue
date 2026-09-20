@@ -126,12 +126,14 @@ const columns: Column<Thing>[] = [
   },
   {
     key: 'expand.type.name',
+    cardWide: true,
     sortable: 'type.name',
     label: 'Type',
     mobileLabel: 'Type',
   },
   {
     key: 'expand.location.name',
+    cardWide: true,
     sortable: 'location.name',
     label: 'Location',
     mobileLabel: 'Location',
