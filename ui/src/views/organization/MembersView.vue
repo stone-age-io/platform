@@ -32,7 +32,7 @@ const {
 // twenty records already on screen, so a match on page three answered "No
 // results found" -- which is not the same claim at all.
 const { searchQuery, filter: searchFilter } = useServerSearch(
-  ['user.name', 'user.email', 'organization.name', 'role'],
+  ['user.name', 'user.email', 'role'],
   () => {
     page.value = 1
     loadMembers()
@@ -151,7 +151,7 @@ onUnmounted(() => {
       <input 
         v-model="searchQuery"
         type="text"
-        placeholder="Search members by name, email, or role..."
+        placeholder="Search by name, email, or role..."
         class="input input-bordered w-full"
       />
     </div>

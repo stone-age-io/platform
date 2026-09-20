@@ -229,7 +229,7 @@ onUnmounted(() => {
       <input
         v-model="searchQuery"
         type="text"
-        placeholder="Search by name, type, code, or parent..."
+        placeholder="Search by name, code, type, parent, description, or metadata..."
         class="input input-bordered w-full"
       />
       <label v-if="!searchQuery && viewMode === 'list'" class="label">

@@ -175,7 +175,7 @@ onUnmounted(() => {
       <input 
         v-model="searchQuery"
         type="text"
-        placeholder="Search by hostname, IP, or network..."
+        placeholder="Search by hostname, IP, endpoint, or network..."
         class="input input-bordered w-full"
       />
     </div>

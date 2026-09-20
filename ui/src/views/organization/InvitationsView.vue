@@ -401,7 +401,7 @@ onUnmounted(() => {
       <input 
         v-model="searchQuery"
         type="text"
-        placeholder="Search invitations by email or role..."
+        placeholder="Search by email, role, or who invited..."
         class="input input-bordered w-full"
       />
     </div>
@@ -565,7 +565,7 @@ onUnmounted(() => {
         <template #actions="{ item }">
           <button 
             @click="handleResend(item)"
-            class="btn btn-sm flex-1 sm:flex-initial"
+            class="btn btn-xs flex-1 sm:flex-initial"
             :disabled="!isExpired(item)"
             :title="isExpired(item) ? 'Resend invitation' : 'Cannot resend active invitation'"
           >
@@ -573,7 +573,7 @@ onUnmounted(() => {
           </button>
           <button 
             @click="handleDelete(item)" 
-            class="btn btn-sm text-error flex-1 sm:flex-initial"
+            class="btn btn-xs text-error flex-1 sm:flex-initial"
             :disabled="deleting"
           >
             Revoke

@@ -37,6 +37,20 @@ import { pb } from '@/utils/pb'
  * Field names may reach through relations (`type.name`, `user.email`) and may
  * name a json column (`metadata`), which PocketBase matches as text — so one `~`
  * covers both its keys and its values without knowing any schema.
+ *
+ * **The input's placeholder names every field in this list, and nothing else.**
+ * It is the only place the console says what a search covers, so a field
+ * missing from it is a capability nobody finds: five views searched
+ * `description` without saying so, and that bit hardest on the lists that draw
+ * a description under the name — the row is there to explain why it matched,
+ * but only for someone who guessed they could type it. A field named and NOT
+ * searched is the worse half of the same bug, and one shipped: MembersView
+ * listed `organization.name` beside a query already hard-scoped to the current
+ * organization, so typing your own organization's name matched every row and
+ * returned the whole list dressed as a result.
+ *
+ * Phrase it `Search by a, b, or c...` and leave the noun out — the <h1> two
+ * lines above already says what you are looking at.
  */
 export function useServerSearch(fields: string[], onSearch: () => void, debounce = 300) {
   const searchQuery = ref('')

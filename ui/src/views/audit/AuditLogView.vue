@@ -171,7 +171,7 @@ onUnmounted(() => {
       <input 
         v-model="searchQuery"
         type="text"
-        placeholder="Search by user, collection, or ID..."
+        placeholder="Search by user, collection, record ID, event, or IP..."
         class="input input-bordered w-full"
       />
     </div>
@@ -282,7 +282,7 @@ onUnmounted(() => {
 
         <!-- View Button -->
         <template #actions="{ item }">
-          <button @click.stop="openDetails(item)" class="btn btn-ghost btn-xs">
+          <button @click.stop="openDetails(item)" class="btn btn-ghost btn-xs flex-1 sm:flex-initial">
             Details
           </button>
         </template>

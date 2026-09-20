@@ -100,7 +100,7 @@ onMounted(() => {
 
     <!-- Search -->
     <div class="form-control">
-      <input v-model="searchQuery" type="text" placeholder="Search by name or owner..." class="input input-bordered w-full" />
+      <input v-model="searchQuery" type="text" placeholder="Search by name, description, or owner..." class="input input-bordered w-full" />
     </div>
 
     <!-- Loading State -->

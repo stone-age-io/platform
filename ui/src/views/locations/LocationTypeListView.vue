@@ -112,7 +112,7 @@ onUnmounted(() => {
 
     <!-- Search -->
     <div class="form-control">
-      <input v-model="searchQuery" type="text" placeholder="Search location types by name, code, or description..." class="input input-bordered w-full" />
+      <input v-model="searchQuery" type="text" placeholder="Search by name, code, or description..." class="input input-bordered w-full" />
     </div>
 
     <!-- Loading State -->

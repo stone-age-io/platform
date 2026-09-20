@@ -102,7 +102,7 @@ onUnmounted(() => {
     </div>
 
     <div class="form-control">
-      <input v-model="searchQuery" type="text" placeholder="Search operations by name, suffix, or description..." class="input input-bordered w-full" />
+      <input v-model="searchQuery" type="text" placeholder="Search by name, suffix, or description..." class="input input-bordered w-full" />
     </div>
 
     <div v-if="loading && items.length === 0" class="flex justify-center p-12">

@@ -142,7 +142,7 @@ onUnmounted(() => {
       <input
         v-model="searchQuery"
         type="text"
-        placeholder="Search imports by name, subject, account, or description..."
+        placeholder="Search by name, subject, account, or description..."
         class="input input-bordered w-full"
       />
     </div>
