@@ -151,6 +151,43 @@ body {
   }
 }
 
+/* A modal's button row cannot wrap, so the button that does not fit is simply
+ * gone. `.modal-action` is `display: flex` with `justify-content: flex-end`
+ * and no `flex-wrap`, and `.btn` is `flex-shrink: 0`, so three ordinary
+ * buttons in a 360px modal need more width than they have and something has to
+ * give.
+ *
+ * What gives is worse than a scrollbar, and worth knowing because it is
+ * counter-intuitive: with `justify-content: flex-end` the overflow goes out the
+ * START edge, not the end. So it is the LEFTMOST button that loses its left
+ * half -- "This record's history" renders as "is record's history" -- and
+ * because that overflow is at the start of an `overflow: auto` box, a browser
+ * will not let you scroll to it. The control is not clipped-but-reachable, it
+ * is unreachable. Measured at 393px and 360px on the activity dialog and the
+ * NATS user dialog, which both carry three buttons.
+ *
+ * The gap replaces spacing rather than adding to it. daisyUI spaces these with
+ * Tailwind's `space-x-2` pattern -- a `margin-left` on every child after the
+ * first -- which is applied by SIBLING ORDER and not by visual row, so turning
+ * on `flex-wrap` alone would put a stray left margin on the first button of the
+ * second row and leave no row gap at all. Zeroing that margin and using a real
+ * `gap` is identical at 0.5rem horizontally and adds the row gap wrapping
+ * needs.
+ *
+ * It is free where it is not needed: a two-button row measured 48px tall and
+ * one row at every width, before and after, and at 768px even the three-button
+ * rows are unchanged. Only a row that was already broken moves. */
+@layer components {
+  .modal-action {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .modal-action > :not([hidden]) ~ :not([hidden]) {
+    margin-left: 0;
+    margin-right: 0;
+  }
+}
+
 /* The one place `!important` IS load-bearing: iOS Safari zooms the viewport
  * when a focused control's font size is under 16px, and it has to beat the
  * `text-xs` above to stop that. Scoped to the widths where it can happen —
