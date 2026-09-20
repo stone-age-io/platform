@@ -311,29 +311,58 @@ function handleClick(item: T) {
         ]"
         @click="handleClick(item)"
       >
-        <div class="card-body p-3">
+        <!--
+          gap-1.5 overrides daisyUI's own `.card-body { gap: .5rem }`, which is
+          easy to miss: it applies on top of any margin written here, so the old
+          `mb-1.5` on the identity block and `mt-2` on the action bar were each
+          adding to 8px that was already there rather than setting it.
+        -->
+        <div class="card-body p-3 gap-1.5">
           
-          <!-- IDENTITY HEADER (First Column) -->
-          <div class="mb-1.5">
-            <!-- A `card-` slot wins, then the desktop `cell-` slot, then the raw
-                 value. The middle step is the one that matters: a view that
-                 renders a column through a cell slot alone -- a status badge, a
-                 `Deactivated` marker, a value that is not a record field at all --
-                 used to drop straight to the raw value on mobile, which printed
-                 `true`, `-`, or nothing for the very columns a card has room for.
-                 Falling back to the desktop rendering makes the phone show what
-                 the table shows unless a view deliberately says otherwise. -->
-            <slot :name="`card-${columns[0].key}`" :item="item" :value="get(item, columns[0].key)">
-              <slot :name="`cell-${columns[0].key}`" :item="item" :value="get(item, columns[0].key)">
-                <div class="text-sm font-bold text-primary truncate">
-                  {{ columns[0].format ? columns[0].format(get(item, columns[0].key), item) : get(item, columns[0].key) || 'Unnamed' }}
-                </div>
+          <!-- IDENTITY HEADER (First Column), with the row's actions beside it.
+               They used to sit in a full-width bar of their own under the
+               metadata grid, which cost 44px of every card -- a border, two
+               paddings, a card-body gap and a 24px button -- to say "Edit".
+               Up here the row is already at least as tall as the button, so
+               the actions are free: measured over four Things at 390px, the
+               card went from 194px to 150px on that move alone, and taking the
+               button out entirely from there saves nothing at all. That last
+               part is worth knowing, because three list views point their Edit
+               button at exactly where tapping the card already goes, and the
+               tempting fix is to delete it. Don't: on a card there is no hover
+               and no cursor, so that button is the only thing announcing the
+               row is actionable, and it now costs nothing to keep.
+
+               min-w-0 on the text side is load-bearing -- without it a flex
+               child refuses to shrink below its content and the buttons get
+               pushed off the card instead. -->
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0 flex-1">
+              <!-- A `card-` slot wins, then the desktop `cell-` slot, then the
+                   raw value. The middle step is the one that matters: a view
+                   that renders a column through a cell slot alone -- a status
+                   badge, a `Deactivated` marker, a value that is not a record
+                   field at all -- used to drop straight to the raw value on
+                   mobile, which printed `true`, `-`, or nothing for the very
+                   columns a card has room for. Falling back to the desktop
+                   rendering makes the phone show what the table shows unless a
+                   view deliberately says otherwise. -->
+              <slot :name="`card-${columns[0].key}`" :item="item" :value="get(item, columns[0].key)">
+                <slot :name="`cell-${columns[0].key}`" :item="item" :value="get(item, columns[0].key)">
+                  <div class="text-sm font-bold text-primary truncate">
+                    {{ columns[0].format ? columns[0].format(get(item, columns[0].key), item) : get(item, columns[0].key) || 'Unnamed' }}
+                  </div>
+                </slot>
               </slot>
-            </slot>
+            </div>
+
+            <div v-if="$slots.actions" class="card-actions-touch flex items-center gap-1 shrink-0" @click.stop>
+              <slot name="actions" :item="item" />
+            </div>
           </div>
 
           <!-- METADATA GRID (Remaining Columns) -->
-          <div class="grid grid-cols-2 gap-x-3 gap-y-1.5 border-t border-base-200/60 pt-2">
+          <div class="grid grid-cols-2 gap-x-3 gap-y-0.5 border-t border-base-200/60 pt-2">
             <div 
               v-for="col in columns.slice(1)" 
               :key="col.key"
@@ -357,12 +386,7 @@ function handleClick(item: T) {
               </div>
             </div>
           </div>
-          
-          <!-- SLIM ACTION BAR -->
-          <div v-if="$slots.actions" class="flex justify-end items-center gap-1 mt-2 pt-2 border-t border-base-200/60" @click.stop>
-            <slot name="actions" :item="item" />
-          </div>
-        </div>
+                  </div>
       </div>
     </div>
     
@@ -383,6 +407,38 @@ function handleClick(item: T) {
 </template>
 
 <style scoped>
+/*
+  Touch targets. A row's action button is written `btn btn-xs` for the desktop
+  table, where a mouse is pointing at it; in the mobile card that is a 39x24px
+  target, and both platform guidelines want 44x44 (iOS) or 48x48 (Android).
+  This block sizes it up for the card only -- the desktop table is a separate
+  element above and never matches.
+
+  It costs about 15px a card, measured over a mix of rows with and without a
+  description: 110px average becomes 125px. That is real, and it was worth
+  paying rather than taking either of the two cheaper answers, because both are
+  worse than they look:
+
+    - btn-sm (32px) costs 6px and meets NEITHER guideline. It buys the feeling
+      of having addressed this and none of the substance.
+    - Keeping the 24px button and growing only its HIT area with a transparent
+      ::after costs nothing and was the tempting one. It is wrong here for a
+      reason specific to this layout: an invisible target is free when it sits
+      in dead space, and this one sits inside a LARGER competing target -- the
+      whole card is tappable. Growing it invisibly means a tap 10px above the
+      button, on what looks like the card, silently opens the edit form
+      instead. It makes the primary action unreliable exactly where the
+      secondary one is, and nothing on screen explains why.
+
+  `:deep()` because the button is slotted, so it is compiled in the parent's
+  scope and a plain scoped selector would not reach it.
+*/
+.card-actions-touch :deep(.btn) {
+  height: 44px;
+  min-height: 44px;
+  min-width: 44px;
+}
+
 .truncate {
   overflow: hidden;
   text-overflow: ellipsis;

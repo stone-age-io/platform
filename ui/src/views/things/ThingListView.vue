@@ -375,7 +375,7 @@ onUnmounted(() => {
                 Deactivated
               </span>
             </div>
-            <div v-if="item.description" class="text-sm text-base-content/60 mt-1">
+            <div v-if="item.description" class="text-sm text-base-content/60 mt-1 line-clamp-2">
               {{ item.description }}
             </div>
           </div>
@@ -407,14 +407,14 @@ onUnmounted(() => {
           <router-link
             v-if="canWrite"
             :to="`/things/${item.id}/edit`"
-            class="btn btn-xs flex-1 sm:flex-initial"
+            class="btn btn-xs"
           >
             Edit
           </router-link>
           <router-link
             v-if="!canWrite"
             :to="`/things/${item.id}`"
-            class="btn btn-xs flex-1 sm:flex-initial"
+            class="btn btn-xs"
           >
             View
           </router-link>

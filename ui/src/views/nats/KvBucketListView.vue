@@ -186,7 +186,7 @@ watch(() => natsStore.isConnected, (connected) => {
           <template #card-name="{ item }">
             <div>
               <div class="font-semibold font-mono text-base">{{ item.name }}</div>
-              <div v-if="item.description" class="text-sm text-base-content/60 mt-1">{{ item.description }}</div>
+              <div v-if="item.description" class="text-sm text-base-content/60 mt-1 line-clamp-2">{{ item.description }}</div>
             </div>
           </template>
 

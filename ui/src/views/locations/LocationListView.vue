@@ -282,7 +282,7 @@ onUnmounted(() => {
             <template #card-name="{ item }">
               <div>
                 <div class="font-semibold text-base">{{ item.name }}</div>
-                <div v-if="item.description" class="text-sm text-base-content/60 mt-1">{{ item.description }}</div>
+                <div v-if="item.description" class="text-sm text-base-content/60 mt-1 line-clamp-2">{{ item.description }}</div>
               </div>
             </template>
 
@@ -307,8 +307,8 @@ onUnmounted(() => {
             </template>
 
             <template #actions="{ item }">
-              <router-link v-if="canWrite" :to="`/locations/${item.id}/edit`" class="btn btn-xs flex-1 sm:flex-initial" @click.stop>Edit</router-link>
-              <router-link v-if="!canWrite" :to="`/locations/${item.id}`" class="btn btn-xs flex-1 sm:flex-initial" @click.stop>View</router-link>
+              <router-link v-if="canWrite" :to="`/locations/${item.id}/edit`" class="btn btn-xs" @click.stop>Edit</router-link>
+              <router-link v-if="!canWrite" :to="`/locations/${item.id}`" class="btn btn-xs" @click.stop>View</router-link>
             </template>
           </ResponsiveList>
 

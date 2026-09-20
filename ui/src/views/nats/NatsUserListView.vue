@@ -250,7 +250,7 @@ onUnmounted(() => {
                 title="Has per-user permission overrides (merged with role)"
               >overrides</span>
             </div>
-            <div v-if="item.description" class="text-sm text-base-content/60 mt-1">
+            <div v-if="item.description" class="text-sm text-base-content/60 mt-1 line-clamp-2">
               {{ item.description }}
             </div>
           </div>
@@ -280,7 +280,7 @@ onUnmounted(() => {
         <template #actions="{ item }">
           <router-link 
             :to="`/nats/users/${item.id}/edit`" 
-            class="btn btn-xs flex-1 sm:flex-initial"
+            class="btn btn-xs"
           >
             Edit
           </router-link>

@@ -215,7 +215,7 @@ onUnmounted(() => {
               <span class="truncate">{{ item.name }}</span>
               <ManagedRecordNotice v-if="isManagedImport(item.name)" kind="import" variant="inline" />
             </div>
-            <div v-if="item.description" class="text-sm text-base-content/60 mt-1">
+            <div v-if="item.description" class="text-sm text-base-content/60 mt-1 line-clamp-2">
               {{ item.description }}
             </div>
           </div>
@@ -243,14 +243,14 @@ onUnmounted(() => {
           <router-link
             v-if="isManagedImport(item.name)"
             :to="`/nats/imports/${item.id}`"
-            class="btn btn-xs flex-1 sm:flex-initial"
+            class="btn btn-xs"
           >
             View
           </router-link>
           <template v-else>
             <router-link
               :to="`/nats/imports/${item.id}/edit`"
-              class="btn btn-xs flex-1 sm:flex-initial"
+              class="btn btn-xs"
             >
               Edit
             </router-link>

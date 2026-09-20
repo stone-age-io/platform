@@ -203,7 +203,7 @@ onUnmounted(() => {
               {{ item.name }}
               <ManagedRecordNotice v-if="isManagedExport(item.name)" kind="export" variant="inline" />
             </div>
-            <div v-if="item.description" class="text-sm text-base-content/60 mt-1">
+            <div v-if="item.description" class="text-sm text-base-content/60 mt-1 line-clamp-2">
               {{ item.description }}
             </div>
           </div>
@@ -227,14 +227,14 @@ onUnmounted(() => {
           <router-link
             v-if="isManagedExport(item.name)"
             :to="`/nats/exports/${item.id}`"
-            class="btn btn-xs flex-1 sm:flex-initial"
+            class="btn btn-xs"
           >
             View
           </router-link>
           <template v-else>
             <router-link
               :to="`/nats/exports/${item.id}/edit`"
-              class="btn btn-xs flex-1 sm:flex-initial"
+              class="btn btn-xs"
             >
               Edit
             </router-link>

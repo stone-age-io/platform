@@ -282,7 +282,7 @@ onUnmounted(() => {
 
         <!-- View Button -->
         <template #actions="{ item }">
-          <button @click.stop="openDetails(item)" class="btn btn-ghost btn-xs flex-1 sm:flex-initial">
+          <button @click.stop="openDetails(item)" class="btn btn-ghost btn-xs">
             Details
           </button>
         </template>

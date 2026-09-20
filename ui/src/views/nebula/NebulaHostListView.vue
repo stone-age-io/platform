@@ -248,7 +248,7 @@ onUnmounted(() => {
             <div class="font-semibold font-mono text-base">
               {{ item.hostname }}
             </div>
-            <div v-if="item.public_host_port" class="text-sm text-base-content/60 mt-1">
+            <div v-if="item.public_host_port" class="text-sm text-base-content/60 mt-1 line-clamp-2">
               {{ item.public_host_port }}
             </div>
           </div>
@@ -316,7 +316,7 @@ onUnmounted(() => {
         <template #actions="{ item }">
           <router-link 
             :to="`/nebula/hosts/${item.id}/edit`" 
-            class="btn btn-xs flex-1 sm:flex-initial"
+            class="btn btn-xs"
           >
             Edit
           </router-link>
