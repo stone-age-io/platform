@@ -63,10 +63,20 @@ function onSort(next: string) {
 
 const deleting = ref(false)
 
+// Description is the column that absorbs the leftover width (see Column.width):
+// it is the only free-text field here, and it is already one of the three fields
+// the search above matches on -- so until it was shown, searching a description
+// returned rows with nothing in them to explain the match. Without it the slack
+// landed on Operations, which is a one- or two-digit badge, and Code wrapped at
+// 7rem while 746px sat empty beside it.
+//
+// Same shape and same order as LocationTypeListView -- the two type lists are the
+// same screen for different nouns and should not need reading twice.
 const columns: Column<ThingType>[] = [
   { key: 'name', sortable: 'name', label: 'Name', mobileLabel: 'Name' },
-  { key: 'code', sortable: 'code', width: '7rem', label: 'Code', mobileLabel: 'Code' },
-  { key: 'operations', label: 'Operations', mobileLabel: 'Ops' },
+  { key: 'code', sortable: 'code', width: '11rem', label: 'Code', mobileLabel: 'Code' },
+  { key: 'description', sortable: 'description', label: 'Description', mobileLabel: 'Desc', class: 'hidden md:table-cell' },
+  { key: 'operations', width: '7rem', label: 'Operations', mobileLabel: 'Ops' },
   { key: 'created', sortable: '-created', width: '8rem', label: 'Created', mobileLabel: 'Created', format: (val) => formatDate(val, 'PP') },
 ]
 
@@ -130,7 +140,7 @@ onUnmounted(() => {
 
     <!-- Search -->
     <div class="form-control">
-      <input v-model="searchQuery" type="text" placeholder="Search thing types by name or code..." class="input input-bordered w-full" />
+      <input v-model="searchQuery" type="text" placeholder="Search thing types by name, code, or description..." class="input input-bordered w-full" />
     </div>
 
     <!-- Loading State -->
@@ -185,6 +195,11 @@ onUnmounted(() => {
       >
         <template #cell-code="{ item }">
           <code v-if="item.code" class="bg-base-200 px-1 rounded text-xs">{{ item.code }}</code>
+          <span v-else class="text-base-content/40">—</span>
+        </template>
+
+        <template #cell-description="{ item }">
+          <div v-if="item.description" :title="item.description" class="text-sm text-base-content/70 line-clamp-1">{{ item.description }}</div>
           <span v-else class="text-base-content/40">—</span>
         </template>
 

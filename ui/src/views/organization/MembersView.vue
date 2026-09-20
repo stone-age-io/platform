@@ -84,6 +84,7 @@ const columns: Column<Membership>[] = [
   {
     key: 'role',
     sortable: 'role',
+    width: '7rem',
     label: 'Role',
     mobileLabel: 'Role',
     format: (value) => value.charAt(0).toUpperCase() + value.slice(1),

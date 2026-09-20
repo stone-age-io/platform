@@ -87,6 +87,7 @@ const columns: Column<NebulaNetwork>[] = [
   },
   {
     key: 'active',
+    width: '7rem',
     label: 'Status',
     mobileLabel: 'Status',
     format: (value) => value ? 'Active' : 'Inactive',

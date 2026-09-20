@@ -144,7 +144,7 @@ const columns: Column<Thing>[] = [
   {
     key: 'code',
     sortable: 'code',
-    width: '7rem',
+    width: '11rem',
     label: 'Code',
     mobileLabel: 'Code',
   },

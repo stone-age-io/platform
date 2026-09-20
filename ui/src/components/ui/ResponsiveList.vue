@@ -11,7 +11,30 @@ export interface Column<T = any> {
   format?: (value: any, item: T) => string
   class?: string
   mobileLabel?: string
-  /** Desktop column width, e.g. '8rem' or '20%'. Optional -- see widthOf(). */
+  /**
+   * Desktop column width, e.g. '8rem' or '20%'. Optional -- see widthOf().
+   *
+   * The table is `table-fixed`, so a column WITHOUT a width does not shrink to
+   * its content: the un-widthed columns split whatever is left over, equally.
+   * Declare a width on every column whose content has a known size and leave the
+   * free-text one -- the description, the subject, the email -- to absorb the
+   * slack. Get that backwards and the slack lands on the column with the least
+   * to say: Thing Types gave its Operations badge 746px of a 1570px table while
+   * Code, capped at 7rem next to it, wrapped every code longer than fourteen
+   * characters.
+   *
+   * Widths in use, so a new column has an answer rather than a guess:
+   *   7rem   a single badge, a count, a short enum ('Active', 'Owner')
+   *   8rem   a date in `PP` form ('Aug 31, 2026')
+   *   11rem  a `code` value -- fits the ~18 characters real codes reach
+   *   9rem   the Actions column, set on the <th> below rather than here
+   * Two or more badges in one cell (StatusBadge + ExpiryBadge) need the room to
+   * wrap and are deliberately left un-widthed.
+   *
+   * If EVERY column is widthed the browser still has to place the excess, and it
+   * spreads it proportionally rather than leaving a gap -- which inflates the
+   * Actions column along with the rest. Leave one absorber.
+   */
   width?: string
   /**
    * The API field to sort this column by -- its presence is what makes the

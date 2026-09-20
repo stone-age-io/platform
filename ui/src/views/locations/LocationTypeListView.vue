@@ -64,7 +64,7 @@ const deleting = ref(false)
 
 const columns: Column<LocationType>[] = [
   { key: 'name', sortable: 'name', label: 'Name', mobileLabel: 'Name' },
-  { key: 'code', sortable: 'code', width: '7rem', label: 'Code', mobileLabel: 'Code' },
+  { key: 'code', sortable: 'code', width: '11rem', label: 'Code', mobileLabel: 'Code' },
   { key: 'description', sortable: 'description', label: 'Description', mobileLabel: 'Desc', class: 'hidden md:table-cell' },
   {
     key: 'created',

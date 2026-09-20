@@ -74,7 +74,7 @@ const deleting = ref(false)
 const columns: Column<OrganizationWithExpand>[] = [
   { key: 'name', sortable: 'name', label: 'Name', mobileLabel: 'Name' },
   { key: 'expand.owner.email', sortable: 'owner.email', label: 'Owner', mobileLabel: 'Owner' },
-  { key: 'active', label: 'Status', mobileLabel: 'Status' },
+  { key: 'active', width: '7rem', label: 'Status', mobileLabel: 'Status' },
   { key: 'created', sortable: '-created', width: '8rem', label: 'Created', mobileLabel: 'Created', format: (v) => formatDate(v, 'PP') },
 ]
 
