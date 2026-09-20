@@ -31,9 +31,19 @@ export interface Column<T = any> {
    * Two or more badges in one cell (StatusBadge + ExpiryBadge) need the room to
    * wrap and are deliberately left un-widthed.
    *
-   * If EVERY column is widthed the browser still has to place the excess, and it
-   * spreads it proportionally rather than leaving a gap -- which inflates the
-   * Actions column along with the rest. Leave one absorber.
+   * Always leave exactly one absorber, and be deliberate about which. If EVERY
+   * column is widthed the browser still has to place the excess, and where it
+   * puts it is not where you would guess: a PERCENTAGE column does not grow, so
+   * the fixed columns soak it up instead. Widthing the five short columns on the
+   * KV bucket list moved them 226px -> 238px, i.e. nowhere, while Created and
+   * Actions quietly doubled.
+   *
+   * When the free-text column IS the identity column -- a name with a clamped
+   * description under it, which is how NatsRole, KvBucket and ThingTypeOperation
+   * are drawn -- say `width: 'auto'` on it. That is not the same as omitting the
+   * width: omitting it means 28% for column 0, per widthOf() below. With 'auto'
+   * every other column gets exactly what it declares and the name takes the
+   * rest.
    */
   width?: string
   /**

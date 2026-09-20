@@ -39,12 +39,15 @@ const paginatedBuckets = computed(() => {
 watch(searchQuery, () => { currentPage.value = 1 })
 
 const columns: Column<KvBucketSummary>[] = [
-  { key: 'name', label: 'Name', mobileLabel: 'Name' },
-  { key: 'values', label: 'Keys', mobileLabel: 'Keys', format: (v: number) => v.toLocaleString() },
-  { key: 'bytes', label: 'Size', mobileLabel: 'Size', format: (v: number) => formatBytes(v) },
-  { key: 'history', label: 'History', mobileLabel: 'History' },
-  { key: 'storage', label: 'Storage', mobileLabel: 'Storage' },
-  { key: 'ttl', label: 'TTL', mobileLabel: 'TTL', format: (v: number) => v ? formatNanos(v) : 'None' },
+  // 'auto', not omitted: omitting it means 28% for column 0 (see Column.width).
+  // This is the only free-text column here -- name plus a clamped description --
+  // so it takes the slack and every other column keeps exactly what it declares.
+  { key: 'name', width: 'auto', label: 'Name', mobileLabel: 'Name' },
+  { key: 'values', width: '8rem', label: 'Keys', mobileLabel: 'Keys', format: (v: number) => v.toLocaleString() },
+  { key: 'bytes', width: '8rem', label: 'Size', mobileLabel: 'Size', format: (v: number) => formatBytes(v) },
+  { key: 'history', width: '7rem', label: 'History', mobileLabel: 'History' },
+  { key: 'storage', width: '7rem', label: 'Storage', mobileLabel: 'Storage' },
+  { key: 'ttl', width: '8rem', label: 'TTL', mobileLabel: 'TTL', format: (v: number) => v ? formatNanos(v) : 'None' },
 ]
 
 async function loadData() {

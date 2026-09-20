@@ -59,14 +59,19 @@ function onSort(next: string) {
 
 // Column configuration
 const columns: Column<NatsRole>[] = [
+  // 'auto', not omitted: omitting it means 28% for column 0 (see Column.width).
+  // This is the only free-text column here -- name plus a clamped description --
+  // so it takes the slack and every other column keeps exactly what it declares.
   {
     key: 'name',
     sortable: 'name',
+    width: 'auto',
     label: 'Name',
     mobileLabel: 'Name',
   },
   {
     key: 'is_default',
+    width: '7rem',
     label: 'Default',
     mobileLabel: 'Default',
     format: (value) => value ? 'Yes' : 'No',
@@ -74,6 +79,7 @@ const columns: Column<NatsRole>[] = [
   {
     key: 'max_subscriptions',
     sortable: 'max_subscriptions',
+    width: '10rem',
     label: 'Max Subscriptions',
     mobileLabel: 'Max Subs',
     format: (value) => value === -1 ? 'Unlimited' : value?.toString() || '0',

@@ -56,9 +56,12 @@ function onSort(next: string) {
 }
 
 const columns: Column<ThingTypeOperation>[] = [
-  { key: 'name', sortable: 'name', label: 'Name', mobileLabel: 'Name' },
-  { key: 'capability', sortable: 'capability', label: 'Capability', mobileLabel: 'Capability' },
-  { key: 'subject_suffix', sortable: 'subject_suffix', label: 'Subject Suffix', mobileLabel: 'Suffix' },
+  // 'auto', not omitted: omitting it means 28% for column 0 (see Column.width).
+  // This is the only free-text column here -- name plus a clamped description --
+  // so it takes the slack and every other column keeps exactly what it declares.
+  { key: 'name', sortable: 'name', width: 'auto', label: 'Name', mobileLabel: 'Name' },
+  { key: 'capability', sortable: 'capability', width: '7rem', label: 'Capability', mobileLabel: 'Capability' },
+  { key: 'subject_suffix', sortable: 'subject_suffix', width: '11rem', label: 'Subject Suffix', mobileLabel: 'Suffix' },
   { key: 'created', sortable: '-created', width: '8rem', label: 'Created', mobileLabel: 'Created', format: (val) => formatDate(val, 'PP') },
 ]
 
