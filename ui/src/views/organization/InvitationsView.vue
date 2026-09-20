@@ -512,19 +512,16 @@ onUnmounted(() => {
 
         <!-- Custom mobile card for Token -->
         <template #card-token="{ item }">
-          <div class="flex flex-col">
-            <span class="text-xs font-medium text-base-content/70">Token</span>
-            <div class="mt-1 flex items-center gap-2">
-              <div class="font-mono text-xs bg-base-200 px-2 py-1 rounded break-all select-all">
-                {{ visibleTokens[item.id] ? item.token : '••••••••••••••••' }}
-              </div>
-              <button @click="toggleToken(item.id)" class="btn btn-ghost btn-xs">
-                {{ visibleTokens[item.id] ? '🙈' : '👁️' }}
-              </button>
-              <button @click="copyToken(item.token)" class="btn btn-ghost btn-xs">
-                📋
-              </button>
+          <div class="flex items-center gap-2">
+            <div class="font-mono text-xs bg-base-200 px-2 py-1 rounded break-all select-all">
+              {{ visibleTokens[item.id] ? item.token : '••••••••••••••••' }}
             </div>
+            <button @click="toggleToken(item.id)" class="btn btn-ghost btn-xs">
+              {{ visibleTokens[item.id] ? '🙈' : '👁️' }}
+            </button>
+            <button @click="copyToken(item.token)" class="btn btn-ghost btn-xs">
+              📋
+            </button>
           </div>
         </template>
         
@@ -537,22 +534,7 @@ onUnmounted(() => {
             {{ item.role.charAt(0).toUpperCase() + item.role.slice(1) }}
           </span>
         </template>
-        
-        <!-- Custom card for role -->
-        <template #card-role="{ item }">
-          <div class="flex flex-col">
-            <span class="text-xs font-medium text-base-content/70">Role</span>
-            <div class="mt-1">
-              <span 
-                class="badge badge-sm"
-                :class="item.role === 'admin' ? 'badge-primary' : 'badge-ghost'"
-              >
-                {{ item.role.charAt(0).toUpperCase() + item.role.slice(1) }}
-              </span>
-            </div>
-          </div>
-        </template>
-        
+
         <!-- Custom cell for expires_at (with expired warning) -->
         <template #cell-expires_at="{ item }">
           <span 

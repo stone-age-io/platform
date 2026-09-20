@@ -26,6 +26,14 @@ export interface Column<T = any> {
    * value is another record's name, an email address or a NATS subject has no
    * length bound and takes the full row. Everything else pairs up.
    *
+   * There is a second reason, and it is free: a wide field cannot fit in a
+   * leftover half, so it always starts a new row -- which means the half-width
+   * field DIRECTLY BEFORE one is left sitting beside an empty half. That field
+   * already owns a whole row; it just is not using it, so widening it costs no
+   * height at all. AuditLogView's Event Type was the case that made this worth
+   * writing down: it sat in front of a wide Collection, so half its row was
+   * dead while its own value was cut off at 87%.
+   *
    * Do not reach for this to make a field stand out. Every wide field is a row
    * the short fields no longer share, and a card with all of them wide is just
    * the one-column layout, which was measured and rejected: forcing one column
@@ -300,7 +308,18 @@ function handleClick(item: T) {
     
     <!-- 2. MOBILE VIEW: High-Density Cards -->
     <div class="lg:hidden space-y-2">
-      <div v-if="sortableColumns.length" class="flex items-center gap-2 pb-1">
+      <!-- This row is inside `lg:hidden`, so it is only ever touched, never
+           clicked -- and it shipped as two 24px targets: `select-xs` and
+           `btn-xs` are both height 1.5rem. The row's Edit button was sized for a
+           thumb one pass ago and these were missed, which is the usual shape of
+           this bug: the control that got looked at was the one in the card, and
+           the one above the cards is not part of any card.
+
+           The sizing is a rule below rather than `h-11` here because `select-xs`
+           and `btn-xs` set `min-height` as well as `height`, so a height utility
+           alone loses to it and silently does nothing. Keeping the daisyUI size
+           classes keeps the font size and padding they carry. -->
+      <div v-if="sortableColumns.length" class="sort-touch flex items-center gap-2 pb-1">
         <span class="text-[10px] uppercase font-bold text-base-content/50 tracking-tight shrink-0">Sort</span>
         <select
           class="select select-xs select-bordered flex-1"
@@ -384,7 +403,7 @@ function handleClick(item: T) {
           </div>
 
           <!-- METADATA GRID (Remaining Columns) -->
-          <div class="grid grid-cols-2 gap-x-3 gap-y-0.5 border-t border-base-200/60 pt-2">
+          <div class="card-fields-touch grid grid-cols-2 gap-x-3 gap-y-0.5 border-t border-base-200/60 pt-2">
             <div 
               v-for="col in columns.slice(1)" 
               :key="col.key"
@@ -452,12 +471,32 @@ function handleClick(item: T) {
       instead. It makes the primary action unreliable exactly where the
       secondary one is, and nothing on screen explains why.
 
+  The metadata grid is in the same rule because a button in a card CELL is a
+  touch target for the same reason and was missed for the same reason -- the
+  pass that sized the row's actions looked at the `actions` slot, and the two
+  buttons on the Invitations token are not in it. Today that selector reaches
+  exactly those two; the point of writing it here is that it reaches the next
+  one too.
+
   `:deep()` because the button is slotted, so it is compiled in the parent's
   scope and a plain scoped selector would not reach it.
 */
-.card-actions-touch :deep(.btn) {
+.card-actions-touch :deep(.btn),
+.card-fields-touch :deep(.btn) {
   height: 44px;
   min-height: 44px;
+  min-width: 44px;
+}
+
+/* The sort row above the cards, same 44px rule and the same reasoning. No
+   `:deep()` needed: unlike the action buttons these are this component's own
+   elements, so the scope id lands on them directly. */
+.sort-touch .select,
+.sort-touch .btn {
+  height: 44px;
+  min-height: 44px;
+}
+.sort-touch .btn {
   min-width: 44px;
 }
 

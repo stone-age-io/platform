@@ -74,7 +74,14 @@ const columns: Column<AuditLog>[] = [
     mobileLabel: 'User',
   },
   {
+    // Wide for the second reason in cardWide's note: the column after it is
+    // wide, so its other half can never be filled and the row is already spent.
+    // Measured at 393px, this costs nothing -- four grid rows either way -- and
+    // takes the field from 87% shown to whole. 'EVENT TYPE:' is a long label in
+    // front of a 14-character value, which is what made this the one column on
+    // the list that did not fit.
     key: 'event_type',
+    cardWide: true,
     sortable: 'event_type',
     label: 'Event Type',
     mobileLabel: 'Event Type',
@@ -262,24 +269,10 @@ onUnmounted(() => {
             {{ formatConstant(item.event_type) }}
           </span>
         </template>
-        <template #card-event_type="{ item }">
-          <div class="flex justify-between items-center">
-            <span class="text-xs text-base-content/70">Event Type</span>
-            <span class="badge badge-sm" :class="getEventBadgeClass(item.event_type)">
-              {{ formatConstant(item.event_type) }}
-            </span>
-          </div>
-        </template>
 
         <!-- Collection Column -->
         <template #cell-collection_name="{ item }">
           <code class="text-xs bg-base-200 px-1 py-0.5 rounded">{{ item.collection_name }}</code>
-        </template>
-        <template #card-collection_name="{ item }">
-          <div class="flex justify-between items-center mt-1">
-            <span class="text-xs text-base-content/70">Collection</span>
-            <code class="text-xs bg-base-200 px-1 py-0.5 rounded">{{ item.collection_name }}</code>
-          </div>
         </template>
 
         <!-- View Button -->

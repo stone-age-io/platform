@@ -182,14 +182,6 @@ onMounted(() => {
           </div>
         </template>
 
-        <!-- Owner mobile card -->
-        <template #card-expand.owner.email="{ item }">
-          <div class="flex flex-col">
-            <span class="text-xs font-medium text-base-content/70">Owner</span>
-            <span>{{ item.expand?.owner?.email || '—' }}</span>
-          </div>
-        </template>
-
         <!-- Status cell -->
         <template #cell-active="{ item }">
           <StatusBadge :active="item.active" />
