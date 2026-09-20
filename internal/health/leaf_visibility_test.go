@@ -49,6 +49,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -61,6 +62,11 @@ import (
 // leafServerName is the leaf's `server_name`, which buildLeafConf sets to the
 // JetStream domain, which this design sets to the Thing's code.
 const leafServerName = "s01"
+
+// The hub answers the account broadcast alongside the leaf, so replies have to
+// be told apart by the server that sent them. A constant rather than the same
+// literal in two places.
+const hubServerName = "hub"
 
 type leafWorld struct {
 	opJWT  string
@@ -176,7 +182,7 @@ func startHubWithLeaf(t *testing.T, w leafWorld) *natsserver.Server {
 	l.Close()
 
 	hub := startFromConf(t, "hub.conf", fmt.Sprintf(`
-server_name: "hub"
+server_name: %q
 operator: %q
 system_account: %s
 resolver: MEMORY
@@ -185,7 +191,7 @@ resolver_preload: {
   %s: %q
 }
 leafnodes { port: %d }
-`, w.opJWT, w.sysPub, w.sysPub, w.sysJWT, w.orgPub, w.orgJWT, leafPort))
+`, hubServerName, w.opJWT, w.sysPub, w.sysPub, w.sysJWT, w.orgPub, w.orgJWT, leafPort))
 
 	remoteCreds := writeTemp(t, "edge.creds", userCreds(t, w.orgKP, "edge", nil, nil))
 	startFromConf(t, "leaf.conf", fmt.Sprintf(`
@@ -229,9 +235,14 @@ leafnodes {
 
 // leafIsNamed reports whether the hub holds a leaf connection carrying `name`.
 //
-// Leafz is the server's own view of the same connections CONNZ reports to a
-// client, so this waits on the exact fact the tests go on to assert rather than
-// on something correlated with it.
+// Leafz reports c.leaf.remoteServer where Connz reports c.opts.Name. Different
+// fields, but the ordering makes this a sound wait: client.go fills c.opts from
+// the CONNECT proto before dispatching to processLeafNodeConnect, which is what
+// sets remoteServer -- so a leaf named here is already named in the hub's Connz.
+//
+// What it does NOT establish is anything about the LEAF's own Connz, which also
+// answers the account broadcast and reports its uplink to the hub unnamed. See
+// TestTenantCanSeeItsOwnLeafConnections.
 func leafIsNamed(hub *natsserver.Server, name string) bool {
 	lz, err := hub.Leafz(&natsserver.LeafzOptions{})
 	if err != nil || lz == nil {
@@ -278,18 +289,92 @@ func request(t *testing.T, hub *natsserver.Server, credsPath, subject string) ([
 	return msg.Data, true
 }
 
+// requestAll asks one monitoring subject and collects EVERY reply, not the first.
+//
+// $SYS.REQ.ACCOUNT.PING.> is a broadcast: every server serving the account
+// answers it, and with a leaf attached that is two -- the hub and the leaf
+// itself. nats.Request takes whichever arrives first, which is a coin toss under
+// load and is not what "what is connected to my account" means.
+func requestAll(t *testing.T, hub *natsserver.Server, credsPath, subject string, window time.Duration) [][]byte {
+	t.Helper()
+	nc, err := nats.Connect(hub.ClientURL(),
+		nats.UserCredentials(credsPath),
+		nats.Timeout(3*time.Second),
+		nats.MaxReconnects(0),
+		nats.NoReconnect(),
+		nats.ErrorHandler(func(_ *nats.Conn, _ *nats.Subscription, err error) {
+			t.Logf("async: %v", err)
+		}),
+	)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer nc.Close()
+
+	sub, err := nc.SubscribeSync(nats.NewInbox())
+	if err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	if err := nc.PublishRequest(subject, sub.Subject, nil); err != nil {
+		t.Fatalf("publish %s: %v", subject, err)
+	}
+	if err := nc.Flush(); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+
+	var replies [][]byte
+	deadline := time.Now().Add(window)
+	for time.Now().Before(deadline) {
+		msg, err := sub.NextMsg(time.Until(deadline))
+		if err != nil {
+			break
+		}
+		replies = append(replies, msg.Data)
+	}
+	return replies
+}
+
 func TestTenantCanSeeItsOwnLeafConnections(t *testing.T) {
 	w := mintLeafWorld(t)
 	hub := startHubWithLeaf(t, w)
 	tenant := writeTemp(t, "tenant.creds",
 		userCreds(t, w.orgKP, "acme-user", []string{"$SYS.REQ.ACCOUNT.PING.>", "_INBOX.>"}, nil))
 
-	body, ok := request(t, hub, tenant, "$SYS.REQ.ACCOUNT.PING.CONNZ")
-	if !ok {
+	// EVERY reply, not the first -- and that distinction is the widget recipe's
+	// problem as much as this test's.
+	//
+	// $SYS.REQ.ACCOUNT.PING.CONNZ is a broadcast, and with a leaf attached TWO
+	// servers answer it:
+	//
+	//	from "hub":  kind="Leafnode" name="s01"   <- a site, named
+	//	from "s01":  kind="Leafnode" name=""      <- the leaf's own uplink
+	//
+	// The leaf's row is its connection back to the hub. It is nameless because
+	// only the SOLICITING side sends CONNECT, so on the leaf that connection has
+	// no c.opts.Name -- and c.opts.Name is precisely what Connz reports
+	// (monitor.go). Nothing is wrong with the row; it is simply not a site.
+	//
+	// This test used to take the first reply and then require every Leafnode row
+	// in it to be named. That holds whenever the hub answers first, which is
+	// almost always, on an idle machine, for months. When the leaf won the race
+	// the only row present was its unnamed uplink, and CI failed with
+	// name = "" -- twice now, both times on a commit touching nothing near this
+	// package. The earlier fix, making startHubWithLeaf wait for the leaf to be
+	// NAMED, was a real repair to a different defect and could never have fixed
+	// this one.
+	//
+	// So a Publisher widget aimed at this subject must aggregate the replies and
+	// read the HUB's, or it will intermittently render a site list holding one
+	// nameless entry and no site.
+	replies := requestAll(t, hub, tenant, "$SYS.REQ.ACCOUNT.PING.CONNZ", 1500*time.Millisecond)
+	if len(replies) == 0 {
 		t.Fatal("a tenant could not read CONNZ for its own account; the dashboard recipe for site connectivity does not work and would need a platform route after all")
 	}
 
-	var connz struct {
+	type connzReply struct {
+		Server struct {
+			Name string `json:"name"`
+		} `json:"server"`
 		Data struct {
 			Connections []struct {
 				Kind string `json:"kind"`
@@ -297,24 +382,34 @@ func TestTenantCanSeeItsOwnLeafConnections(t *testing.T) {
 			} `json:"connections"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(body, &connz); err != nil {
-		t.Fatalf("decode CONNZ: %v", err)
+
+	var hubReply *connzReply
+	for _, body := range replies {
+		var r connzReply
+		if err := json.Unmarshal(body, &r); err != nil {
+			t.Fatalf("decode CONNZ: %v", err)
+		}
+		if r.Server.Name == hubServerName {
+			hubReply = &r
+		}
+	}
+	if hubReply == nil {
+		t.Fatalf("no CONNZ reply from %q among %d replies; the hub is the only server that can name a site", hubServerName, len(replies))
 	}
 
-	var found bool
-	for _, c := range connz.Data.Connections {
-		if c.Kind != "Leafnode" {
-			continue
-		}
-		found = true
-		// The whole identity story. Without a name here a tenant could only
-		// count its leaves, never say WHICH site is offline.
-		if c.Name != leafServerName {
-			t.Errorf("leaf connection name = %q, want the leaf server_name %q", c.Name, leafServerName)
+	// The whole identity story. Without a name here a tenant could only count its
+	// leaves, never say WHICH site is offline.
+	var leafNames []string
+	for _, c := range hubReply.Data.Connections {
+		if c.Kind == "Leafnode" {
+			leafNames = append(leafNames, c.Name)
 		}
 	}
-	if !found {
-		t.Error("CONNZ answered but listed no Leafnode connection")
+	if len(leafNames) == 0 {
+		t.Fatal("the hub answered CONNZ but listed no Leafnode connection")
+	}
+	if !slices.Contains(leafNames, leafServerName) {
+		t.Errorf("hub CONNZ named no leaf %q; leaf names seen: %q", leafServerName, leafNames)
 	}
 }
 
