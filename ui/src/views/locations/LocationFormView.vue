@@ -466,11 +466,8 @@ onMounted(() => {
                 "
                 :size="180"
                 add-label="Add photo"
-              >
-                <template #fallback>
-                  <span class="text-xs text-base-content/50 px-2 text-center">No photo</span>
-                </template>
-              </ImageUploadField>
+                empty-label="No photo"
+              />
               <p class="text-xs text-base-content/60 text-center max-w-xs">
                 What the site looks like on arrival. Large images are scaled down before upload.
               </p>
@@ -493,11 +490,8 @@ onMounted(() => {
                 :size="180"
                 accept="image/jpeg,image/png,image/svg+xml,image/gif,image/webp"
                 add-label="Add floorplan"
-              >
-                <template #fallback>
-                  <span class="text-xs text-base-content/50 px-2 text-center">No floorplan</span>
-                </template>
-              </ImageUploadField>
+                empty-label="No floorplan"
+              />
               <p class="text-xs text-base-content/60 text-center max-w-xs">
                 Accepts JPG, PNG, SVG, GIF or WebP. Used as the backdrop for placing things.
               </p>

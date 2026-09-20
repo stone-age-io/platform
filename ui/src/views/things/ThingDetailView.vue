@@ -304,9 +304,6 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
                 <RecordPhoto
                   :record="thing"
                   :filename="thing.photo"
-                  thumb="400x400"
-                  :size="140"
-                  zoomable
                   :alt="`Photo of ${thing.name || 'this thing'}`"
                 />
               </div>

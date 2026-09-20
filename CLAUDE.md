@@ -656,9 +656,15 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
       needs the full frame. It sits in the card's right-hand gutter beside the
       fields (stacking above them on a phone, where there is no gutter), the
       caller gates it with `v-if` so a record without one simply lets the fields
-      take the full width, and `zoomable` opens the stored image with no thumb
-      parameter at all. The full-size URL resolves only on open, so a page with
-      several photos does not fetch full copies of images nobody clicked.
+      take the full width, and clicking the plate opens the stored image with no
+      thumb parameter at all. The full-size URL resolves only on open, so a page
+      with several photos does not fetch full copies of images nobody clicked.
+      `RecordPhoto` takes three props and no more: the thumb size, the plate
+      size and the click-to-zoom were props until both call sites turned out to
+      pass identical values for all three, which is a constant wearing a prop's
+      clothes. Contrast `UserAvatar`, whose eight call sites use five different
+      sizes and three different fallback initials -- that is what a prop that
+      has earned its place looks like.
     - **Not SVG**, though `locations.floorplan` allows it: this field is camera
       output, and there is no reason to re-widen the decoder surface
       `schema_update_floorplan_mime_types.go` narrowed.
@@ -1239,7 +1245,7 @@ you, so pushing an absolute one would make the login form an open redirect (the
 - `hooks/cert_expiry.go` - the one scan behind both the `nebula_cert_expiry` check and the `stone_age_certificate*` metrics, so the two cannot disagree. **Two windows, not one**: hosts at 30 days (they renew themselves), the CA at 90 (it cannot be renewed at all, only rotated, and rotation needs months). `TestCAGetsALongerWarningWindowThanAHost` stops them collapsing back together
 - `ui/src/utils/fileToken.ts` - the file-token cache and the only place that mints one, plus `fileUrl()` for imperative callers. Every uploaded file is protected, so a URL without a token is a guaranteed 404. Deliberately non-reactive: see feature 18
 - `ui/src/composables/useFileUrl.ts` - the reactive twin, for a component rendering straight from a prop. Resolves once per record, never per token rotation
-- `ui/src/components/common/ImageUploadField.vue` - the one image picker, replacing three hand-rolled copies that had already drifted (one leaked object URLs, one had no removal path at all). Staged like every other field: choosing and removing both take effect on Save
+- `ui/src/components/common/ImageUploadField.vue` - the one image picker, replacing three hand-rolled copies that had already drifted (one leaked object URLs, one had no removal path at all). Staged like every other field: choosing and removing both take effect on Save. Its `emptyLabel` prop exists because the `#fallback` slot let that same drift straight back in: four of five callers were overriding the slot with this component's own default span and one noun changed, and one had already lost the `px-2 text-center` off it. A slot whose every use is the default plus a word wants to be a prop
 - `ui/src/components/common/UserAvatar.vue` / `RecordPhoto.vue` - the read-only halves. UserAvatar is for people (initial-circle fallback, and a viewRule that is NOT org-scoped, so it belongs only on owner/admin or operator screens); RecordPhoto is for things and locations
 - `ui/src/utils/nebula.ts` - rotation state derived from the CA's certificates (never a stored status), the rotation call, and the `/32` audit fetch. The audit swallows its own failure and returns an empty set: it drives an advisory badge, and a list view that refused to render because an advisory endpoint was down would be the worse outcome
 - `ui/src/utils/managedExports.ts` - names the platform-provisioned export/import pair so the console can present them read-only; mirrors `managedExportName` in `hooks/managed_org_exports.go`, and `hooks/managed_org_exports_test.go` reads this file to keep the two honest

@@ -52,6 +52,15 @@ interface Props {
   maxDimension?: number
   /** Label for the button that opens the picker when nothing is set. */
   addLabel?: string
+  /**
+   * What the empty plate says. A prop rather than a slot because four of the
+   * five callers were passing a `#fallback` slot whose entire content was this
+   * component's own default span with one noun changed -- and one of them had
+   * already lost the `px-2 text-center` off it, which is precisely the drift
+   * this component exists to end. The slot is still there for the caller that
+   * needs a real component in the gap (UserSettingsView draws a UserAvatar).
+   */
+  emptyLabel?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -63,6 +72,7 @@ const props = withDefaults(defineProps<Props>(), {
   disabled: false,
   maxDimension: undefined,
   addLabel: 'Add image',
+  emptyLabel: 'No image',
 })
 
 const emit = defineEmits<{
@@ -146,7 +156,7 @@ function openPicker() {
            of the frame they might need to correct. -->
       <img v-if="previewUrl" :src="previewUrl" alt="" class="w-full h-full object-contain" />
       <slot v-else name="fallback">
-        <span class="text-xs text-base-content/50 px-2 text-center">No image</span>
+        <span class="text-xs text-base-content/50 px-2 text-center">{{ emptyLabel }}</span>
       </slot>
     </div>
 

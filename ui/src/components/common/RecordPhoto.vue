@@ -35,43 +35,38 @@ interface Props {
   record?: { id: string; collectionId?: string; collectionName?: string } | null
   /** The stored filename, i.e. `record.photo`. */
   filename?: string
-  /**
-   * Which thumb to request. `things.photo` and `locations.photo` declare
-   * 400x400, and PocketBase serves 100x100 for any file field. ANY OTHER VALUE
-   * silently falls through to the full 2 MiB original with no error, so treat
-   * this as a closed set.
-   */
-  thumb?: '100x100' | '400x400'
-  /** Rendered edge length in px. Square, because the thumbs are. */
-  size?: number
-  /**
-   * Click the thumbnail to open the FULL image in a dialog.
-   *
-   * Off by default, and it should stay off anywhere the photo is chrome rather
-   * than content: a 400x400 thumb is enough to recognise a device, but not to
-   * read a serial number off a label or see which way a panel is oriented, and
-   * those are the questions a detail view gets asked.
-   */
-  zoomable?: boolean
   alt?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
   record: null,
   filename: '',
-  thumb: '400x400',
-  size: 96,
-  zoomable: false,
   alt: '',
 })
+
+// The thumb, the plate size and click-to-zoom were props until both call sites
+// turned out to pass the same three values, which is a constant wearing a
+// prop's clothes. They are constants now. Two of them were also carrying a
+// caveat each, and the caveat goes with the knob:
+//
+// THUMB must stay a size the field declares. PocketBase serves 100x100 for any
+// file field, but every other size has to be in the field's own `thumbs` list
+// or the request silently falls through to the full 2 MiB original with no
+// error at all. `TestPhotoThumbsAreDeclared` pins this 400x400 against
+// schema.json; a value that disagreed with it would not fail anywhere visible.
+//
+// Zoom is now unconditional. It used to be opt-in so it could be OFF wherever
+// the photo was chrome rather than content -- ScannerWidget and ThingMapDrawer
+// -- and both of those are gone. Everything left is a detail view, where the
+// whole point is reading a serial off a label the thumbnail cannot resolve.
+const THUMB = '400x400'
+const SIZE_PX = '140px'
 
 const hasPhoto = computed(() => Boolean(props.record?.id && props.filename))
 
 const url = useFileUrl(() =>
-  hasPhoto.value ? { record: props.record!, filename: props.filename, thumb: props.thumb } : null,
+  hasPhoto.value ? { record: props.record!, filename: props.filename, thumb: THUMB } : null,
 )
-
-const sizePx = computed(() => `${props.size}px`)
 
 const zoomOpen = ref(false)
 
@@ -96,23 +91,23 @@ useEscapeKey(zoomOpen, () => {
 
 <template>
   <!--
-    A button when zoomable, a plain div otherwise. Deliberately not a div with a
-    click handler in both cases: the zoom is a real control and has to be
-    reachable by keyboard and announced as activatable, which only a button
-    gets for free.
+    A button when there is a photo to open, a plain div otherwise. Deliberately
+    not a div with a click handler: the zoom is a real control and has to be
+    reachable by keyboard and announced as activatable, which only a button gets
+    for free.
   -->
   <component
-    :is="zoomable && hasPhoto ? 'button' : 'div'"
-    :type="zoomable && hasPhoto ? 'button' : undefined"
-    :aria-label="zoomable && hasPhoto ? `View ${alt || 'photo'} full size` : undefined"
+    :is="hasPhoto ? 'button' : 'div'"
+    :type="hasPhoto ? 'button' : undefined"
+    :aria-label="hasPhoto ? `View ${alt || 'photo'} full size` : undefined"
     class="rounded-lg border border-base-300 bg-base-200 overflow-hidden flex items-center justify-center flex-shrink-0"
     :class="
-      zoomable && hasPhoto
+      hasPhoto
         ? 'cursor-zoom-in hover:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary transition-colors'
         : ''
     "
-    :style="{ width: sizePx, height: sizePx }"
-    @click="zoomable && hasPhoto ? (zoomOpen = true) : undefined"
+    :style="{ width: SIZE_PX, height: SIZE_PX }"
+    @click="hasPhoto ? (zoomOpen = true) : undefined"
   >
     <!-- object-cover: these are camera photos and the box is square, so
          letterboxing every one of them inside a bordered plate reads as a

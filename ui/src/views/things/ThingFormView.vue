@@ -872,11 +872,8 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
                 "
                 :size="180"
                 add-label="Add photo"
-              >
-                <template #fallback>
-                  <span class="text-xs text-base-content/50 px-2 text-center">No photo</span>
-                </template>
-              </ImageUploadField>
+                empty-label="No photo"
+              />
               <p class="text-xs text-base-content/60 text-center max-w-xs">
                 What this looks like where it is installed &mdash; the answer to
                 &ldquo;is this the right one&rdquo; after scanning its label.

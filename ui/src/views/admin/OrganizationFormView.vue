@@ -326,11 +326,8 @@ onMounted(() => {
                     accept="image/png,image/jpeg,image/svg+xml,image/gif,image/webp"
                     :disabled="loading"
                     add-label="Add logo"
-                  >
-                    <template #fallback>
-                      <span class="text-xs text-base-content/50">No logo</span>
-                    </template>
-                  </ImageUploadField>
+                    empty-label="No logo"
+                  />
                   <span class="text-xs text-base-content/60">Square image. PNG, JPG, SVG, GIF, or WEBP.</span>
                 </div>
               </div>

@@ -364,9 +364,6 @@ onUnmounted(() => cleanupMap())
                 <RecordPhoto
                   :record="location"
                   :filename="location.photo"
-                  thumb="400x400"
-                  :size="140"
-                  zoomable
                   :alt="`Photo of ${location.name || 'this site'}`"
                 />
               </div>
