@@ -42,13 +42,24 @@ const paginatedStreams = computed(() => {
 
 watch(searchQuery, () => { currentPage.value = 1 })
 
+// Subjects is the one column left un-widthed, so it absorbs the slack. It is
+// the only column here whose content has no bound -- a stream can carry one
+// subject or a dozen -- while retention, message count, size and consumer count
+// are all short and known. They used to split the leftover width equally, which
+// gave a one-digit consumer count the same 226px as a subject list and left the
+// subject list truncating at 200px on a 1570px table.
+//
+// The 200px was a hardcoded max-w on the cell, which is why widening the column
+// alone would have changed nothing. A cap inside a fixed-layout column is a
+// second opinion about width that cannot agree with the first; the truncate and
+// its title tooltip stay, and they now bite at the column edge.
 const columns: Column<StreamSummary>[] = [
   { key: 'name', label: 'Name', mobileLabel: 'Name' },
   { key: 'subjects', label: 'Subjects', mobileLabel: 'Subjects', format: (v: string[]) => v.join(', ') },
-  { key: 'retention', label: 'Retention', mobileLabel: 'Retention' },
-  { key: 'messages', label: 'Messages', mobileLabel: 'Msgs', format: (v: number) => v.toLocaleString() },
-  { key: 'bytes', label: 'Size', mobileLabel: 'Size', format: (v: number) => formatBytes(v) },
-  { key: 'consumers', label: 'Consumers', mobileLabel: 'Cons' },
+  { key: 'retention', width: '7rem', label: 'Retention', mobileLabel: 'Retention' },
+  { key: 'messages', width: '9rem', label: 'Messages', mobileLabel: 'Msgs', format: (v: number) => v.toLocaleString() },
+  { key: 'bytes', width: '7rem', label: 'Size', mobileLabel: 'Size', format: (v: number) => formatBytes(v) },
+  { key: 'consumers', width: '7rem', label: 'Consumers', mobileLabel: 'Cons' },
 ]
 
 async function loadData() {
@@ -206,7 +217,7 @@ watch(() => natsStore.isConnected, (connected) => {
           </template>
 
           <template #cell-subjects="{ item }">
-            <div class="font-mono text-xs max-w-[200px] truncate" :title="item.subjects.join(', ')">
+            <div class="font-mono text-xs truncate" :title="item.subjects.join(', ')">
               {{ item.subjects.join(', ') }}
             </div>
           </template>
