@@ -108,6 +108,49 @@ body {
   }
 }
 
+/* A badge is a pill around a value, and daisyUI pins its HEIGHT: `.badge` is
+ * `height: 1.25rem` (`-xs` .75, `-sm` 1, `-lg` 1.5) with no overflow handling.
+ * So the moment its text wraps, the second line is painted BELOW the pill it is
+ * supposed to be inside -- the value hangs out the bottom with no background
+ * under it, which reads as a rendering fault rather than a long name.
+ *
+ * It needs a value long enough to wrap and a container narrow enough to make it,
+ * which is why it hid: ten badges across seven files hold a THING or LOCATION
+ * TYPE NAME, and "Access-Controlled Door" in the `grid-cols-2` gutter of a
+ * detail view is exactly that. Measured at 300px, the pill stayed 20px tall
+ * while its text needed 40.
+ *
+ * min-height keeps every single-line badge pixel-identical -- this changes only
+ * the ones that were already broken. Deliberately NOT `max-width: 100%`, which
+ * was tried and is worse: it caps the pill at the container while the text keeps
+ * its own width, so instead of hanging below the pill the text hangs out the
+ * SIDES of it. Where wrapping is not allowed at all -- a list card's cell sets
+ * `white-space: nowrap` on the way down -- nothing changes either, because the
+ * badge stays one line and the cell clips pill and text together, which is what
+ * a truncating cell is supposed to look like.
+ *
+ * Same layer as the control font size above, for the same reason: later than
+ * daisyUI's components, earlier than any utility, so a view that really wants a
+ * fixed-height badge can still say so with `h-4`. */
+@layer components {
+  .badge {
+    height: auto;
+    min-height: 1.25rem;
+  }
+  .badge-xs {
+    height: auto;
+    min-height: 0.75rem;
+  }
+  .badge-sm {
+    height: auto;
+    min-height: 1rem;
+  }
+  .badge-lg {
+    height: auto;
+    min-height: 1.5rem;
+  }
+}
+
 /* The one place `!important` IS load-bearing: iOS Safari zooms the viewport
  * when a focused control's font size is under 16px, and it has to beat the
  * `text-xs` above to stop that. Scoped to the widths where it can happen —
