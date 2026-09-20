@@ -56,19 +56,18 @@ function onSort(next: string) {
   loadData()
 }
 
-// Description is the column that absorbs the leftover width (see Column.width):
-// it is the only free-text field here, and it is already one of the three fields
-// the search above matches on -- so until it was shown, searching a description
-// returned rows with nothing in them to explain the match. Without it the slack
-// landed on Operations, which is a one- or two-digit badge, and Code wrapped at
-// 7rem while 746px sat empty beside it.
+// Description is not a column: it is drawn under the name, which is where every
+// other list in the console puts one (see Column.width). It still absorbs the
+// leftover width -- the identity cell is the free-text cell -- and it still
+// explains why a row matched a description search, which is the reason it was
+// put on screen. What it no longer does is take width from Code, which wrapped
+// at 7rem while the Operations badge sat in 746px of empty table.
 //
 // Same shape and same order as LocationTypeListView -- the two type lists are the
 // same screen for different nouns and should not need reading twice.
 const columns: Column<ThingType>[] = [
-  { key: 'name', sortable: 'name', label: 'Name', mobileLabel: 'Name' },
+  { key: 'name', sortable: 'name', width: 'auto', label: 'Name', mobileLabel: 'Name' },
   { key: 'code', sortable: 'code', width: '11rem', label: 'Code', mobileLabel: 'Code' },
-  { key: 'description', sortable: 'description', label: 'Description', mobileLabel: 'Desc', class: 'hidden md:table-cell' },
   { key: 'operations', width: '7rem', label: 'Operations', mobileLabel: 'Ops' },
   { key: 'created', sortable: '-created', width: '8rem', label: 'Created', mobileLabel: 'Created', format: (val) => formatDate(val, 'PP') },
 ]
@@ -165,13 +164,26 @@ onUnmounted(() => {
         @update:sort="onSort"
         @row-click="handleRowClick"
       >
-        <template #cell-code="{ item }">
-          <code v-if="item.code" class="bg-base-200 px-1 rounded text-xs">{{ item.code }}</code>
-          <span v-else class="text-base-content/40">—</span>
+        <template #cell-name="{ item }">
+          <div>
+            <div class="font-medium">{{ item.name }}</div>
+            <div v-if="item.description" :title="item.description" class="text-sm text-base-content/60 line-clamp-1">
+              {{ item.description }}
+            </div>
+          </div>
         </template>
 
-        <template #cell-description="{ item }">
-          <div v-if="item.description" :title="item.description" class="text-sm text-base-content/70 line-clamp-1">{{ item.description }}</div>
+        <template #card-name="{ item }">
+          <div>
+            <div class="font-semibold text-base">{{ item.name }}</div>
+            <div v-if="item.description" class="text-sm text-base-content/60 mt-1">
+              {{ item.description }}
+            </div>
+          </div>
+        </template>
+
+        <template #cell-code="{ item }">
+          <code v-if="item.code" class="bg-base-200 px-1 rounded text-xs">{{ item.code }}</code>
           <span v-else class="text-base-content/40">—</span>
         </template>
 

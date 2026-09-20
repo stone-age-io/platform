@@ -151,6 +151,15 @@ onUnmounted(() => {
           </div>
         </template>
 
+        <template #card-name="{ item }">
+          <div>
+            <div class="font-semibold text-base">{{ item.name }}</div>
+            <div v-if="item.description" class="text-sm text-base-content/60 mt-1">
+              {{ item.description }}
+            </div>
+          </div>
+        </template>
+
         <template #cell-capability="{ item }">
           <span class="badge badge-sm badge-outline">{{ item.capability }}</span>
         </template>

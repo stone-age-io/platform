@@ -56,10 +56,13 @@ function onSort(next: string) {
   loadData()
 }
 
+// Description is not a column: it is drawn under the name, which is where every
+// other list in the console puts one (see Column.width). Same shape and same
+// order as ThingTypeListView -- the two type lists are the same screen for
+// different nouns and should not need reading twice.
 const columns: Column<LocationType>[] = [
-  { key: 'name', sortable: 'name', label: 'Name', mobileLabel: 'Name' },
+  { key: 'name', sortable: 'name', width: 'auto', label: 'Name', mobileLabel: 'Name' },
   { key: 'code', sortable: 'code', width: '11rem', label: 'Code', mobileLabel: 'Code' },
-  { key: 'description', sortable: 'description', label: 'Description', mobileLabel: 'Desc', class: 'hidden md:table-cell' },
   {
     key: 'created',
     sortable: '-created',
@@ -162,9 +165,22 @@ onUnmounted(() => {
         :loading="loading"
         @row-click="handleRowClick"
       >
-        <template #cell-description="{ item }">
-          <div v-if="item.description" :title="item.description" class="text-sm text-base-content/70 line-clamp-1">{{ item.description }}</div>
-          <span v-else class="text-base-content/40">—</span>
+        <template #cell-name="{ item }">
+          <div>
+            <div class="font-medium">{{ item.name }}</div>
+            <div v-if="item.description" :title="item.description" class="text-sm text-base-content/60 line-clamp-1">
+              {{ item.description }}
+            </div>
+          </div>
+        </template>
+
+        <template #card-name="{ item }">
+          <div>
+            <div class="font-semibold text-base">{{ item.name }}</div>
+            <div v-if="item.description" class="text-sm text-base-content/60 mt-1">
+              {{ item.description }}
+            </div>
+          </div>
         </template>
 
         <template #cell-code="{ item }">

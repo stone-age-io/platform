@@ -27,6 +27,7 @@ export interface Column<T = any> {
    *   7rem   a single badge, a count, a short enum ('Active', 'Owner')
    *   8rem   a date in `PP` form ('Aug 31, 2026')
    *   11rem  a `code` value -- fits the ~18 characters real codes reach
+   *   16rem  a person -- a name or an email address
    *   9rem   the Actions column, set on the <th> below rather than here
    * Two or more badges in one cell (StatusBadge + ExpiryBadge) need the room to
    * wrap and are deliberately left un-widthed.
@@ -38,9 +39,19 @@ export interface Column<T = any> {
    * KV bucket list moved them 226px -> 238px, i.e. nowhere, while Created and
    * Actions quietly doubled.
    *
-   * When the free-text column IS the identity column -- a name with a clamped
-   * description under it, which is how NatsRole, KvBucket and ThingTypeOperation
-   * are drawn -- say `width: 'auto'` on it. That is not the same as omitting the
+   * A record's DESCRIPTION is not a column. It goes under the name in the
+   * identity cell, clamped to one line, with the full text on `title` -- which
+   * is what ten of the twelve lists carrying one already did. The two that
+   * spent a column on it cost more than the column: it competed for width with
+   * Code and Operations, which have known sizes and no slack to give, and it
+   * rode a `class: 'hidden md:table-cell'` that hid the description outright
+   * below 768px while every other list showed it on a phone. Under the name it
+   * sits beside the thing it describes, it is the absorber the table wants
+   * anyway, and it still answers the question it was put on screen to answer --
+   * why this row matched the search.
+   *
+   * So the free-text column IS the identity column on nearly every list, and
+   * there you say `width: 'auto'` on it. That is not the same as omitting the
    * width: omitting it means 28% for column 0, per widthOf() below. With 'auto'
    * every other column gets exactly what it declares and the name takes the
    * rest.

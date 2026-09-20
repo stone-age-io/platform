@@ -65,8 +65,8 @@ function onSort(next: string) {
 }
 
 const columns: Column<OrganizationWithExpand>[] = [
-  { key: 'name', sortable: 'name', label: 'Name', mobileLabel: 'Name' },
-  { key: 'expand.owner.email', sortable: 'owner.email', label: 'Owner', mobileLabel: 'Owner' },
+  { key: 'name', sortable: 'name', width: 'auto', label: 'Name', mobileLabel: 'Name' },
+  { key: 'expand.owner.email', sortable: 'owner.email', width: '20rem', label: 'Owner', mobileLabel: 'Owner' },
   { key: 'active', width: '7rem', label: 'Status', mobileLabel: 'Status' },
   { key: 'created', sortable: '-created', width: '8rem', label: 'Created', mobileLabel: 'Created', format: (v) => formatDate(v, 'PP') },
 ]
@@ -153,11 +153,32 @@ onMounted(() => {
         @update:sort="onSort"
         @row-click="handleRowClick"
       >
+        <!-- Name, with the description under it -- the convention every other
+             list follows, and the only thing on screen that can explain why a
+             row matched a search on description. -->
+        <template #cell-name="{ item }">
+          <div>
+            <div class="font-medium">{{ item.name }}</div>
+            <div v-if="item.description" :title="item.description" class="text-sm text-base-content/60 line-clamp-1">
+              {{ item.description }}
+            </div>
+          </div>
+        </template>
+
+        <template #card-name="{ item }">
+          <div>
+            <div class="font-semibold text-base">{{ item.name }}</div>
+            <div v-if="item.description" class="text-sm text-base-content/60 mt-1">
+              {{ item.description }}
+            </div>
+          </div>
+        </template>
+
         <!-- Owner cell -->
         <template #cell-expand.owner.email="{ item }">
-          <span class="text-sm">
+          <div class="text-sm truncate" :title="item.expand?.owner?.email">
             {{ item.expand?.owner?.email || '—' }}
-          </span>
+          </div>
         </template>
 
         <!-- Owner mobile card -->
