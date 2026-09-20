@@ -590,10 +590,7 @@ onUnmounted(() => cleanupMap())
 
       <!-- decommissionInventory, matching locations.deleteRule. This was
            ungated, so a member got a Delete button the server refused. -->
-      <DangerZone
-        v-if="authStore.can.decommissionInventory"
-        title="Delete this location"
-      >
+      <DangerZone v-if="authStore.can.decommissionInventory">
         <button @click="handleDelete" class="btn btn-error" :disabled="deleting">
           Delete Location
         </button>

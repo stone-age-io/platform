@@ -223,10 +223,7 @@ onMounted(async () => {
       </div>
     </form>
 
-    <DangerZone
-      v-if="isEdit"
-      title="Delete this operation"
-    >
+    <DangerZone v-if="isEdit">
       <button type="button" @click="handleDelete" class="btn btn-error" :disabled="deleting">
         Delete Operation
       </button>

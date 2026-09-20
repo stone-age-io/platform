@@ -239,9 +239,7 @@ onMounted(loadRole)
         </div>
       </div>
 
-      <DangerZone
-        title="Delete this role"
-      >
+      <DangerZone>
         <button @click="handleDelete" class="btn btn-error" :disabled="deleting">
           Delete Role
         </button>

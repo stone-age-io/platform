@@ -383,9 +383,7 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
         </div>
       </div>
 
-      <DangerZone
-        title="Delete this host"
-      >
+      <DangerZone>
         <button @click="handleDelete" class="btn btn-error" :disabled="deleting">
           Delete Host
         </button>

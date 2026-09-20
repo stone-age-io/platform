@@ -442,9 +442,7 @@ useEscapeKey(showReenableModal, () => { showReenableModal.value = false })
         </div>
       </div>
 
-      <DangerZone
-        title="Delete this NATS user"
-      >
+      <DangerZone>
         <button @click="handleDelete" class="btn btn-error" :disabled="deleting">
           Delete NATS User
         </button>

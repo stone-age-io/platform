@@ -281,10 +281,7 @@ useEscapeKey(showOperationModal, () => { showOperationModal.value = false })
       </div>
     </form>
 
-    <DangerZone
-      v-if="isEdit"
-      title="Delete this thing type"
-    >
+    <DangerZone v-if="isEdit">
       <button type="button" @click="handleDelete" class="btn btn-error" :disabled="deleting">
         Delete Thing Type
       </button>

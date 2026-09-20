@@ -507,10 +507,7 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
         </div>
       </div>
 
-      <DangerZone
-        v-if="authStore.can.decommissionInventory"
-        title="Delete this thing"
-      >
+      <DangerZone v-if="authStore.can.decommissionInventory">
         <button @click="handleDelete" class="btn btn-error" :disabled="deleting">
           Delete Thing
         </button>

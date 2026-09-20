@@ -199,10 +199,7 @@ onMounted(loadImport)
       </div>
 
       <!-- See the export view: a `managed` record is reconciled, not edited. -->
-      <DangerZone
-        v-if="!managed"
-        title="Delete this import"
-      >
+      <DangerZone v-if="!managed">
         <button @click="handleDelete" class="btn btn-error" :disabled="deleting">
           Delete Import
         </button>

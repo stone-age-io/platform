@@ -232,9 +232,7 @@ onMounted(() => {
         </ResponsiveList>
       </BaseCard>
 
-      <DangerZone
-        title="Delete this network"
-      >
+      <DangerZone>
         <button @click="handleDelete" class="btn btn-error" :disabled="deleting">
           Delete Network
         </button>

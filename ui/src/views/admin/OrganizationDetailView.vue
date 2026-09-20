@@ -382,9 +382,7 @@ onMounted(() => loadData())
         </div>
       </div>
 
-      <DangerZone
-        title="Delete this organization"
-      >
+      <DangerZone>
         <button @click="handleDelete" class="btn btn-error" :disabled="deleting">
           Delete Organization
         </button>

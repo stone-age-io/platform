@@ -182,10 +182,7 @@ onMounted(() => {
       </div>
     </form>
 
-    <DangerZone
-      v-if="isEdit"
-      title="Delete this location type"
-    >
+    <DangerZone v-if="isEdit">
       <button type="button" @click="handleDelete" class="btn btn-error" :disabled="deleting">
         Delete Location Type
       </button>

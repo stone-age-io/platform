@@ -181,10 +181,7 @@ onMounted(loadExport)
       <!-- The same `managed` gate the header row carries: a platform-provisioned
            export is rewritten on every organization save, so offering to delete
            it would offer a change reconciliation silently undoes. -->
-      <DangerZone
-        v-if="!managed"
-        title="Delete this export"
-      >
+      <DangerZone v-if="!managed">
         <button @click="handleDelete" class="btn btn-error" :disabled="deleting">
           Delete Export
         </button>
