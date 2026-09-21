@@ -348,10 +348,40 @@ onUnmounted(() => window.removeEventListener('organization-changed', handleOrgCh
          The feed row is deliberately narrow -- when / who / did / what / kind --
          and everything the row cannot hold lives here: the exact timestamp, the
          actor and record IDS (which are what a support conversation actually
-         needs), and the two things you can DO with an entry. -->
+         needs), and the two things you can DO with an entry -- one of which now
+         sits beside the title rather than in the footer, see below. -->
     <dialog id="activity_modal" class="modal">
       <div class="modal-box w-11/12 max-w-2xl">
-        <h3 class="font-bold text-lg mb-4">Activity Details</h3>
+        <!--
+          "Open record" lives up here rather than in the footer, because three
+          buttons in a `modal-action` do not fit on a phone and the way they
+          fail is ugly: the row wraps, and since it is right-aligned the result
+          is a staircase -- two buttons on one line and one on the next, or the
+          reverse. Measured against the built stylesheet it did that at 320,
+          360 AND 393px, which is to say on every phone. Two buttons cannot make
+          that shape at any width, including 320px.
+
+          So the third one moved, and this is a better home rather than merely a
+          free one: it is the only control here that navigates AWAY -- the other
+          two refilter the feed behind the dialog and dismiss it -- the arrow
+          says so, and the top of the dialog is the one place that looks the
+          same on a phone as on a desktop.
+
+          Full-size `btn` rather than `btn-sm`: both lay out identically at
+          every width measured, and `btn-sm` is 32px, which is under the 44px
+          touch target the rest of this pass has been holding to. The full one
+          is 48px and needs no rule to help it.
+
+          flex-wrap for the reason the connectivity card has it: at 320px the
+          title and the button do not share a line, and wrapping costs nothing
+          at any width where they do.
+        -->
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <h3 class="font-bold text-lg">Activity Details</h3>
+          <router-link v-if="recordLink" :to="recordLink" class="btn btn-primary">
+            Open record ↗
+          </router-link>
+        </div>
 
         <div v-if="selected" class="space-y-4">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
@@ -419,9 +449,6 @@ onUnmounted(() => window.removeEventListener('organization-changed', handleOrgCh
           >
             This record's history
           </button>
-          <router-link v-if="recordLink" :to="recordLink" class="btn btn-primary">
-            Open record
-          </router-link>
           <form method="dialog">
             <button class="btn">Close</button>
           </form>
