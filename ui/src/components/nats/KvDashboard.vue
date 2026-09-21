@@ -688,37 +688,61 @@ function previewValue(val: any): string {
           <span v-if="viewMode === 'tree'" class="opacity-40 ml-auto">{{ filteredEntries.length }} keys</span>
         </div>
 
-        <!-- FLAT VIEW -->
+        <!-- FLAT VIEW.
+
+             This was a three-column <table>, and a table is the wrong shape for
+             it on anything narrow: two of the three columns hold unbounded
+             strings -- a dotted key path and an arbitrary JSON value -- so there
+             is no width at which both fit beside each other. On a 393px phone
+             the table laid itself out 469px wide inside a 359px card and gave
+             the key column 74px, which broke 'thing.GW-KC-01.status' into five
+             one-word lines and left the rest to a horizontal scrollbar.
+
+             It is the same grid in both places, with only the track list
+             changing: key and revision share the top line and the value takes
+             the one below on a phone, all three sit in a row from `lg` up. One
+             set of markup rather than a table plus a card, because the value
+             cell is a six-branch v-if plus the twin marker, and two copies of
+             that is the drift waiting to happen.
+
+             Worth saying it was not only a phone problem, because it reads like
+             one. The editor pane is a fixed 420px, so the list on a 1280px
+             desktop is about 522px wide, and the `max-w-xs` on the value took
+             344px of that. Every key wrapped there too. Over the same four rows:
+             164px now against 264px before on the desktop, 235px against 453px
+             on the phone. -->
         <div v-if="viewMode === 'flat'" class="flex-1 overflow-y-auto">
-          <table class="table table-sm w-full border-separate border-spacing-0">
-            <thead class="sticky top-0 bg-base-100 z-10 shadow-sm">
-              <tr>
-                <th class="bg-base-100 py-3">Property</th>
-                <th class="bg-base-100 py-3">Value</th>
-                <th class="bg-base-100 py-3 text-right">Rev</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="item in paginatedEntries"
-                :key="item.key"
-                @click="openEdit(item)"
-                class="hover:bg-primary/5 cursor-pointer transition-colors group"
-                :class="{ 'bg-primary/10': selectedEntry?.key === item.key }"
-              >
-                <td class="py-3 align-top">
-                  <span class="font-mono font-semibold text-primary group-hover:underline break-all">{{ displayKey(item.key) }}</span>
-                </td>
-                <td class="py-3 align-top">
-                  <div class="flex items-center gap-2 min-w-0">
-                    <span v-if="!isReported(item.key)" class="text-[10px] italic text-base-content/40">awaiting device</span>
-                    <span v-else-if="typeof item.value === 'boolean'" class="badge badge-sm" :class="item.value ? 'badge-success' : 'badge-ghost'">
-                      {{ item.value ? 'TRUE' : 'FALSE' }}
-                    </span>
-                    <span v-else-if="item.value === null" class="badge badge-sm badge-ghost">null</span>
-                    <span v-else-if="typeof item.value === 'number'" class="text-xs font-mono font-medium">{{ item.value }}</span>
-                    <span v-else-if="isObject(item.value)" class="text-[10px] font-mono text-base-content/70 truncate block max-w-xs">{{ JSON.stringify(item.value) }}</span>
-                    <span v-else class="text-xs font-medium truncate block max-w-xs">{{ item.value }}</span>
+          <div class="kv-cols hidden lg:grid sticky top-0 bg-base-100 z-10 shadow-sm px-3 py-3 text-xs font-semibold">
+            <div class="kv-k">Property</div>
+            <div class="kv-v">Value</div>
+            <div class="kv-r text-right">Rev</div>
+          </div>
+          <div>
+            <div
+              v-for="item in paginatedEntries"
+              :key="item.key"
+              @click="openEdit(item)"
+              class="kv-cols grid px-3 py-2.5 border-b border-base-200/60 hover:bg-primary/5 cursor-pointer transition-colors group"
+              :class="{ 'bg-primary/10': selectedEntry?.key === item.key }"
+            >
+              <div class="kv-k">
+                <span class="font-mono font-semibold text-primary text-sm group-hover:underline break-all">{{ displayKey(item.key) }}</span>
+              </div>
+              <div class="kv-v">
+                <div class="flex items-center gap-2 min-w-0">
+                  <span v-if="!isReported(item.key)" class="text-[10px] italic text-base-content/40">awaiting device</span>
+                  <span v-else-if="typeof item.value === 'boolean'" class="badge badge-sm" :class="item.value ? 'badge-success' : 'badge-ghost'">
+                    {{ item.value ? 'TRUE' : 'FALSE' }}
+                  </span>
+                  <span v-else-if="item.value === null" class="badge badge-sm badge-ghost">null</span>
+                  <span v-else-if="typeof item.value === 'number'" class="text-xs font-mono font-medium">{{ item.value }}</span>
+                  <!-- No max-width here any more. It was `max-w-xs` (20rem),
+                       wider than a phone's whole card, so the cell demanded
+                       320px and squeezed the key column to 74px. The grid track
+                       bounds it now and `truncate` cuts it to whatever that
+                       track actually is. -->
+                  <span v-else-if="isObject(item.value)" class="text-[10px] font-mono text-base-content/70 truncate block">{{ JSON.stringify(item.value) }}</span>
+                  <span v-else class="text-xs font-medium truncate block">{{ item.value }}</span>
 
                     <!-- Twin marker: only rows that carry an assertion show one,
                          and it shows the desired VALUE rather than a word about
@@ -726,31 +750,28 @@ function previewValue(val: any): string {
                          to the right of the cell in every case — hanging it off
                          the value left it at a different x on every row,
                          depending on how long the value happened to be. -->
-                    <span v-if="item.twin" class="flex items-center gap-1.5 shrink-0 ml-auto pl-2">
-                      <span v-if="item.twin.agrees" class="text-success leading-none" :title="item.twin.title">✓</span>
-                      <template v-else>
-                        <span class="text-base-content/30 text-xs">→</span>
-                        <span
-                          v-if="item.twin.inline !== null"
-                          class="font-mono text-xs font-semibold text-warning truncate max-w-[12rem]"
-                          :title="item.twin.title"
-                        >{{ item.twin.inline }}</span>
-                        <span v-else class="badge badge-warning badge-xs" :title="item.twin.title">{{ item.twin.badge }}</span>
-                      </template>
-                    </span>
-                  </div>
-                </td>
-                <td class="py-3 text-right align-top font-mono text-[10px] opacity-40">
-                  {{ item.revision }}
-                </td>
-              </tr>
-              <tr v-if="paginatedEntries.length === 0">
-                <td colspan="3" class="py-20 text-center opacity-30 italic">
-                  {{ emptyMessage }}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                  <span v-if="item.twin" class="flex items-center gap-1.5 shrink-0 ml-auto pl-2">
+                    <span v-if="item.twin.agrees" class="text-success leading-none" :title="item.twin.title">✓</span>
+                    <template v-else>
+                      <span class="text-base-content/30 text-xs">→</span>
+                      <span
+                        v-if="item.twin.inline !== null"
+                        class="font-mono text-xs font-semibold text-warning truncate max-w-[12rem]"
+                        :title="item.twin.title"
+                      >{{ item.twin.inline }}</span>
+                      <span v-else class="badge badge-warning badge-xs" :title="item.twin.title">{{ item.twin.badge }}</span>
+                    </template>
+                  </span>
+                </div>
+              </div>
+              <div class="kv-r text-right font-mono text-[10px] opacity-40">
+                {{ item.revision }}
+              </div>
+            </div>
+            <div v-if="paginatedEntries.length === 0" class="py-20 text-center opacity-30 italic">
+              {{ emptyMessage }}
+            </div>
+          </div>
         </div>
 
         <!-- TREE VIEW -->
@@ -1043,6 +1064,58 @@ function previewValue(val: any): string {
   position: relative;
   min-height: 480px;
   height: 100%;
+}
+
+/*
+  The flat view's row shape, shared by the rows and by the header above them so
+  the two cannot drift. Only the track list changes between the two layouts; the
+  named areas do the rest.
+
+  On a phone the key and the revision share the top line and the value gets the
+  one below, which is what lets a 26-character dotted key sit on ONE line in
+  265px instead of five lines in 74px.
+
+  The desktop split is measured rather than picked, and it leans the opposite
+  way to the obvious one. The list pane is only about 522px wide once the 420px
+  editor sits beside it, so the instinct is to give the value the larger share
+  because it holds the longer string. That is backwards: the value is truncated
+  at EVERY ratio tried, so width spent on it buys nothing you can read, while a
+  key that does not fit wraps and costs the row a whole extra line. Biasing to
+  the key was worth 24px over five rows and took the wrapped-key count from one
+  to none; going further than 5fr/4fr squeezed the value with nothing to show
+  for it.
+
+  The revision track is a fixed 4rem rather than auto on purpose: auto is sized
+  per row, so a five-digit revision and a six-digit one would leave the header's
+  Rev label sitting over neither of them.
+*/
+.kv-cols {
+  grid-template-columns: minmax(0, 1fr) 4rem;
+  grid-template-areas:
+    'key rev'
+    'value value';
+  column-gap: 0.5rem;
+  row-gap: 0.125rem;
+}
+.kv-k {
+  grid-area: key;
+  min-width: 0;
+}
+.kv-v {
+  grid-area: value;
+  min-width: 0;
+}
+.kv-r {
+  grid-area: rev;
+}
+
+@media (min-width: 1024px) {
+  .kv-cols {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 4fr) 4rem;
+    grid-template-areas: 'key value rev';
+    align-items: start;
+    row-gap: 0;
+  }
 }
 
 .pane-header {
