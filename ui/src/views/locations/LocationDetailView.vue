@@ -21,6 +21,7 @@ import type { Location, LocationType, Thing } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
+import ListPager from '@/components/ui/ListPager.vue'
 import FloorPlanMap from '@/components/map/FloorPlanMap.vue'
 import KvDashboard from '@/components/nats/KvDashboard.vue'
 import { TWIN_BUCKET, TWIN_DESIRED_BUCKET } from '@/utils/twin'
@@ -516,17 +517,24 @@ onUnmounted(() => cleanupMap())
             @row-click="(i) => router.push(`/locations/${i.id}`)" 
           />
 
-          <!-- Pagination -->
-          <div v-if="subLocTotalItems > 0" class="flex justify-between items-center p-3 border-t border-base-200 bg-base-100/50">
-            <span class="text-xs text-base-content/60">
-              {{ subLocTotalItems }} items
-            </span>
-            <div class="join">
-              <button class="join-item btn btn-xs" :disabled="subLocPage === 1" @click="prevSubLocPage({ filter: subLocFilter, expand: 'type', sort: 'name' })">«</button>
-              <button class="join-item btn btn-xs cursor-default">Page {{ subLocPage }}</button>
-              <button class="join-item btn btn-xs" :disabled="subLocPage === subLocTotalPages" @click="nextSubLocPage({ filter: subLocFilter, expand: 'type', sort: 'name' })">»</button>
-            </div>
-          </div>
+          <!-- The shared pager, not a local copy of one. The two footers on
+               this page were hand-rolled and had drifted from it in four ways
+               that all mattered: 24px buttons where every other list in the app
+               now has 44px ones on a phone, a page number with no total to
+               compare it against, no disable while a page is in flight, and no
+               stacking on a narrow screen. It also said "N items" where the
+               shared one names what is being counted. -->
+          <ListPager
+            v-if="subLocTotalItems > 0"
+            :page="subLocPage"
+            :total-pages="subLocTotalPages"
+            :shown="subLocations.length"
+            :total="subLocTotalItems"
+            noun="sub-locations"
+            :loading="subLocLoading"
+            @prev="prevSubLocPage({ filter: subLocFilter, expand: 'type', sort: 'name' })"
+            @next="nextSubLocPage({ filter: subLocFilter, expand: 'type', sort: 'name' })"
+          />
         </BaseCard>
 
         <!-- 3. Associated Things List -->
@@ -553,17 +561,17 @@ onUnmounted(() => cleanupMap())
             <template #cell-code="{ item }"><code class="text-xs font-mono">{{ item.code || '-' }}</code></template>
           </ResponsiveList>
 
-          <!-- Pagination -->
-          <div v-if="thingTotalItems > 0" class="flex justify-between items-center p-3 border-t border-base-200 bg-base-100/50">
-            <span class="text-xs text-base-content/60">
-              {{ thingTotalItems }} items
-            </span>
-            <div class="join">
-              <button class="join-item btn btn-xs" :disabled="thingPage === 1" @click="prevThingPage({ filter: thingFilter, expand: 'type', sort: 'name' })">«</button>
-              <button class="join-item btn btn-xs cursor-default">Page {{ thingPage }}</button>
-              <button class="join-item btn btn-xs" :disabled="thingPage === thingTotalPages" @click="nextThingPage({ filter: thingFilter, expand: 'type', sort: 'name' })">»</button>
-            </div>
-          </div>
+          <ListPager
+            v-if="thingTotalItems > 0"
+            :page="thingPage"
+            :total-pages="thingTotalPages"
+            :shown="things.length"
+            :total="thingTotalItems"
+            noun="things"
+            :loading="thingLoading"
+            @prev="prevThingPage({ filter: thingFilter, expand: 'type', sort: 'name' })"
+            @next="nextThingPage({ filter: thingFilter, expand: 'type', sort: 'name' })"
+          />
         </BaseCard>
 
         <!-- Live State (digital twin) -->
