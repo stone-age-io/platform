@@ -282,11 +282,43 @@ onMounted(() => {
                 <textarea v-model="form.description" class="textarea textarea-bordered" rows="3" :disabled="loading"></textarea>
               </div>
 
-              <!-- Active Toggle -->
+              <!--
+                Active Toggle.
+
+                The helper text is not decoration. This toggle enforced nothing
+                at all until hooks/org_active_flag.go, and what it does now is
+                narrow and severe in equal measure: it withdraws the
+                organization's NATS account, which disconnects every device,
+                agent and browser in the tenant at once. Saying so is the
+                difference between a checkbox and a trap -- and stating the
+                limits stops the other reading, that clearing it locks the
+                tenant out of the console, which it does not.
+
+                Disabled on the operator and system organizations because the
+                hook refuses that flip outright (the operator account is the hub
+                every managed tenant imports through). Better to show the reason
+                here than to let the save come back with it.
+              -->
               <div class="form-control">
                 <label class="label cursor-pointer justify-start gap-4">
-                  <input v-model="form.active" type="checkbox" class="toggle toggle-success" :disabled="loading" />
+                  <input
+                    v-model="form.active"
+                    type="checkbox"
+                    class="toggle toggle-success"
+                    :disabled="loading || isReservedOrg"
+                  />
                   <span class="label-text">Active</span>
+                </label>
+                <label class="label py-0">
+                  <span v-if="isReservedOrg" class="label-text-alt">
+                    This organization backs the platform itself and cannot be deactivated.
+                  </span>
+                  <span v-else class="label-text-alt">
+                    Clearing this withdraws the organization's NATS account: every device,
+                    edge agent and browser session in the tenant disconnects immediately.
+                    Credentials stay valid and reconnect when it is set again. Console
+                    sign-in is unaffected.
+                  </span>
                 </label>
               </div>
 

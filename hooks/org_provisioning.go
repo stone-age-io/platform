@@ -137,7 +137,12 @@ func ensureOrgNatsAccount(app core.App, opts OrgProvisioningOptions, org *core.R
 	rec := core.NewRecord(col)
 	rec.Set("name", orgName)
 	rec.Set("organization", org.Id)
-	rec.Set("active", true)
+	// Inherited from the organization rather than hardcoded true, so the create
+	// path agrees with hooks/org_active_flag.go. That mirror only binds to
+	// update -- it has nothing to compare against on a create -- so an
+	// organization created with `active` already clear would otherwise be handed
+	// a live NATS account and stay that way until somebody saved it again.
+	rec.Set("active", org.GetBool("active"))
 	rec.Set("max_connections", opts.NatsMaxConnections)
 	rec.Set("max_subscriptions", opts.NatsMaxSubscriptions)
 	// max_data stays unlimited because it is the wrong shape for the thing the

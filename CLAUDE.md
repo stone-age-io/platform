@@ -526,6 +526,48 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
       the fix is `renew`, one host at a time, then redeploy that host's config.
     - `hooks/nebula_routes.go`, `ui/src/utils/nebula.ts`.
 
+15d. **Suspending an organization** - `organizations.active`, operator-only,
+    and it means exactly one thing: **the organization's NATS account is
+    withdrawn.** `hooks/org_active_flag.go` mirrors the flag onto
+    `nats_accounts.active`, which is pb-nats's own account-scope suspend switch —
+    the true→false edge schedules a DELETE of the account claim, so every
+    device, edge agent and browser in the tenant disconnects at once, and
+    `ReconcileAccounts` skips inactive accounts so it stays withdrawn across
+    restarts. The flag enforced **nothing** before this: schema field, form
+    toggle and two red/green badges, and not one line of Go, TypeScript or rule
+    text reading it back. Same shape as the `nats_users.active` checkbox that
+    was removed, and the same lesson — a flag nobody enforces is worse than no
+    flag, because somebody trusts it during an incident.
+    - **Reversible, which the device-scope flag is not.** This deletes the
+      ACCOUNT claim: no revocation cutoff, no `nats_users` row touched, nothing
+      re-minted, so every `creds_file` stays valid and simply has nothing to
+      connect to. Contrast `hooks/active_flag.go`, where a device's revocation
+      cutoff is permanent and coming back must issue a NEW credential. That
+      asymmetry is why a tenant-wide suspend is safe behind a checkbox and a
+      tenant-wide revoke would not be.
+    - **The scope is deliberate and narrow.** It does NOT touch Nebula (a
+      blocklist lands only on redeploy and undoing it rewrites every peer
+      config — wrong shape for something reversible), does NOT lock the console
+      (that means `organization.active = true` on eight read rules plus a hook
+      for the org switcher, since a rule cannot traverse
+      `@request.body.current_organization`), and does NOT kill Things' auth
+      tokens. A suspended tenant still signs in and reads what it owns. Say
+      both halves in any UI that surfaces this, or a reader misreads every
+      other screen.
+    - **Level-triggered, not edge-triggered** — see the `Record.Original()`
+      bullet under **Roles & Authorization** for why, and for the failure that
+      taught it. The refusal hook beside it IS edge-keyed, on purpose: a level
+      check there would refuse every save of an infrastructure org that is
+      already inactive, including the save that would fix it.
+    - **Both infrastructure orgs are exempt.** The refusal blocks the flip;
+      the mirror also skips them, which is not redundant — a database predating
+      this file can already hold an operator org with `active` clear, and
+      without the skip the first unrelated save after an upgrade would withdraw
+      the hub account every managed tenant imports through.
+    - The account inherits the org's flag at provisioning time rather than
+      hardcoding `true`, because the mirror binds to update only and has nothing
+      to compare against on a create.
+
 16. **Organization code — the ecosystem's namespace root** (ADR 0002 in
     `platform-docs`). The rule is **ids for storage, codes for addressing**.
     `organizations.code` is the one *globally* unique identifier in the ecosystem;
@@ -991,6 +1033,25 @@ Rules to follow when touching authorization:
   it, leaving it set to fire later on an unrelated update. They are now on
   `OnRecordUpdate`. If a trigger-setting route ever appears to do nothing, check
   which hook the library binds before debugging the route.
+- **`Record.Original()` is the state at the last database READ, not the state
+  before this write.** `Record.originalData` is refreshed in exactly one place —
+  `Record.PostScan` (`core/record_model.go`), which runs when the row is loaded —
+  and by nothing in the save path. So the two readings agree for a REST request,
+  where PocketBase loads the row before applying the patch, and diverge the
+  moment one in-memory record is saved twice: the second save compares against
+  the value from before the *first* one. That makes an edge-triggered hook
+  (`was != now`) safe only where the trigger is always a request.
+  `hooks/active_flag.go` keys on an edge for that reason and is fine;
+  `hooks/org_active_flag.go` deliberately does not, because a mirror that must
+  also hold for `app.Save()` cannot assume a fresh load — its edge build
+  mirrored a deactivation and then silently declined to undo it, which is worse
+  than the inert flag it was written to replace. Where an edge really is wanted
+  outside a request (pb-nats's `hasPriorState`, the guard above), the test has to
+  **reload the record before the update**, exactly as `TestRelationTenancy`
+  documents for its own subtest: a record built in memory carries an `Original()`
+  describing the blank pre-create state, so `false == false` and the hook never
+  fires. Both of those suites would otherwise pass against a hook that does
+  nothing.
 - **`nats_users.publish_permissions` is copied verbatim into the signed JWT**
   (pb-nats `internal/jwt/generator.go`). Write access to that collection is
   equivalent to granting NATS permissions, so it is owner/admin only.
@@ -1237,6 +1298,7 @@ you, so pushing an absolute one would make the login form an open redirect (the
 - `hooks/activity.go` - the tenant activity feed. The collection list IS the safety argument (see feature 7b); bound to the request hooks because they are the only layer carrying the actor, and best-effort because an observation must never cost the user their write
 - `hooks/relation_tenancy.go` - the one hook-based enforcement in the platform: no relation may point into another organization's records. Derived from the schema rather than listing the nineteen relations, bound to the MODEL hooks, and applied to superusers too. See the invariants-vs-permissions bullet under **Roles & Authorization**
 - `hooks/org_provisioning.go` - every organization's NATS account and Nebula CA. Create-if-missing and bound to update as well as create, so re-saving the organization RETRIES a failed provision; failures are returned rather than logged, and returned AFTER `e.Next()` so a NATS outage cannot cost the owner their membership row
+- `hooks/org_active_flag.go` - what `organizations.active` means: the tenant's NATS account is withdrawn, and nothing else. Level-triggered so a reported failure can be retried by re-saving (`Record.Original()` is the last READ, not the last write), and it refuses the flip on the operator and system orgs. The device-scope sibling is `hooks/active_flag.go`, which is edge-keyed and whose revocation is permanent — read both before changing either
 - `hooks/schema_fields.go` - the fields that exist only once `schema.json` has been imported, shared by `bootstrap` (fatal) and the `schema` readiness check (a Fail). One list, because PocketBase discards a write to a missing field in silence and two copies drift
 - `hooks/client_config_routes.go` - `GET /api/client-config`: deployment facts the SPA cannot be compiled with (browser-facing NATS WebSocket URLs). Authed (`users`) — there is no pre-login need, so no reason to publish the bus address
 - `internal/health/` - readiness engine: check registry, background prober, and the unauthenticated NATS reachability (`DialInfo`) + operator-trust (`CheckCreds`) probes

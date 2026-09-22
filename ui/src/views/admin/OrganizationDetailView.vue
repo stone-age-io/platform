@@ -55,7 +55,6 @@ async function handleDelete() {
     deleting.value = false
   }
 }
-const stats = ref({ members: 0, things: 0 })
 const loading = ref(true)
 
 // NATS Account state
@@ -90,13 +89,30 @@ async function loadData() {
       expand: 'owner',
     })
 
-    // Load Stats (Operator bypasses rules, so we must manually filter by org id)
-    const [m, t] = await Promise.all([
-      pb.collection('memberships').getList(1, 1, { filter: `organization = "${id}"` }),
-      pb.collection('things').getList(1, 1, { filter: `organization = "${id}"` }),
-    ])
-
-    stats.value = { members: m.totalItems, things: t.totalItems }
+    // NO MEMBER/THING COUNTS HERE, and the reason is worth keeping written down
+    // because the code that used to do it carried a comment asserting the
+    // opposite: "Operator bypasses rules, so we must manually filter by org id."
+    //
+    // An operator does not bypass anything. `is_operator` is a field on `users`,
+    // not superuser, and of the thirteen tenant collections only `audit_logs`
+    // carries an is_operator read branch -- `things` and `memberships` have
+    // none, deliberately (an operator reads org metadata, users and
+    // infrastructure, not tenant inventory). So the two counts were scoped by
+    // the reader's OWN current_organization, not by the organization on screen:
+    // Things read 0 for every org but the one you happen to be switched into,
+    // and Members read 0, or 1 where the operator held a membership themselves.
+    //
+    // The failure had no symptom. A list rule is applied as an extra WHERE, so
+    // both calls returned 200 with totalItems 0 -- the page stated "0 Things"
+    // about a tenant with hundreds of devices, in the same typeface it states
+    // everything else.
+    //
+    // Restoring these needs the number to come from somewhere the reader can
+    // actually see: either an is_operator read branch on both collections (an
+    // authorization change, with the authz suite bumped to match) or an
+    // operator-gated route returning named aggregates with the app's own
+    // privileges, the shape GET /api/me/leaf-config uses to hand over facts
+    // without granting the collection. Not a filter on the client.
 
     // Load NATS Account if operator
     if (isOperator.value) {
@@ -209,23 +225,47 @@ onMounted(() => loadData())
         </div>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <!-- Stats -->
-        <div class="stats shadow bg-base-100 w-full md:col-span-3">
-          <div class="stat">
-            <div class="stat-title">Members</div>
-            <div class="stat-value">{{ stats.members }}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-title">Things</div>
-            <div class="stat-value text-primary">{{ stats.things }}</div>
-          </div>
-        </div>
+      <!--
+        What the red badge above actually means, spelled out where someone
+        reading this page during an incident will see it.
 
+        The badge is old; the enforcement behind it is not (hooks/org_active_flag.go),
+        and for as long as the flag meant nothing the badge was a claim about a
+        tenant that no part of the platform was making good on. Now that it does
+        mean something, the two halves both need saying: what stopped, and what
+        did not. A reader who assumes "Inactive" locks the tenant out of the
+        console will misread every other screen from here on.
+      -->
+      <div v-if="!org.active" class="alert alert-warning">
+        <span>
+          <strong>This organization is deactivated.</strong>
+          Its NATS account is withdrawn, so every device, edge agent and browser
+          session in the tenant is disconnected. Credentials remain valid and
+          reconnect when it is reactivated. Console sign-in, inventory and the
+          Nebula overlay are unaffected.
+        </span>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         <!-- Info -->
         <div class="md:col-span-2">
           <BaseCard title="Details">
             <dl class="space-y-4">
+              <!--
+                Code comes first, and it is on this page at all because it is the
+                one identifier here that anything outside the database addresses:
+                the root of the organization namespace (ADR 0002), the token the
+                hub rewrites managed helpdesk subjects through, and a string that
+                ends up printed on labels. The id below it is storage.
+
+                It was also the one field the page did not show while the delete
+                confirm asked the reader to TYPE it -- a typed gate whose answer
+                was nowhere on screen.
+              -->
+              <div>
+                <dt class="text-sm font-medium opacity-70">Code</dt>
+                <dd class="font-mono text-sm">{{ org.code || '—' }}</dd>
+              </div>
               <div>
                 <dt class="text-sm font-medium opacity-70">ID</dt>
                 <dd class="font-mono text-sm">{{ org.id }}</dd>
@@ -374,9 +414,25 @@ onMounted(() => loadData())
         <!-- No NATS Account Message (Operators only) -->
         <div v-else-if="isOperator && !natsAccount" class="md:col-span-3">
           <BaseCard title="NATS Account Limits">
+            <!--
+              "It may still be provisioning" was not true and cost a reader the
+              only move available to them: provisioning runs synchronously in the
+              organization's after-create/after-update hook and RETURNS its error
+              rather than logging it (hooks/org_provisioning.go), so there is no
+              pending state to wait out. A missing account means the save that
+              should have made it failed, and somebody was told at the time.
+
+              Saying so also names the remedy, which is on this screen: the hook
+              is create-if-missing and bound to update as well as create, so
+              re-saving the organization retries it.
+            -->
             <div class="text-center py-4 opacity-70">
               <p>No NATS account found for this organization.</p>
-              <p class="text-sm">It may still be provisioning or was not created.</p>
+              <p class="text-sm">
+                Provisioning runs when the organization is saved, so this means it
+                failed rather than that it is still in progress. Saving the
+                organization again retries it.
+              </p>
             </div>
           </BaseCard>
         </div>

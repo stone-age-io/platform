@@ -380,6 +380,19 @@ func main() {
 		NebulaDefaultCAValidityYears:  viper.GetInt("nebula.default_ca_validity_years"),
 	})
 
+	// Platform-owned hooks: `active` on an organization withdraws its NATS
+	// account, which is the only thing it has ever been allowed to mean.
+	//
+	// POSITION IS DELIBERATE: after RegisterOrgProvisioning, because both bind to
+	// the organization's AfterUpdateSuccess and handlers run in registration
+	// order. Provisioning is create-if-missing and does its work ahead of
+	// e.Next(), so an organization whose account had failed to provision has one
+	// by the time the mirror looks for it.
+	hooks.RegisterOrgActiveFlag(app, hooks.OrgActiveFlagOptions{
+		OrgCollection:         orgCollection,
+		NatsAccountCollection: natsOptions.AccountCollectionName,
+	})
+
 	// Platform-owned hooks: managed orgs export their service-event subtree
 	// into the operator hub account with an org-prefixed local subject.
 	managedExportSubject := viper.GetString("nats.managed_export_subject")

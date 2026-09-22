@@ -70,25 +70,6 @@ async function loadCA() {
   }
 }
 
-async function provisionCA() {
-  if (!authStore.currentOrgId || !authStore.currentOrg) return
-  loading.value = true
-  try {
-    await pb.collection('nebula_ca').create({
-      name: `${authStore.currentOrg.name} CA`,
-      organization: authStore.currentOrgId,
-      validity_years: 10,
-      curve: 'P256'
-    })
-    toast.success('Nebula CA provisioned')
-    await loadCA()
-  } catch (err: any) {
-    toast.error(err.message)
-  } finally {
-    loading.value = false
-  }
-}
-
 async function copyToClipboard(text: string, label: string) {
   try {
     await navigator.clipboard.writeText(text)
@@ -134,16 +115,33 @@ onUnmounted(() => {
       <span class="loading loading-spinner loading-lg"></span>
     </div>
 
-    <!-- Empty State -->
+    <!--
+      Empty State.
+
+      There is deliberately no "Provision CA" button. The one that used to sit
+      here POSTed to nebula_ca, whose createRule is nil -- superuser only -- while
+      this route is gated on manageInfrastructure, so it was refused for every
+      caller who could reach the screen and could never have worked.
+
+      The honest content is who can act. A CA is created with the organization
+      (hooks/org_provisioning.go), so a missing one means provisioning FAILED
+      rather than that a step was skipped; and because that hook is
+      create-if-missing and bound to update as well as create, the retry is
+      re-saving the organization -- an operator action, since
+      organizations.updateRule is operator-only. A tenant owner cannot fix this
+      from here whatever button we draw.
+    -->
     <div v-else-if="!ca" class="text-center py-12">
       <span class="text-6xl">🔐</span>
       <h3 class="text-xl font-bold mt-4">No Nebula CA Found</h3>
       <p class="text-base-content/70 mt-2 max-w-md mx-auto">
-        Your organization does not have a Nebula Certificate Authority provisioned yet.
+        A Certificate Authority is created automatically with the organization, so a
+        missing one means provisioning failed rather than that a step is outstanding.
       </p>
-      <button @click="provisionCA" class="btn btn-primary mt-6">
-        Provision CA
-      </button>
+      <p class="text-base-content/70 mt-2 max-w-md mx-auto">
+        Ask your platform operator to re-save the organization record — provisioning
+        retries on every save and creates whatever is missing.
+      </p>
     </div>
 
     <template v-else>

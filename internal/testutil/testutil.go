@@ -161,6 +161,15 @@ func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
 		NatsMaxJetStreamMemoryStorage: 64 * 1024 * 1024,
 		NebulaDefaultCAValidityYears:  5,
 	})
+	// After provisioning, exactly as main.go binds it: both handlers sit on the
+	// organization's AfterUpdateSuccess and run in registration order, and the
+	// mirror is written assuming the account already exists by the time it looks.
+	// Binding it earlier here would make the harness disagree with the server on
+	// the one ordering this hook depends on.
+	hooks.RegisterOrgActiveFlag(app, hooks.OrgActiveFlagOptions{
+		OrgCollection:         orgCollection,
+		NatsAccountCollection: natsOpts.AccountCollectionName,
+	})
 	// Registered here rather than in the test that needs it, and it must still be
 	// bound before app.Bootstrap() below.
 	//
