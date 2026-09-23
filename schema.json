@@ -530,7 +530,8 @@
     ],
     "indexes": [
       "CREATE UNIQUE INDEX `idx_tokenKey_pbc_4097575383` ON `nats_users` (`tokenKey`)",
-      "CREATE UNIQUE INDEX `idx_email_pbc_4097575383` ON `nats_users` (`email`) WHERE `email` != ''"
+      "CREATE UNIQUE INDEX `idx_email_pbc_4097575383` ON `nats_users` (`email`) WHERE `email` != ''",
+      "CREATE INDEX `idx_nats_users_role` ON `nats_users` (`role_id`)"
     ],
     "system": false,
     "authRule": "",
@@ -1228,7 +1229,9 @@
     "indexes": [
       "CREATE UNIQUE INDEX `idx_tokenKey_pbc_704572500` ON `things` (`tokenKey`)",
       "CREATE UNIQUE INDEX `idx_email_pbc_704572500` ON `things` (`email`) WHERE `email` != ''",
-      "CREATE UNIQUE INDEX `idx_things_org_code` ON `things` (`organization`, `code`) WHERE `code` != ''"
+      "CREATE UNIQUE INDEX `idx_things_org_code` ON `things` (`organization`, `code`) WHERE `code` != ''",
+      "CREATE INDEX `idx_things_org` ON `things` (`organization`)",
+      "CREATE INDEX `idx_things_location` ON `things` (`location`)"
     ],
     "system": false,
     "authRule": "// A deactivated Thing cannot obtain a new auth token.\n//\n// This rule is evaluated at the AUTH ENDPOINT ONLY (apis/record_helpers.go,\n// RecordAuthResponse) -- not on every request carrying an already-issued token.\n// authToken.duration below is 7 days, so on its own this rule would leave a\n// deactivated device connected for up to a week. hooks/active_flag.go closes\n// that window by refreshing tokenKey when active goes true -> false, which\n// invalidates every outstanding token immediately, and by revoking the linked\n// NATS identity -- which is the Thing's real capability, and is not touched by\n// anything PocketBase does.\nactive = true",
@@ -2178,7 +2181,8 @@
       }
     ],
     "indexes": [
-      "CREATE UNIQUE INDEX `idx_locations_org_code` ON `locations` (`organization`, `code`) WHERE `code` != ''"
+      "CREATE UNIQUE INDEX `idx_locations_org_code` ON `locations` (`organization`, `code`) WHERE `code` != ''",
+      "CREATE INDEX `idx_locations_org` ON `locations` (`organization`)"
     ],
     "system": false
   },
@@ -2297,7 +2301,6 @@
       }
     ],
     "indexes": [
-      "CREATE INDEX idx_memberships_user ON memberships (user)",
       "CREATE INDEX idx_memberships_org ON memberships (organization)",
       "CREATE UNIQUE INDEX idx_memberships_user_org ON memberships (user, organization)"
     ],
