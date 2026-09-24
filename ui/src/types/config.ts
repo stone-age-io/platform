@@ -1,5 +1,5 @@
 // ui/src/types/config.ts
-import type { ThresholdRule, MapMarker, StatusMapping, TableColumn, DynamicMarkerPopupField, ScannerRule } from './dashboard'
+import type { ThresholdRule, MapMarker, StatusMapping, TableColumn, DynamicMarkerPopupField, ScannerRule, ChartType, ChartSeries } from './dashboard'
 
 export interface WidgetFormState {
   // Common
@@ -28,6 +28,8 @@ export interface WidgetFormState {
   thresholds: ThresholdRule[]
 
   // Chart Widget
+  chartType: ChartType
+  chartSeries: ChartSeries[]
   chartWindow: string
 
   // Switch Widget
@@ -155,6 +157,8 @@ export function createEmptyFormState(): WidgetFormState {
     buttonActionType: 'publish',
     buttonTimeout: 1000,
     thresholds: [],
+    chartType: 'line',
+    chartSeries: [],
     chartWindow: '',
     switchMode: 'kv',
     switchDefaultState: 'off',

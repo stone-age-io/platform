@@ -89,7 +89,7 @@
       </div>
     </div>
     
-    <div class="form-group">
+    <div v-if="!hideJsonPath" class="form-group">
       <label>JSONPath (optional)</label>
       <input 
         v-model="form.jsonPath" 
@@ -153,6 +153,8 @@ const props = defineProps<{
   errors: Record<string, string>
   allowMultiple?: boolean
   hideTimeWindow?: boolean
+  // A chart picks a path per series instead.
+  hideJsonPath?: boolean
   // Only the modal's shared data source saves it; status and markdown embed
   // this panel with their own save paths, which do not.
   showTimestampPath?: boolean

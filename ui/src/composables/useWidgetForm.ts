@@ -122,7 +122,7 @@ function hydrateKvFields(widget: WidgetConfig, state: WidgetFormState): void {
 const STANDARD_DATA_SOURCE_TYPES: WidgetType[] = ['text', 'chart', 'stat', 'gauge', 'console', 'streamtable']
 
 /** Types that allow multiple subjects via the tag-input UI */
-const MULTI_SUBJECT_TYPES: WidgetType[] = ['console', 'streamtable']
+const MULTI_SUBJECT_TYPES: WidgetType[] = ['console', 'streamtable', 'chart']
 
 /** Validate subscription-related fields shared across visualization widgets */
 function validateSubscriptionFields(
@@ -205,9 +205,42 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
   // --- chart ---
   chart: {
     hydrate(widget, state) {
-      state.chartWindow = widget.chartConfig?.window || ''
+      const cfg = widget.chartConfig
+      // pie and gauge were removed; a chart imported with either draws as line.
+      state.chartType = cfg?.chartType === 'bar' ? 'bar' : 'line'
+      state.chartWindow = cfg?.window || ''
+      // A chart saved before multi-series read one value through the widget's
+      // own jsonPath. Carry that path into a one-entry list here, so saving the
+      // form IS the migration and there is no stored data to rewrite.
+      state.chartSeries = cfg?.series?.length
+        ? cfg.series.map(s => ({ ...s }))
+        : [{ label: '', path: widget.jsonPath || '$' }]
     },
-    validate(form, errors) {
+    validate(form, errors, v) {
+      if (form.chartSeries.length === 0) {
+        errors.chartSeries = 'Add at least one series'
+      }
+      for (const [i, s] of form.chartSeries.entries()) {
+        const n = `Series ${i + 1}`
+        const p = v.validateJsonPath(s.path.trim())
+        if (!s.path.trim()) {
+          errors.chartSeries = `${n}: a JSONPath is required`
+        } else if (!p.valid) {
+          errors.chartSeries = `${n}: ${p.error}`
+        } else if (s.subject?.trim()) {
+          const sub = s.subject.trim()
+          const r = v.validateSubject(sub)
+          if (!r.valid) {
+            errors.chartSeries = `${n}: ${r.error}`
+          } else if (/(^|\.)(\*|>)(\.|$)/.test(sub)) {
+            // A series matches a message's subject EXACTLY; a wildcard here
+            // would match nothing and the row would just stay empty.
+            errors.chartSeries = `${n}: the series subject must be exact (put wildcards in the data source)`
+          }
+        }
+        if (errors.chartSeries) break
+      }
+
       const window = form.chartWindow.trim()
       if (window && parseDurationMs(window) === null) {
         errors.chartWindow = 'Use a duration like 30s, 10m, 1h or 1h30m'
@@ -222,9 +255,17 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
       return {
         chartConfig: {
           ...widget.chartConfig,
-          chartType: widget.chartConfig?.chartType || 'line',
+          chartType: form.chartType,
+          series: form.chartSeries.map(s => ({
+            label: s.label.trim(),
+            path: s.path.trim(),
+            subject: s.subject?.trim() || undefined,
+          })),
           window: form.chartWindow.trim() || undefined,
         },
+        // Each series reads the whole payload; a widget-level path would hand
+        // them an already-extracted value instead.
+        jsonPath: undefined,
       }
     },
   },

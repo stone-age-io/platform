@@ -35,7 +35,7 @@ export const WIDGET_TYPES = [
 export type WidgetType = (typeof WIDGET_TYPES)[number]
 
 export type DataSourceType = 'subscription' | 'consumer' | 'kv'
-export type ChartType = 'line' | 'bar' | 'pie' | 'gauge'
+export type ChartType = 'line' | 'bar'
 
 // --- Dashboard Variables ---
 export type VariableType = 'text' | 'select'
@@ -85,8 +85,25 @@ export interface BufferConfig {
 }
 
 // --- Widget-Specific Configurations ---
+// One line on a chart. Every series reads the FULL payload (BufferedMessage.raw),
+// so N series can come out of one message or out of N subjects:
+//   - skip the message if `subject` is set and is not exactly its subject;
+//   - skip it if `path` finds nothing;
+//   - otherwise it is a point.
+// `subject` is what separates devices that all publish the same shape
+// ({"running": true}), where the path alone cannot tell them apart.
+export interface ChartSeries {
+  label: string
+  path: string
+  subject?: string   // exact match after variable substitution; blank = every message
+}
+
 export interface ChartWidgetConfig {
   chartType: ChartType
+  // Absent on charts saved before multi-series: they draw one series from the
+  // widget-level jsonPath (BufferedMessage.value), and the config form turns
+  // that into a one-entry list the next time the chart is saved.
+  series?: ChartSeries[]
   // Duration string ("30m"). Empty = keep the last N messages (the buffer size).
   // When set it is ALSO the JetStream replay window, so the two cannot disagree.
   window?: string
@@ -508,8 +525,8 @@ export function createDefaultWidget(type: WidgetType, position: { x: number; y: 
   switch (type) {
     case 'chart':
       base.title = 'Chart Widget'
-      base.jsonPath = '$.value'
-      base.chartConfig = { chartType: 'line' }
+      // No widget-level jsonPath: each series reads the whole payload.
+      base.chartConfig = { chartType: 'line', series: [{ label: 'Value', path: '$.value' }] }
       break
     case 'text':
       base.title = 'Text Widget'

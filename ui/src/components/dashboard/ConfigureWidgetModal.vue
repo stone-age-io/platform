@@ -18,6 +18,7 @@
             :errors="errors"
             :allow-multiple="isMultiSubject"
             :hide-time-window="widgetType === 'chart'"
+            :hide-json-path="widgetType === 'chart'"
             show-timestamp-path
           />
 

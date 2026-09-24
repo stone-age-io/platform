@@ -83,6 +83,15 @@ describe('createDefaultWidget', () => {
     },
   )
 
+  // Each series reads the whole payload. A widget-level jsonPath on a new chart
+  // would hand every series an already-extracted value, and `$.value` on that
+  // finds nothing -- a chart created empty.
+  it('creates a chart with one series and no widget-level jsonPath', () => {
+    const w = createDefaultWidget('chart', POSITION)
+    expect(w.jsonPath).toBeUndefined()
+    expect(w.chartConfig?.series).toEqual([{ label: 'Value', path: '$.value' }])
+  })
+
   // Buffered types must carry a bound. An unbounded buffer on a kiosk dashboard
   // is a slow memory leak.
   it.each(['console', 'streamtable'] as const)('%s is created with a bounded buffer', (type) => {
