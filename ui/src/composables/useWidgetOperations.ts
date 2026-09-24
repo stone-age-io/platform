@@ -38,7 +38,13 @@ export function useWidgetOperations() {
     const maxAge = widget.type === 'chart'
       ? parseDurationMs(widget.chartConfig?.window) ?? undefined
       : undefined
-    dataStore.initializeBuffer(widgetId, widget.buffer.maxCount, maxAge)
+    // The RESOLVED subjects name what fills the buffer. Data survives a round
+    // trip to another page, but not a variable change that points the widget
+    // at a different device -- that data would be drawn as if it were B's.
+    const source = getWidgetSubjects(widget)
+      .map(s => resolveTemplate(s, dashboardStore.currentVariableValues))
+      .join('\n')
+    dataStore.initializeBuffer(widgetId, widget.buffer.maxCount, maxAge, source)
     
     if (widget.dataSource.type === 'subscription') {
       subscribeToDataSource(widgetId, widget)

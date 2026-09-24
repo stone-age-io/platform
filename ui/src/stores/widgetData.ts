@@ -6,14 +6,21 @@ export interface BufferedMessage {
   value: any
   raw?: any
   subject?: string
+  // JetStream stream sequence. With the subject it identifies one stored
+  // message exactly (a subject belongs to one stream per account), which is
+  // what lets a replay onto a kept buffer skip what the buffer already holds.
+  seq?: number
 }
 
 // CHANGED: messages is now a Ref, allowing granular updates
 interface WidgetDataBuffer {
   widgetId: string
-  messages:  import('vue').Ref<BufferedMessage[]> 
+  messages:  import('vue').Ref<BufferedMessage[]>
   maxCount: number
   maxAge?: number
+  // What filled this buffer (the widget's resolved subjects). Data is kept
+  // warm across navigation, but only while it still describes the same thing.
+  source?: string
 }
 
 const MEMORY_LIMITS = {
@@ -53,17 +60,29 @@ export const useWidgetDataStore = defineStore('widgetData', () => {
   })
 
   // Actions
-  function initializeBuffer(widgetId: string, maxCount: number = 100, maxAge?: number) {
+  /**
+   * Create the buffer, or keep an existing one warm. `source` names what
+   * fills it; when an existing buffer was filled from something else -- a
+   * dashboard variable moved `site.{{device}}.temp` from A to B -- its data
+   * describes a different device and is dropped rather than drawn in front of
+   * B's.
+   */
+  function initializeBuffer(widgetId: string, maxCount: number = 100, maxAge?: number, source?: string) {
     const safeMaxCount = Math.min(maxCount, MEMORY_LIMITS.MAX_SINGLE_BUFFER)
-    
-    if (!buffers.value.has(widgetId)) {
+
+    const existing = buffers.value.get(widgetId)
+    if (!existing) {
       buffers.value.set(widgetId, {
         widgetId,
         messages: shallowRef([]), // CHANGED: Individual reactive ref
         maxCount: safeMaxCount,
         maxAge,
+        source,
       })
       triggerRef(buffers) // Only trigger map structure changes
+    } else if (source !== undefined && existing.source !== source) {
+      existing.messages.value = []
+      existing.source = source
     }
   }
   
@@ -95,6 +114,23 @@ export const useWidgetDataStore = defineStore('widgetData', () => {
     }
   }
   
+  function seenKey(m: BufferedMessage): string {
+    return `${m.seq}\u0000${m.subject ?? ''}`
+  }
+
+  function dropSeen(current: BufferedMessage[], incoming: BufferedMessage[]): BufferedMessage[] {
+    if (!incoming.some(m => m.seq !== undefined)) return incoming
+    const seen = new Set<string>()
+    for (const m of current) if (m.seq !== undefined) seen.add(seenKey(m))
+    return incoming.filter(m => {
+      if (m.seq === undefined) return true
+      const k = seenKey(m)
+      if (seen.has(k)) return false
+      seen.add(k)
+      return true
+    })
+  }
+
   function addMessage(widgetId: string, value: any, raw?: any, subject?: string) {
     batchAddMessages([{ widgetId, value, raw, subject, timestamp: Date.now() }])
   }
@@ -104,7 +140,8 @@ export const useWidgetDataStore = defineStore('widgetData', () => {
     value: any
     raw?: any
     subject?: string
-    timestamp: number 
+    timestamp: number
+    seq?: number
   }>) {
     const currentVal = Number(cumulativeCount.value) || 0
     cumulativeCount.value = currentVal + items.length
@@ -122,18 +159,26 @@ export const useWidgetDataStore = defineStore('widgetData', () => {
         timestamp: item.timestamp,
         value: item.value,
         raw: item.raw,
-        subject: item.subject
+        subject: item.subject,
+        seq: item.seq,
       })
     }
 
     // Apply updates
-    for (const [widgetId, newMessages] of updates) {
+    for (const [widgetId, incoming] of updates) {
       let buffer = buffers.value.get(widgetId)
-      
+
       if (!buffer) {
         initializeBuffer(widgetId)
         buffer = buffers.value.get(widgetId)!
       }
+
+      // Returning to a dashboard keeps its buffers warm, and the JetStream
+      // consumer then replays history the buffer already holds. Skip stored
+      // messages already present, so a replay fills the gap instead of
+      // doubling everything before it.
+      const newMessages = dropSeen(buffer.messages.value, incoming)
+      if (newMessages.length === 0) continue
 
       const max = buffer.maxCount
       // Work with a copy to avoid intermediate reactivity triggers

@@ -48,6 +48,7 @@ interface QueuedMessage {
   raw: any
   subject?: string
   timestamp: number
+  seq?: number
 }
 
 interface SubscriptionStats {
@@ -89,7 +90,7 @@ export function useSubscriptionManager() {
     requestAnimationFrame(flushQueue)
   }
   
-  function queueMessage(widgetId: string, value: any, raw: any, subject?: string, timestamp: number = Date.now()) {
+  function queueMessage(widgetId: string, value: any, raw: any, subject?: string, timestamp: number = Date.now(), seq?: number) {
     stats.messagesReceived++
     if (messageQueue.length >= MAX_QUEUE_SIZE) {
       const dropCount = 1000
@@ -97,7 +98,7 @@ export function useSubscriptionManager() {
       stats.messagesDropped += dropCount
       stats.lastDropTime = Date.now()
     }
-    messageQueue.push({ widgetId, value, raw, subject, timestamp })
+    messageQueue.push({ widgetId, value, raw, subject, timestamp, seq })
     if (!flushPending) {
       flushPending = true
       requestAnimationFrame(flushQueue)
@@ -315,14 +316,14 @@ export function useSubscriptionManager() {
         // msg.time is when JetStream STORED the message, not when it was
         // delivered, so a replay keeps its spacing instead of arriving all
         // at once "now".
-        dispatchMessage(subRef, msg.data, msg.subject, msg.time.getTime())
+        dispatchMessage(subRef, msg.data, msg.subject, msg.time.getTime(), msg.seq)
       }
     } catch (err) {
       if (subRef.isActive) subRef.isActive = false
     }
   }
 
-  function dispatchMessage(subRef: SubscriptionRef, rawData: Uint8Array, subject: string, storedAt?: number) {
+  function dispatchMessage(subRef: SubscriptionRef, rawData: Uint8Array, subject: string, storedAt?: number, seq?: number) {
     let data: any
     try {
       const text = decodeBytes(rawData)
@@ -337,7 +338,7 @@ export function useSubscriptionManager() {
           value = extractJsonPath(data, listener.jsonPath)
         }
         const ts = messageTimestamp(data, listener.timestampPath, storedAt, receivedAt)
-        queueMessage(listener.widgetId, value, data, subject, ts)
+        queueMessage(listener.widgetId, value, data, subject, ts, seq)
       } catch { /* ignore */ }
     }
   }

@@ -55,3 +55,57 @@ describe('widgetData time window', () => {
     expect(store.getBuffer('w').map(m => m.value)).toEqual([1, 2])
   })
 })
+
+// Buffers are kept warm across navigation and variable changes
+// (unsubscribeAllWidgets(true)). Two ways that went wrong: a variable change
+// kept device A's data and appended device B's after it, and returning to a
+// dashboard let the JetStream replay re-add everything the buffer still held.
+describe('widgetData kept buffers', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  const js = (seq: number, subject = 'site.A.temp') =>
+    ({ widgetId: 'w', value: seq, subject, seq, timestamp: 1000 + seq })
+
+  it('keeps data when the widget resubscribes to the same subjects', () => {
+    const store = useWidgetDataStore()
+    store.initializeBuffer('w', 100, undefined, 'site.A.temp')
+    store.batchAddMessages([js(1), js(2)])
+    store.initializeBuffer('w', 100, undefined, 'site.A.temp')
+    expect(store.getBuffer('w')).toHaveLength(2)
+  })
+
+  it('drops data that came from different subjects', () => {
+    const store = useWidgetDataStore()
+    store.initializeBuffer('w', 100, undefined, 'site.A.temp')
+    store.batchAddMessages([js(1), js(2)])
+    store.initializeBuffer('w', 100, undefined, 'site.B.temp')
+    expect(store.getBuffer('w')).toEqual([])
+  })
+
+  it('skips a replayed message the buffer already holds, and keeps the new ones', () => {
+    const store = useWidgetDataStore()
+    store.initializeBuffer('w', 100)
+    store.batchAddMessages([js(1), js(2), js(3)])
+    // consumer recreated on return: replays 2..5
+    store.batchAddMessages([js(2), js(3), js(4), js(5)])
+    expect(store.getBuffer('w').map(m => m.seq)).toEqual([1, 2, 3, 4, 5])
+  })
+
+  // A sequence number is per stream, so the same number on another subject is
+  // a different message.
+  it('treats the same seq on another subject as a different message', () => {
+    const store = useWidgetDataStore()
+    store.initializeBuffer('w', 100)
+    store.batchAddMessages([js(7, 'a'), js(7, 'b')])
+    expect(store.getBuffer('w')).toHaveLength(2)
+  })
+
+  it('never de-duplicates core messages, which carry no seq', () => {
+    const store = useWidgetDataStore()
+    store.initializeBuffer('w', 100)
+    const core = { widgetId: 'w', value: 1, subject: 's', timestamp: 5 }
+    store.batchAddMessages([core, core])
+    store.batchAddMessages([core])
+    expect(store.getBuffer('w')).toHaveLength(3)
+  })
+})
