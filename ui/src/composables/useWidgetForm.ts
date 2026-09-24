@@ -297,8 +297,8 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
   // --- gauge ---
   gauge: {
     hydrate(widget, state) {
-      state.gaugeMin = widget.gaugeConfig?.min || 0
-      state.gaugeMax = widget.gaugeConfig?.max || 100
+      state.gaugeMin = widget.gaugeConfig?.min ?? 0
+      state.gaugeMax = widget.gaugeConfig?.max ?? 100
       state.gaugeUnit = widget.gaugeConfig?.unit || ''
       state.gaugeZones = widget.gaugeConfig?.zones ? [...widget.gaugeConfig.zones] : []
     },
@@ -396,8 +396,10 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
       state.switchMode = widget.switchConfig?.mode || 'kv'
       state.switchDefaultState = widget.switchConfig?.defaultState || 'off'
       state.switchStateSubject = widget.switchConfig?.stateSubject || ''
-      state.switchOnPayload = JSON.stringify(widget.switchConfig?.onPayload || { state: 'on' })
-      state.switchOffPayload = JSON.stringify(widget.switchConfig?.offPayload || { state: 'off' })
+      // `??`, not `||`: false, 0, "" and null are all payloads a device can
+      // expect, and `||` replaced them on every open-and-save.
+      state.switchOnPayload = JSON.stringify(widget.switchConfig?.onPayload ?? { state: 'on' })
+      state.switchOffPayload = JSON.stringify(widget.switchConfig?.offPayload ?? { state: 'off' })
       state.switchLabelOn = widget.switchConfig?.labels?.on || 'ON'
       state.switchLabelOff = widget.switchConfig?.labels?.off || 'OFF'
       state.switchConfirm = widget.switchConfig?.confirmOnChange || false
@@ -411,6 +413,14 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
       } else {
         const r = v.validateSubject(form.subject)
         if (!r.valid) errors.subject = r.error!
+      }
+      // buildUpdates JSON.parses both payloads, so anything that does not parse
+      // made Save throw and do nothing, with no message. Deliberately stricter
+      // than v.validateJson, which waves through empty and `{{`-templated text.
+      for (const [field, text] of [['switchOnPayload', form.switchOnPayload], ['switchOffPayload', form.switchOffPayload]] as const) {
+        try { JSON.parse(text) } catch {
+          errors[field] = 'Must be valid JSON, e.g. {"state": "on"}, "on", true or 1'
+        }
       }
     },
     buildUpdates(form) {
@@ -443,10 +453,10 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
       state.sliderMode = widget.sliderConfig?.mode || 'core'
       state.sliderStateSubject = widget.sliderConfig?.stateSubject || ''
       state.sliderValueTemplate = widget.sliderConfig?.valueTemplate || '{{value}}'
-      state.sliderMin = widget.sliderConfig?.min || 0
-      state.sliderMax = widget.sliderConfig?.max || 100
+      state.sliderMin = widget.sliderConfig?.min ?? 0
+      state.sliderMax = widget.sliderConfig?.max ?? 100
       state.sliderStep = widget.sliderConfig?.step || 1
-      state.sliderDefault = widget.sliderConfig?.defaultValue || 50
+      state.sliderDefault = widget.sliderConfig?.defaultValue ?? 50
       state.sliderUnit = widget.sliderConfig?.unit || ''
       state.sliderConfirm = widget.sliderConfig?.confirmOnChange || false
     },

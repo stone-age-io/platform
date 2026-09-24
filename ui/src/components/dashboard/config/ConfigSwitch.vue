@@ -70,22 +70,26 @@
 
     <div class="form-group">
       <label>ON Payload</label>
-      <textarea 
-        v-model="form.switchOnPayload" 
+      <textarea
+        v-model="form.switchOnPayload"
         class="form-textarea"
+        :class="{ 'has-error': errors.switchOnPayload }"
         rows="3"
         placeholder='{"state": "on"}'
       />
+      <div v-if="errors.switchOnPayload" class="error-text">{{ errors.switchOnPayload }}</div>
     </div>
 
     <div class="form-group">
       <label>OFF Payload</label>
-      <textarea 
-        v-model="form.switchOffPayload" 
+      <textarea
+        v-model="form.switchOffPayload"
         class="form-textarea"
+        :class="{ 'has-error': errors.switchOffPayload }"
         rows="3"
         placeholder='{"state": "off"}'
       />
+      <div v-if="errors.switchOffPayload" class="error-text">{{ errors.switchOffPayload }}</div>
     </div>
 
     <div class="form-group">
