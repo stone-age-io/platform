@@ -165,6 +165,12 @@ function validateSubscriptionFields(
     if (!r.valid) errors.jsonPath = r.error!
   }
 
+  // Timestamp path (optional; only the shared data source panel shows it)
+  if (form.timestampPath) {
+    const r = v.validateJsonPath(form.timestampPath)
+    if (!r.valid) errors.timestampPath = r.error!
+  }
+
   // Buffer size
   const r = v.validateBufferSize(form.bufferSize)
   if (!r.valid) errors.bufferSize = r.error!
@@ -842,6 +848,7 @@ export function useWidgetForm(options: UseWidgetFormOptions) {
     // Common fields
     state.title = widget.title
     state.jsonPath = widget.jsonPath || ''
+    state.timestampPath = widget.timestampPath || ''
     state.bufferSize = widget.buffer.maxCount
     state.useJetStream = widget.dataSource.useJetStream || false
     state.deliverPolicy = widget.dataSource.deliverPolicy || 'last'
@@ -917,6 +924,7 @@ export function useWidgetForm(options: UseWidgetFormOptions) {
         timeWindow: form.value.jetstreamTimeWindow,
       }
       updates.jsonPath = form.value.jsonPath.trim() || undefined
+      updates.timestampPath = form.value.timestampPath.trim() || undefined
       updates.buffer = { maxCount: form.value.bufferSize }
     }
 

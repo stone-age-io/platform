@@ -100,7 +100,7 @@
           <div class="detail-body">
             <div class="detail-meta">
               <span class="meta-item">Subject: <code>{{ selectedRow.__raw__.subject }}</code></span>
-              <span class="meta-item">Received: {{ new Date(selectedRow.__raw__.timestamp).toLocaleString() }}</span>
+              <span class="meta-item">Time: {{ new Date(selectedRow.__raw__.timestamp).toLocaleString() }}</span>
             </div>
             <JsonViewer :data="selectedRow.__raw__.value" />
           </div>

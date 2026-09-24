@@ -18,6 +18,7 @@
             :errors="errors"
             :allow-multiple="isMultiSubject"
             :hide-time-window="widgetType === 'chart'"
+            show-timestamp-path
           />
 
           <!-- Widget Specific Config (Dynamic) -->

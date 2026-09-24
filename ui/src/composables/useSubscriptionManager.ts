@@ -2,7 +2,6 @@
 import { useNatsStore } from '@/stores/nats'
 import { useWidgetDataStore } from '@/stores/widgetData'
 import { useToast } from '@/composables/useToast'
-import { JSONPath } from 'jsonpath-plus'
 import type { Subscription } from '@nats-io/nats-core'
 import { 
   jetstream, 
@@ -11,6 +10,8 @@ import {
 } from '@nats-io/jetstream'
 import { decodeBytes } from '@/utils/encoding'
 import { parseDurationMs } from '@/utils/duration'
+import { extractJsonPath } from '@/utils/jsonPath'
+import { messageTimestamp } from '@/utils/timestamp'
 import type { DataSourceConfig } from '@/types/dashboard'
 
 /**
@@ -25,6 +26,7 @@ import type { DataSourceConfig } from '@/types/dashboard'
 interface WidgetListener {
   widgetId: string
   jsonPath?: string
+  timestampPath?: string
 }
 
 interface SubscriptionRef {
@@ -87,7 +89,7 @@ export function useSubscriptionManager() {
     requestAnimationFrame(flushQueue)
   }
   
-  function queueMessage(widgetId: string, value: any, raw: any, subject?: string) {
+  function queueMessage(widgetId: string, value: any, raw: any, subject?: string, timestamp: number = Date.now()) {
     stats.messagesReceived++
     if (messageQueue.length >= MAX_QUEUE_SIZE) {
       const dropCount = 1000
@@ -95,7 +97,7 @@ export function useSubscriptionManager() {
       stats.messagesDropped += dropCount
       stats.lastDropTime = Date.now()
     }
-    messageQueue.push({ widgetId, value, raw, subject, timestamp: Date.now() })
+    messageQueue.push({ widgetId, value, raw, subject, timestamp })
     if (!flushPending) {
       flushPending = true
       requestAnimationFrame(flushQueue)
@@ -162,7 +164,7 @@ export function useSubscriptionManager() {
   }
 
   // --- Lifecycle ---
-  async function subscribe(widgetId: string, config: DataSourceConfig, jsonPath?: string) {
+  async function subscribe(widgetId: string, config: DataSourceConfig, jsonPath?: string, timestampPath?: string) {
     if (!natsStore.nc) return
     const subject = config.subject
     if (!subject) return
@@ -187,7 +189,7 @@ export function useSubscriptionManager() {
           cleanupSubscription(subRef)
           subscriptions.delete(key)
         } else {
-          subRef.listeners.set(widgetId, { widgetId, jsonPath })
+          subRef.listeners.set(widgetId, { widgetId, jsonPath, timestampPath })
           return
         }
       }
@@ -195,7 +197,7 @@ export function useSubscriptionManager() {
     
     const newSubRef: SubscriptionRef = {
       key, subject,
-      listeners: new Map([[widgetId, { widgetId, jsonPath }]]),
+      listeners: new Map([[widgetId, { widgetId, jsonPath, timestampPath }]]),
       isActive: true,
       isJetStream: !!config.useJetStream,
       config: { ...config },
@@ -310,27 +312,32 @@ export function useSubscriptionManager() {
     try {
       for await (const msg of subRef.iterator) {
         if (!subRef.isActive) break
-        dispatchMessage(subRef, msg.data, msg.subject)
+        // msg.time is when JetStream STORED the message, not when it was
+        // delivered, so a replay keeps its spacing instead of arriving all
+        // at once "now".
+        dispatchMessage(subRef, msg.data, msg.subject, msg.time.getTime())
       }
     } catch (err) {
       if (subRef.isActive) subRef.isActive = false
     }
   }
 
-  function dispatchMessage(subRef: SubscriptionRef, rawData: Uint8Array, subject: string) {
+  function dispatchMessage(subRef: SubscriptionRef, rawData: Uint8Array, subject: string, storedAt?: number) {
     let data: any
     try {
       const text = decodeBytes(rawData)
       try { data = JSON.parse(text) } catch { data = text }
     } catch { return }
-    
+
+    const receivedAt = Date.now()
     for (const listener of subRef.listeners.values()) {
       try {
         let value = data
         if (listener.jsonPath) {
           value = extractJsonPath(data, listener.jsonPath)
         }
-        queueMessage(listener.widgetId, value, data, subject)
+        const ts = messageTimestamp(data, listener.timestampPath, storedAt, receivedAt)
+        queueMessage(listener.widgetId, value, data, subject, ts)
       } catch { /* ignore */ }
     }
   }
@@ -357,14 +364,6 @@ export function useSubscriptionManager() {
     stats.subscriptionErrors = 0
   }
 
-  // `path` is optional because every caller's is: WidgetListener.jsonPath is
-  // optional, and a widget bound to a whole payload has none. The body already
-  // handled undefined; only the signature disagreed.
-  function extractJsonPath(data: any, path?: string): any {
-    if (!path || path === '$') return data
-    try { return JSONPath({ path, json: data, wrap: false }) } catch { return null }
-  }
-  
   function getStats() {
     const subscriptionList: any[] = []
     for (const [key, subRef] of subscriptions.entries()) {

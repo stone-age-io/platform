@@ -7,6 +7,7 @@ export interface WidgetFormState {
   subject: string
   subjects: string[]
   jsonPath: string
+  timestampPath: string
   bufferSize: number
   
   // Data Source Type
@@ -143,6 +144,7 @@ export function createEmptyFormState(): WidgetFormState {
     subject: '',
     subjects: [],
     jsonPath: '',
+    timestampPath: '',
     bufferSize: 100,
     dataSourceType: 'subscription',
     kvBucket: '',

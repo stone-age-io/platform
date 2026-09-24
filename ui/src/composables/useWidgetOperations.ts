@@ -55,7 +55,7 @@ export function useWidgetOperations() {
       const subject = resolveTemplate(rawSubject, dashboardStore.currentVariableValues)
       if (!subject) continue
       const config: DataSourceConfig = { ...widget.dataSource, subject, timeWindow: replayWindow(widget) }
-      subManager.subscribe(widgetId, config, widget.jsonPath)
+      subManager.subscribe(widgetId, config, widget.jsonPath, widget.timestampPath)
     }
   }
 

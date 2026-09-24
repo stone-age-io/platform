@@ -105,7 +105,25 @@
         Extract specific data from messages. Leave empty to show full message.
       </div>
     </div>
-    
+
+    <div v-if="showTimestampPath" class="form-group">
+      <label>Timestamp Path (optional)</label>
+      <input
+        v-model="form.timestampPath"
+        type="text"
+        class="form-input"
+        :class="{ 'has-error': errors.timestampPath }"
+        placeholder="$.ts"
+      />
+      <div v-if="errors.timestampPath" class="error-text">
+        {{ errors.timestampPath }}
+      </div>
+      <div v-else class="help-text">
+        Where the message carries its own time (epoch seconds/ms/µs/ns or ISO 8601).
+        Empty = when JetStream stored it, or when it arrived.
+      </div>
+    </div>
+
     <div class="form-group">
       <label>Buffer Size</label>
       <input 
@@ -135,6 +153,9 @@ const props = defineProps<{
   errors: Record<string, string>
   allowMultiple?: boolean
   hideTimeWindow?: boolean
+  // Only the modal's shared data source saves it; status and markdown embed
+  // this panel with their own save paths, which do not.
+  showTimestampPath?: boolean
 }>()
 
 // --- Multi-Subject Logic ---

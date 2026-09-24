@@ -426,6 +426,9 @@ export interface WidgetConfig {
   h: number
   dataSource: DataSourceConfig
   jsonPath?: string
+  // Where the payload carries its own time (epoch s/ms/µs/ns or ISO 8601).
+  // Unset: JetStream's stored time, else the time the browser received it.
+  timestampPath?: string
   buffer: BufferConfig
   
   chartConfig?: ChartWidgetConfig
