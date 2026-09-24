@@ -207,7 +207,8 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
     hydrate(widget, state) {
       const cfg = widget.chartConfig
       // pie and gauge were removed; a chart imported with either draws as line.
-      state.chartType = cfg?.chartType === 'bar' ? 'bar' : 'line'
+      state.chartType = cfg?.chartType === 'bar' || cfg?.chartType === 'timeline' ? cfg.chartType : 'line'
+      state.chartThresholds = cfg?.thresholds ? cfg.thresholds.map(r => ({ ...r })) : []
       state.chartWindow = cfg?.window || ''
       // A chart saved before multi-series read one value through the widget's
       // own jsonPath. Carry that path into a one-entry list here, so saving the
@@ -262,6 +263,7 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
             subject: s.subject?.trim() || undefined,
           })),
           window: form.chartWindow.trim() || undefined,
+          thresholds: form.chartThresholds.length ? form.chartThresholds.map(r => ({ ...r, label: r.label?.trim() || undefined })) : undefined,
         },
         // Each series reads the whole payload; a widget-level path would hand
         // them an already-extracted value instead.

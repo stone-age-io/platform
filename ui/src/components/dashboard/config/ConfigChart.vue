@@ -5,7 +5,14 @@
       <select v-model="form.chartType" class="form-input">
         <option value="line">Line</option>
         <option value="bar">Bar</option>
+        <option value="timeline">State Timeline</option>
       </select>
+      <div v-if="form.chartType === 'timeline'" class="help-text">
+        One row per series; each run of the same value is one segment. A row
+        stays blank until its first message. A device that goes silent keeps
+        its last state stretched to now, so have it republish its state
+        periodically if silence should show.
+      </div>
     </div>
 
     <div class="form-group">
@@ -52,6 +59,15 @@
       </div>
     </div>
 
+    <div v-if="form.chartType === 'timeline'" class="form-group">
+      <label>Value Colours</label>
+      <ThresholdEditor v-model="form.chartThresholds" show-label />
+      <div class="help-text">
+        First match wins, e.g. <code>== true</code> → Success, label <em>running</em>.
+        A value no rule matches keeps its own colour and shows as-is.
+      </div>
+    </div>
+
     <div class="form-group">
       <label>Time Window (optional)</label>
       <input
@@ -74,6 +90,7 @@
 
 <script setup lang="ts">
 import type { WidgetFormState } from '@/types/config'
+import ThresholdEditor from '../ThresholdEditor.vue'
 
 const props = defineProps<{
   form: WidgetFormState

@@ -56,3 +56,50 @@ export function numericPoints(points: readonly Point[]): [number, number][] {
   }
   return out
 }
+
+export interface Segment {
+  start: number
+  end: number
+  value: unknown
+}
+
+/**
+ * A state timeline row: consecutive equal values merged into one segment.
+ * Each segment ends where the next value begins; the LAST one runs to `now`,
+ * because a state that has not changed in ten minutes is the normal case, not
+ * missing data.
+ *
+ * Nothing is drawn before the first point. A row with no data in the window
+ * is blank -- unknown -- and deliberately not filled in with a guess: filling
+ * it is the source's job (republish state periodically, or have a rule-router
+ * rule publish a snapshot).
+ *
+ * Equality is on String(value), so `true` and "true" are one state -- the same
+ * way the threshold rules colouring them compare.
+ */
+export function buildSegments(points: readonly Point[], now: number): Segment[] {
+  const segments: Segment[] = []
+  for (const [ts, value] of points) {
+    // null is "no reading", not a state named "null"; it neither starts nor
+    // ends a segment.
+    if (value === null) continue
+    const last = segments[segments.length - 1]
+    if (last && String(last.value) === String(value)) continue
+    if (last) last.end = ts
+    segments.push({ start: ts, end: ts, value })
+  }
+  const last = segments[segments.length - 1]
+  if (last) last.end = Math.max(last.end, now)
+  return segments
+}
+
+/**
+ * A palette index for a value no rule matched. Hashed from the value rather
+ * than assigned in order of appearance, so "idle" keeps its colour as the
+ * window slides and the first state it saw drops out of view.
+ */
+export function stableColorIndex(value: string, n: number): number {
+  let h = 0
+  for (let i = 0; i < value.length; i++) h = (h * 31 + value.charCodeAt(i)) | 0
+  return Math.abs(h) % n
+}

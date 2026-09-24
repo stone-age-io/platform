@@ -35,7 +35,7 @@ export const WIDGET_TYPES = [
 export type WidgetType = (typeof WIDGET_TYPES)[number]
 
 export type DataSourceType = 'subscription' | 'consumer' | 'kv'
-export type ChartType = 'line' | 'bar'
+export type ChartType = 'line' | 'bar' | 'timeline'
 
 // --- Dashboard Variables ---
 export type VariableType = 'text' | 'select'
@@ -57,6 +57,8 @@ export interface ThresholdRule {
   operator: ThresholdOperator
   value: string
   color: string
+  // Display text for a matched value. Only the state timeline reads it.
+  label?: string
 }
 
 // --- Data Source Configuration ---
@@ -107,6 +109,9 @@ export interface ChartWidgetConfig {
   // Duration string ("30m"). Empty = keep the last N messages (the buffer size).
   // When set it is ALSO the JetStream replay window, so the two cannot disagree.
   window?: string
+  // Timeline only: first match wins, giving a segment its colour and label.
+  // A value no rule matches keeps a colour hashed from the value itself.
+  thresholds?: ThresholdRule[]
   echartOptions?: any
 }
 

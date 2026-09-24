@@ -278,6 +278,7 @@ export function useDesignTokens() {
 
   return {
     getToken,
+    resolveColor,
     chartColors,
     semanticColors,
     thresholdColors,

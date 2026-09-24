@@ -31,6 +31,7 @@ export interface WidgetFormState {
   chartType: ChartType
   chartSeries: ChartSeries[]
   chartWindow: string
+  chartThresholds: ThresholdRule[]
 
   // Switch Widget
   switchMode: 'kv' | 'core'
@@ -160,6 +161,7 @@ export function createEmptyFormState(): WidgetFormState {
     chartType: 'line',
     chartSeries: [],
     chartWindow: '',
+    chartThresholds: [],
     switchMode: 'kv',
     switchDefaultState: 'off',
     switchStateSubject: '',

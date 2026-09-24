@@ -7,16 +7,17 @@ export function useThresholds() {
    * Returns the color string of the first matching rule, or undefined
    */
   function evaluateThresholds(value: any, rules: ThresholdRule[] | undefined): string | undefined {
+    return matchThreshold(value, rules)?.color
+  }
+
+  /**
+   * The first rule that matches, or undefined. The state timeline needs the
+   * whole rule (colour AND label); everything else only wants the colour.
+   */
+  function matchThreshold(value: any, rules: ThresholdRule[] | undefined): ThresholdRule | undefined {
     if (!rules || rules.length === 0) return undefined
     if (value === null || value === undefined) return undefined
-
-    for (const rule of rules) {
-      if (checkRule(value, rule)) {
-        return rule.color
-      }
-    }
-
-    return undefined
+    return rules.find(rule => checkRule(value, rule))
   }
 
   function checkRule(value: any, rule: ThresholdRule): boolean {
@@ -52,5 +53,5 @@ export function useThresholds() {
     }
   }
 
-  return { evaluateThresholds }
+  return { evaluateThresholds, matchThreshold }
 }

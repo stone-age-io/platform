@@ -1155,8 +1155,10 @@ you, so pushing an absolute one would make the login form an open redirect (the
   the subject. Covers the pure logic `vue-tsc && vite build` cannot protect:
   `twinDrift`, `useSubscriptionManager`, `useEscapeKey`, the `can` capability
   map, dashboard import/export, `createDefaultWidget`, the JSON Schema
-  round trip in `schemaFields` + `inferSchema`, the file-token cache, and
-  `targetDimensions`. A spec that needs a DOM opts in
+  round trip in `schemaFields` + `inferSchema`, the file-token cache,
+  `targetDimensions`, and every decision the chart widget makes about its data
+  (`utils/chartSeries` — series extraction, timeline segments — plus the
+  `duration` and message `timestamp` parsers). A spec that needs a DOM opts in
   with `// @vitest-environment jsdom` on its first line.
   - **The file-token cache is tested through `fileUrl()`, not through the
     getter it wraps.** Every failure mode there is SILENT -- a missing cache is

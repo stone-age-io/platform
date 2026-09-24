@@ -5,7 +5,7 @@
         No conditional formatting rules.
       </div>
       
-      <div v-for="(rule, index) in modelValue" :key="rule.id" class="threshold-row">
+      <div v-for="(rule, index) in modelValue" :key="rule.id" class="threshold-row" :class="{ 'with-label': showLabel }">
         <span class="row-label">If val</span>
         
         <!-- Operator -->
@@ -44,7 +44,16 @@
           <option value="var(--text)" style="color: var(--text)">Default Text</option>
           <option value="var(--muted)" style="color: var(--muted)">Muted</option>
         </select>
-        
+
+        <!-- Display label (state timeline: true → "running") -->
+        <input
+          v-if="showLabel"
+          v-model="rule.label"
+          type="text"
+          class="input-text label"
+          placeholder="Label (optional)"
+        />
+
         <!-- Delete -->
         <button class="btn-icon danger" @click="removeRule(index)" title="Remove Rule">
           ✕
@@ -63,6 +72,9 @@ import type { ThresholdRule } from '@/types/dashboard'
 
 const props = defineProps<{
   modelValue: ThresholdRule[]
+  // Only the state timeline shows a label; every other caller's rules are
+  // colour-only and look exactly as they did.
+  showLabel?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -72,7 +84,9 @@ const emit = defineEmits<{
 function addRule() {
   const newRule: ThresholdRule = {
     id: Date.now().toString(),
-    operator: '>',
+    // A labelled rule names a state ("== true → running"), so equality is the
+    // useful starting point; a colour-only rule is usually a numeric bound.
+    operator: props.showLabel ? '==' : '>',
     value: '',
     color: 'var(--color-error)' 
   }
@@ -136,6 +150,8 @@ function removeRule(index: number) {
 .operator { width: 50px; }
 .value { flex: 1; min-width: 60px; }
 .color { flex: 1; min-width: 100px; font-weight: 600; }
+.label { flex: 1; min-width: 90px; font-family: inherit; }
+.threshold-row.with-label { flex-wrap: wrap; }
 
 .input-select option {
   background: var(--input-bg);

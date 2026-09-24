@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { seriesPoints, numericPoints } from './chartSeries'
+import { seriesPoints, numericPoints, buildSegments, stableColorIndex } from './chartSeries'
 import type { BufferedMessage } from '@/stores/widgetData'
 
 // A chart can be fed by one payload carrying every row, or by several subjects
@@ -74,5 +74,53 @@ describe('numericPoints', () => {
   it('drops what is not a number instead of plotting it as zero', () => {
     expect(numericPoints([[1, 'running'], [2, null], [3, ''], [4, { a: 1 }], [5, [1]], [6, NaN]]))
       .toEqual([])
+  })
+})
+
+describe('buildSegments', () => {
+  const NOW = 1000
+
+  it('merges consecutive equal values into one segment', () => {
+    const segs = buildSegments([[10, 'on'], [20, 'on'], [30, 'off'], [40, 'off'], [50, 'on']], NOW)
+    expect(segs).toEqual([
+      { start: 10, end: 30, value: 'on' },
+      { start: 30, end: 50, value: 'off' },
+      { start: 50, end: NOW, value: 'on' },
+    ])
+  })
+
+  // A state that has not changed for ten minutes is the normal case; ending
+  // the last segment at its own start would draw it as nothing at all.
+  it('runs the last segment to now', () => {
+    expect(buildSegments([[10, true]], NOW)).toEqual([{ start: 10, end: NOW, value: true }])
+  })
+
+  it('treats true and "true" as one state, as the colour rules do', () => {
+    expect(buildSegments([[10, true], [20, 'true']], NOW)).toHaveLength(1)
+  })
+
+  it('does not turn a null reading into a state called "null"', () => {
+    expect(buildSegments([[10, 'on'], [20, null], [30, 'on']], NOW))
+      .toEqual([{ start: 10, end: NOW, value: 'on' }])
+  })
+
+  it('draws nothing for a row with no data (unknown, not guessed)', () => {
+    expect(buildSegments([], NOW)).toEqual([])
+  })
+})
+
+describe('stableColorIndex', () => {
+  it('gives a value the same colour however the window slides', () => {
+    expect(stableColorIndex('idle', 8)).toBe(stableColorIndex('idle', 8))
+    for (const v of ['idle', 'running', 'stopped', 'FAULT', '', 'x'.repeat(500)]) {
+      const i = stableColorIndex(v, 8)
+      expect(i).toBeGreaterThanOrEqual(0)
+      expect(i).toBeLessThan(8)
+    }
+  })
+
+  it('spreads common state names across the palette', () => {
+    const idx = new Set(['running', 'stopped', 'idle', 'fault', 'demand', 'no demand'].map(v => stableColorIndex(v, 8)))
+    expect(idx.size).toBeGreaterThan(2)
   })
 })
