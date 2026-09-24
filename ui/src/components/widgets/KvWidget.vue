@@ -152,7 +152,10 @@ watch(rows, (map) => {
     }
     hasValue.value = true
     revision.value = row.revision
-    lastUpdated.value = new Date().toLocaleTimeString()
+    // When the value was WRITTEN, not when this browser read it: the watcher
+    // delivers the current value on every load and reconnect, so browser time
+    // showed a key untouched for days as updated a moment ago.
+    lastUpdated.value = row.timestamp.toLocaleString()
   } else if (natsStore.isConnected) {
     hasValue.value = false
     kvData.value = null
