@@ -8,6 +8,26 @@ import { resolveTemplate } from '@/utils/variables'
 import { parseDurationMs } from '@/utils/duration'
 import type { WidgetType, WidgetConfig, DataSourceConfig } from '@/types/dashboard'
 
+// What each widget is ACTUALLY subscribed to, exactly as it was subscribed.
+//
+// Unsubscribing used to re-derive the subjects from the widget's config and
+// the current variable values -- but both unsubscribe paths run after the
+// thing they depend on has already changed. A variable watcher fires once
+// `{{device}}` is already B, so it unsubscribed from B (never subscribed) and
+// left A running: the widget went on receiving device A. A dashboard switch
+// fires once `activeWidgets` is already the new dashboard's, so the old
+// dashboard's widgets were never unsubscribed at all. Map markers also lost
+// `useJetStream` on the way out and missed their own subscription key.
+//
+// Recording the configs at subscribe time makes unsubscribe exact, whatever
+// has changed since. Module-level because every caller of this composable
+// must see the same record.
+const activeSubscriptions = new Map<string, DataSourceConfig[]>()
+
+function subscriptionKey(c: DataSourceConfig): string {
+  return `${c.useJetStream ? 'js' : 'core'}:${c.subject}`
+}
+
 export function useWidgetOperations() {
   const dashboardStore = useDashboardStore()
   const dataStore = useWidgetDataStore()
@@ -45,24 +65,37 @@ export function useWidgetOperations() {
       .map(s => resolveTemplate(s, dashboardStore.currentVariableValues))
       .join('\n')
     dataStore.initializeBuffer(widgetId, widget.buffer.maxCount, maxAge, source)
-    
+
+    const wanted: Array<{ config: DataSourceConfig; jsonPath?: string; timestampPath?: string }> = []
     if (widget.dataSource.type === 'subscription') {
-      subscribeToDataSource(widgetId, widget)
+      for (const config of dataSourceConfigs(widget)) {
+        wanted.push({ config, jsonPath: widget.jsonPath, timestampPath: widget.timestampPath })
+      }
+    }
+    if (widget.type === 'map' && widget.mapConfig?.markers) {
+      for (const config of mapMarkerConfigs(widget.mapConfig.markers)) wanted.push({ config })
     }
 
-    if (widget.type === 'map' && widget.mapConfig?.markers) {
-      subscribeMapMarkers(widgetId, widget.mapConfig.markers)
+    // Drop whatever this widget was subscribed to and no longer wants (a
+    // variable moved its subject), then subscribe to the rest. Subscribing to
+    // something already held is a no-op in the manager.
+    const wantedKeys = new Set(wanted.map(w => subscriptionKey(w.config)))
+    for (const old of activeSubscriptions.get(widgetId) ?? []) {
+      if (!wantedKeys.has(subscriptionKey(old))) subManager.unsubscribe(widgetId, old)
     }
+    for (const w of wanted) subManager.subscribe(widgetId, w.config, w.jsonPath, w.timestampPath)
+    if (wanted.length > 0) activeSubscriptions.set(widgetId, wanted.map(w => w.config))
+    else activeSubscriptions.delete(widgetId)
   }
 
-  function subscribeToDataSource(widgetId: string, widget: WidgetConfig) {
-    const subjects = getWidgetSubjects(widget)
-    for (const rawSubject of subjects) {
+  function dataSourceConfigs(widget: WidgetConfig): DataSourceConfig[] {
+    const out: DataSourceConfig[] = []
+    for (const rawSubject of getWidgetSubjects(widget)) {
       const subject = resolveTemplate(rawSubject, dashboardStore.currentVariableValues)
       if (!subject) continue
-      const config: DataSourceConfig = { ...widget.dataSource, subject, timeWindow: replayWindow(widget) }
-      subManager.subscribe(widgetId, config, widget.jsonPath, widget.timestampPath)
+      out.push({ ...widget.dataSource, subject, timeWindow: replayWindow(widget) })
     }
+    return out
   }
 
   // A chart with a time window replays exactly that window: one setting, so
@@ -73,13 +106,14 @@ export function useWidgetOperations() {
     return widget.dataSource.timeWindow
   }
 
-  function subscribeMapMarkers(widgetId: string, markers: any[]) {
+  function mapMarkerConfigs(markers: any[]): DataSourceConfig[] {
+    const out: DataSourceConfig[] = []
     for (const marker of markers) {
       const pos = marker.positionConfig
       if (pos?.mode === 'dynamic' && pos.subject) {
         const subject = resolveTemplate(pos.subject, dashboardStore.currentVariableValues)
         if (subject) {
-          subManager.subscribe(widgetId, {
+          out.push({
             type: 'subscription',
             subject,
             useJetStream: pos.useJetStream,
@@ -88,6 +122,7 @@ export function useWidgetOperations() {
         }
       }
     }
+    return out
   }
 
   function getWidgetSubjects(widget: WidgetConfig): string[] {
@@ -100,32 +135,14 @@ export function useWidgetOperations() {
     return []
   }
 
+  // Works from the record, not the widget: the widget may already be deleted,
+  // on another dashboard, or pointing at new subjects.
   function unsubscribeWidget(widgetId: string, keepData: boolean = false) {
-    const widget = dashboardStore.getWidget(widgetId)
-    if (!widget) return
-    
-    if (widget.dataSource.type === 'subscription') {
-      const subjects = getWidgetSubjects(widget)
-      for (const rawSubject of subjects) {
-        const subject = resolveTemplate(rawSubject, dashboardStore.currentVariableValues)
-        if (!subject) continue
-        const config: DataSourceConfig = { ...widget.dataSource, subject }
-        subManager.unsubscribe(widgetId, config)
-      }
+    for (const config of activeSubscriptions.get(widgetId) ?? []) {
+      subManager.unsubscribe(widgetId, config)
     }
+    activeSubscriptions.delete(widgetId)
 
-    if (widget.type === 'map' && widget.mapConfig?.markers) {
-      for (const marker of widget.mapConfig.markers) {
-        const pos = marker.positionConfig
-        if (pos?.mode === 'dynamic' && pos.subject) {
-          const subject = resolveTemplate(pos.subject, dashboardStore.currentVariableValues)
-          if (subject) {
-            subManager.unsubscribe(widgetId, { type: 'subscription', subject })
-          }
-        }
-      }
-    }
-    
     if (!keepData) {
       dataStore.removeBuffer(widgetId)
     }
@@ -140,12 +157,14 @@ export function useWidgetOperations() {
     }
   }
 
+  // Everything subscribed, not just the active dashboard's widgets: on a
+  // dashboard switch `activeWidgets` is already the NEW dashboard's.
   function unsubscribeAllWidgets(keepData: boolean = false) {
+    const ids = new Set(activeSubscriptions.keys())
     for (const widget of dashboardStore.activeWidgets) {
-      if (needsSubscription(widget.type, widget)) {
-        unsubscribeWidget(widget.id, keepData)
-      }
+      if (needsSubscription(widget.type, widget)) ids.add(widget.id)
     }
+    for (const id of ids) unsubscribeWidget(id, keepData)
   }
 
   function needsSubscription(widgetType: WidgetType, config?: WidgetConfig): boolean {

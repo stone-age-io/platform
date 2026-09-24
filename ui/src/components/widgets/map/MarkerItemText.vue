@@ -76,24 +76,29 @@ function buildDataSourceConfig(): DataSourceConfig | null {
   }
 }
 
+// The config actually subscribed with. Rebuilding it at unsubscribe time used
+// the NEW variable values (the watcher below runs after they change), so it
+// unsubscribed from the new subject and left the old one feeding this item:
+// after switching A to B the text flipped between both devices' readings.
+let subscribedConfig: DataSourceConfig | null = null
+
 function subscribe() {
   if (!natsStore.isConnected) return
-  
+
   const config = buildDataSourceConfig()
   if (!config) return
-  
+
   // Initialize buffer for this item
   dataStore.initializeBuffer(subscriptionId.value, 10) // Small buffer, we only need latest
-  
+
   // Subscribe via central manager
   subManager.subscribe(subscriptionId.value, config, props.item.textConfig?.jsonPath)
+  subscribedConfig = config
 }
 
 function unsubscribe() {
-  const config = buildDataSourceConfig()
-  if (!config) return
-  
-  subManager.unsubscribe(subscriptionId.value, config)
+  if (subscribedConfig) subManager.unsubscribe(subscriptionId.value, subscribedConfig)
+  subscribedConfig = null
   dataStore.removeBuffer(subscriptionId.value)
 }
 
