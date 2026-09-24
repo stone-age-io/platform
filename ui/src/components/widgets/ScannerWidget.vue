@@ -175,6 +175,7 @@ const outcome = ref<string>('')
 const passed = computed(() => outcome.value === 'ok')
 
 let html5Qrcode: Html5Qrcode | null = null
+let unmounted = false
 const readerId = `scanner-${props.config.id}`
 
 // Dedup — each entry auto-expires via its own timer, no LRU bookkeeping needed.
@@ -244,13 +245,16 @@ async function startScan() {
   // Wait for DOM to render the viewfinder element with proper dimensions
   await nextTick()
   await new Promise(r => setTimeout(r, 100))
+  if (unmounted || state.value !== 'scanning') return // removed, or Cancel pressed
 
+  let scanner: Html5Qrcode | null = null
   try {
-    html5Qrcode = new Html5Qrcode(readerId, {
+    scanner = new Html5Qrcode(readerId, {
       formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
       verbose: false,
     })
-    await html5Qrcode.start(
+    html5Qrcode = scanner
+    await scanner.start(
       { facingMode: 'environment' },
       {
         fps: 10,
@@ -263,7 +267,16 @@ async function startScan() {
       handleScanResult,
       () => {} // ignore per-frame scan misses
     )
+    // start() waits on the camera permission prompt. If the widget was removed
+    // or Stop was pressed meanwhile, stopScan() ran while this scanner was not
+    // yet SCANNING, so it skipped stop() and dropped the reference -- and the
+    // camera would now run with nothing left to turn it off.
+    if (unmounted || html5Qrcode !== scanner) {
+      try { await scanner.stop() } catch {}
+      try { scanner.clear() } catch {}
+    }
   } catch (err: any) {
+    if (unmounted || html5Qrcode !== scanner) return
     errorMessage.value = err.message || 'Camera access denied'
     state.value = 'error'
   }
@@ -483,7 +496,9 @@ function formatValue(val: any): string {
 }
 
 // --- Cleanup ---
+
 onUnmounted(() => {
+  unmounted = true
   stopScan()
   for (const t of recentScans.values()) clearTimeout(t)
   recentScans.clear()
