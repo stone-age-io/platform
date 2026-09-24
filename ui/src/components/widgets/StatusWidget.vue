@@ -57,6 +57,7 @@ import { useDashboardStore } from '@/stores/dashboard'
 import { Kvm } from '@nats-io/kv'
 import { decodeBytes } from '@/utils/encoding'
 import { resolveTemplate } from '@/utils/variables'
+import { extractJsonPath } from '@/utils/jsonPath'
 import type { WidgetConfig } from '@/types/dashboard'
 
 const props = withDefaults(defineProps<{
@@ -144,36 +145,46 @@ const timeAgo = computed(() => {
 })
 
 // --- KV Logic ---
+// Bumped on every stop, so a start still awaiting kvm.open() when the
+// variables change again gives up instead of running beside its replacement.
+let kvGeneration = 0
+
 async function startKvWatcher() {
   if (!natsStore.nc || !natsStore.isConnected) return
-  
+
   const bucket = resolveTemplate(props.config.dataSource.kvBucket, dashboardStore.currentVariableValues)
   const key = resolveTemplate(props.config.dataSource.kvKey, dashboardStore.currentVariableValues)
-  
+
   if (!bucket || !key) return
 
+  const gen = kvGeneration
   try {
     const kvm = new Kvm(natsStore.nc)
     const kv = await kvm.open(bucket)
-    
-    // Get initial
-    try {
-      const entry = await kv.get(key)
-      if (entry) {
-        const val = decodeBytes(entry.value)
-        dataStore.addMessage(props.config.id, val, val, 'KV')
-      }
-    } catch {}
+    if (gen !== kvGeneration) return
 
-    // Watch
+    // The watcher delivers the current value first (KvWatchInclude.LastValue
+    // is the default), so there is no separate get: that read every value in
+    // twice.
     const iter = await kv.watch({ key })
+    if (gen !== kvGeneration) { try { iter.stop() } catch {} return }
     kvWatcher = iter
     ;(async () => {
       try {
         for await (const e of iter) {
           if (e.key === key && e.operation === 'PUT') {
-            const val = decodeBytes(e.value!)
-            dataStore.addMessage(props.config.id, val, val, 'KV')
+            // The same shape a subscription delivers: parsed JSON, the
+            // widget's JSONPath applied, and the time the value was WRITTEN.
+            // It used to push the raw string stamped with the time it was
+            // read, so `$.state` never applied and a key untouched for hours
+            // read as live for a minute after every page load.
+            const text = decodeBytes(e.value!)
+            let raw: unknown = text
+            try { raw = JSON.parse(text) } catch { /* plain string */ }
+            const value = extractJsonPath(raw, props.config.jsonPath)
+            dataStore.batchAddMessages([{
+              widgetId: props.config.id, value, raw, subject: 'KV', timestamp: e.created.getTime(),
+            }])
           }
         }
       } catch {}
@@ -184,10 +195,14 @@ async function startKvWatcher() {
 }
 
 function stopKvWatcher() {
+  kvGeneration++
   if (kvWatcher) {
     try { kvWatcher.stop() } catch {}
     kvWatcher = null
   }
+  // A variable change points this widget at another key; the old key's value
+  // must not stand in for a key that may not exist.
+  if (isKvMode.value) dataStore.clearBuffer(props.config.id)
 }
 
 function handleRefresh() {
