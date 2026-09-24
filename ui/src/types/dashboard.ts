@@ -532,6 +532,10 @@ export function createDefaultWidget(type: WidgetType, position: { x: number; y: 
       base.title = 'Chart Widget'
       // No widget-level jsonPath: each series reads the whole payload.
       base.chartConfig = { chartType: 'line', series: [{ label: 'Value', path: '$.value' }] }
+      // The shared default of 10 is a latest-value buffer; a chart of 10 points
+      // is barely a line, and a time window would be capped long before it
+      // filled. Same bound as console and streamtable.
+      base.buffer = { maxCount: 200 }
       break
     case 'text':
       base.title = 'Text Widget'

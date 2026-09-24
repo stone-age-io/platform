@@ -78,7 +78,7 @@ const effectiveColor = computed(() => {
 
 const displayValue = computed(() => {
   const value = latestValue.value
-  if (value === null || value === undefined) return '...'
+  if (value === null || value === undefined) return '—'
   if (format.value) {
     try { return format.value.replace('{value}', String(value)) } catch { return String(value) }
   }

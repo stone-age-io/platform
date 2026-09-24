@@ -15,9 +15,6 @@ const RULES = [
   rule('c', '>', '40', 'red'),
 ]
 
-// Only the equality rules: a non-numeric value against `> 40` is compared as a
-// STRING ("idle" > "40" is true), which is how checkRule has always worked.
-const STATE_RULES = RULES.slice(0, 2)
 
 describe('useThresholds', () => {
   const { matchThreshold, evaluateThresholds } = useThresholds()
@@ -29,7 +26,7 @@ describe('useThresholds', () => {
   })
 
   it('returns undefined when nothing matches, or there is nothing to match', () => {
-    expect(matchThreshold('idle', STATE_RULES)).toBeUndefined()
+    expect(matchThreshold('idle', RULES)).toBeUndefined()
     expect(matchThreshold(null, RULES)).toBeUndefined()
     expect(matchThreshold(true, [])).toBeUndefined()
     expect(matchThreshold(true, undefined)).toBeUndefined()
@@ -43,6 +40,24 @@ describe('useThresholds', () => {
   it('evaluateThresholds is still the colour of that rule', () => {
     expect(evaluateThresholds(true, RULES)).toBe('green')
     expect(evaluateThresholds(45, RULES)).toBe('red')
-    expect(evaluateThresholds('idle', STATE_RULES)).toBeUndefined()
+    expect(evaluateThresholds('idle', RULES)).toBeUndefined()
+  })
+})
+
+// > >= < <= used to fall back to comparing TEXT, and letters sort after digits,
+// so `> 40` coloured "idle", "fault" and every other word red.
+describe('ordering operators', () => {
+  const { matchThreshold } = useThresholds()
+  const hot = [rule('h', '>', '40', 'red')]
+
+  it('never match a value that is not a number', () => {
+    for (const v of ['idle', 'fault', 'Z', 'true']) expect(matchThreshold(v, hot)).toBeUndefined()
+    expect(matchThreshold('abc', [rule('l', '<', 'b', 'red')])).toBeUndefined()
+  })
+
+  it('still compare numbers, including numeric strings', () => {
+    expect(matchThreshold(41, hot)?.id).toBe('h')
+    expect(matchThreshold('41.5', hot)?.id).toBe('h')
+    expect(matchThreshold(40, hot)).toBeUndefined()
   })
 })

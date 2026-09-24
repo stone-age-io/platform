@@ -98,10 +98,15 @@ const cfg = computed(() => props.config.gaugeConfig!)
 const buffer = computed(() => dataStore.getBuffer(props.config.id))
 const hasData = computed(() => buffer.value.length > 0)
 
-const latestValue = computed(() => {
+// null when there is no usable number: Number(undefined) is NaN (a JSONPath
+// that matched nothing drew "NaN" and a NaN arc) and Number(null) is 0 (a
+// JetStream error drew a confident "0.00").
+const latestValue = computed<number | null>(() => {
   if (buffer.value.length === 0) return null
   const val = buffer.value[buffer.value.length - 1].value
-  return typeof val === 'number' ? val : Number(val)
+  if (val === null || val === undefined || val === '') return null
+  const n = typeof val === 'number' ? val : Number(val)
+  return Number.isFinite(n) ? n : null
 })
 
 const clampedValue = computed(() => {

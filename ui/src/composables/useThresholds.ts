@@ -43,10 +43,13 @@ export function useThresholds() {
     const ruleValStr = String(rule.value).trim()
 
     switch (rule.operator) {
-      case '>': return valStr > ruleValStr
-      case '>=': return valStr >= ruleValStr
-      case '<': return valStr < ruleValStr
-      case '<=': return valStr <= ruleValStr
+      // Ordering is for numbers only. Comparing text made `> 40` true for
+      // "idle", "fault" and every other word, since letters sort after digits.
+      case '>':
+      case '>=':
+      case '<':
+      case '<=':
+        return false
       case '==': return valStr === ruleValStr || valStr.toLowerCase() === ruleValStr.toLowerCase()
       case '!=': return valStr !== ruleValStr && valStr.toLowerCase() !== ruleValStr.toLowerCase()
       default: return false

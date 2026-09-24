@@ -234,13 +234,6 @@ export function useDesignTokens() {
     return ramp[(index - 1) % ramp.length]
   }
 
-  function getChartColorArray(count: number): string[] {
-    const colors: string[] = []
-    for (let i = 1; i <= count; i++) {
-      colors.push(getChartColor(i))
-    }
-    return colors
-  }
 
   function getThresholdColor(
     value: number,
@@ -287,7 +280,6 @@ export function useDesignTokens() {
     chartStyling,
     baseColors,
     getChartColor,
-    getChartColorArray,
     getThresholdColor,
     getConnectionColor,
     hexToRgba,
