@@ -25,7 +25,10 @@ export interface WidgetFormState {
   
   // Thresholds
   thresholds: ThresholdRule[]
-  
+
+  // Chart Widget
+  chartWindow: string
+
   // Switch Widget
   switchMode: 'kv' | 'core'
   switchDefaultState: 'on' | 'off'
@@ -150,6 +153,7 @@ export function createEmptyFormState(): WidgetFormState {
     buttonActionType: 'publish',
     buttonTimeout: 1000,
     thresholds: [],
+    chartWindow: '',
     switchMode: 'kv',
     switchDefaultState: 'off',
     switchStateSubject: '',

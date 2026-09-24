@@ -157,7 +157,15 @@ export const useWidgetDataStore = defineStore('widgetData', () => {
           updatedMsgs = currentMsgs.concat(newMessages)
         }
       }
-      
+
+      // Time window: a filter rather than a front-trim, because a message's
+      // timestamp can come from its payload or from JetStream, so arrival
+      // order is not time order.
+      if (buffer.maxAge) {
+        const cutoff = Date.now() - buffer.maxAge
+        updatedMsgs = updatedMsgs.filter(m => m.timestamp >= cutoff)
+      }
+
       // CHANGED: Update the specific ref for this widget only
       buffer.messages.value = updatedMsgs
     }

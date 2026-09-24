@@ -17,6 +17,7 @@
             :form="form"
             :errors="errors"
             :allow-multiple="isMultiSubject"
+            :hide-time-window="widgetType === 'chart'"
           />
 
           <!-- Widget Specific Config (Dynamic) -->

@@ -8,6 +8,7 @@ import { useDashboardStore } from '@/stores/dashboard'
 import { useValidation } from '@/composables/useValidation'
 import { useWidgetOperations } from '@/composables/useWidgetOperations'
 import { createEmptyFormState } from '@/types/config'
+import { parseDurationMs } from '@/utils/duration'
 import type { WidgetFormState } from '@/types/config'
 import type { WidgetType, WidgetConfig } from '@/types/dashboard'
 
@@ -195,8 +196,32 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
     },
   },
 
-  // --- chart (no type-specific config) ---
-  chart: {},
+  // --- chart ---
+  chart: {
+    hydrate(widget, state) {
+      state.chartWindow = widget.chartConfig?.window || ''
+    },
+    validate(form, errors) {
+      const window = form.chartWindow.trim()
+      if (window && parseDurationMs(window) === null) {
+        errors.chartWindow = 'Use a duration like 30s, 10m, 1h or 1h30m'
+      }
+      // The chart hides the data source's own Time Window input, so a replay by
+      // time needs this one or it would silently use a value nobody can see.
+      if (!window && form.useJetStream && form.deliverPolicy === 'by_start_time') {
+        errors.chartWindow = 'Replaying "By Time Window" needs a time window'
+      }
+    },
+    buildUpdates(form, widget) {
+      return {
+        chartConfig: {
+          ...widget.chartConfig,
+          chartType: widget.chartConfig?.chartType || 'line',
+          window: form.chartWindow.trim() || undefined,
+        },
+      }
+    },
+  },
 
   // --- stat ---
   stat: {

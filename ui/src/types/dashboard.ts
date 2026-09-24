@@ -77,14 +77,19 @@ export interface DataSourceConfig {
   timeWindow?: string
 }
 
+// A time window is a chart setting (ChartWidgetConfig.window), not a buffer
+// one: only a chart ages messages out. A `maxAge` here was stored, never
+// enforced, and dropped by every save.
 export interface BufferConfig {
   maxCount: number
-  maxAge?: number
 }
 
 // --- Widget-Specific Configurations ---
 export interface ChartWidgetConfig {
   chartType: ChartType
+  // Duration string ("30m"). Empty = keep the last N messages (the buffer size).
+  // When set it is ALSO the JetStream replay window, so the two cannot disagree.
+  window?: string
   echartOptions?: any
 }
 

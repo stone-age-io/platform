@@ -5,6 +5,7 @@ import { useNatsStore } from '@/stores/nats'
 import { getSubscriptionManager } from '@/composables/useSubscriptionManager'
 import { createDefaultWidget } from '@/types/dashboard'
 import { resolveTemplate } from '@/utils/variables'
+import { parseDurationMs } from '@/utils/duration'
 import type { WidgetType, WidgetConfig, DataSourceConfig } from '@/types/dashboard'
 
 export function useWidgetOperations() {
@@ -13,32 +14,18 @@ export function useWidgetOperations() {
   const natsStore = useNatsStore()
   const subManager = getSubscriptionManager()
 
-  // Grug-helper: parse "5m", "1h" etc to milliseconds
-  function parseWindowToMs(windowStr: string | undefined): number {
-    if (!windowStr) return 300000 // default 5m
-    const match = windowStr.match(/^(\d+)([smhd])$/)
-    if (!match) return 300000
-    const val = parseInt(match[1])
-    const unit = match[2]
-    switch (unit) {
-      case 's': return val * 1000
-      case 'm': return val * 60 * 1000
-      case 'h': return val * 60 * 60 * 1000
-      case 'd': return val * 24 * 60 * 60 * 1000
-      default: return 300000
-    }
-  }
+  const DEFAULT_REPLAY_WINDOW_MS = 5 * 60 * 1000
 
   function subscribeWidget(widgetId: string) {
     const widget = dashboardStore.getWidget(widgetId)
     if (!widget) return
-    
+
     // 1. Grug check: Is existing data too stale for the JetStream window?
     if (widget.dataSource.useJetStream && widget.dataSource.deliverPolicy === 'by_start_time') {
       const buffer = dataStore.getBuffer(widgetId)
       if (buffer.length > 0) {
         const latest = buffer[buffer.length - 1]
-        const windowMs = parseWindowToMs(widget.dataSource.timeWindow)
+        const windowMs = parseDurationMs(replayWindow(widget)) ?? DEFAULT_REPLAY_WINDOW_MS
         // If the gap is bigger than the replay window, wipe it to avoid chart gaps
         if (Date.now() - latest.timestamp > windowMs) {
           dataStore.clearBuffer(widgetId)
@@ -46,8 +33,12 @@ export function useWidgetOperations() {
       }
     }
 
-    // 2. Standard initialization
-    dataStore.initializeBuffer(widgetId, widget.buffer.maxCount, widget.buffer.maxAge)
+    // 2. Standard initialization. Only a chart ages its buffer out: text, stat
+    // and friends show the LATEST value, which must survive however old it is.
+    const maxAge = widget.type === 'chart'
+      ? parseDurationMs(widget.chartConfig?.window) ?? undefined
+      : undefined
+    dataStore.initializeBuffer(widgetId, widget.buffer.maxCount, maxAge)
     
     if (widget.dataSource.type === 'subscription') {
       subscribeToDataSource(widgetId, widget)
@@ -63,9 +54,17 @@ export function useWidgetOperations() {
     for (const rawSubject of subjects) {
       const subject = resolveTemplate(rawSubject, dashboardStore.currentVariableValues)
       if (!subject) continue
-      const config: DataSourceConfig = { ...widget.dataSource, subject }
+      const config: DataSourceConfig = { ...widget.dataSource, subject, timeWindow: replayWindow(widget) }
       subManager.subscribe(widgetId, config, widget.jsonPath)
     }
+  }
+
+  // A chart with a time window replays exactly that window: one setting, so
+  // the replay start and the buffer age cannot disagree. Every other widget
+  // (and a chart without a window) keeps the data source's own timeWindow.
+  function replayWindow(widget: WidgetConfig): string | undefined {
+    if (widget.type === 'chart' && widget.chartConfig?.window) return widget.chartConfig.window
+    return widget.dataSource.timeWindow
   }
 
   function subscribeMapMarkers(widgetId: string, markers: any[]) {

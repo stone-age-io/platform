@@ -67,8 +67,11 @@
         <option value="by_start_time">By Time Window</option>
       </select>
       
-      <!-- Time Window Input -->
-      <div v-if="form.deliverPolicy === 'by_start_time'" class="mt-2">
+      <!-- Time Window Input (a chart supplies its own, so one value drives both) -->
+      <div v-if="form.deliverPolicy === 'by_start_time' && hideTimeWindow" class="help-text">
+        Replays the chart's time window, set below.
+      </div>
+      <div v-else-if="form.deliverPolicy === 'by_start_time'" class="mt-2">
         <label class="sub-label">Time Window</label>
         <input 
           v-model="form.jetstreamTimeWindow" 
@@ -131,6 +134,7 @@ const props = defineProps<{
   form: WidgetFormState
   errors: Record<string, string>
   allowMultiple?: boolean
+  hideTimeWindow?: boolean
 }>()
 
 // --- Multi-Subject Logic ---

@@ -10,6 +10,7 @@ import {
   type ConsumerMessages
 } from '@nats-io/jetstream'
 import { decodeBytes } from '@/utils/encoding'
+import { parseDurationMs } from '@/utils/duration'
 import type { DataSourceConfig } from '@/types/dashboard'
 
 /**
@@ -103,22 +104,8 @@ export function useSubscriptionManager() {
 
   // --- Helpers ---
   function calculateStartTime(windowStr: string | undefined): string {
-    const now = Date.now()
-    let ms = 5 * 60 * 1000 // Default 5m
-    if (windowStr) {
-      const match = windowStr.match(/^(\d+)([smhd])$/)
-      if (match) {
-        const val = parseInt(match[1])
-        const unit = match[2]
-        switch (unit) {
-          case 's': ms = val * 1000; break
-          case 'm': ms = val * 60 * 1000; break
-          case 'h': ms = val * 60 * 60 * 1000; break
-          case 'd': ms = val * 24 * 60 * 60 * 1000; break
-        }
-      }
-    }
-    return new Date(now - ms).toISOString()
+    const ms = parseDurationMs(windowStr) ?? 5 * 60 * 1000 // Default 5m
+    return new Date(Date.now() - ms).toISOString()
   }
 
   function getSubscriptionKey(widgetId: string, config: DataSourceConfig): string {
