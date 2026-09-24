@@ -264,6 +264,9 @@ async function initializeMap() {
   await nextTick()
 
   const tryInit = (attempts = 0) => {
+    // Setup waits on timers; a widget removed meanwhile must not build a map
+    // (and a WebGL basemap) after cleanup() has already run.
+    if (unmounted) return
     const container = document.getElementById(mapContainerId.value)
 
     if (!container || (container.clientHeight === 0 && attempts < 10)) {
@@ -408,6 +411,9 @@ function closePanel() {
 }
 
 let resizeObserver: ResizeObserver | null = null
+// Set on unmount so the delayed setup steps (tryInit's retries, the observer
+// below) do nothing if the widget was removed before they fired.
+let unmounted = false
 
 onMounted(() => {
   checkMobile()
@@ -415,6 +421,7 @@ onMounted(() => {
   initializeMap()
 
   window.setTimeout(() => {
+    if (unmounted) return
     resizeObserver = new ResizeObserver(() => {
       if (mapReady.value) invalidateSize()
     })
@@ -425,6 +432,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  unmounted = true
   window.removeEventListener('resize', checkMobile)
   if (resizeObserver) resizeObserver.disconnect()
   cleanup()
