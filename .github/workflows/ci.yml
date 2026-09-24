@@ -52,8 +52,9 @@ jobs:
         working-directory: ui
         run: npm ci
 
-      # Four packages in ui/package.json are deliberately held back, across the
-      # three pins CLAUDE.md describes (tailwind and daisyui move together). The
+      # Three packages in ui/package.json are deliberately held back, across the
+      # two pins CLAUDE.md describes (tailwind and daisyui move together), and
+      # a fourth major is asserted without being held back. The
       # reasons are written down at the top of ui/tailwind.config.js and in
       # CLAUDE.md. This step is their only guard: the frontend test runner below
       # covers pure logic only, so `vue-tsc && vite build` stays green while the
@@ -66,14 +67,14 @@ jobs:
       #   TypeScript 6 -> TS 7 is the native port and drops the ./lib/tsc
       #     subpath that vue-tsc resolves at startup, so `npm run build` dies
       #     before it type-checks anything.
-      #   maplibre-gl 5 -> v6 splits its tile-parsing worker out of the bundle
-      #     and resolves it as a sibling file, which after Vite hashes the
-      #     chunk points at an asset the build never emits. NOTHING throws and
-      #     nothing reaches the console: the style still loads and its
-      #     background layer still paints, so water, roads and labels all
-      #     vanish together and the map reads as a flat sheet of theme colour
-      #     -- a design choice rather than a failure. This is the pin with the
-      #     least visible failure mode and it was the one not checked here.
+      #   maplibre-gl 6 is current, not held back, but its major is asserted
+      #     anyway because it is the dependency with the least visible failure
+      #     mode. v6 moved the tile-parsing worker out of the bundle; without
+      #     the setWorkerUrl() call in useLeafletMap.ts the map renders as a
+      #     flat sheet of theme colour and the page shows no error. A v7 may
+      #     move it again, so the bump should be a deliberate one with
+      #     somebody looking at a map. The step after the build checks that
+      #     the worker is actually emitted.
       - name: Assert the deliberately pinned majors
         working-directory: ui
         run: |
@@ -89,7 +90,7 @@ jobs:
           check tailwindcss 3
           check daisyui 4
           check typescript 6
-          check maplibre-gl 5
+          check maplibre-gl 6
 
       # Pure-logic unit tests: widget defaults, the capability map, twin drift.
       # No DOM and no component mounting -- all of it is reachable without one,
@@ -106,6 +107,22 @@ jobs:
       - name: Build the console
         working-directory: ui
         run: npm run build
+
+      # The one piece of the map CI can see. maplibre-gl 6 loads its tile
+      # worker as a separate file, which exists in the build only because
+      # useLeafletMap.ts imports it with `?worker&url` and hands it to
+      # setWorkerUrl(). Lose that import and MapLibre asks for a file the build
+      # never emitted; the SPA fallback answers with index.html, so the worker
+      # never starts and the map loses water, roads and labels, with no error
+      # on the page. This does not prove the map renders, only that the file
+      # it needs exists.
+      - name: Assert the MapLibre worker is emitted
+        run: |
+          if ! ls pb_public/assets/maplibre-gl-worker-*.js >/dev/null 2>&1; then
+            echo "::error::No maplibre-gl-worker-*.js in pb_public/assets. See the setWorkerUrl() call in ui/src/composables/useLeafletMap.ts."
+            exit 1
+          fi
+          ls -l pb_public/assets/maplibre-gl-worker-*.js
 
       # -------------------------------------------------------------------- go
       - uses: actions/setup-go@v7

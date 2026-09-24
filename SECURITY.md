@@ -90,7 +90,7 @@ database, operator seed and CA.
 
 ## Dismissed advisories, and why
 
-Two dependency advisories are carried unpatched on purpose. Both are recorded
+One dependency advisory is carried unpatched on purpose. It is recorded
 here rather than only in a Dependabot dismissal, because that comment is capped
 at 280 characters and lives outside the repository.
 
@@ -110,13 +110,6 @@ at 280 characters and lives outside the repository.
   There is also no fix to take: `disintegration/imaging` was last released in
   2019 and the advisory lists no patched version. **Revisit if a TIFF mime type
   is ever added to a file field**, or if PocketBase drops the dependency.
-
-- **GHSA-jrc7-96c5-q579** — `maplibre-gl` 5.x, critical. The `DOM.sanitize()`
-  bypass, fixed in 6.4.1 and never backported. The pin is deliberate and the
-  reachability argument is narrow enough to be worth reading before changing
-  anything near the map: the only sink is MapLibre's own attribution control,
-  which is never constructed. See the `maplibre-gl` entry in `CLAUDE.md` for the
-  two changes that would end that.
 
 ## Out of scope
 

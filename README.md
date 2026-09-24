@@ -393,7 +393,10 @@ upgrading is a design-system migration rather than a version bump — 376
 references use the v4 `oklch(var(--b1))` form, which v5 breaks silently — and
 TypeScript 6, because TS 7 drops the `./lib/tsc` subpath `vue-tsc` resolves at
 startup, so the build dies before it type-checks anything. The full reasoning is
-at the top of `ui/tailwind.config.js`. CI asserts both majors.
+at the top of `ui/tailwind.config.js`. CI asserts both majors, and also
+`maplibre-gl` 6. That one is current rather than held back: its tile worker is a
+separate file wired up in `useLeafletMap.ts`, and a missing worker renders a
+blank map with no error on the page.
 
 ### Authorization tests
 

@@ -11,6 +11,32 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+### Security
+
+- **`maplibre-gl` 5.24.0 → 6.11.1, which closes GHSA-jrc7-96c5-q579.** The
+  critical `DOM.sanitize()` bypass was fixed in 6.4.1 and never backported,
+  so the v5 pin carried it with nothing to upgrade to. It was not reachable (its
+  only sink, MapLibre's attribution control, is never constructed), but it was
+  a critical line in every `npm audit`. `npm audit` now reports 0.
+
+### Changed
+
+- **The v5 pin is gone because its reason had a fix.** v6 no longer inlines its
+  tile-parsing worker, and after bundling it looks for a file the build never
+  emitted, so the map drew only its background colour. `useLeafletMap.ts` now
+  imports the worker with `?worker&url` and passes it to `setWorkerUrl()`. The
+  suffix matters: the worker file imports `maplibre-gl-shared.mjs`, and a plain
+  `?url` copies it as a lone asset whose import then fails inside the worker,
+  just as quietly. Checked in a production build and in the dev server, in both
+  styles (bright and fiord): water, roads, landuse and labels all render. With
+  the call removed, the same page renders 0 features, so the check can fail.
+- **Cost: the map payload goes from 285 kB to 416 kB gzipped** (272 kB for the
+  main chunk, 144 kB for the worker). The worker bundle carries its own copy of
+  MapLibre's shared code. It is still paid only on screens that show a map.
+- **CI checks that the worker is emitted**, and now expects `maplibre-gl` 6.
+  The major is still asserted even though it is no longer held back: a v7 that
+  moves the worker again would fail the same way, with no error on the page.
+
 ## [0.8.0] - 2026-09-19
 
 **A tenant can finally see who changed what.** `activity` is a new org-scoped

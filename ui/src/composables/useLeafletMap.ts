@@ -2,9 +2,18 @@
 import { ref, shallowRef, onUnmounted } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-// maplibre-gl is held at v5 on purpose -- see "deliberately held back" in
-// CLAUDE.md. v5 inlines its tile-parsing worker; v6 loads it as a sibling file
-// no bundler emits, which renders the basemap as a flat sheet of colour.
+import { setWorkerUrl } from 'maplibre-gl'
+// maplibre-gl 6 no longer inlines its tile-parsing worker. Left alone it loads
+// `./maplibre-gl-worker.mjs` relative to its own module URL, which after Vite
+// bundles it into a hashed chunk is a file the build never emits -- and nothing
+// throws: the style's background paints and water, roads and labels (all parsed
+// in the worker) silently vanish, leaving a flat sheet of colour.
+//
+// `?worker&url`, not `?url`: the worker file imports `./maplibre-gl-shared.mjs`,
+// and `?url` copies the one file as a bare asset whose import then 404s inside
+// the worker, which fails exactly as silently. `?worker&url` has Vite bundle the
+// worker entry with its imports into one emitted file and hand back its URL.
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import 'maplibre-gl/dist/maplibre-gl.css'
 // Side-effect import: registers L.maplibreGL and augments the leaflet module types.
 import '@maplibre/maplibre-gl-leaflet'
@@ -96,6 +105,10 @@ export interface FitOptions {
   padding?: number
   maxZoom?: number
 }
+
+// Once per module rather than per map: it is a global, read when MapLibre spins
+// up its worker pool on the first map, and this is the app's only MapLibre caller.
+setWorkerUrl(maplibreWorkerUrl)
 
 export function useLeafletMap() {
   const map = shallowRef<L.Map | null>(null)
@@ -191,30 +204,19 @@ export function useLeafletMap() {
       map.value.removeLayer(basemapLayer.value)
     }
 
-    // attributionControl: false is a SECURITY setting, not a cosmetic one, and
-    // STYLE_URLS being two constants is load-bearing beside it.
+    // STYLE_URLS being two constants is a SECURITY property, not a convenience.
     //
-    // MapLibre's own attribution control writes the style's attribution strings
-    // into innerHTML through DOM.sanitize(), and every published 5.x --
-    // including 5.24.0, the last there will ever be -- carries the sanitizer
-    // bypass in GHSA-jrc7-96c5-q579: it iterates the live NamedNodeMap while
-    // removing attributes, so the attribute after a stripped one is skipped and
-    // survives. The fix exists only in 6.4.1+, which is the line held back above
-    // for the worker-splitting reason, so this app cannot buy its way out by
-    // upgrading. It is not exploitable here because that control is never
-    // constructed -- @maplibre/maplibre-gl-leaflet hardcodes the same false when
-    // it builds the maplibregl.Map, and this is the app's only MapLibre
-    // instance -- and because the attribution text it would render comes from
-    // two hardcoded OpenFreeMap URLs.
+    // The Leaflet binding lifts a style's source `attribution` into LEAFLET's
+    // attribution control, which assigns straight to innerHTML with no
+    // sanitizing at all. So making STYLE_URLS configurable -- a self-hosted tile
+    // server, per the note above -- hands whoever serves the style document a
+    // script-injection path into the console. Sanitize before widening it.
     //
-    // Turning this on to let MapLibre render the OpenFreeMap credit instead of
-    // Leaflet (see TILE_ATTRIBUTION) would reintroduce a critical XSS silently.
-    // And note the exposure does not end with MapLibre: the Leaflet binding
-    // lifts a style's source `attribution` into LEAFLET's attribution control,
-    // which assigns straight to innerHTML with no sanitizing at all. So making
-    // STYLE_URLS configurable -- a self-hosted tile server, per the note above --
-    // hands a hostile style document a cleaner path than this advisory
-    // describes, on a control that upgrading maplibre would not protect.
+    // attributionControl: false keeps MapLibre's own control off, so the credit
+    // on screen stays the single Leaflet one fed by TILE_ATTRIBUTION. It was a
+    // security setting too while this app ran maplibre-gl 5, whose DOM.sanitize()
+    // carried GHSA-jrc7-96c5-q579; 6.4.1+ fixes that, so on v6 it is only
+    // cosmetic -- but it guards nothing about the innerHTML path above.
     const newLayer = L.maplibreGL({
       style: isDarkMode ? STYLE_URLS.dark : STYLE_URLS.light,
       attributionControl: false,

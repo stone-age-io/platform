@@ -27,7 +27,13 @@ Stone Age IoT Platform is a single-binary IoT and Event-Driven management platfo
 - **TypeScript 6** (7 is out but unusable here, see below)
 - **NATS WebSocket** (@nats-io/nats-core, jetstream, kv)
 - **Leaflet 1.9** for maps — markers, clustering, floor-plan overlays — over a
-  **MapLibre GL 5** vector basemap via `@maplibre/maplibre-gl-leaflet` (WebGL)
+  **MapLibre GL 6** vector basemap via `@maplibre/maplibre-gl-leaflet` (WebGL).
+  v6 loads its tile worker as a separate file, so the `setWorkerUrl()` call at
+  the top of `ui/src/composables/useLeafletMap.ts` is load-bearing. Without it
+  the map is a flat sheet of theme colour and the page shows no error (only a
+  console line). Import the worker with `?worker&url`, not `?url`: the worker
+  file imports `maplibre-gl-shared.mjs`, which `?url` does not bundle. CI checks
+  the worker is emitted, not that the map draws.
 - **ECharts 6.1 + vue-echarts** for charts
 - **grid-layout-plus** for dashboard grid layout
 - **@vueuse/core** for reactive utilities
@@ -36,9 +42,9 @@ Stone Age IoT Platform is a single-binary IoT and Event-Driven management platfo
 - **marked** for Markdown rendering
 - **PocketBase JS SDK** for API client
 
-### Three dependencies are deliberately held back
+### Two dependencies are deliberately held back
 
-Everything else in `ui/package.json` tracks latest. These three do not, and a
+Everything else in `ui/package.json` tracks latest. These two do not, and a
 routine "bump everything" pass must not drag them along:
 
 - **Tailwind 3.x + daisyUI 4.x.** Upgrading is a design-system migration, not a
@@ -53,44 +59,17 @@ routine "bump everything" pass must not drag them along:
   one repo alone breaks that contract. The full reasoning lives at the top of
   `ui/tailwind.config.js`; do it as scheduled work across both repos, with a
   human clicking through dashboards, widgets and both themes.
-- **maplibre-gl 5, not 6.** v5 inlines its tile-parsing worker into
-  `dist/maplibre-gl.js`. v6 splits it out and resolves it as a file sitting
-  next to itself — `new URL('./maplibre-gl-worker.mjs', import.meta.url)` —
-  which, once Vite has bundled the library into a hashed application chunk,
-  points at `/assets/maplibre-gl-worker.mjs`, a file the build never emits.
-  **Nothing throws and nothing reaches the console.** The style still loads over
-  HTTP and its background layer still paints, so the map renders as a flat sheet
-  of the theme colour; water, landuse, roads and labels are all parsed in the
-  worker that never started, so they vanish together and it reads as a design
-  choice rather than a failure. `setWorkerUrl()` with a `?url` import does fix
-  it, and was tried, but it is a workaround for a problem v5 does not have —
-  and v5 is also the version OpenFreeMap's own quick start pins, for both the
-  plain and the Leaflet-binding setup. Revisit when
-  `@maplibre/maplibre-gl-leaflet` documents v6 rather than merely permitting it
-  in `peerDependencies`.
-
-  **Staying on v5 means carrying GHSA-jrc7-96c5-q579 unpatched** (critical; the
-  `DOM.sanitize()` bypass, fixed in 6.4.1 and never backported — 5.24.0 is the
-  last 5.x there will be). It is not reachable here, and the reason is narrow
-  enough to be worth writing down: the only sink is MapLibre's own attribution
-  control, and that control is never constructed, because
-  `@maplibre/maplibre-gl-leaflet` hardcodes `attributionControl: false` when it
-  builds the `maplibregl.Map` and `useLeafletMap.ts` passes the same. The credit
-  on screen is **Leaflet's** control, fed by the `TILE_ATTRIBUTION` constant.
-  Two changes would end that: turning the MapLibre control on, or making
-  `STYLE_URLS` configurable — the Leaflet binding lifts a style's source
-  `attribution` into Leaflet's control, which assigns to `innerHTML` with no
-  sanitizing at all, so a hostile style document would get a cleaner path than
-  the advisory describes and upgrading maplibre would not close it. Both are
-  commented at the call site.
 - **TypeScript 6, not 7.** TS 7 is the native port and no longer exposes the
   `./lib/tsc` subpath that `vue-tsc` resolves at startup, so `npm run build`
-  dies before type checking. `vue-tsc` 3.3.10 is the newest there is; 6.0 is the
-  ceiling until the Vue tooling catches up.
+  dies before type checking. `vue-tsc` 3.3.11 still resolves it; its only TS 7
+  accommodation is aliasing `typescript` to `@typescript/typescript6`, which
+  runs the TS 6 compiler under a TS 7 name. 6.0 is the ceiling until the Vue
+  tooling type-checks with TS 7 itself.
 
 The only automated guard is the `Assert the deliberately pinned majors` step in
-`.github/workflows/ci.yml`, which fails the build if any of the four package
-majors moves. That catches the upgrade and nothing else: Vitest covers pure logic
+`.github/workflows/ci.yml`, which fails the build if any of these three package
+majors moves. It also asserts `maplibre-gl` 6, which is current rather than held
+back, because its failure mode is the least visible (see the Tech Stack entry). That catches the upgrade and nothing else: Vitest covers pure logic
 only (see **Testing**), so nothing exercises a rendered map, a theme token or a
 built bundle — `vue-tsc && vite build` stays green while the UI renders wrong,
 whatever the versions say. That is exactly why these are written down rather than
