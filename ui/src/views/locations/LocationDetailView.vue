@@ -194,26 +194,38 @@ watch([() => location.value, activeTab, loading], async ([loc, tab, isLoading]) 
       zoom: 15,
     })
     const typeName = (loc.expand?.type as { name?: string } | undefined)?.name || 'Unknown Type'
-    const popupHtml = `
-      <div class="p-1">
-        <h3 class="font-bold text-sm">${loc.name}</h3>
-        <div class="text-xs text-gray-500 mb-1">${typeName}</div>
-        ${loc.description ? `<p class="text-xs mb-2">${loc.description}</p>` : ''}
-        <a href="/locations/${loc.id}" class="text-xs text-primary hover:underline">View Details</a>
-      </div>
-    `
     renderMarkers([{
       id: loc.id,
       lat: loc.coordinates.lat,
       lon: loc.coordinates.lon,
       label: loc.name,
-      popupHtml,
+      popup: locationPopup(loc.id, loc.name ?? '', typeName, loc.description),
     }])
     miniMapInitialized.value = true
   } else {
     invalidateSize()
   }
 }, { immediate: true })
+
+// Built with textContent, never a template string: Leaflet puts a string popup
+// straight into innerHTML, and the name and description are member-editable,
+// so an interpolated popup ran whatever a member typed in the session of
+// whoever opened the map.
+function locationPopup(id: string, name: string, typeName: string, description?: string): HTMLElement {
+  const el = (tag: string, cls: string, text: string) => {
+    const e = document.createElement(tag)
+    e.className = cls
+    e.textContent = text
+    return e
+  }
+  const root = el('div', 'p-1', '')
+  root.append(el('h3', 'font-bold text-sm', name), el('div', 'text-xs text-gray-500 mb-1', typeName))
+  if (description) root.append(el('p', 'text-xs mb-2', description))
+  const link = el('a', 'text-xs text-primary hover:underline', 'View Details') as HTMLAnchorElement
+  link.href = `/locations/${encodeURIComponent(id)}`
+  root.append(link)
+  return root
+}
 
 // Helpers to refresh lists with current filters
 async function refreshSubLocs() {
