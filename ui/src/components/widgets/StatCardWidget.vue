@@ -60,14 +60,17 @@ const latestValue = computed(() => {
   return buffer.value[buffer.value.length - 1].value
 })
 
+// Compare against the value `trendWindow` messages back, or the oldest one
+// held if the buffer is shorter. Refusing when short meant a new card (window
+// 10, buffer 10) could never show a trend at all.
 const previousValue = computed(() => {
-  const index = buffer.value.length - 1 - trendWindow.value
-  if (index < 0 || buffer.value.length < 2) return null
+  if (buffer.value.length < 2) return null
+  const index = Math.max(0, buffer.value.length - 1 - trendWindow.value)
   return buffer.value[index].value
 })
 
 const trend = computed(() => {
-  if (latestValue.value === null || previousValue.value === null) return null
+  if (latestValue.value == null || previousValue.value == null) return null
   const current = Number(latestValue.value)
   const previous = Number(previousValue.value)
   if (isNaN(current) || isNaN(previous) || previous === 0) return null
@@ -96,7 +99,7 @@ const trendClass = computed(() => {
 })
 
 const displayValue = computed(() => {
-  if (latestValue.value === null) return '—'
+  if (latestValue.value == null) return '—'  // == : undefined too (a JSONPath that matched nothing)
   const value = latestValue.value
   const format = cfg.value.format
   const unit = cfg.value.unit || ''
@@ -112,7 +115,7 @@ function getDecimalPlaces(value: number): number {
 }
 
 const valueColor = computed(() => {
-  if (latestValue.value === null) return baseColors.value.muted
+  if (latestValue.value == null) return baseColors.value.muted
   const color = evaluateThresholds(latestValue.value, thresholds.value)
   return color || baseColors.value.text
 })

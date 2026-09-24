@@ -122,7 +122,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useNatsKvWatcher, type KvRow } from '@/composables/useNatsKvWatcher'
 import { resolveTemplate } from '@/utils/variables'
@@ -196,8 +196,16 @@ function extractValue(row: KvRow, col: TableColumn): any {
   }
 }
 
+// "x ago" cells only recompute when a key changes, so on a quiet bucket they
+// said "less than a minute ago" forever. Tick only while such a column exists.
+const now = ref(Date.now())
+const hasRelativeTime = computed(() => (cfg.value.columns || []).some(c => c.format === 'relative-time'))
+const clock = window.setInterval(() => { now.value = Date.now() }, 30_000)
+onUnmounted(() => window.clearInterval(clock))
+
 // Transform KvRow Map into flat table rows
 const tableRows = computed(() => {
+  if (hasRelativeTime.value) void now.value
   const columns = cfg.value.columns || []
   const result: any[] = []
 

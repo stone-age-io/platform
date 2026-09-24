@@ -90,7 +90,7 @@
     
     <!-- New Messages Toast (when paused) -->
     <div v-if="isPaused && missedCount > 0" class="new-msgs-toast" @click="togglePause">
-      {{ missedCount }} new messages ↓
+      {{ missedLabel }} new messages ↓
     </div>
 
     <!-- Copy Feedback Toast -->
@@ -107,6 +107,7 @@ import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useWidgetDataStore } from '@/stores/widgetData'
 import JsonViewer from '@/components/common/JsonViewer.vue'
 import WidgetStateOverlay from '@/components/dashboard/WidgetStateOverlay.vue'
+import { missedSince } from '@/utils/bufferView'
 import type { WidgetConfig } from '@/types/dashboard'
 
 const props = withDefaults(defineProps<{
@@ -148,10 +149,12 @@ const displayMessages = computed(() => {
   })
 })
 
-const missedCount = computed(() => {
-  if (!isPaused.value) return 0
-  return buffer.value.length - pausedMessages.value.length
-})
+// Not a length difference: that reads 0 once the buffer is full and rotating.
+const missed = computed(() =>
+  isPaused.value ? missedSince(pausedMessages.value, buffer.value) : { count: 0, atLeast: false }
+)
+const missedCount = computed(() => missed.value.count)
+const missedLabel = computed(() => `${missed.value.count}${missed.value.atLeast ? '+' : ''}`)
 
 // Actions
 function togglePause() {
@@ -244,7 +247,7 @@ watch(buffer, () => {
   if (!isPaused.value) {
     scrollToBottom()
   }
-}, { deep: true })
+})
 
 function handleRefresh() {
   // Grug say: refresh means show new data, not stay stuck on old snapshot.

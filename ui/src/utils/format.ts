@@ -1,4 +1,5 @@
 import { format, formatDistanceToNow } from 'date-fns'
+import { parseTimestamp } from './timestamp'
 
 /**
  * Format bytes to human-readable string
@@ -46,23 +47,18 @@ export function formatRelativeTime(date: string | Date): string {
 }
 
 /**
- * Normalize incoming timestamp to ms number + ISO string.
- * Handles Unix seconds (OwnTracks), Unix milliseconds, and ISO strings.
+ * A table cell's value as epoch ms, or null when it is not a timestamp.
+ *
+ * This used to have its own parser, which disagreed with the one messages are
+ * stamped with: a nanosecond epoch (Go's UnixNano) threw a RangeError inside
+ * the table's computed and blanked the whole table, microseconds rendered tens
+ * of thousands of years out, and 0, "", a seconds value sent as a string, or
+ * junk all showed as "less than a minute ago" because they fell back to now.
+ * A cell now shows "-" for anything that is not a time.
  */
-export function normalizeTimestamp(val: any): { iso: string; ms: number } {
-  if (!val) {
-    const now = Date.now()
-    return { iso: new Date(now).toISOString(), ms: now }
-  }
-
-  if (typeof val === 'number') {
-    // 10000000000 is roughly the year 2286 — if smaller, it's seconds
-    const ms = val < 10000000000 ? val * 1000 : val
-    return { iso: new Date(ms).toISOString(), ms }
-  }
-
-  const ms = new Date(String(val)).getTime() || Date.now()
-  return { iso: new Date(ms).toISOString(), ms }
+function cellTimestamp(val: unknown): number | null {
+  if (val instanceof Date) return Number.isNaN(val.getTime()) ? null : val.getTime()
+  return parseTimestamp(val)
 }
 
 /**
@@ -78,12 +74,12 @@ export function formatColumnValue(value: any, columnFormat: string, formatOption
       return num.toLocaleString()
     }
     case 'relative-time': {
-      const ts = normalizeTimestamp(value)
-      return formatRelativeTime(new Date(ts.ms))
+      const ms = cellTimestamp(value)
+      return ms === null ? '-' : formatRelativeTime(new Date(ms))
     }
     case 'datetime': {
-      const ts = normalizeTimestamp(value)
-      return formatDate(new Date(ts.ms), formatOptions || 'PPpp')
+      const ms = cellTimestamp(value)
+      return ms === null ? '-' : formatDate(new Date(ms), formatOptions || 'PPpp')
     }
     default:
       return String(value)

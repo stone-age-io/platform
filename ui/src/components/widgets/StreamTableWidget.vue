@@ -72,7 +72,7 @@
         <span class="text-[10px] opacity-50">
           <template v-if="isPaused">
             paused · {{ filteredRows.length }} rows
-            <span v-if="missedCount > 0" class="missed">(+{{ missedCount }} missed)</span>
+            <span v-if="missedCount > 0" class="missed">(+{{ missedLabel }} missed)</span>
           </template>
           <template v-else>
             live · {{ filteredRows.length }} row{{ filteredRows.length !== 1 ? 's' : '' }}
@@ -114,6 +114,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useWidgetDataStore } from '@/stores/widgetData'
 import { formatColumnValue } from '@/utils/format'
+import { missedSince, newestFirst } from '@/utils/bufferView'
 import { JSONPath } from 'jsonpath-plus'
 import ResponsiveList, { type Column } from '@/components/ui/ResponsiveList.vue'
 import JsonViewer from '@/components/common/JsonViewer.vue'
@@ -174,13 +175,22 @@ function extractValue(msg: BufferedMessage, col: TableColumn): any {
   }
 }
 
+// "x ago" cells go stale on a quiet stream: the rows only recompute when data
+// arrives. A clock the rows read keeps them honest, and only ticks when a
+// relative-time column exists.
+const now = ref(Date.now())
+const hasRelativeTime = computed(() => (cfg.value.columns || []).some(c => c.format === 'relative-time'))
+let clock: number | undefined
+
 const tableRows = computed(() => {
+  if (hasRelativeTime.value) void now.value
   const columns = cfg.value.columns || []
   const src = isPaused.value ? pausedSnapshot.value : buffer.value
-  // Newest first — buffer pushes append, so walk in reverse.
+  // Newest first by TIME (see utils/bufferView).
+  const ordered = newestFirst(src)
   const result: any[] = []
-  for (let i = src.length - 1; i >= 0; i--) {
-    const msg = src[i]
+  for (let i = 0; i < ordered.length; i++) {
+    const msg = ordered[i]
     const item: any = {
       id: `${msg.timestamp}-${i}`,
       __raw__: msg,
@@ -220,9 +230,11 @@ const filteredRows = computed(() => {
   })
 })
 
-const missedCount = computed(() =>
-  isPaused.value ? Math.max(0, buffer.value.length - pausedSnapshot.value.length) : 0
+const missed = computed(() =>
+  isPaused.value ? missedSince(pausedSnapshot.value, buffer.value) : { count: 0, atLeast: false }
 )
+const missedCount = computed(() => missed.value.count)
+const missedLabel = computed(() => `${missed.value.count}${missed.value.atLeast ? '+' : ''}`)
 
 function togglePause() {
   isPaused.value = !isPaused.value
@@ -262,10 +274,12 @@ function handleRefresh() {
 
 onMounted(() => {
   window.addEventListener('dashboard:refresh', handleRefresh)
+  clock = window.setInterval(() => { now.value = Date.now() }, 30_000)
 })
 
 onUnmounted(() => {
   window.removeEventListener('dashboard:refresh', handleRefresh)
+  if (clock !== undefined) window.clearInterval(clock)
 })
 </script>
 
