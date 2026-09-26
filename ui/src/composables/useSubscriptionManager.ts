@@ -12,6 +12,7 @@ import { decodeBytes } from '@/utils/encoding'
 import { parseDurationMs } from '@/utils/duration'
 import { extractJsonPath } from '@/utils/jsonPath'
 import { messageTimestamp } from '@/utils/timestamp'
+import { isSystemSubject, sweepsSystemSubjects } from '@/utils/systemSubjects'
 import type { DataSourceConfig } from '@/types/dashboard'
 
 /**
@@ -23,10 +24,13 @@ import type { DataSourceConfig } from '@/types/dashboard'
  * 3. Ordered Consumers are stateless on server, perfect for 🔄 button.
  */
 
+// Per listener, not per subscription: core subscriptions are shared by
+// subject, so two widgets on `>` can share one and disagree about this.
 interface WidgetListener {
   widgetId: string
   jsonPath?: string
   timestampPath?: string
+  hideSystemSubjects: boolean
 }
 
 interface SubscriptionRef {
@@ -174,6 +178,10 @@ export function useSubscriptionManager() {
     ensureCloseListener()
     
     const key = getSubscriptionKey(widgetId, config)
+    const listener: WidgetListener = {
+      widgetId, jsonPath, timestampPath,
+      hideSystemSubjects: !!config.hideSystemSubjects && sweepsSystemSubjects(subject),
+    }
     let subRef = subscriptions.get(key)
     
     if (subRef) {
@@ -190,7 +198,7 @@ export function useSubscriptionManager() {
           cleanupSubscription(subRef)
           subscriptions.delete(key)
         } else {
-          subRef.listeners.set(widgetId, { widgetId, jsonPath, timestampPath })
+          subRef.listeners.set(widgetId, listener)
           return
         }
       }
@@ -198,7 +206,7 @@ export function useSubscriptionManager() {
     
     const newSubRef: SubscriptionRef = {
       key, subject,
-      listeners: new Map([[widgetId, { widgetId, jsonPath, timestampPath }]]),
+      listeners: new Map([[widgetId, listener]]),
       isActive: true,
       isJetStream: !!config.useJetStream,
       config: { ...config },
@@ -331,7 +339,9 @@ export function useSubscriptionManager() {
     } catch { return }
 
     const receivedAt = Date.now()
+    const system = isSystemSubject(subject)
     for (const listener of subRef.listeners.values()) {
+      if (system && listener.hideSystemSubjects) continue
       try {
         let value = data
         if (listener.jsonPath) {

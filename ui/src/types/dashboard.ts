@@ -77,6 +77,11 @@ export interface DataSourceConfig {
   useJetStream?: boolean
   deliverPolicy?: DeliverPolicy
   timeWindow?: string
+
+  // Keep `$...` and `_INBOX` traffic out of a subscription whose first token
+  // is a wildcard. Absent means off, so dashboards saved before it existed
+  // behave as they always did; a new console sets it. utils/systemSubjects.ts.
+  hideSystemSubjects?: boolean
 }
 
 // A time window is a chart setting (ChartWidgetConfig.window), not a buffer
@@ -620,7 +625,7 @@ export function createDefaultWidget(type: WidgetType, position: { x: number; y: 
       break
     case 'console':
       base.title = 'Console Stream'
-      base.dataSource = { type: 'subscription', subject: '>', subjects: ['>'] }
+      base.dataSource = { type: 'subscription', subject: '>', subjects: ['>'], hideSystemSubjects: true }
       base.consoleConfig = { fontSize: 12, showTimestamp: true }
       // 200, matching streamtable. The 100 here was overridden by a second
       // defaults function that ran afterwards, so 200 is what a console widget

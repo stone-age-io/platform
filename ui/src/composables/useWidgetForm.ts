@@ -906,6 +906,7 @@ export function useWidgetForm(options: UseWidgetFormOptions) {
     state.useJetStream = widget.dataSource.useJetStream || false
     state.deliverPolicy = widget.dataSource.deliverPolicy || 'last'
     state.jetstreamTimeWindow = widget.dataSource.timeWindow || '10m'
+    state.hideSystemSubjects = widget.dataSource.hideSystemSubjects ?? false
 
     // Shared cross-type field extraction
     hydrateSubject(widget, state)
@@ -975,6 +976,7 @@ export function useWidgetForm(options: UseWidgetFormOptions) {
         useJetStream: form.value.useJetStream,
         deliverPolicy: form.value.deliverPolicy,
         timeWindow: form.value.jetstreamTimeWindow,
+        hideSystemSubjects: form.value.hideSystemSubjects,
       }
       updates.jsonPath = form.value.jsonPath.trim() || undefined
       updates.timestampPath = form.value.timestampPath.trim() || undefined

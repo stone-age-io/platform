@@ -20,6 +20,7 @@
             :hide-time-window="widgetType === 'chart'"
             :hide-json-path="widgetType === 'chart'"
             show-timestamp-path
+            show-system-filter
           />
 
           <!-- Widget Specific Config (Dynamic) -->

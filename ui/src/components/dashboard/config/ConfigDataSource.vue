@@ -48,6 +48,18 @@
       </div>
     </div>
     
+    <!-- Only a leading wildcard can match a system subject, so only then is this a choice -->
+    <div v-if="showSystemFilter && sweepsSystem" class="form-group">
+      <label class="checkbox-label">
+        <input type="checkbox" v-model="form.hideSystemSubjects" />
+        <span>Hide system subjects</span>
+      </label>
+      <div class="help-text">
+        Leaves out <code>$JS</code>, <code>$KV</code>, <code>$SYS</code> and <code>_INBOX</code> traffic.
+        To see one, add it as its own subject, e.g. <code>$KV.twin.></code>.
+      </div>
+    </div>
+
     <!-- JetStream Toggle -->
     <div class="form-group">
       <label class="checkbox-label">
@@ -145,7 +157,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { sweepsSystemSubjects } from '@/utils/systemSubjects'
 import type { WidgetFormState } from '@/types/config'
 
 const props = defineProps<{
@@ -158,7 +171,13 @@ const props = defineProps<{
   // Only the modal's shared data source saves it; status and markdown embed
   // this panel with their own save paths, which do not.
   showTimestampPath?: boolean
+  // Same reason as showTimestampPath.
+  showSystemFilter?: boolean
 }>()
+
+const sweepsSystem = computed(() =>
+  (props.allowMultiple ? props.form.subjects : [props.form.subject]).some(s => sweepsSystemSubjects(s.trim()))
+)
 
 // --- Multi-Subject Logic ---
 const newSubject = ref('')

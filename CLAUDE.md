@@ -1247,7 +1247,8 @@ you, so pushing an absolute one would make the login form an open redirect (the
 - `cd ui && npm test` — Vitest. Pure logic only, node environment, no component
   mounting except `ConfirmDialog` and `QrLabelModal`, where the DOM contract IS
   the subject. Covers the pure logic `vue-tsc && vite build` cannot protect:
-  `twinDrift`, `useSubscriptionManager`, `useEscapeKey`, the `can` capability
+  `twinDrift`, `useSubscriptionManager` (including the per-widget system-subject
+  filter), `useEscapeKey`, the `can` capability
   map, dashboard import/export, `createDefaultWidget`, the JSON Schema
   round trip in `schemaFields` + `inferSchema`, the file-token cache,
   `targetDimensions`, the label code sizing in `fitCodePt`, and every decision the chart widget makes about its data

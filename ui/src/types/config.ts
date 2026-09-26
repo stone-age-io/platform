@@ -138,7 +138,9 @@ export interface WidgetFormState {
   // JetStream
   useJetStream: boolean
   deliverPolicy: 'all' | 'last' | 'new' | 'last_per_subject' | 'by_start_time'
-  jetstreamTimeWindow: string 
+  jetstreamTimeWindow: string
+
+  hideSystemSubjects: boolean
 }
 
 export function createEmptyFormState(): WidgetFormState {
@@ -253,6 +255,8 @@ export function createEmptyFormState(): WidgetFormState {
 
     useJetStream: false,
     deliverPolicy: 'last',
-    jetstreamTimeWindow: '10m'
+    jetstreamTimeWindow: '10m',
+
+    hideSystemSubjects: false
   }
 }

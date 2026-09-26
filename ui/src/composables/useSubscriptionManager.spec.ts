@@ -1,7 +1,8 @@
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useNatsStore } from '@/stores/nats'
+import { useWidgetDataStore } from '@/stores/widgetData'
 import { useSubscriptionManager } from './useSubscriptionManager'
 
 // Every live value on every dashboard flows through this module, and it was
@@ -177,5 +178,67 @@ describe('extractJsonPath', () => {
   it('does not throw on a malformed path', () => {
     const { manager } = setup()
     expect(() => manager.extractJsonPath({ value: 1 }, '$[')).not.toThrow()
+  })
+})
+
+// The filter lives on the LISTENER, because core subscriptions are shared by
+// subject: move it onto the subscription and two widgets on `>` would silently
+// take whichever setting subscribed first.
+describe('hideSystemSubjects', () => {
+  const TRAFFIC = ['$JS.API.CONSUMER.INFO.x', '_INBOX.abc.1', 'sensor.temp', '$KV.twin.thing.a.temp']
+
+  // A subscription that delivers TRAFFIC once released: the gate lets every
+  // widget attach before the first message arrives.
+  function trafficSetup() {
+    setActivePinia(createPinia())
+    stubWindow()
+    vi.stubGlobal('requestAnimationFrame', (fn: (t: number) => void) => { fn(0); return 0 })
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    const data = new TextEncoder().encode('{"v":1}')
+    const nc = {
+      subscribeCalls: [] as string[],
+      subscribe(subject: string) {
+        this.subscribeCalls.push(subject)
+        return {
+          isClosed: () => false,
+          unsubscribe() {},
+          async *[Symbol.asyncIterator]() {
+            await gate
+            for (const s of TRAFFIC) yield { subject: s, data }
+            await new Promise(() => {})
+          },
+        }
+      },
+    }
+    useNatsStore().nc = nc as never
+    const added: Array<{ widgetId: string; subject?: string }> = []
+    vi.spyOn(useWidgetDataStore(), 'batchAddMessages').mockImplementation((items) => { added.push(...items) })
+    const deliver = async () => { release(); await new Promise((r) => setTimeout(r, 0)) }
+    const seenBy = (id: string) => added.filter((m) => m.widgetId === id).map((m) => m.subject)
+    return { nc, manager: useSubscriptionManager(), deliver, seenBy }
+  }
+
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('filters per widget on one shared subscription', async () => {
+    const { nc, manager, deliver, seenBy } = trafficSetup()
+    await manager.subscribe('quiet', { type: 'subscription', subject: '>', hideSystemSubjects: true })
+    await manager.subscribe('raw', { type: 'subscription', subject: '>' })
+    await deliver()
+
+    expect(nc.subscribeCalls).toEqual(['>'])
+    expect(seenBy('quiet')).toEqual(['sensor.temp'])
+    expect(seenBy('raw')).toEqual(TRAFFIC)
+  })
+
+  it('never filters a subscription whose first token is literal', async () => {
+    const { manager, deliver, seenBy } = trafficSetup()
+    await manager.subscribe('twin', { type: 'subscription', subject: '$KV.twin.>', hideSystemSubjects: true })
+    await deliver()
+
+    // The fake ignores the subject and delivers everything; what matters is
+    // that asking for a `$` prefix by name is never second-guessed.
+    expect(seenBy('twin')).toEqual(TRAFFIC)
   })
 })
