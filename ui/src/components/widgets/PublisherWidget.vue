@@ -171,7 +171,10 @@ async function loadBinding() {
     subject.value = resolveThing(
       joinSubject(tt?.subject_prefix || '', op.subject_suffix),
       {
-        org: authStore.currentOrg?.name || '',
+        // The code, never the name: ids for storage, codes for addressing
+        // (ADR 0002). An org without a code leaves `{org}` literal in the
+        // subject -- visibly unresolved -- rather than inventing a token.
+        org: authStore.currentOrg?.code || '',
         location: locationCode,
         thing: thing.code || thing.id,
         thingTypeCode: tt?.code || '',

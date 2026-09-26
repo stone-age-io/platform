@@ -17,12 +17,16 @@ type MembershipLifecycleOptions struct {
 // RegisterMembershipLifecycle closes a user's tenant context when the
 // membership that justified it is removed.
 //
-// Every read rule on the inventory collections is
+// When this was written, every read rule on the inventory collections was
 // `organization = @request.auth.current_organization`, with no membership or
 // role branch -- deliberately, because reads are org-scoped rather than
-// role-scoped (see CLAUDE.md). That makes users.current_organization the entire
+// role-scoped (see CLAUDE.md). That made users.current_organization the entire
 // read boundary for a console user, and nothing was clearing it when the
-// membership behind it went away. Removing someone from an organization
+// membership behind it went away. (The read rules have since gained a
+// correlated membership clause -- migrations/schema_update_tenancy_sentinel.go
+// -- so a removed member now loses reads with the membership itself. This hook
+// stays as the second half: it keeps the context honest, so the console does
+// not land a removed user in an organization it can no longer read.) Removing someone from an organization
 // therefore removed their ability to WRITE (every write branch names a role, and
 // resolves it through memberships) while leaving them able to read the whole
 // tenant's inventory, indefinitely:

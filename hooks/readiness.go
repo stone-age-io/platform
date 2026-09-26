@@ -204,9 +204,8 @@ func registerPlatformChecks(app core.App, reg *health.Registry, opts Observabili
 		}
 		if expiring > 0 {
 			return health.Warn(
-				fmt.Sprintf("%s expiring within %d days (soonest %s)",
-					certExpiryPhrase(sums, func(s certSummary) int { return s.Expiring }),
-					int(certExpiryWindow.Hours()/24), earliest.UTC().Format(time.DateOnly)),
+				fmt.Sprintf("expiring: %s (soonest %s)",
+					certExpiringPhrase(sums), earliest.UTC().Format(time.DateOnly)),
 				"Re-issue before the date above. Nebula certificates fail all at once and silently — "+
 					"nothing retries, and the devices simply stop appearing.",
 			)

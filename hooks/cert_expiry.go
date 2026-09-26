@@ -98,6 +98,10 @@ type certSummary struct {
 	// rather than treated as healthy: a certificate whose expiry we cannot read
 	// is not a certificate we know to be valid.
 	NoExpiry int
+	// Window is the look-ahead Expiring was counted against: certExpiryWindow
+	// for hosts, caExpiryWindow for the CA. Carried on the summary so a message
+	// naming the window cannot quote the host figure for a CA.
+	Window time.Duration
 }
 
 // scanCertExpiry summarises one collection's expires_at column.
@@ -114,7 +118,7 @@ type certSummary struct {
 // because a decommissioned device's lapsed certificate is not a problem anyone
 // needs paging about.
 func scanCertExpiry(app core.App, collection, kind, where string, window time.Duration, now time.Time) (certSummary, error) {
-	sum := certSummary{Kind: kind}
+	sum := certSummary{Kind: kind, Window: window}
 	if collection == "" {
 		return sum, nil
 	}
@@ -183,6 +187,25 @@ func nebulaCertSummaries(app core.App, opts ObservabilityOptions, now time.Time)
 // certificates". The count alone reads the same whether it is three devices or
 // the certificate authority every device chains to, and those are very
 // different mornings.
+// certExpiringPhrase is certExpiryPhrase for the Expiring count, naming each
+// kind's own window: "2 host certificates within 30 days, 1 CA within 90 days".
+// One window for the whole sentence would misstate the CA, which is counted
+// three times further out.
+func certExpiringPhrase(sums []certSummary) string {
+	var parts []string
+	for _, s := range sums {
+		if s.Expiring == 0 {
+			continue
+		}
+		one := certExpiryPhrase([]certSummary{s}, func(c certSummary) int { return c.Expiring })
+		parts = append(parts, fmt.Sprintf("%s within %d days", one, int(s.Window.Hours()/24)))
+	}
+	if len(parts) == 0 {
+		return "none"
+	}
+	return strings.Join(parts, ", ")
+}
+
 func certExpiryPhrase(sums []certSummary, pick func(certSummary) int) string {
 	var parts []string
 	for _, s := range sums {

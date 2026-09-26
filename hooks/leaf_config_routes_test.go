@@ -48,9 +48,9 @@ func TestLeafConfigFieldNames(t *testing.T) {
 // The JetStream domain is the Thing's code, computed rather than stored. A
 // stored domain would be a second name for an identifier the Thing already
 // carries, free to drift from it. Two directives in nats-leaf.conf depend on
-// them agreeing -- `server_name` and `jetstream { domain }` -- and the console's
-// site-connectivity view matches a leaf's reported server_name back to a Thing's
-// code, so a divergence here makes every gateway look offline.
+// them agreeing -- `server_name` and `jetstream { domain }` -- and a tenant's
+// site-status dashboard widget matches a leaf's reported server_name (CONNZ)
+// back to a Thing's code, so a divergence here makes every gateway look offline.
 func TestLeafConfigDomainIsTheCode(t *testing.T) {
 	got := leafConfigResponse(leafConfig{Code: "s01"})
 

@@ -36,8 +36,8 @@ const OrgCodeMaxLen = 31
 // A leading digit is NOT one of those cases: "816tech" is a valid code. The
 // pattern required a leading letter until an operator org named exactly that
 // could not be migrated, and nothing downstream justified the restriction --
-// NATS subject tokens, JetStream domains (always prefixed "edge-"), KV bucket
-// names and RFC 1123 hostname labels all permit a leading digit.
+// NATS subject tokens, JetStream domains (a leaf's is its Thing's code, bare),
+// KV bucket names and RFC 1123 hostname labels all permit a leading digit.
 func Slugify(name string) string {
 	var b strings.Builder
 	pendingHyphen := false

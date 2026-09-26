@@ -44,30 +44,6 @@ async function loadAccount() {
   }
 }
 
-/**
- * Self-Healing: Provision Account manually if missing
- */
-async function provisionAccount() {
-  if (!authStore.currentOrgId || !authStore.currentOrg) return
-  loading.value = true
-  try {
-    await pb.collection('nats_accounts').create({
-      name: authStore.currentOrg.name,
-      organization: authStore.currentOrgId,
-      active: true,
-      max_connections: 10,
-      max_subscriptions: 50,
-      max_payload: 1048576
-    })
-    toast.success('NATS Account provisioned')
-    await loadAccount()
-  } catch (err: any) {
-    toast.error(err.message)
-  } finally {
-    loading.value = false
-  }
-}
-
 function formatLimit(value?: number, isBytes = false) {
   if (value === undefined || value === null) return 'Not set'
   if (value === -1) return 'Unlimited'
@@ -186,12 +162,29 @@ useEscapeKey(showRemoveKeyModal, () => { showRemoveKeyModal.value = false })
     <div v-else-if="!account" class="text-center py-12">
       <span class="text-6xl">📡</span>
       <h3 class="text-xl font-bold mt-4">No NATS Account Found</h3>
+      <!--
+        There used to be a "Provision NATS Account" button here that created the
+        record from the browser. It could never work for the roles that reach
+        this view -- nats_accounts.createRule is null -- and for a superuser it
+        wrote stale hard-coded limits instead of nats.default_limits. The server
+        provisions the account (hooks/org_provisioning.go), create-if-missing on
+        every organization save, so re-saving the organization IS the retry.
+      -->
       <p class="text-base-content/70 mt-2 max-w-md mx-auto">
-        Your organization does not have a NATS account provisioned yet.
+        Your organization does not have a NATS account yet. It is provisioned by the
+        server when the organization is saved; if that failed, saving the organization
+        again retries it.
       </p>
-      <button @click="provisionAccount" class="btn btn-primary mt-6">
-        Provision NATS Account
-      </button>
+      <router-link
+        v-if="authStore.isOperator && authStore.currentOrgId"
+        :to="{ name: 'AdminOrgEdit', params: { id: authStore.currentOrgId } }"
+        class="btn btn-primary mt-6"
+      >
+        Edit organization to retry
+      </router-link>
+      <p v-else class="text-sm text-base-content/60 mt-4 max-w-md mx-auto">
+        Ask a Platform Operator to re-save this organization.
+      </p>
     </div>
 
     <!-- Details -->
