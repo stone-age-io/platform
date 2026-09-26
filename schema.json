@@ -2156,6 +2156,20 @@
         "type": "relation"
       },
       {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text190089999",
+        "max": 0,
+        "min": 0,
+        "name": "path",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
+      },
+      {
         "hidden": false,
         "id": "geoPoint2551633526",
         "name": "coordinates",

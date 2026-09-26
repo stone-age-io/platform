@@ -338,6 +338,20 @@ var people = []personFixture{
 	{Email: "iso@galewind.example", Name: "Grid Compliance",
 		Roles: map[string]string{"galewind": "viewer"}},
 
+	// Service logins, one per organization, for the long-term inventory feed
+	// (ADR 0004 in platform-docs; demo/inventory). nats-auth-manager signs in as
+	// one and keeps its token in the organization's own `tokens` KV bucket, and
+	// rule-router polls the list API with it. A viewer and nothing more: the
+	// token sits in a bucket anything with `$KV.tokens.>` can read, so what it
+	// can do is what leaks. Its NATS identity (console-inventory-feed, read-only)
+	// is minted like everyone else's and the feed does not use it.
+	{Email: "inventory-feed@northwind.example", Name: "Northwind Inventory Feed",
+		Roles: map[string]string{"northwind": "viewer"}},
+	{Email: "inventory-feed@ironbridge.example", Name: "Ironbridge Inventory Feed",
+		Roles: map[string]string{"ironbridge": "viewer"}},
+	{Email: "inventory-feed@galewind.example", Name: "Galewind Inventory Feed",
+		Roles: map[string]string{"galewind": "viewer"}},
+
 	// One person in two tenants at different authority levels. This is what the
 	// organization switcher exists for, and it is also the fastest way to see
 	// that `current_organization` is server-side session state: switching in one

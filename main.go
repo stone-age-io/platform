@@ -371,6 +371,10 @@ func main() {
 	// stay separate between the two (ADR 0003).
 	hooks.RegisterCodes(app)
 
+	// Every location stores its path of codes from the root (ADR 0004). After
+	// RegisterCodes, so a generated code is in place before the path is built.
+	hooks.RegisterLocationPath(app)
+
 	// Platform-owned hooks: auto-provision NATS account + Nebula CA per new org.
 	hooks.RegisterOrgProvisioning(app, hooks.OrgProvisioningOptions{
 		OrgCollection:                 orgCollection,

@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=256         # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=264         # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -1916,6 +1916,33 @@ req PATCH "/collections/things/records/$UNTYPED_THING" "$TA" "{\"type\":\"$TT_CA
 expect "a thing with no type may be typed once" 200 "$RCODE" "$RBODY"
 req PATCH "/collections/things/records/$UNTYPED_THING" "$TA" "{\"type\":\"$TT_SN\"}"
 expect "and after that its type is frozen" "403|400|404" "$RCODE" "$RBODY"
+
+echo "=== 25. ADR 0004: locations.path ==="
+# The path is computed by hooks/location_path.go on every save. There is no rule
+# term for it: a client-sent path is overwritten, never refused, so each check
+# here reads the path back rather than expecting a status.
+req POST /collections/locations/records "$TP" \
+  "{\"name\":\"Path Root\",\"code\":\"adr4-root\",\"path\":\"/forged/\",\"organization\":\"$ORG\"}"
+expect "member can create a location, sending a path" 200 "$RCODE" "$RBODY"
+P_ROOT=$(j "$RBODY" id)
+[ "$(j "$RBODY" path)" = "/adr4-root/" ] && ok "the server computed its path (/adr4-root/)" \
+  || no "expected path /adr4-root/, got '$(j "$RBODY" path)'"
+req POST /collections/locations/records "$TP" \
+  "{\"name\":\"Path Child\",\"code\":\"adr4-child\",\"parent\":\"$P_ROOT\",\"organization\":\"$ORG\"}"
+expect "and a child under it" 200 "$RCODE" "$RBODY"
+P_CHILD=$(j "$RBODY" id)
+[ "$(j "$RBODY" path)" = "/adr4-root/adr4-child/" ] && ok "the child's path runs from the root" \
+  || no "expected path /adr4-root/adr4-child/, got '$(j "$RBODY" path)'"
+req PATCH "/collections/locations/records/$P_CHILD" "$TP" '{"path":"/forged/","name":"Path Child Renamed"}'
+expect "a PATCH carrying a path is not refused" 200 "$RCODE" "$RBODY"
+[ "$(j "$RBODY" path)" = "/adr4-root/adr4-child/" ] && ok "and the path it carried was ignored" \
+  || no "a client rewrote the path to '$(j "$RBODY" path)'"
+req PATCH "/collections/locations/records/$P_ROOT" "$TP" "{\"parent\":\"$P_CHILD\"}"
+expect "a location cannot be moved under its own child" 400 "$RCODE" "$RBODY"
+req POST "/org/things" "$TP" "{\"name\":\"Path Thing\",\"code\":\"adr4-thing\",\"location\":\"$P_CHILD\"}"
+req GET "/collections/things/records?filter=location.path~'%2Fadr4-root%2F'" "$TP"
+[ "$(j "$RBODY" totalItems)" = "1" ] && ok "one filter finds a thing two levels under an ancestor" \
+  || no "location.path filter returned '$(j "$RBODY" totalItems)' things, expected 1: $(head -c 200 <<<"$RBODY")"
 
 # ----------------------------------------------------------------------- result
 

@@ -10,6 +10,8 @@ Neither config is required by the other — run one, or both.
 
 Every query here was run against a live estate before being written down. The
 numbers quoted are what it actually read at the time, not what it ought to read.
+The one exception is [Where things are](#where-things-are), which is new with
+ADR 0004 and says so.
 
 ## What has to be running
 
@@ -30,6 +32,11 @@ alarms, but the *decisions*, the posture changes and the controller heartbeats
 are emitted by the controllers themselves. Run the scheduler alone and only
 `event_kind="alarm"` fills in — a correct reading of the bus, not a broken
 config, and worth knowing before you debug an empty screen.
+
+[Where things are](#where-things-are) also needs the inventory feed in
+[../inventory](../inventory/README.md): nats-auth-manager and a second
+rule-router. Without it every reading still arrives, tagged by `thing` alone,
+and the join queries return nothing.
 
 VictoriaMetrics ships a query UI at **http://localhost:8428/vmui/**. No Grafana
 needed to work through this file.
@@ -148,18 +155,17 @@ is a property of the site.
 
 ## Two apps, one system
 
-```
-{location="KC-DC1"}
-```
+This section used to be one line, `{location="KC-DC1"}`, returning badge
+decisions and building telemetry side by side. It relied on both configs tagging
+`location` from the subject. Readings from `northwind.conf` no longer carry a
+location (ADR 0004; see the config's header), so that selector now finds only
+the access half.
 
-A bare label selector, no join syntax, and it returns **badge decisions and
-building telemetry side by side** — `access_count` next to `thing_percent`,
-`thing_uptime`, `thing_rssi_dbm`, `thing_volts`.
-
-That is the shared-account story in one line, and it only works because both
-configs derive `location` and `thing` from the subject with the same tag names —
-the names `internal/subjects/subjects.go` uses for the slots. Keep them in step
-if you add a third app.
+What the two apps still share is `thing`, and the inventory. The access config
+in the access-control repo has not changed and still tags `location` from
+`acc.{location}.…`, so its events keep working with a bare selector. To put the
+two side by side by where things are *now*, join through `stone_thing_info` as
+in [Where things are](#where-things-are).
 
 ## Fleet
 
@@ -174,37 +180,104 @@ firmware should not be counted as running any particular one.
 
 ---
 
+## Where things are
+
+**Not yet run against a live estate.** The inventory feed that produces these
+series ([../inventory/README.md](../inventory/README.md)) was run end to end on
+the bus, but Telegraf and VictoriaMetrics were not part of that run. Until they
+are, treat everything in this section as the intended query, not a measured one.
+Two things in particular need confirming: that MetricsQL accepts `@ end()` in
+this position, and that the series land as `stone_thing_info` and
+`stone_location_info`.
+
+Readings carry `thing` and nothing about place. `stone_thing_info` carries the
+rest, one series per Thing, value `1`, refreshed every minute:
+
+```
+stone_thing_info{thing="TP-003", name="Temperature Probe 003", thing_type="temp-probe",
+                 location="KC-DC1-CH1", location_path="/KC-DC1/KC-DC1-CH1/"} 1
+```
+
+Join on `(org, thing)`, because a code is unique only inside its organization:
+
+```
+avg by (location) (
+  thing_celsius
+    * on(org, thing) group_left(name, location, location_path)
+      (stone_thing_info @ end())
+)
+```
+
+`@ end()` reads the inventory once, at the end of the range, and applies it to
+every reading in the range. A probe moved on Tuesday shows all week under where
+it is now; correct a wrong location in the console and a minute later every past
+reading follows. That is the default on purpose. ADR 0004, "Why not attribute
+readings to where they were", has the reason.
+
+**Everything under one place.** A path holds codes from the root down, with `/`
+at both ends, so a regex on it selects a whole subtree. PromQL regexes are
+anchored, so the pattern needs `.*` at each end:
+
+```
+thing_celsius
+  * on(org, thing) group_left(name, location)
+    (stone_thing_info{location_path=~".*/KC-DC1/.*"} @ end())
+```
+
+**One line per location inside it:** the same, wrapped in `avg by (location)`.
+
+**Sites side by side.** A Grafana variable from the location series, and a
+repeated panel filtering by it:
+
+```
+label_values(stone_location_info{location_type="warehouse"}, location)
+```
+
+Comparing ancestor levels in one query, every site as a series in a single
+panel, would need `label_replace` with a depth-fixed regex. It is not shipped.
+The repeated panel does the same job and reads plainly.
+
+**For a few minutes after a move, a panel ending now can error.** Until the old
+info series goes stale, two series match the moved Thing, and `group_left`
+refuses the join with a duplicate-series error. It clears without anyone doing
+anything. A range that ends earlier is unaffected.
+
+---
+
 ## Metric reference
 
-Everything from `northwind.conf` lands as measurement `thing`, and everything
-from the access config as `access`. VictoriaMetrics names each series
-`<measurement>_<field>`, so the field name is the metric name's second half.
+Everything from `northwind.conf`'s readings input lands as measurement `thing`,
+and everything from the access config as `access`. VictoriaMetrics names each
+series `<measurement>_<field>`, so the field name is the metric name's second
+half.
 
 | Metric | What it is | Labels |
 |---|---|---|
-| `thing_celsius` | probe / reefer return-air reading | `location` `thing` |
-| `thing_setpoint_c` | the setpoint that reading is against | `location` `thing` |
-| `thing_percent` | battery charge | `location` `thing` |
-| `thing_volts` | battery voltage | `location` `thing` |
-| `thing_uptime` | seconds since boot — presence is the liveness signal | `location` `thing` `version` `app_kind` |
-| `thing_rssi_dbm` | radio signal on battery devices | `location` `thing` |
-| `thing_engine_hrs` | reefer engine hours | `location` `thing` |
-| `thing_load` | gateway load average | `location` `thing` `version` |
-| `thing_rules` | rules loaded by the cold-chain engine | `app_kind` `thing` `version` |
-| `thing_lines` | lines on a WMS shipment | `app_kind` `thing` `event` `site` |
-| `thing_duration` | how long a dock door held its previous state | `location` `thing` `state` |
+| `thing_celsius` | probe / reefer return-air reading | `thing` |
+| `thing_setpoint_c` | the setpoint that reading is against | `thing` |
+| `thing_percent` | battery charge | `thing` |
+| `thing_volts` | battery voltage | `thing` |
+| `thing_uptime` | seconds since boot — presence is the liveness signal | `thing` `version` |
+| `thing_rssi_dbm` | radio signal on battery devices | `thing` |
+| `thing_engine_hrs` | reefer engine hours | `thing` |
+| `thing_load` | gateway load average | `thing` `version` |
+| `thing_rules` | rules loaded by the cold-chain engine | `thing` `version` |
+| `thing_lines` | lines on a WMS shipment | `thing` `event` `site` |
+| `thing_duration` | how long a dock door held its previous state | `thing` `state` |
+| `stone_thing_info` | constant 1 — one series per Thing, from the inventory feed | `thing` `name` `thing_type` `location` `location_path` |
+| `stone_location_info` | constant 1 — one series per Location | `location` `name` `location_type` `location_path` |
 | `access_count` | constant 1 — one sample per access event | `location` `thing` `thing_type` `event_kind` `allow` `reason` `source` `type` `point` |
 
 `org` is on everything. `event_kind` is `tap`, `alarm`, `state` or `heartbeat`.
 `thing_type` is the portal type, or the literal `ctrl` for a controller — in
 which case `thing` is the controller code.
 
-**`location` vs `app_kind`.** A device is addressed `<root>.{location}.{thing}`;
-an application is addressed `app.{kind}.{thing}`, where the second slot is a
-subtree token (`wms`, `rules`) and not a place. Software has no site, so it gets
-a different tag rather than a wrong one. `thing_lines` carries `site` instead,
-which the WMS puts in the payload precisely because its subject has nowhere to
-put one.
+**No `location` on readings, and no `app_kind`.** Both came from the subject's
+second slot, which is a place on a device and an app subtree token on an
+application. A place tagged at ingestion is fixed forever, and a moved Thing's
+history would stay where it was. Both now come from `stone_thing_info`, where
+they are current. `thing_lines` still carries `site`, because the WMS puts it in
+the payload: it is the shipment's own data, not where the connector sits.
 
 ---
 
@@ -320,18 +393,14 @@ evaluates an instant query at `now - 30s` by default, so until there is more tha
 that much history the evaluation point predates all the data. Wait, or use a
 range.
 
-**`location` does not join across the two apps.** Telemetry is tagged at zone
-codes (`KC-DC1-FZ1`) and access at site codes (`KC-DC1`), because that is where
-each thing actually sits in the inventory. `{location="KC-DC1"}` works only
-because the door sensors happen to be at site level. To roll zones up:
-
-```
-label_replace(avg by (location) (thing_celsius), "site", "$1", "location", "^([A-Z]+-[A-Z0-9]+).*")
-```
-
-Fine for a demo. If you want it properly it should be a real `site` tag, not a
-regex repeated in every query — the location hierarchy is in the platform, and
-the subject only carries the leaf.
+**Zones roll up to their site through the path, not a regex.** Telemetry
+probes sit in zones (`KC-DC1-FZ1`) and door sensors at site level (`KC-DC1`),
+because that is where each thing actually sits in the inventory. This section
+used to roll zones up with a `label_replace` over the location code, which only
+worked because the demo's zone codes happen to start with their site's. The
+path makes it structural: `location_path=~".*/KC-DC1/.*"` is everything at the
+site and in every zone under it, whatever the codes look like. See
+[Where things are](#where-things-are).
 
 ## Do not build a prediction panel on this data
 

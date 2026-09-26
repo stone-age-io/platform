@@ -1,0 +1,55 @@
+# nats-auth-manager for the inventory feed (ADR 0004 in platform-docs).
+#
+# Signs in to PocketBase as the organization's inventory-feed viewer and keeps the
+# token in the `tokens` KV bucket, where rule-router reads it as
+# `{@kv.tokens.pocketbase}`. One process per organization, like rule-router:
+# the bucket lives in the organization's own NATS account.
+#
+#   nats kv add tokens --history=1 --storage=file --creds console-dana.creds
+#   PB_URL=http://127.0.0.1:8090 PB_EMAIL=inventory-feed@northwind.example \
+#     PB_PASSWORD=demo1234 nats-auth-manager --config demo/inventory/auth-manager.yaml
+#
+# The bucket has to exist first: nats-auth-manager opens it and refuses to start
+# without it, rather than creating one with defaults you did not choose.
+#
+# The password is in the environment and nowhere else. The token it buys is in
+# the bucket, readable by anything whose NATS permissions cover
+# `$KV.tokens.>`, so it is a viewer's token: it can list the inventory and
+# change nothing.
+
+nats:
+  urls:
+    - nats://localhost:4222
+  # A console-operator identity in the organization. It needs to write
+  # `$KV.tokens.>`; console-dana (the Northwind owner) does. See
+  # demo/rules/README.md, "Which credential". Single quotes on Windows paths.
+  credsFile: "/path/to/console-dana.creds"
+
+storage:
+  bucket: "tokens"
+
+logging:
+  level: info
+  encoding: console
+
+metrics:
+  enabled: true
+  address: ":2113"
+
+providers:
+  - id: "pocketbase"
+    type: custom-http
+    authUrl: "${PB_URL}/api/collections/users/auth-with-password"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    body: |
+      {
+        "identity": "${PB_EMAIL}",
+        "password": "${PB_PASSWORD}"
+      }
+    tokenPath: "token"
+    # Far inside PocketBase's own token lifetime, so a refresh that fails once
+    # has many chances to succeed before the stored token stops working.
+    refreshEvery: "30m"
+    kvKey: "pocketbase"

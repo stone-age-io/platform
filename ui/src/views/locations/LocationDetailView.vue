@@ -399,6 +399,15 @@ onUnmounted(() => cleanupMap())
                     </dd>
                   </div>
                 </div>
+                <!-- Computed by the server from the codes above it (ADR 0004).
+                     Shown because it is what a dashboard filters on:
+                     location_path=~".*/CODE/.*" selects everything under here. -->
+                <div v-if="location.path">
+                  <dt class="text-sm font-medium text-base-content/70">Path</dt>
+                  <dd class="mt-1">
+                    <code class="text-sm bg-base-200 px-2 py-0.5 rounded font-mono break-all">{{ location.path }}</code>
+                  </dd>
+                </div>
               </dl>
             </div>
 

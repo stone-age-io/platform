@@ -1,0 +1,56 @@
+# rule-router for the inventory feed (ADR 0004 in platform-docs).
+#
+#   PB_URL=http://127.0.0.1:8090 rule-router --config demo/inventory/rule-router.yaml \
+#     --rules demo/inventory/northwind
+#
+# A separate process from the telemetry rules in demo/rules, on purpose. The
+# feed needs KV (the token) and a PocketBase URL; the telemetry needs neither,
+# and each runs without the other.
+
+features:
+  # The scheduler polls; the router serves the core-NATS triggers that fan the
+  # poll out. Leave router off and the polls publish to a subject nobody reads,
+  # with nothing in the log to say so.
+  router: true
+  scheduler: true
+  gateway: false
+
+nats:
+  urls:
+    - nats://localhost:4222
+  # Same identity as auth-manager.yaml: publishes `inventory.>` and reads the
+  # tokens bucket. Single quotes on Windows paths.
+  credsFile: "/path/to/console-dana.creds"
+  tls:
+    enable: false
+  publish:
+    # No stream covers inventory.>, and none should: the whole inventory is
+    # resent every minute, so a lost message costs a minute, not data.
+    mode: core
+
+http:
+  client:
+    timeout: 30s
+
+kv:
+  enabled: true
+  buckets:
+    - "tokens"
+
+# PocketBase's perPage ceiling. The default is 100, which would drop every
+# record past the hundredth without a word -- the one limit on this path that
+# is silent. The guard rules catch a truncated poll; this keeps the fan-out from
+# truncating a complete one.
+forEach:
+  maxIterations: 1000
+
+logging:
+  level: info
+  outputPath: stdout
+  encoding: console
+
+metrics:
+  enabled: true
+  address: :2115
+  path: /metrics
+  updateInterval: 15s

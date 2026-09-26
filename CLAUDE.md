@@ -605,6 +605,38 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
       (`ui/src/utils/subjectResolver.ts`). `{location}` is still a supported
       variable for a prefix that opts in.
 
+16c. **`locations.path` and the inventory feed** (ADR 0004 in `platform-docs`,
+    `hooks/location_path.go`, `demo/inventory`).
+    - **`path` is the codes from the root down**, `/` between and at both ends:
+      `/KC/BD-3/RM-204/`. The end slashes make `/BD-3/` never match `BD-30`.
+      "Everything under BD-3" is `location.path ~ '/BD-3/'` in a PocketBase
+      filter and `location_path=~".*/BD-3/.*"` in PromQL.
+    - **The hook is the only writer.** Every create and update recomputes it from
+      the parent's stored path, and a client-sent value is overwritten. There is
+      deliberately NO `@request.body.path:changed = false` term: a form loaded
+      before an ancestor moved would echo a stale path and 404 on a field it
+      never meant to touch.
+    - **A move rewrites the subtree** in the same transaction, one UPDATE that
+      swaps the old prefix. Compare with `substr(path, 1, length(:old)) = :old`,
+      never `LIKE`: codes may contain `_`. The old path is read from the table,
+      not `e.Record.Original()`, which is blank for a record built with
+      `core.NewRecord` and saved twice.
+    - **Refused:** a parent in another organization, the location itself, one of
+      its descendants (the new path would start with its own), and a parent with
+      no path yet.
+    - **A deleted parent needs no delete hook.** PocketBase unsets the relation on
+      each child with `SaveNoValidate` inside the delete's transaction, which
+      fires the update hook, so each child becomes a root and takes its subtree
+      with it. `TestLocationPath` pins this, since it is PocketBase's behaviour.
+    - **A location with no code** (pre-ADR 0003) uses its id as its segment, so
+      two code-less siblings never share a path.
+    - **Register after `RegisterCodes`**, so a generated code is in place first.
+    - **The feed is demo tooling, not platform code**: nats-auth-manager signs in
+      as a seeded `inventory-feed@<org>.example` viewer, rule-router polls the
+      standard list API every minute and fans each record out to
+      `inventory.thing.<code>`, and Telegraf writes `stone_thing_info` /
+      `stone_location_info`. No platform route.
+
 17. **QR labels** (`ui/src/components/common/QrLabelModal.vue`) - print a
     label from any thing or location that has a code. It takes a
     **list**, and a detail view passes a list of one, so there is one code path
@@ -1337,6 +1369,7 @@ you, so pushing an absolute one would make the login form an open redirect (the
 - `main.go` - Backend entry, PocketBase setup, hooks, bootstrap command
 - `hooks/leaf_config_routes.go` - `GET /api/me/leaf-config` (bound to `things`, no record id): everything an agent needs to stand up a NATS leaf server, including the `$SYS` account JWT the leaf's MEMORY resolver cannot fetch. The JetStream domain is computed from the Thing's code rather than stored
 - `hooks/thing_routes.go` - `POST /api/org/things`: Thing + optional NATS/Nebula identity in one transaction; member-level for inventory, owner/admin for the identity half
+- `hooks/location_path.go` - `locations.path`: computed on every save, subtree rewrite on a move, cycle refusal (ADR 0004)
 - `hooks/codes.go` - generated Thing/Location codes and the separate type-prefix sets (ADR 0003). The one code generator; the UI has none
 - `hooks/nebula_routes.go` - `POST /api/org/nebula-ca/rotate` (owner/admin, three steps) and `GET /api/org/nebula/cert-audit`. Both are routes for the same reason `nats_account_routes.go` is: a PocketBase rule cannot say "this one field and nothing else", and the audit needs a Nebula certificate parsed, which the browser cannot do
 - `hooks/activity.go` - the tenant activity feed. The collection list IS the safety argument (see feature 7b); bound to the request hooks because they are the only layer carrying the actor, and best-effort because an observation must never cost the user their write

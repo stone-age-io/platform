@@ -32,6 +32,18 @@ and this file starts where the versioned releases do.
   organization.
 - **The Scanner's filter accepts `{value:lower}`**, so
   `code:lower = "{value:lower}"` finds a code typed in the wrong case.
+- **`path` on Locations** (ADR 0004 in platform-docs): the codes from the root
+  down, `/KC/BD-3/RM-204/`, computed by the server on every save. Moving a
+  location rewrites every path under it in the same transaction; a location
+  cannot be moved under itself or its descendants. "Everything under BD-3" is
+  one filter, `location.path ~ '/BD-3/'`. Existing locations are filled by the
+  migration. The Location page shows it.
+- **An inventory feed for the TSDB, in the demo** (`demo/inventory`).
+  nats-auth-manager signs in as a seeded viewer (`inventory-feed@<org>.example`,
+  one per demo organization), rule-router polls the list API every minute and
+  republishes each record, and Telegraf writes `stone_thing_info` and
+  `stone_location_info`. Dashboards join readings against them for location,
+  name and type as they are now. No platform route.
 
 ### Changed
 
@@ -48,6 +60,11 @@ and this file starts where the versioned releases do.
 - **A Thing's or Location's type is frozen once set.** A blank type may be
   set once; a wrong one is fixed by delete and recreate. The forms disable the
   type picker once a type is set, and show the code read-only when editing.
+- **Demo readings carry `thing` and no location** (`demo/telegraf`). A
+  `location` tag fixed at ingestion never follows a moved or corrected Thing;
+  the inventory join does. The two subject parsers collapse to one, and
+  `app_kind` goes with the second. **Breaking** for any saved query on the demo
+  that groups readings by `location`.
 - **The Thing form no longer derives the code from the name.** Left blank, the
   server generates it at save; the help text shows what one will look like for
   the selected type.

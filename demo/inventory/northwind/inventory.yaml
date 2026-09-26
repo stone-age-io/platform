@@ -1,0 +1,118 @@
+# =============================================================================
+# Northwind Traders — the inventory feed (ADR 0004 in platform-docs)
+# =============================================================================
+# Every minute, read the organization's Things and Locations from the standard
+# PocketBase list API and republish each record on its own subject. Telegraf
+# turns each one into a `stone_thing_info` or `stone_location_info` series, and
+# dashboards join readings against it by `thing`. See ../README.md for the whole
+# pipeline and how to run it.
+#
+# NOTHING HERE IS STATEFUL. The whole inventory goes out every minute. A missed
+# poll is covered by the next one, and a moved Thing shows its new location
+# within a minute. No diffing, no "changed since", no cursor to lose.
+#
+# THE TOKEN. `{@kv.tokens.pocketbase}` is the token nats-auth-manager keeps
+# fresh for `inventory-feed@northwind.example`, a viewer. Its current
+# organization is Northwind, and every list rule scopes by that, so these URLs
+# carry no organization filter: the login decides what comes back.
+#
+# PUBLISH MODE: core, from ../rule-router.yaml. Nothing here needs a stream: a
+# lost inventory message is replaced a minute later.
+# =============================================================================
+
+# ---------------------------------------------------------------- poll
+
+# One level of expand is enough for everything a chart needs, because each
+# location stores its own path. `fields` trims each item to what Telegraf tags
+# (totalItems and perPage come back regardless), which keeps a record to a few
+# hundred bytes and the 1 MB publishResponse cap a few thousand records away.
+# perPage=1000 is PocketBase's own ceiling, and forEach.maxIterations in
+# ../rule-router.yaml is set to match it.
+- trigger:
+    schedule:
+      cron: "0 * * * * *"
+  action:
+    http:
+      url: "${PB_URL}/api/collections/things/records?perPage=1000&expand=location,type&fields=code,name,expand.location.code,expand.location.path,expand.type.code"
+      method: GET
+      headers:
+        Authorization: "{@kv.tokens.pocketbase}"
+      publishResponse:
+        subject: "inventory.things"
+
+- trigger:
+    schedule:
+      cron: "0 * * * * *"
+  action:
+    http:
+      url: "${PB_URL}/api/collections/locations/records?perPage=1000&expand=type&fields=code,name,path,expand.type.code"
+      method: GET
+      headers:
+        Authorization: "{@kv.tokens.pocketbase}"
+      publishResponse:
+        subject: "inventory.locations"
+
+# ------------------------------------------------------------- fan out
+
+# One message per record, the record as PocketBase returned it plus `info: 1`.
+# merge, not a templated payload: a name with a quote in it cannot break JSON
+# that nobody assembled from strings. `info` is the field Telegraf writes, and
+# VictoriaMetrics names the series `{measurement}_{field}` -> stone_thing_info.
+- trigger:
+    nats:
+      subject: "inventory.things"
+      mode: core
+  action:
+    nats:
+      forEach: "{items}"
+      subject: "inventory.thing.{code}"
+      merge: true
+      payload: '{"info": 1}'
+
+- trigger:
+    nats:
+      subject: "inventory.locations"
+      mode: core
+  action:
+    nats:
+      forEach: "{items}"
+      subject: "inventory.location.{code}"
+      merge: true
+      payload: '{"info": 1}'
+
+# --------------------------------------------------------------- guard
+
+# A truncated inventory must be visible, not silent. PocketBase returns at most
+# perPage records; past that the feed quietly describes part of the estate and
+# every join against the rest comes back empty. When that happens, say so on a
+# subject a console widget can watch. The fix is paging, which this file does
+# not do until an organization needs it.
+- trigger:
+    nats:
+      subject: "inventory.things"
+      mode: core
+  conditions:
+    operator: and
+    items:
+      - field: "{totalItems}"
+        operator: gt
+        value: "{perPage}"
+  action:
+    nats:
+      subject: "inventory.truncated"
+      payload: '{"collection": "things", "totalItems": {totalItems}, "perPage": {perPage}}'
+
+- trigger:
+    nats:
+      subject: "inventory.locations"
+      mode: core
+  conditions:
+    operator: and
+    items:
+      - field: "{totalItems}"
+        operator: gt
+        value: "{perPage}"
+  action:
+    nats:
+      subject: "inventory.truncated"
+      payload: '{"collection": "locations", "totalItems": {totalItems}, "perPage": {perPage}}'

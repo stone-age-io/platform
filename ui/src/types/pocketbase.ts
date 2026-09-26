@@ -144,6 +144,9 @@ export interface Location extends BaseRecord {
   floorplan?: string
   photo?: string
   parent?: string // Parent Location ID
+  // Codes from the root down, `/KC/BD-3/RM-204/`. Written only by the server
+  // (hooks/location_path.go, ADR 0004); a value sent in a save is overwritten.
+  path?: string
   coordinates?: {
     lat: number
     lon: number  // NOTE: PocketBase uses 'lon' not 'lng'

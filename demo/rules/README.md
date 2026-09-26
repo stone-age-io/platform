@@ -29,6 +29,11 @@ tell a commissioned device from a merely recorded one — exactly the distinctio
 Nothing here ships in the binary and nothing here is required to run the
 platform. It is demo tooling.
 
+The inventory feed, which polls the platform and publishes every Thing and
+Location for the TSDB (ADR 0004), is not here. It lives in
+[../inventory](../inventory/README.md) and runs as its own rule-router, because
+it needs KV and a PocketBase URL and these rules need neither.
+
 ## One process per organization — this is not optional
 
 In NATS operator mode the **account is the tenant boundary**. Each seeded

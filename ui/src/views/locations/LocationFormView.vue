@@ -76,8 +76,9 @@ const typeOptions = computed<PickerOption[]>(() =>
  * The descendant half matters as much as the self check. Re-parenting a location
  * under its own descendant makes a cycle, and `flattenLocationTree` can then
  * reach neither end of it -- both fall out of the tree and reappear at the bottom
- * flagged as orphans. That is recoverable rather than silent, but it is still a
- * building that vanished from the picker, and no server rule prevents it.
+ * flagged as orphans. The server now refuses that save (hooks/location_path.go,
+ * which would otherwise have to build a path through the loop), so this is the
+ * friendly half: the row cannot be picked, rather than failing on save.
  */
 const parentOptions = computed<PickerOption[]>(() =>
   parentLocations.value.map(n => ({
