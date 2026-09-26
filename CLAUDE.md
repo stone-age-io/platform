@@ -569,8 +569,8 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
       belong to."** `orgSlugFor` (`hooks/thing_routes.go`) was a second,
       independent instance of the same bug.
 
-17. **QR labels** (`ui/src/components/common/QrLabelModal.vue`) - print an
-    operator-branded label from any thing or location that has a code. It takes a
+17. **QR labels** (`ui/src/components/common/QrLabelModal.vue`) - print a
+    label from any thing or location that has a code. It takes a
     **list**, and a detail view passes a list of one, so there is one code path
     rather than two layouts to keep in step. The Things and Locations lists print
     the **whole result set of the current filter**, not the current page — the
@@ -581,8 +581,19 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
       let a forged label send a person to arbitrary content; a bare in-system
       identifier means the worst case is resolving a different record inside an
       already-authenticated session. It also makes maximum error correction free.
-    - **The customer/org name is deliberately not printed** — a tenant name beside
-      a device naming convention is free reconnaissance.
+    - **Everything printed is the organization's own data** — its code (its name
+      only if it has none), then the record's code and name. **No operator
+      brand**: a label belongs to one organization, and the deployment-wide
+      brand says nothing true about who owns or services that device. The org
+      *code* rather than the name because a thing code is unique only within its
+      org, so the org code is what makes `AHU-1` unambiguous to a tech who
+      services several customers — and it is immutable, on a sticker that stays
+      put for years. This reverses the first version, which printed the brand
+      and left the tenant off as reconnaissance. **No type**: the name already
+      says what the thing is, and the small stock has no line to spare.
+    - The code's point size is **fitted per label** to its text column
+      (`ui/src/utils/labelFit.ts`), so a short code prints large rather than every
+      code printing at the size the longest one needs.
     - Records without a code are skipped and **named**: a silent drop is only
       discovered at the site.
     - Sizes are millimetres, and there is deliberately **no RFID inlay keep-out**.
@@ -1156,7 +1167,7 @@ you, so pushing an absolute one would make the login form an open redirect (the
   `twinDrift`, `useSubscriptionManager`, `useEscapeKey`, the `can` capability
   map, dashboard import/export, `createDefaultWidget`, the JSON Schema
   round trip in `schemaFields` + `inferSchema`, the file-token cache,
-  `targetDimensions`, and every decision the chart widget makes about its data
+  `targetDimensions`, the label code sizing in `fitCodePt`, and every decision the chart widget makes about its data
   (`utils/chartSeries` — series extraction, timeline segments — plus the
   `duration` and message `timestamp` parsers). A spec that needs a DOM opts in
   with `// @vitest-environment jsdom` on its first line.

@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import QrLabelModal from './QrLabelModal.vue'
+import { useAuthStore } from '@/stores/auth'
 
 // The second exception to this suite's no-mounting rule, for the same reason as
 // ConfirmDialog: what is under test IS the DOM contract. This component's whole
@@ -138,5 +139,49 @@ describe('QrLabelModal', () => {
 
     const marks = pages().map((p) => p.textContent?.includes('Site'))
     expect(marks).toEqual([false, true])
+  })
+
+  describe('organization line', () => {
+    const inOrg = (org: { code?: string; name: string }) => {
+      const auth = useAuthStore()
+      auth.memberships = [{ organization: 'o1', expand: { organization: { id: 'o1', ...org } } } as any]
+      auth.currentOrgId = 'o1'
+    }
+    const orgLines = () => Array.from(document.querySelectorAll('.qr-label-org')).map((el) => el.textContent?.trim())
+
+    // Thing codes are unique only within an organization, so the org code is
+    // what makes a sticker unambiguous across customers.
+    it('prints the organization code on every label', async () => {
+      inOrg({ code: 'acme', name: 'Acme Facilities' })
+      await open([THING('A-1'), THING('A-2')])
+
+      expect(orgLines()).toEqual(['acme', 'acme'])
+    })
+
+    it('falls back to the organization name when it has no code', async () => {
+      inOrg({ name: 'Acme Facilities' })
+      await open([THING('A-1')])
+
+      expect(orgLines()).toEqual(['Acme Facilities'])
+    })
+
+    it('does not print the operator brand', async () => {
+      inOrg({ code: 'acme', name: 'Acme Facilities' })
+      await open([THING('A-1')])
+
+      expect(pages()[0].textContent).not.toContain('Stone-Age.io')
+    })
+  })
+
+  // The sizing arithmetic is fitCodePt's spec; this pins that the label uses it
+  // per record rather than one size for the whole batch.
+  it('prints a short code larger than a long one in the same batch', async () => {
+    await open([THING('AHU-1'), THING('S01-AHU-SUPPLY-FAN-03')])
+
+    const sizes = Array.from(document.querySelectorAll<HTMLElement>('.qr-label-code')).map((el) =>
+      parseFloat(el.style.fontSize),
+    )
+    expect(sizes).toHaveLength(2)
+    expect(sizes[0]).toBeGreaterThan(sizes[1])
   })
 })

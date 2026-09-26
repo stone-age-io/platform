@@ -1,6 +1,5 @@
 <script setup lang="ts">
-// Printable, operator-branded QR labels for things and locations, sized to real
-// label stock.
+// Printable QR labels for things and locations, sized to real label stock.
 //
 // It takes a LIST. A detail view passes one record; a list view passes its whole
 // filtered set. There is deliberately no "bulk mode" — one record is a list of
@@ -20,13 +19,26 @@
 //   where a tech reads the code aloud or types it into the scanner's manual
 //   field. It gets equal billing.
 //
-//   The customer's name is deliberately NOT printed. A sticker in a public
-//   hallway is readable by anyone walking past, and a tenant name beside a
-//   device naming convention is free reconnaissance. It is shown on screen,
-//   where the operator already knows whose device they are looking at.
+// Everything printed is the organization's own data: its identifier on the top
+// line, then the record's code and name. The operator's brand used to take the
+// top line, and the organization was left off on a reconnaissance argument.
+// Both were reversed. A label is printed inside one organization and describes
+// that organization's record, while the brand is a deployment-wide setting that
+// says nothing true about who owns or services this particular device. And the
+// device already sits on its owner's premises, so naming the owner tells a
+// passer-by very little.
 //
-// The operator's brand IS printed, and it is the one piece of context that
-// earns its space: whoever finds a broken device needs to know who services it.
+//   The top line is the organization's CODE, and its name only when it has no
+//   code. A thing code is unique only within its organization (ADR 0002), so
+//   `AHU-1` alone is ambiguous to a technician who services several customers;
+//   the org code is the globally unique half that makes the sticker
+//   unambiguous. It is also immutable, and a sticker stays on a device for
+//   years, so where there is a choice the label prints the identifier that
+//   cannot go out of date.
+//
+//   The type is deliberately NOT printed. In a real inventory the name already
+//   says what the thing is, and the small stock has no line to spare for a
+//   restatement.
 //
 // ── Sizing ───────────────────────────────────────────────────────────────────
 //
@@ -46,8 +58,9 @@
 // inlay's datasheet rather than a conservative guess.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import QRCode from 'qrcode'
-import { useBrandingStore } from '@/stores/branding'
+import { useAuthStore } from '@/stores/auth'
 import { useEscapeKey } from '@/composables/useEscapeKey'
+import { fitCodePt } from '@/utils/labelFit'
 
 interface LabelSize {
   key: '2x1'
@@ -59,16 +72,27 @@ interface LabelSize {
   pad: number
   /** Square QR side. Height-bound. */
   qr: number
-  /** Point sizes — print-native units, so they survive the mm layout. */
-  brandPt: number
-  codePt: number
+  /** Point sizes — print-native units, so they survive the mm layout. The
+   *  organization line and the Site marker share orgPt. */
+  orgPt: number
+  /** The code is sized per label to fill the column; see fitCodePt. */
+  codeMinPt: number
+  codeMaxPt: number
   namePt: number
 }
 
 // Geometry is checked rather than eyeballed: with a 4-module quiet zone, the
 // worst-case symbol among realistic codes is 33 modules across. At these QR
 // sizes that is 0.61 mm per module on the small stock and 1.21 mm on the large
-// — both above the ~0.5 mm a phone camera needs.
+// — both above the ~0.5 mm a phone camera needs. The small QR stays at 20 mm
+// although 22 would fit the height: every millimetre it gains comes out of the
+// text column, and the module size already has headroom.
+//
+// The type sizes are set so that the tallest stack that can occur (the
+// organization line, a code wrapped to two lines at its minimum, a two-line
+// name, the Site marker) still fits the stock's height inside its padding —
+// about 19 of 22.4 mm on the small label and 31 of 44.8 mm on the large. They
+// were 4 / 8 / 5 pt and 7 / 16 / 9 pt, which left half of each label blank.
 const SIZES = [
   {
     key: '2x1',
@@ -77,9 +101,10 @@ const SIZES = [
     h: 25.4,
     pad: 1.5,
     qr: 20,
-    brandPt: 4,
-    codePt: 8,
-    namePt: 5,
+    orgPt: 6,
+    codeMinPt: 8,
+    codeMaxPt: 14,
+    namePt: 7,
   },
   {
     key: '4x2',
@@ -88,9 +113,10 @@ const SIZES = [
     h: 50.8,
     pad: 3,
     qr: 40,
-    brandPt: 7,
-    codePt: 16,
-    namePt: 9,
+    orgPt: 9,
+    codeMinPt: 14,
+    codeMaxPt: 28,
+    namePt: 12,
   },
 ] as unknown as LabelSize[]
 
@@ -102,11 +128,14 @@ interface LabelRecord {
 
 const props = defineProps<{
   records: LabelRecord[]
-  organizationName?: string
 }>()
 const emit = defineEmits<{ close: [] }>()
 
-const branding = useBrandingStore()
+// Every caller lists records from the active organization, so that is the one
+// the labels belong to. Read here rather than passed in: a prop would be one
+// more thing each of the four call sites could forget.
+const authStore = useAuthStore()
+const orgLine = computed(() => authStore.currentOrg?.code || authStore.currentOrg?.name || '')
 const labels = ref<(LabelRecord & { dataUrl: string })[]>([])
 const error = ref('')
 const sizeKey = ref<string>(SIZES[0].key)
@@ -136,10 +165,17 @@ const qrStyle = computed(() => ({
   width: `${size.value.qr}mm`,
   height: `${size.value.qr}mm`,
 }))
+const textWidth = computed(() => size.value.w - textLeft.value - size.value.pad)
+// The block is centred on the label, so without a height limit an overlong one
+// grows both ways and pushes the organization line off the top edge. Capped, it
+// overflows downward instead: the name and Site marker are clipped first, the
+// code last. Only a code near the 63-character schema maximum gets there.
 const textStyle = computed(() => ({
   left: `${textLeft.value}mm`,
   right: `${size.value.pad}mm`,
+  maxHeight: `${size.value.h - 2 * size.value.pad}mm`,
 }))
+const codePt = (code: string) => fitCodePt(code, textWidth.value, size.value.codeMinPt, size.value.codeMaxPt)
 
 async function render() {
   error.value = ''
@@ -229,7 +265,7 @@ useEscapeKey(() => true, () => emit('close'))
           </h3>
           <p class="text-sm text-base-content/60 mb-4">
             Scanned in the console or the service desk field app.
-            <span v-if="organizationName">{{ organizationName }}.</span>
+            <span v-if="authStore.currentOrg?.name">{{ authStore.currentOrg.name }}.</span>
           </p>
 
           <div v-if="error" class="alert alert-warning py-2 text-sm mb-3">{{ error }}</div>
@@ -274,22 +310,23 @@ useEscapeKey(() => true, () => emit('close'))
             <img :src="l.dataUrl" alt="" class="absolute top-1/2 -translate-y-1/2" :style="qrStyle" />
 
             <div class="absolute top-1/2 -translate-y-1/2 overflow-hidden" :style="textStyle">
-              <div class="flex items-center gap-1 leading-none">
-                <img v-if="branding.logoUrl" :src="branding.logoUrl" alt="" class="object-contain"
-                     :style="{ height: `${size.brandPt}pt`, width: `${size.brandPt}pt` }" />
-                <span class="uppercase tracking-wide font-semibold truncate"
-                      :style="{ fontSize: `${size.brandPt}pt` }">{{ branding.appName }}</span>
-              </div>
-              <div class="font-mono font-bold leading-tight break-all"
-                   :style="{ fontSize: `${size.codePt}pt`, marginTop: '0.6mm' }">{{ l.code }}</div>
-              <div class="leading-tight break-words"
+              <!-- Not uppercased, unlike the Site marker: org codes are lowercase
+                   by their pattern, and this is an identifier someone may type. -->
+              <div v-if="orgLine" class="qr-label-org font-semibold leading-none truncate"
+                   :style="{ fontSize: `${size.orgPt}pt` }">{{ orgLine }}</div>
+              <!-- break-words, not break-all: a code too long for one line at its
+                   minimum size wraps at a hyphen ("…SUPPLY-FAN-" / "03") and
+                   splits mid-token only when a single segment will not fit. -->
+              <div class="qr-label-code font-mono font-bold leading-tight break-words"
+                   :style="{ fontSize: `${codePt(l.code)}pt`, marginTop: '0.6mm' }">{{ l.code }}</div>
+              <div class="leading-tight break-words line-clamp-2"
                    :style="{ fontSize: `${size.namePt}pt`, marginTop: '0.3mm' }">{{ l.name }}</div>
               <!--
                 Things dominate an inventory, so only the rarer kind is marked —
                 an unmarked label reads as a device, which is the common case.
               -->
               <div v-if="l.kind === 'location'" class="uppercase tracking-wide leading-none"
-                   :style="{ fontSize: `${size.brandPt}pt`, marginTop: '0.4mm' }">Site</div>
+                   :style="{ fontSize: `${size.orgPt}pt`, marginTop: '0.4mm' }">Site</div>
             </div>
           </div>
         </div>

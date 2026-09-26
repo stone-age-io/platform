@@ -18,11 +18,6 @@
  * switcher sitting directly below it. And LoginView already disagreed, having
  * no org context to resolve, so the logo swapped the instant you authenticated.
  *
- * QrLabelModal never had the bug: it reaches past this component to
- * `branding.logoUrl` directly, because on a sticker in a public hallway whose
- * brand is printed is a decision somebody had to make on purpose. The
- * distinction was understood; this component had just never been told.
- *
  * So a tenant's identity lives in the org switcher, where switching it is the
  * control. If per-organization white-labelling ever lands it has to move the
  * app NAME as well -- that is a feature, not a logo.
