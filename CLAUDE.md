@@ -551,8 +551,9 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
     `platform-docs`). The rule is **ids for storage, codes for addressing**.
     `organizations.code` is the one *globally* unique identifier in the ecosystem;
     everything below it (`things`, `locations`, and the two type collections) is
-    unique only within its org, enforced by `UNIQUE (organization, code) WHERE
-    code != ''` partial indexes. Relation columns stay PocketBase ids.
+    unique only within its org, enforced by `UNIQUE (organization, code COLLATE
+    NOCASE) WHERE code != ''` partial indexes (case-folded since ADR 0003, see
+    16b). Relation columns stay PocketBase ids.
     - **`code` is optional but immutable.** Mutability was the disqualifier, not
       optionality. `@request.body.code:changed = false` freezes it on
       `organizations` and the four inventory collections — but that is a rule and
@@ -568,6 +569,39 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
       *"is this identifier unique"* but **"whose database does this identifier
       belong to."** `orgSlugFor` (`hooks/thing_routes.go`) was a second,
       independent instance of the same bug.
+
+16b. **Thing and Location codes: generated, prefixed, case-folded** (ADR 0003
+    in `platform-docs`, `hooks/codes.go`).
+    - **A blank code is generated on create**, `PFX-XXX-XXX` under the record's
+      type prefix or `XXX-XXX` without one: 30 symbols (no `0 O 1 I 2 Z`), each
+      chunk at least one letter and one digit, `crypto/rand`. Random on purpose:
+      a sparse space makes a typo land on "not found", where a sequential code's
+      typo lands on the neighbouring device. Installer codes (`DOOR-1`) are kept
+      exactly as typed. Bound to `OnRecordCreate` for the reason
+      `RegisterOrgCode` is: `code` is frozen the moment it exists.
+    - **`POST /api/org/things` generates its own** when the body's code is blank,
+      because the synthetic email and NATS username are built from the code
+      before anything is saved. It calls the same `NewUniqueCode`.
+    - **`GET /api/codes/suggest`** is the only generator a client may use
+      (inventory roles, own-org types, max 500). There is deliberately no
+      TypeScript copy: a code is frozen and printed, so drift would be permanent.
+      Suggestions are not reserved; a clash at create is refused by the index.
+    - **Uniqueness ignores case; storage does not.** Subjects use the stored
+      spelling exactly. The index only stops `cam-1` existing beside `CAM-1`.
+      Human lookups that should ignore case use `code:lower = {:c}` with a
+      lowercased param (the Scanner's `{value:lower}` token does this).
+    - **`prefix` on both type collections**, `^[A-Z]{1,4}$`, editable (it only
+      affects future codes). Thing and Location prefixes are **separate sets**:
+      the per-collection partial index covers its own half, and a create/update
+      hook refuses a prefix the OTHER collection holds, because an index cannot
+      see across tables.
+    - **`type` is frozen once set** on `things` and `locations`:
+      `(type = "" || @request.body.type:changed = false)`. A blank type may be set
+      once. A wrong type is fixed by delete and recreate. The forms disable the
+      type picker once one is set, since a changed type is a 404.
+    - **The default subject is `{thing_type_code}.{thing}`**, with no location
+      (`ui/src/utils/subjectResolver.ts`). `{location}` is still a supported
+      variable for a prefix that opts in.
 
 17. **QR labels** (`ui/src/components/common/QrLabelModal.vue`) - print a
     label from any thing or location that has a code. It takes a
@@ -1301,6 +1335,7 @@ you, so pushing an absolute one would make the login form an open redirect (the
 - `main.go` - Backend entry, PocketBase setup, hooks, bootstrap command
 - `hooks/leaf_config_routes.go` - `GET /api/me/leaf-config` (bound to `things`, no record id): everything an agent needs to stand up a NATS leaf server, including the `$SYS` account JWT the leaf's MEMORY resolver cannot fetch. The JetStream domain is computed from the Thing's code rather than stored
 - `hooks/thing_routes.go` - `POST /api/org/things`: Thing + optional NATS/Nebula identity in one transaction; member-level for inventory, owner/admin for the identity half
+- `hooks/codes.go` - generated Thing/Location codes, the separate type-prefix sets, and `GET /api/codes/suggest` (ADR 0003). The one code generator; the UI has none
 - `hooks/nebula_routes.go` - `POST /api/org/nebula-ca/rotate` (owner/admin, three steps) and `GET /api/org/nebula/cert-audit`. Both are routes for the same reason `nats_account_routes.go` is: a PocketBase rule cannot say "this one field and nothing else", and the audit needs a Nebula certificate parsed, which the browser cannot do
 - `hooks/activity.go` - the tenant activity feed. The collection list IS the safety argument (see feature 7b); bound to the request hooks because they are the only layer carrying the actor, and best-effort because an observation must never cost the user their write
 - `hooks/relation_tenancy.go` - the one hook-based enforcement in the platform: no relation may point into another organization's records. Derived from the schema rather than listing the nineteen relations, bound to the MODEL hooks, and applied to superusers too. See the invariants-vs-permissions bullet under **Roles & Authorization**

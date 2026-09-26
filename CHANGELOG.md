@@ -19,8 +19,40 @@ and this file starts where the versioned releases do.
   only sink, MapLibre's attribution control, is never constructed), but it was
   a critical line in every `npm audit`. `npm audit` now reports 0.
 
+### Added
+
+- **Generated Thing and Location codes** (ADR 0003 in platform-docs). A Thing
+  or Location saved without a code gets one, `PFX-XXX-XXX` under its type's
+  prefix or `XXX-XXX` without one, from an alphabet with `0 O 1 I 2 Z` removed.
+  Random, so a mistyped code finds nothing where a sequential one finds the
+  device next door. Installer codes are still accepted exactly as typed.
+  `POST /api/org/things` no longer requires a code.
+- **`prefix` on Thing Types and Location Types**: 1–4 capitals, copied into
+  generated codes. Thing and Location prefixes are separate sets per
+  organization.
+- **`GET /api/codes/suggest?kind=thing|location&type=<id>&count=<n>`**, for
+  the inventory roles: codes that are free when returned, for a form to
+  pre-fill or a batch of labels to pre-print. Not reserved.
+- **The Scanner's filter accepts `{value:lower}`**, so
+  `code:lower = "{value:lower}"` finds a code typed in the wrong case.
+
 ### Changed
 
+- **The default subject is `{thing_type_code}.{thing}`**, without
+  `{location}`. A Thing Type with an empty subject prefix used to resolve to
+  `{thing_type_code}.{location}.{thing}`, so moving a Thing moved every
+  subject it published on. `{location}` remains available to a prefix that
+  opts in. **Breaking** for any Thing Type relying on the empty default; every
+  demo type sets its prefix explicitly and is unaffected.
+- **Code uniqueness ignores case** on things, locations, thing_types and
+  location_types. `cam-1` and `CAM-1` can no longer both exist in one
+  organization. Stored case is kept, and subjects use it exactly. The
+  migration refuses, naming them, if existing codes differ only by case.
+- **A Thing's or Location's type is frozen once set.** A blank type may be
+  set once; a wrong one is fixed by delete and recreate. The forms disable the
+  type picker once a type is set, and show the code read-only when editing.
+- **The Thing form no longer derives the code from the name.** It suggests one
+  from the server on request, or leaves it blank for the server to generate.
 - **The v5 pin is gone because its reason had a fix.** v6 no longer inlines its
   tile-parsing worker, and after bundling it looks for a file the build never
   emitted, so the map drew only its background colour. `useLeafletMap.ts` now

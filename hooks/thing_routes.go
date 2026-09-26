@@ -99,9 +99,6 @@ func RegisterThingRoutes(app *pocketbase.PocketBase, opts ThingRoutesOptions) {
 			if body.Name == "" {
 				return re.BadRequestError("name is required", nil)
 			}
-			if body.Code == "" {
-				return re.BadRequestError("code is required", nil)
-			}
 
 			// Modes default to "none" so an absent block provisions nothing. A
 			// mode we don't recognise is rejected rather than treated as none —
@@ -126,6 +123,20 @@ func RegisterThingRoutes(app *pocketbase.PocketBase, opts ThingRoutesOptions) {
 			wantsIdentity := natsMode != modeNone || nebulaMode != modeNone
 			if wantsIdentity && role != "owner" && role != "admin" {
 				return re.ForbiddenError("attaching a NATS or Nebula identity requires owner or admin", nil)
+			}
+
+			// A blank code is generated here, not left to the create hook in
+			// codes.go: the Thing's synthetic email and its NATS username are
+			// both built from the code before anything is saved.
+			if body.Code == "" {
+				prefix, err := typePrefix(re.App, thingTypesCollection, body.Type, orgID)
+				if err != nil {
+					return re.BadRequestError(err.Error(), nil)
+				}
+				body.Code, err = NewUniqueCode(re.App, orgID, prefix)
+				if err != nil {
+					return re.InternalServerError("failed to generate a code", err)
+				}
 			}
 
 			if err := assertThingCodeFree(re, opts, orgID, body.Code); err != nil {
@@ -244,11 +255,13 @@ func resolveInventoryRole(re *core.RequestEvent, opts ThingRoutesOptions) (strin
 
 // assertThingCodeFree rejects a duplicate code up front so the caller gets a
 // readable message instead of a constraint violation surfaced from the driver.
+// Case is ignored, matching the unique index (ADR 0003): `cam-1` next to `CAM-1`
+// would be two identities nobody can tell apart when the code is read aloud.
 func assertThingCodeFree(re *core.RequestEvent, opts ThingRoutesOptions, orgID, code string) error {
 	existing, _ := re.App.FindFirstRecordByFilter(
 		opts.ThingCollection,
-		"organization = {:org} && code = {:code}",
-		dbx.Params{"org": orgID, "code": code},
+		"organization = {:org} && code:lower = {:code}",
+		dbx.Params{"org": orgID, "code": strings.ToLower(code)},
 	)
 	if existing != nil {
 		return re.BadRequestError(fmt.Sprintf("a thing with code %q already exists in this organization", code), nil)

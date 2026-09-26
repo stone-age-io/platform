@@ -80,6 +80,9 @@ export interface ThingType extends BaseRecord {
   name?: string
   description?: string
   code?: string
+  // 1-4 capitals, copied into every code generated for a Thing of this type
+  // (CA-9KD-4PX). Separate from the Location Type prefixes. See ADR 0003.
+  prefix?: string
   subject_prefix?: string
   operations?: string[] // Thing Type Operation IDs
   // Optional JSON Schema describing the inventory fields tracked for this class
@@ -123,6 +126,9 @@ export interface LocationType extends BaseRecord {
   name?: string
   description?: string
   code?: string
+  // 1-4 capitals, copied into every code generated for a Location of this
+  // type. Separate from the Thing Type prefixes. See ADR 0003.
+  prefix?: string
   // Optional JSON Schema describing the inventory fields tracked for this class
   // of place. Drives the Location form's metadata editor; not validated on write.
   metadata_schema?: Record<string, any> | null

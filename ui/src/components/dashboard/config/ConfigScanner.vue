@@ -170,7 +170,9 @@
             placeholder='id = "{value}"'
           />
           <div class="help-text">
-            PB filter; use <code>{value}</code> for the scanned content.
+            PB filter; use <code>{value}</code> for the scanned content. For a code
+            lookup that ignores case (a code typed by hand), use
+            <code>code:lower = "{value:lower}"</code>.
           </div>
         </div>
 

@@ -9,6 +9,7 @@ import DangerZone from '@/components/common/DangerZone.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import MetadataSchemaCard from '@/components/common/MetadataSchemaCard.vue'
 import RecordTimestamps from '@/components/common/RecordTimestamps.vue'
+import TypePrefixField from '@/components/common/TypePrefixField.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -53,6 +54,7 @@ const form = ref({
   name: '',
   description: '',
   code: '',
+  prefix: '',
 })
 
 // Inventory metadata schema, authored by MetadataSchemaCard. Null means the type
@@ -74,6 +76,7 @@ async function loadData() {
       name: record.name,
       description: record.description,
       code: record.code,
+      prefix: record.prefix || '',
     }
     const raw = record.metadata_schema
     metadataSchema.value = (typeof raw === 'string' ? JSON.parse(raw) : raw) || null
@@ -152,6 +155,8 @@ onMounted(() => {
               <label class="label">Code</label>
               <input v-model="form.code" type="text" class="input input-bordered font-mono" placeholder="Optional identifier" />
             </div>
+
+            <TypePrefixField v-model="form.prefix" kind="Location" example="BLD" />
           </div>
         </BaseCard>
 

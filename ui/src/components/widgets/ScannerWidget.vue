@@ -341,8 +341,14 @@ function reset() {
 
 // --- Lookup ---
 
+// {value:lower} pairs with PocketBase's :lower field modifier for a lookup that
+// ignores case -- `code:lower = "{value:lower}"` -- so a code typed into the
+// manual field in lowercase still finds the record. Code uniqueness ignores case
+// too, so this can never match two records (ADR 0003).
 function replacePlaceholder(template: string, value: string): string {
-  return template.replace(/\{value\}/g, value)
+  return template
+    .replace(/\{value:lower\}/g, value.toLowerCase())
+    .replace(/\{value\}/g, value)
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {

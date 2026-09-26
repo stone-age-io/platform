@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=236         # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=264         # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -1351,16 +1351,22 @@ req POST /collections/locations/records "$SU" \
   "{\"name\":\"Unique Code Other Org\",\"code\":\"UNIQ1\",\"organization\":\"$ORG2\"}"
 expect "another ORGANIZATION may reuse it (the scoping is the point)" 200 "$RCODE" "$RBODY"
 
-# The index is partial (code != ''), because code is optional on all five
-# collections and SQLite treats the empty string as a value. Without the
-# WHERE clause an org could hold exactly one blank-coded record, which is a
-# restriction nobody asked for.
+# A location saved without a code gets a generated one (ADR 0003), so two
+# code-less saves must both land with DIFFERENT codes. The index stays partial
+# (code != '') for rows that predate the generator.
 req POST /collections/locations/records "$SU" \
   "{\"name\":\"No Code One\",\"organization\":\"$ORG\"}"
-expect "a location may have no code" 200 "$RCODE" "$RBODY"
+expect "a location may be saved without a code" 200 "$RCODE" "$RBODY"
+NOCODE1=$(j "$RBODY" code)
 req POST /collections/locations/records "$SU" \
   "{\"name\":\"No Code Two\",\"organization\":\"$ORG\"}"
-expect "and so may a second one (the index is partial)" 200 "$RCODE" "$RBODY"
+expect "and so may a second one (each gets its own generated code)" 200 "$RCODE" "$RBODY"
+NOCODE2=$(j "$RBODY" code)
+if [ -n "$NOCODE1" ] && [ "$NOCODE1" != "$NOCODE2" ]; then
+  ok "the two code-less saves were given distinct generated codes ($NOCODE1, $NOCODE2)"
+else
+  no "code-less saves were not given distinct generated codes: '$NOCODE1' / '$NOCODE2'"
+fi
 
 # A thing's code is frozen after creation, the same way its organization is.
 # For a gateway it is also the JetStream domain its edge has already written
@@ -1820,6 +1826,121 @@ else
 fi
 
 req DELETE "/collections/locations/records/$PH_LOC" "$TA"
+
+echo ""
+echo "=== 24. ADR 0003: prefixes, generated codes, case, frozen types ==="
+# Its own member, for the reason section 21 gives: earlier sections delete and
+# re-point shared fixtures. Generated codes match the 30-symbol alphabet (A-Z and
+# 0-9 without 0 O 1 I 2 Z) in two chunks.
+GEN_RE='[3-9A-HJ-NP-Y]{3}-[3-9A-HJ-NP-Y]{3}'
+PRIM=$(mkuser prim@test.local)
+req POST /collections/memberships/records "$SU" \
+  "{\"user\":\"$PRIM\",\"organization\":\"$ORG\",\"role\":\"member\"}"
+[ -z "$(j "$RBODY" id)" ] && die "ADR 0003 member membership failed: $RBODY"
+req PATCH "/collections/users/records/$PRIM" "$SU" "{\"current_organization\":\"$ORG\"}"
+TP=$(login prim@test.local)
+
+# Thing and Location prefixes are separate sets. The unique index on each
+# collection covers its own half; hooks/codes.go covers the crossing.
+req POST /collections/location_types/records "$TA" \
+  "{\"name\":\"Building\",\"code\":\"adr3-building\",\"prefix\":\"BLD\",\"organization\":\"$ORG\"}"
+expect "owner can create a location type with a prefix" 200 "$RCODE" "$RBODY"
+LT_BLD=$(j "$RBODY" id)
+req POST /collections/location_types/records "$TA" \
+  "{\"name\":\"Room\",\"code\":\"adr3-room\",\"prefix\":\"RM\",\"organization\":\"$ORG\"}"
+expect "and a second, with its own prefix" 200 "$RCODE" "$RBODY"
+LT_RM=$(j "$RBODY" id)
+req POST /collections/thing_types/records "$TA" \
+  "{\"name\":\"Beacon\",\"code\":\"adr3-beacon\",\"prefix\":\"BLD\",\"organization\":\"$ORG\"}"
+expect "a thing type cannot take a prefix a location type holds" 400 "$RCODE" "$RBODY"
+req POST /collections/thing_types/records "$TA" \
+  "{\"name\":\"Camera\",\"code\":\"adr3-camera\",\"prefix\":\"CA\",\"organization\":\"$ORG\"}"
+expect "a thing type CAN take a prefix nobody holds (same body shape)" 200 "$RCODE" "$RBODY"
+TT_CA=$(j "$RBODY" id)
+req POST /collections/thing_types/records "$TA" \
+  "{\"name\":\"Sensor\",\"code\":\"adr3-sensor\",\"prefix\":\"SN\",\"organization\":\"$ORG\"}"
+expect "and a second thing type, with its own prefix" 200 "$RCODE" "$RBODY"
+TT_SN=$(j "$RBODY" id)
+req POST /collections/thing_types/records "$TA" \
+  "{\"name\":\"Lower\",\"code\":\"adr3-lower\",\"prefix\":\"ca\",\"organization\":\"$ORG\"}"
+expect "a lowercase prefix is refused by the field" 400 "$RCODE" "$RBODY"
+
+# A blank code is generated under the type prefix, on the record API and on the
+# provisioning route alike.
+req POST /collections/locations/records "$TP" \
+  "{\"name\":\"Generated Site\",\"type\":\"$LT_BLD\",\"organization\":\"$ORG\"}"
+expect "member can create a location without a code" 200 "$RCODE" "$RBODY"
+GEN_LOC=$(j "$RBODY" id)
+GEN_CODE=$(j "$RBODY" code)
+if [[ "$GEN_CODE" =~ ^BLD-$GEN_RE$ ]]; then
+  ok "it was given a generated code under its type prefix ($GEN_CODE)"
+else
+  no "expected a BLD-XXX-XXX code, got '$GEN_CODE'"
+fi
+req POST "/org/things" "$TP" "{\"name\":\"Route Generated\",\"type\":\"$TT_CA\"}"
+expect "the thing route accepts a blank code" 200 "$RCODE" "$RBODY"
+RG_CODE=$(j "$RBODY" code)
+if [[ "$RG_CODE" =~ ^CA-$GEN_RE$ ]]; then
+  ok "the route generated the code under the thing type prefix ($RG_CODE)"
+else
+  no "expected a CA-XXX-XXX code from the route, got '$RG_CODE'"
+fi
+
+# Stored case is kept; uniqueness ignores it. cam-1 next to CAM-1 would be two
+# identities and two subject namespaces nobody can tell apart by ear.
+req POST /collections/locations/records "$TP" \
+  "{\"name\":\"Case A\",\"code\":\"adr3-case\",\"organization\":\"$ORG\"}"
+expect "a lowercase code is accepted as typed" 200 "$RCODE" "$RBODY"
+req POST /collections/locations/records "$TP" \
+  "{\"name\":\"Case B\",\"code\":\"ADR3-CASE\",\"organization\":\"$ORG\"}"
+expect "a second code differing only by case is refused" 400 "$RCODE" "$RBODY"
+
+# type is frozen once set. A blank type may be set once. Each deny is paired
+# with a permitted edit on the same record.
+req PATCH "/collections/locations/records/$GEN_LOC" "$TP" "{\"type\":\"$LT_RM\"}"
+expect "member cannot retype a location" "403|400|404" "$RCODE" "$RBODY"
+req PATCH "/collections/locations/records/$GEN_LOC" "$TA" "{\"type\":\"$LT_RM\"}"
+expect "neither can the owner" "403|400|404" "$RCODE" "$RBODY"
+req PATCH "/collections/locations/records/$GEN_LOC" "$TP" '{"name":"Generated Site Renamed"}'
+expect "member CAN rename it (same record, so the deny was the frozen type)" 200 "$RCODE" "$RBODY"
+req POST /collections/locations/records "$TP" \
+  "{\"name\":\"Untyped\",\"code\":\"adr3-untyped\",\"organization\":\"$ORG\"}"
+UNTYPED=$(j "$RBODY" id)
+req PATCH "/collections/locations/records/$UNTYPED" "$TP" "{\"type\":\"$LT_RM\"}"
+expect "a location with no type may be typed once" 200 "$RCODE" "$RBODY"
+req PATCH "/collections/locations/records/$UNTYPED" "$TP" "{\"type\":\"$LT_BLD\"}"
+expect "and after that its type is frozen" "403|400|404" "$RCODE" "$RBODY"
+req POST "/org/things" "$TP" '{"name":"Untyped Thing","code":"adr3-thing"}'
+UNTYPED_THING=$(j "$RBODY" id)
+req PATCH "/collections/things/records/$UNTYPED_THING" "$TA" "{\"type\":\"$TT_CA\"}"
+expect "a thing with no type may be typed once" 200 "$RCODE" "$RBODY"
+req PATCH "/collections/things/records/$UNTYPED_THING" "$TA" "{\"type\":\"$TT_SN\"}"
+expect "and after that its type is frozen" "403|400|404" "$RCODE" "$RBODY"
+
+# GET /api/codes/suggest: the inventory roles only, the caller's own types only.
+req GET "/codes/suggest" ""
+expect "anonymous cannot ask for code suggestions" 401 "$RCODE" "$RBODY"
+req GET "/codes/suggest" "$TG"
+expect "dashboard cannot ask for code suggestions" "403|400" "$RCODE" "$RBODY"
+req GET "/codes/suggest" "$TV"
+expect "viewer cannot ask for code suggestions" "403|400" "$RCODE" "$RBODY"
+req GET "/codes/suggest?kind=thing&type=$TT_CA&count=3" "$TP"
+expect "member CAN ask for code suggestions" 200 "$RCODE" "$RBODY"
+SUGGESTED=$(jn "$RBODY" "o.codes.length === 3 && new Set(o.codes).size === 3 && o.codes.every(c => /^CA-$GEN_RE\$/.test(c)) ? 'yes' : ''")
+if [ "$SUGGESTED" = "yes" ]; then
+  ok "three distinct CA-XXX-XXX suggestions came back"
+else
+  no "suggestions were not three distinct CA-XXX-XXX codes: $RBODY"
+fi
+req GET "/codes/suggest?kind=bogus" "$TP"
+expect "an unknown kind is refused" 400 "$RCODE" "$RBODY"
+req GET "/codes/suggest?count=501" "$TP"
+expect "more than 500 suggestions is refused" 400 "$RCODE" "$RBODY"
+req POST /collections/location_types/records "$SU" \
+  "{\"name\":\"Other Building\",\"code\":\"adr3-other\",\"prefix\":\"OB\",\"organization\":\"$ORG2\"}"
+OTHER_LT=$(j "$RBODY" id)
+req GET "/codes/suggest?kind=location&type=$OTHER_LT" "$TP"
+expect "suggestions for another organization's type are refused" 400 "$RCODE" "$RBODY"
 
 # ----------------------------------------------------------------------- result
 

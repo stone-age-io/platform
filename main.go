@@ -367,6 +367,10 @@ func main() {
 	// code exists on the record the moment anything else reads it.
 	hooks.RegisterOrgCode(app, orgCollection)
 
+	// Thing and Location codes are generated when left blank, and type prefixes
+	// stay separate between the two (ADR 0003). Also GET /api/codes/suggest.
+	hooks.RegisterCodes(app, membershipCollection)
+
 	// Platform-owned hooks: auto-provision NATS account + Nebula CA per new org.
 	hooks.RegisterOrgProvisioning(app, hooks.OrgProvisioningOptions{
 		OrgCollection:                 orgCollection,

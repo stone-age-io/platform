@@ -52,6 +52,10 @@ const metadataEditor = ref<InstanceType<typeof MetadataEditor> | null>(null)
 // file token), so all this view has to hold is what Save should do -- a staged
 // file, or a staged removal, per field.
 const loadedLocation = ref<Location | null>(null)
+
+// A type, once set, is frozen by locations.updateRule (ADR 0003): generated codes
+// carry its prefix.
+const typeLocked = computed(() => isEdit.value && !!loadedLocation.value?.type)
 const floorplanFile = ref<File | null>(null)
 const floorplanRemoved = ref(false)
 const photoFile = ref<File | null>(null)
@@ -369,9 +373,21 @@ onMounted(() => {
                 <input 
                   v-model="formData.code"
                   type="text" 
-                  placeholder="Optional code/identifier"
+                  :placeholder="isEdit ? '' : 'e.g. RM-204, or leave blank to generate one'"
                   class="input input-bordered font-mono"
+                  :readonly="isEdit"
                 />
+                <!-- An installer code is preferred for a site: RM-204 is on the
+                     door, and a location code is read in subjects and paths. The
+                     generated one (hooks/codes.go) is the fallback that makes sure
+                     no location is left without a code. ADR 0003. -->
+                <label class="label">
+                  <span class="label-text-alt">
+                    {{ !isEdit
+                      ? 'Use the name on the door or drawing if there is one. Blank gets a generated code under the type prefix. Cannot be changed later.'
+                      : 'Frozen: it is printed on labels and built into subjects.' }}
+                  </span>
+                </label>
               </div>
               
               <!-- Type -->
@@ -384,10 +400,16 @@ onMounted(() => {
                   :options="typeOptions"
                   title="Type"
                   placeholder="Select a type (optional)"
-                  clearable
+                  :clearable="!typeLocked"
+                  :disabled="typeLocked"
                   clear-label="No type"
                   empty-text="No location types defined yet."
                 />
+                <label v-if="typeLocked" class="label">
+                  <span class="label-text-alt text-base-content/60">
+                    A type cannot be changed once set. To fix a wrong one, delete and recreate the Location.
+                  </span>
+                </label>
                 <!-- Same reasoning as the Thing form's type hint: anyone who can
                      pick a type can read its description. -->
                 <label v-if="selectedTypeHint" class="label">

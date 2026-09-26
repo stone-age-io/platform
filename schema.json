@@ -974,7 +974,7 @@
     "listRule": "// If a Thing is authenticating as itself (e.g. via SDK), it only sees its own record.\n// If a User is authenticating, they see all things belonging to their active organization.\n// Sentinel guard: in PocketBase an empty string equals an empty string, so a\n// blank organization must never scope a read. Do not put an apostrophe in a\n// rule comment: quotes are tokenized before comments are stripped, so one\n// stray apostrophe re-pairs every quote after it and the rule stops parsing.\n// See migrations/schema_update_tenancy_sentinel.go.\n(@request.auth.collectionName = \"things\" && id = @request.auth.id) || \n(@request.auth.collectionName = \"users\" && @request.auth.current_organization != \"\" && organization = @request.auth.current_organization && @request.auth.memberships_via_user.organization ?= @request.auth.current_organization)",
     "viewRule": "// If a Thing is authenticating as itself (e.g. via SDK), it only sees its own record.\n// If a User is authenticating, they see all things belonging to their active organization.\n// Sentinel guard: in PocketBase an empty string equals an empty string, so a\n// blank organization must never scope a read. Do not put an apostrophe in a\n// rule comment: quotes are tokenized before comments are stripped, so one\n// stray apostrophe re-pairs every quote after it and the rule stops parsing.\n// See migrations/schema_update_tenancy_sentinel.go.\n(@request.auth.collectionName = \"things\" && id = @request.auth.id) || \n(@request.auth.collectionName = \"users\" && @request.auth.current_organization != \"\" && organization = @request.auth.current_organization && @request.auth.memberships_via_user.organization ?= @request.auth.current_organization)",
     "createRule": "// Only users (not things) can create records, in their own active organization.\n// Members may add inventory; only owner/admin may attach a NATS or Nebula\n// identity to it, or set the active flag.\n//\n// nats_user / nebula_host are owner/admin only: a Thing can read the credential\n//    of its own linked identity, so a member able to re-point those relations at a\n//    privileged identity and then authenticate as the Thing would have a\n//    credential-theft path.\n//\n// active is owner/admin only for the same reason delete is: taking a device off\n//    the network revokes its NATS identity (hooks/active_flag.go). Members create\n//    and edit inventory; disabling it is a management action.\n//\n// The member branch names the roles it admits. Restricting the FIELDS without\n//    naming the ROLE let `dashboard` -- the least privileged role, which has no inventory\n//    authority at all -- create and edit Things.\n@request.auth.collectionName = \"users\" &&\n@request.body.organization = @request.auth.current_organization &&\n(\n  // Owner/admin: may assign the NATS / Nebula identity links.\n  (@request.auth.memberships_via_user.organization ?= @request.auth.current_organization &&\n (@request.auth.memberships_via_user.role ?= \"owner\" || @request.auth.memberships_via_user.role ?= \"admin\"))\n  ||\n  // Member: inventory fields only (name, description, location, metadata,\n  // floorplan_position). Attaching an identity is an admin action.\n  ((@request.auth.memberships_via_user.organization ?= @request.auth.current_organization &&\n   (@request.auth.memberships_via_user.role ?= \"owner\" ||\n    @request.auth.memberships_via_user.role ?= \"admin\" ||\n    @request.auth.memberships_via_user.role ?= \"member\")) &&\n   @request.body.nats_user:changed = false &&\n   @request.body.nebula_host:changed = false &&\n   @request.body.active:changed = false)\n)",
-    "updateRule": "// 1. Only users can update things.\n// 2. The thing must belong to the user's current organization.\n// 3. The organization field cannot be modified (no \"teleporting\" between orgs).\n// 4. nats_user / nebula_host are owner/admin only: a Thing can read the\n//    credential of its own linked identity, so a member able to re-point those\n//    relations at a privileged identity and then authenticate as the Thing would\n//    have a credential-theft path.\n// 5. active is owner/admin only for the same reason delete is: flipping it\n//    revokes the Thing's NATS identity and kills its outstanding auth tokens\n//    (hooks/active_flag.go). A member who could clear it could take any device in\n//    the organization off the network.\n// 6. The member branch names the roles it admits. Restricting the FIELDS without\n//    naming the ROLE let `dashboard` -- the least privileged role, which has no inventory\n//    authority at all -- create and edit Things.\n// 7. Freeze `code`: a sibling app resolves a ticket to this device by\n//    (organization, code), and the code may be printed on a label screwed to\n//    it. Changing it orphans every history that points here. Same term and\n//    the same reason as locations.code -- see ADR 0002 in platform-docs.\n@request.auth.collectionName = \"users\" &&\norganization = @request.auth.current_organization &&\n@request.body.organization:changed = false &&\n@request.body.code:changed = false &&\n(\n  // Owner/admin: may assign the NATS / Nebula identity links.\n  (@request.auth.memberships_via_user.organization ?= @request.auth.current_organization &&\n (@request.auth.memberships_via_user.role ?= \"owner\" || @request.auth.memberships_via_user.role ?= \"admin\"))\n  ||\n  // Member: inventory fields only (name, description, location, metadata,\n  // floorplan_position). Attaching an identity is an admin action.\n  ((@request.auth.memberships_via_user.organization ?= @request.auth.current_organization &&\n   (@request.auth.memberships_via_user.role ?= \"owner\" ||\n    @request.auth.memberships_via_user.role ?= \"admin\" ||\n    @request.auth.memberships_via_user.role ?= \"member\")) &&\n   @request.body.nats_user:changed = false &&\n   @request.body.nebula_host:changed = false &&\n   @request.body.active:changed = false)\n)",
+    "updateRule": "// 1. Only users can update things.\n// 2. The thing must belong to the user's current organization.\n// 3. The organization field cannot be modified (no \"teleporting\" between orgs).\n// 4. nats_user / nebula_host are owner/admin only: a Thing can read the\n//    credential of its own linked identity, so a member able to re-point those\n//    relations at a privileged identity and then authenticate as the Thing would\n//    have a credential-theft path.\n// 5. active is owner/admin only for the same reason delete is: flipping it\n//    revokes the Thing's NATS identity and kills its outstanding auth tokens\n//    (hooks/active_flag.go). A member who could clear it could take any device in\n//    the organization off the network.\n// 6. The member branch names the roles it admits. Restricting the FIELDS without\n//    naming the ROLE let `dashboard` -- the least privileged role, which has no inventory\n//    authority at all -- create and edit Things.\n// 7. Freeze `code`: a sibling app resolves a ticket to this device by\n//    (organization, code), and the code may be printed on a label screwed to\n//    it. Changing it orphans every history that points here. Same term and\n//    the same reason as locations.code -- see ADR 0002 in platform-docs.\n// 8. Freeze `type` once set: a blank type may be set once, a set one never\n//    changes. The code prefix and the default subject are both derived from\n//    the type, so a retype would leave the code lying and move every subject\n//    the device publishes on. A wrong type is fixed by delete and recreate --\n//    see ADR 0003 in platform-docs.\n@request.auth.collectionName = \"users\" &&\norganization = @request.auth.current_organization &&\n@request.body.organization:changed = false &&\n@request.body.code:changed = false &&\n(type = \"\" || @request.body.type:changed = false) &&\n(\n  // Owner/admin: may assign the NATS / Nebula identity links.\n  (@request.auth.memberships_via_user.organization ?= @request.auth.current_organization &&\n (@request.auth.memberships_via_user.role ?= \"owner\" || @request.auth.memberships_via_user.role ?= \"admin\"))\n  ||\n  // Member: inventory fields only (name, description, location, metadata,\n  // floorplan_position). Attaching an identity is an admin action.\n  ((@request.auth.memberships_via_user.organization ?= @request.auth.current_organization &&\n   (@request.auth.memberships_via_user.role ?= \"owner\" ||\n    @request.auth.memberships_via_user.role ?= \"admin\" ||\n    @request.auth.memberships_via_user.role ?= \"member\")) &&\n   @request.body.nats_user:changed = false &&\n   @request.body.nebula_host:changed = false &&\n   @request.body.active:changed = false)\n)",
     "deleteRule": "// Owner/admin only. `things` was the sole collection left with a member-level\n// delete -- locations, thing_types, location_types,\n// thing_type_operations, nats_roles and nebula_networks all gate it.\n//\n// Deleting a Thing is high-impact and not undoable from the UI: it orphans any\n// NATS or Nebula identity attached to it. Members create and edit inventory;\n// removing it is a management action.\n@request.auth.collectionName = \"users\" &&\norganization = @request.auth.current_organization &&\n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization &&\n (@request.auth.memberships_via_user.role ?= \"owner\" || @request.auth.memberships_via_user.role ?= \"admin\"))",
     "name": "things",
     "type": "auth",
@@ -1229,7 +1229,7 @@
     "indexes": [
       "CREATE UNIQUE INDEX `idx_tokenKey_pbc_704572500` ON `things` (`tokenKey`)",
       "CREATE UNIQUE INDEX `idx_email_pbc_704572500` ON `things` (`email`) WHERE `email` != ''",
-      "CREATE UNIQUE INDEX `idx_things_org_code` ON `things` (`organization`, `code`) WHERE `code` != ''",
+      "CREATE UNIQUE INDEX `idx_things_org_code` ON `things` (`organization`, `code` COLLATE NOCASE) WHERE `code` != ''",
       "CREATE INDEX `idx_things_org` ON `things` (`organization`)",
       "CREATE INDEX `idx_things_location` ON `things` (`location`)"
     ],
@@ -1960,6 +1960,20 @@
         "type": "text"
       },
       {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text2477885070",
+        "max": 4,
+        "min": 0,
+        "name": "prefix",
+        "pattern": "^[A-Z]{1,4}$",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
+      },
+      {
         "hidden": false,
         "id": "json_lt_metadata_schema",
         "maxSize": 0,
@@ -1991,7 +2005,8 @@
       }
     ],
     "indexes": [
-      "CREATE UNIQUE INDEX `idx_location_types_org_code` ON `location_types` (`organization`, `code`) WHERE `code` != ''"
+      "CREATE UNIQUE INDEX `idx_location_types_org_code` ON `location_types` (`organization`, `code` COLLATE NOCASE) WHERE `code` != ''",
+      "CREATE UNIQUE INDEX `idx_location_types_org_prefix` ON `location_types` (`organization`, `prefix`) WHERE `prefix` != ''"
     ],
     "system": false
   },
@@ -2000,7 +2015,7 @@
     "listRule": "// Sentinel guard: in PocketBase an empty string equals an empty string, so a\n// blank organization must never scope a read. Do not put an apostrophe in a\n// rule comment: quotes are tokenized before comments are stripped, so one\n// stray apostrophe re-pairs every quote after it and the rule stops parsing.\n// See migrations/schema_update_tenancy_sentinel.go.\n(@request.auth.collectionName = \"users\" && @request.auth.current_organization != \"\" && organization = @request.auth.current_organization && @request.auth.memberships_via_user.organization ?= @request.auth.current_organization)",
     "viewRule": "// Sentinel guard: in PocketBase an empty string equals an empty string, so a\n// blank organization must never scope a read. Do not put an apostrophe in a\n// rule comment: quotes are tokenized before comments are stripped, so one\n// stray apostrophe re-pairs every quote after it and the rule stops parsing.\n// See migrations/schema_update_tenancy_sentinel.go.\n(@request.auth.collectionName = \"users\" && @request.auth.current_organization != \"\" && organization = @request.auth.current_organization && @request.auth.memberships_via_user.organization ?= @request.auth.current_organization)",
     "createRule": "// 1. Must be authenticated as a user holding an inventory role in the active\n//    organization. This rule had no role check at all, which let `dashboard` create\n//    locations.\n// 2. The organization assigned to the new record must match the active context.\n@request.auth.collectionName = \"users\" &&\n@request.body.organization = @request.auth.current_organization &&\n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization &&\n   (@request.auth.memberships_via_user.role ?= \"owner\" ||\n    @request.auth.memberships_via_user.role ?= \"admin\" ||\n    @request.auth.memberships_via_user.role ?= \"member\"))",
-    "updateRule": "// 1. Must be authenticated as a user holding an inventory role in the active\n//    organization (see createRule -- this had no role check either).\n// 2. Must belong to the current active organization.\n// 3. Cannot change the organization ID (prevents moving data between tenants).\n// 4. Freeze `code`: a sibling app resolves a ticket to this site by\n//    (organization, code), and the code may be printed on a label. Changing\n//    it orphans every history that points here. Same term and the same\n//    reason as things.code -- see ADR 0002 in platform-docs.\n@request.auth.collectionName = \"users\" &&\norganization = @request.auth.current_organization &&\n@request.body.organization:changed = false &&\n@request.body.code:changed = false &&\n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization &&\n   (@request.auth.memberships_via_user.role ?= \"owner\" ||\n    @request.auth.memberships_via_user.role ?= \"admin\" ||\n    @request.auth.memberships_via_user.role ?= \"member\"))",
+    "updateRule": "// 1. Must be authenticated as a user holding an inventory role in the active\n//    organization (see createRule -- this had no role check either).\n// 2. Must belong to the current active organization.\n// 3. Cannot change the organization ID (prevents moving data between tenants).\n// 4. Freeze `code`: a sibling app resolves a ticket to this site by\n//    (organization, code), and the code may be printed on a label. Changing\n//    it orphans every history that points here. Same term and the same\n//    reason as things.code -- see ADR 0002 in platform-docs.\n// 5. Freeze `type` once set, for the reason things.type is frozen: the code\n//    prefix is derived from it. See ADR 0003 in platform-docs.\n@request.auth.collectionName = \"users\" &&\norganization = @request.auth.current_organization &&\n@request.body.organization:changed = false &&\n@request.body.code:changed = false &&\n(type = \"\" || @request.body.type:changed = false) &&\n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization &&\n   (@request.auth.memberships_via_user.role ?= \"owner\" ||\n    @request.auth.memberships_via_user.role ?= \"admin\" ||\n    @request.auth.memberships_via_user.role ?= \"member\"))",
     "deleteRule": "// High-impact actions like deletion should usually be restricted to management roles.\norganization = @request.auth.current_organization && \n(@request.auth.memberships_via_user.organization ?= @request.auth.current_organization && \n (@request.auth.memberships_via_user.role ?= \"owner\" || @request.auth.memberships_via_user.role ?= \"admin\"))",
     "name": "locations",
     "type": "base",
@@ -2181,7 +2196,7 @@
       }
     ],
     "indexes": [
-      "CREATE UNIQUE INDEX `idx_locations_org_code` ON `locations` (`organization`, `code`) WHERE `code` != ''",
+      "CREATE UNIQUE INDEX `idx_locations_org_code` ON `locations` (`organization`, `code` COLLATE NOCASE) WHERE `code` != ''",
       "CREATE INDEX `idx_locations_org` ON `locations` (`organization`)"
     ],
     "system": false
@@ -3654,6 +3669,20 @@
       {
         "autogeneratePattern": "",
         "hidden": false,
+        "id": "text2477885070",
+        "max": 4,
+        "min": 0,
+        "name": "prefix",
+        "pattern": "^[A-Z]{1,4}$",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
         "id": "text_subject_prefix",
         "max": 0,
         "min": 0,
@@ -3710,7 +3739,8 @@
       }
     ],
     "indexes": [
-      "CREATE UNIQUE INDEX `idx_thing_types_org_code` ON `thing_types` (`organization`, `code`) WHERE `code` != ''"
+      "CREATE UNIQUE INDEX `idx_thing_types_org_code` ON `thing_types` (`organization`, `code` COLLATE NOCASE) WHERE `code` != ''",
+      "CREATE UNIQUE INDEX `idx_thing_types_org_prefix` ON `thing_types` (`organization`, `prefix`) WHERE `prefix` != ''"
     ],
     "system": false
   },

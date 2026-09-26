@@ -12,6 +12,7 @@ import ThingTypeOperationFormView from '@/views/things/ThingTypeOperationFormVie
 import MetadataSchemaCard from '@/components/common/MetadataSchemaCard.vue'
 import RecordPicker from '@/components/common/RecordPicker.vue'
 import RecordTimestamps from '@/components/common/RecordTimestamps.vue'
+import TypePrefixField from '@/components/common/TypePrefixField.vue'
 import type { PickerOption } from '@/types/picker'
 import type { ThingTypeOperation } from '@/types/pocketbase'
 import { useEscapeKey } from '@/composables/useEscapeKey'
@@ -59,6 +60,7 @@ const form = ref({
   name: '',
   description: '',
   code: '',
+  prefix: '',
   subject_prefix: '',
   operations: [] as string[],
 })
@@ -119,6 +121,7 @@ async function loadData() {
       name: record.name,
       description: record.description,
       code: record.code,
+      prefix: record.prefix || '',
       subject_prefix: record.subject_prefix || '',
       operations: record.operations || [],
     }
@@ -207,6 +210,8 @@ useEscapeKey(showOperationModal, () => { showOperationModal.value = false })
               <input v-model="form.code" type="text" class="input input-bordered font-mono" placeholder="Optional identifier" />
             </div>
 
+            <TypePrefixField v-model="form.prefix" kind="Thing" example="CA" />
+
             <div class="form-control">
               <label class="label">Description</label>
               <textarea v-model="form.description" class="textarea textarea-bordered" rows="2"></textarea>
@@ -227,9 +232,15 @@ useEscapeKey(showOperationModal, () => { showOperationModal.value = false })
               />
               <label class="label">
                 <span class="label-text-alt">
+                  <!-- Single braces are not interpolation in a Vue template, so
+                       these render as written. The {'{org}'} spelling they
+                       replaced is JSX and printed its quotes and braces. -->
                   Template for NATS subjects. Supports
-                  <code>{'{org}'}</code>, <code>{'{location}'}</code>,
-                  <code>{'{thing}'}</code>, <code>{'{thing_type_code}'}</code>.
+                  <code>{org}</code>, <code>{location}</code>,
+                  <code>{thing}</code>, <code>{thing_type_code}</code>.
+                  Leave blank for the default. Add <code>{location}</code> only for
+                  things that never move: the subject follows the Thing's current
+                  location, so moving it moves its subjects.
                 </span>
               </label>
               <p class="text-xs text-base-content/70 mt-1">
