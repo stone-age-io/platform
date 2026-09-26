@@ -1054,17 +1054,32 @@ Rules to follow when touching authorization:
   calls `RefreshTokenKey()` on the true→false flip, which invalidates every
   outstanding token at once. Any future "disable this identity" feature needs
   the same pairing; the rule alone is a latch, not a switch.
-- **A flag is not a control unless something acts on it.** `nats_users.active` is
-  read into pb-nats's model (`internal/types/converters.go`) and consulted by
-  *nothing* in JWT generation or sync — only `revoke`, which adds the public key
-  to the account's revocation list and re-signs the account JWT
-  (`internal/sync/manager.go`, `revokeUser`), actually disconnects anyone. The UI
-  used to expose `active` as an editable checkbox next to a red/green badge, so
-  an admin could "deactivate" a device that kept publishing. That checkbox is
-  gone; Revoke/Re-enable on the detail view are the real controls. `things.active`
-  exists only because `hooks/active_flag.go` gives it teeth — the flag, the token
-  kill, and the NATS revoke are one operation. Do not
-  add a status field to a device without deciding what enforces it.
+- **A flag is not a control unless something acts on it.** `nats_users.active`
+  was once exactly that: read into pb-nats's model and consulted by nothing, while
+  the console showed it as an editable checkbox beside a red/green badge, so an
+  admin could "deactivate" a device that kept publishing. Since pb-nats v0.2.1 it
+  **is** the control (`internal/sync/manager.go`, the `OnRecordUpdate` handler):
+  true→false revokes the public key and deliberately reissues nothing;
+  false→true mints a JWT issued after the cutoff, so it connects while the old
+  file stays dead. Edge-triggered, which is safe here because pb-nats checks
+  `hasPriorState` — see the `Record.Original()` bullet.
+  - **`revoke` is not suspend.** It is the "credentials leaked" button: a NEW key
+    pair, the OLD public key onto the account's revocation list, and a working
+    replacement `.creds` on the same record. The identity stays active. The
+    console's Revoke modal said "the user will be marked inactive" until this was
+    caught; any copy describing revoke as a way to take an identity out of
+    service is wrong. `regenerate` is weaker still — it re-signs for the SAME
+    seed, so a leaked file keeps working.
+  - **Every path that can mint must respect the suspension.** A regenerate on an
+    inactive record re-mints past the cutoff just as reactivation does, so
+    `POST /api/me/nats-creds/rotate` refuses an inactive identity — without
+    that, the self-service rotate button was a self-service un-suspend. A new
+    route that sets `regenerate` needs the same check.
+  - The checkbox stays gone from the NATS user form: for a device the lever is
+    `things.active`, which exists only because `hooks/active_flag.go` gives it
+    teeth — the flag, the token kill, and the NATS and Nebula suspension are one
+    operation. Do not add a status field to a device without deciding what
+    enforces it.
 - **A device's real capability is its credentials, not its PocketBase session.**
   Anything that takes a Thing out of service has to reach
   `nats_users` **and** `nebula_hosts`, or it has only closed some of the doors.
