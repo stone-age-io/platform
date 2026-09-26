@@ -118,12 +118,15 @@ async function confirmRegenerate() {
 }
 
 /**
- * Revoke the user's currently distributed credentials.
+ * Revoke the user's currently distributed credentials and issue replacements.
  *
- * pb-nats adds the user's public key to the owning account's revocation list
- * (embedded in the account JWT) and marks the user inactive. NATS then rejects
- * the user's existing .creds immediately. The cutoff is permanent — only a
- * freshly issued JWT (see re-enable) is accepted afterward.
+ * This is the "these credentials leaked" button, not a suspend. pb-nats
+ * (rotateUserCredentials) generates a NEW key pair, adds the OLD public key to
+ * the account's revocation list (embedded in the account JWT), and mints a
+ * fresh .creds for the new key. Every copy of the old file is rejected at once
+ * and for good; the user stays active, and the new file has to be delivered to
+ * the legitimate holder. Suspending is `active` false, which revokes without
+ * reissuing — for a device that is the Thing's own active flag.
  */
 async function confirmRevoke() {
   if (!user.value) return
@@ -131,7 +134,7 @@ async function confirmRevoke() {
   revoking.value = true
   try {
     await pb.collection('nats_users').update(user.value.id, { revoke: true })
-    toast.success('Credentials revoked')
+    toast.success('Credentials revoked and replaced')
     showRevokeModal.value = false
     await loadUser()
   } catch (err: any) {
@@ -357,7 +360,7 @@ useEscapeKey(showReenableModal, () => { showReenableModal.value = false })
                     <button
                       @click="showRevokeModal = true"
                       class="btn btn-sm btn-outline btn-error"
-                      title="Reject this user's current credentials"
+                      title="Reject the current credentials and issue replacements"
                     >
                       <span class="text-lg">⛔</span>
                       Revoke
@@ -488,13 +491,14 @@ useEscapeKey(showReenableModal, () => { showReenableModal.value = false })
         <h3 class="font-bold text-lg text-error">Revoke Credentials?</h3>
         <p class="py-4">
           This immediately and permanently invalidates every credential currently issued to
-          <span class="font-mono font-semibold">{{ user?.nats_username }}</span>. NATS will reject
-          their existing <code>.creds</code> file, and the user will be marked inactive.
+          <span class="font-mono font-semibold">{{ user?.nats_username }}</span>: its key is added
+          to the account's revocation list, so NATS rejects every copy of the existing
+          <code>.creds</code> file.
         </p>
         <p class="pb-4 text-sm text-base-content/70">
-          The revocation is permanent and cannot be lifted for the current credentials. You can
-          later <span class="font-semibold">Re-enable</span> the user, which issues brand-new
-          credentials while the revoked ones stay invalid.
+          A new key and a fresh <code>.creds</code> file are issued in the same step, and the user
+          <strong>stays active</strong>. Use this when credentials have leaked, then deliver the new
+          file to whoever should hold it. It does not take the identity out of service.
         </p>
         <div class="modal-action">
           <button

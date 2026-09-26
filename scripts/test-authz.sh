@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=228         # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=236         # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -291,6 +291,20 @@ expect "member cannot promote self to admin" "403|400|404" "$RCODE" "$RBODY"
 # rule branch, but sections 7 and 9 need the link to survive.
 req PATCH "/collections/memberships/records/$MBOB" "$TB" "{\"nats_user\":\"$BOB_NATS\"}"
 expect "self nats_user link still works (Settings page)" 200 "$RCODE" "$RBODY"
+# The self branch may keep or clear the link but never choose it: nats_users
+# branch 2 serves the creds_file of whatever identity the membership names, and
+# every nats_users id in the org is readable off things.nats_user. Before this,
+# dashboard -- the zero-authority role -- could link itself to a device identity
+# and read its seed. relation_tenancy only refuses ANOTHER tenant, so this is
+# a same-org hole no hook covered.
+req PATCH "/collections/memberships/records/$MDASH" "$TG" "{\"nats_user\":\"$DEV_NATS\"}"
+expect "dashboard cannot point its own membership at another identity" "403|400|404" "$RCODE" "$RBODY"
+req GET "/collections/nats_users/records/$DEV_NATS" "$TG"
+expect "...so the device credential stays unreadable to it" 404 "$RCODE" "$RBODY"
+req PATCH "/collections/memberships/records/$MDASH" "$TA" "{\"nats_user\":\"$DEV_NATS\"}"
+expect "owner CAN link dashboard to an identity (same payload, so the deny was authz)" 200 "$RCODE" "$RBODY"
+req PATCH "/collections/memberships/records/$MDASH" "$TG" '{"nats_user":""}'
+expect "dashboard CAN clear its own identity link" 200 "$RCODE" "$RBODY"
 req PATCH "/collections/memberships/records/$MBOB" "$TB" "{\"organization\":\"$ORG2\"}"
 expect "cannot move own membership into another tenant" "403|400|404" "$RCODE" "$RBODY"
 req PATCH "/collections/memberships/records/$MBOB" "$TA" '{"role":"admin"}'
@@ -552,6 +566,17 @@ else
   no "creds_file unchanged after rotation -- the route set the flag but nothing acted on it"
 fi
 
+# Rotation must not lift a suspension. pb-nats treats active=false as revoked
+# and not reissued, but a regenerate mints a JWT issued after the revocation
+# cutoff -- which NATS accepts. So without a guard in the route, the rotate
+# button was a self-service un-suspend.
+req PATCH "/collections/nats_users/records/$BOB_NATS" "$SU" '{"active":false}'
+req POST "/me/nats-creds/rotate" "$TB" ""
+expect "a suspended identity cannot rotate itself back to life" 403 "$RCODE" "$RBODY"
+req PATCH "/collections/nats_users/records/$BOB_NATS" "$SU" '{"active":true}'
+req POST "/me/nats-creds/rotate" "$TB" ""
+expect "...and CAN once reactivated (same call, so the deny was the suspension)" 200 "$RCODE" "$RBODY"
+
 echo ""
 echo "=== 10. deletion and org profile are management actions ==="
 # things was the only collection left with a member-level delete; every other
@@ -576,6 +601,15 @@ OPER=$(j "$RBODY" id)
 TO=$(login oper@test.local)
 req PATCH "/collections/organizations/records/$ORG" "$TO" '{"name":"Renamed By Operator"}'
 expect "platform operator CAN update it (same field, so the deny was authz)" 200 "$RCODE" "$RBODY"
+
+# An operator onboards users; it does not mint operators. The operator branch
+# of users.createRule was a bare is_operator check, so this POST used to succeed.
+req POST /collections/users/records "$TO" \
+  '{"email":"oper2@test.local","password":"Password123!","passwordConfirm":"Password123!","name":"Second Operator","is_operator":true}'
+expect "operator cannot create another operator" "403|400|404" "$RCODE" "$RBODY"
+req POST /collections/users/records "$TO" \
+  '{"email":"oper2@test.local","password":"Password123!","passwordConfirm":"Password123!","name":"Onboarded User"}'
+expect "operator CAN create an ordinary user (same payload minus the flag)" 200 "$RCODE" "$RBODY"
 
 echo ""
 echo "=== 11. dashboard is excluded from inventory writes ==="

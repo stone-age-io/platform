@@ -59,6 +59,16 @@ func RegisterCredentialRoutes(app *pocketbase.PocketBase, opts CredentialRoutesO
 				return re.NotFoundError("linked NATS identity not found", nil)
 			}
 
+			// A suspended identity does not get to lift its own suspension.
+			// pb-nats treats `active` false as "revoked, do not reissue", but a
+			// regenerate mints a JWT issued AFTER the revocation cutoff, which
+			// NATS accepts -- so without this check the rotate button is also a
+			// self-service un-suspend. Reactivating is owner/admin, through
+			// nats_users.updateRule (or things.active for a device).
+			if !rec.GetBool("active") {
+				return re.ForbiddenError("this NATS identity is suspended", nil)
+			}
+
 			// Exactly one field. This is the whole reason the route exists.
 			rec.Set("regenerate", true)
 			if err := re.App.Save(rec); err != nil {
