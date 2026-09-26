@@ -150,7 +150,7 @@ func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
 	}
 
 	hooks.RegisterOrgCode(app, orgCollection)
-	hooks.RegisterCodes(app, membershipCollection)
+	hooks.RegisterCodes(app)
 	hooks.RegisterOrgProvisioning(app, hooks.OrgProvisioningOptions{
 		OrgCollection:                 orgCollection,
 		NatsAccountCollection:         natsOpts.AccountCollectionName,

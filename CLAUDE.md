@@ -582,10 +582,12 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
     - **`POST /api/org/things` generates its own** when the body's code is blank,
       because the synthetic email and NATS username are built from the code
       before anything is saved. It calls the same `NewUniqueCode`.
-    - **`GET /api/codes/suggest`** is the only generator a client may use
-      (inventory roles, own-org types, max 500). There is deliberately no
-      TypeScript copy: a code is frozen and printed, so drift would be permanent.
-      Suggestions are not reserved; a clash at create is refused by the index.
+    - **There is no way to get a code before its record exists**, and no
+      TypeScript generator. A client wanting a generated code leaves it blank. A
+      `GET /api/codes/suggest` route existed briefly and was removed: blank-at-save
+      covers the form, and a batch of labels prints from the list once the
+      records exist. Do not add a client-side copy of the generator either; a code
+      is frozen and printed, so a drifted copy would be wrong permanently.
     - **Uniqueness ignores case; storage does not.** Subjects use the stored
       spelling exactly. The index only stops `cam-1` existing beside `CAM-1`.
       Human lookups that should ignore case use `code:lower = {:c}` with a
@@ -1335,7 +1337,7 @@ you, so pushing an absolute one would make the login form an open redirect (the
 - `main.go` - Backend entry, PocketBase setup, hooks, bootstrap command
 - `hooks/leaf_config_routes.go` - `GET /api/me/leaf-config` (bound to `things`, no record id): everything an agent needs to stand up a NATS leaf server, including the `$SYS` account JWT the leaf's MEMORY resolver cannot fetch. The JetStream domain is computed from the Thing's code rather than stored
 - `hooks/thing_routes.go` - `POST /api/org/things`: Thing + optional NATS/Nebula identity in one transaction; member-level for inventory, owner/admin for the identity half
-- `hooks/codes.go` - generated Thing/Location codes, the separate type-prefix sets, and `GET /api/codes/suggest` (ADR 0003). The one code generator; the UI has none
+- `hooks/codes.go` - generated Thing/Location codes and the separate type-prefix sets (ADR 0003). The one code generator; the UI has none
 - `hooks/nebula_routes.go` - `POST /api/org/nebula-ca/rotate` (owner/admin, three steps) and `GET /api/org/nebula/cert-audit`. Both are routes for the same reason `nats_account_routes.go` is: a PocketBase rule cannot say "this one field and nothing else", and the audit needs a Nebula certificate parsed, which the browser cannot do
 - `hooks/activity.go` - the tenant activity feed. The collection list IS the safety argument (see feature 7b); bound to the request hooks because they are the only layer carrying the actor, and best-effort because an observation must never cost the user their write
 - `hooks/relation_tenancy.go` - the one hook-based enforcement in the platform: no relation may point into another organization's records. Derived from the schema rather than listing the nineteen relations, bound to the MODEL hooks, and applied to superusers too. See the invariants-vs-permissions bullet under **Roles & Authorization**

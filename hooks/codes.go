@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math/big"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/pocketbase/dbx"
@@ -30,7 +29,7 @@ import (
 // WHY ONE GENERATOR, HERE. ui/src/utils/subjectResolver.ts once carried a header
 // claiming it mirrored a Go package nobody ever wrote. A second generator in
 // TypeScript would drift the same way, and a code is frozen and printed, so drift
-// would be permanent. Clients ask GET /api/codes/suggest instead.
+// would be permanent. A client that wants a generated code leaves it blank.
 
 const (
 	thingsCollection        = "things"
@@ -59,19 +58,15 @@ var TypePrefixPattern = regexp.MustCompile(`^[A-Z]{1,4}$`)
 // one symbol) fails loudly instead of looping.
 const codeAttempts = 8
 
-// suggestMax caps GET /api/codes/suggest. Enough for a pallet of labels; small
-// enough that one request cannot turn into a long run of lookups.
-const suggestMax = 500
-
 // codeKind names the pair of collections behind one kind of code.
 type codeKind struct {
 	collection     string
 	typeCollection string
 }
 
-var codeKinds = map[string]codeKind{
-	"thing":    {thingsCollection, thingTypesCollection},
-	"location": {locationsCollection, locationTypesCollection},
+var codeKinds = []codeKind{
+	{thingsCollection, thingTypesCollection},
+	{locationsCollection, locationTypesCollection},
 }
 
 // GenerateCode returns a fresh code under prefix, or a bare `XXX-XXX` when
@@ -181,15 +176,18 @@ func typePrefix(app core.App, typeCollection, typeID, orgID string) (string, err
 //     the OTHER type collection in the organization is refused. Thing prefixes
 //     and Location prefixes are separate sets; the partial unique index on each
 //     collection covers its own half and cannot see the other table.
-//   - GET /api/codes/suggest: codes a client can show or pre-print before it
-//     creates anything.
 //
 // OnRecordCreate rather than an after-success hook, for the reason
 // RegisterOrgCode gives: `code` is frozen by the update rule the moment it
 // exists, so it has to be written WITH the record. Model hooks fire for
 // app.Save too, so the admin panel, the record API and every server-side save
 // all go through here.
-func RegisterCodes(app *pocketbase.PocketBase, membershipCollection string) {
+//
+// There is deliberately no route that hands out codes ahead of a create. It
+// existed briefly (GET /api/codes/suggest) and was removed: leaving the code
+// blank already gets one, and a batch of labels prints from the list after the
+// records exist. A code in hand before its record was the only thing it added.
+func RegisterCodes(app *pocketbase.PocketBase) {
 	for _, kind := range codeKinds {
 		app.OnRecordCreate(kind.collection).BindFunc(func(e *core.RecordEvent) error {
 			if strings.TrimSpace(e.Record.GetString("code")) != "" {
@@ -232,71 +230,4 @@ func RegisterCodes(app *pocketbase.PocketBase, membershipCollection string) {
 		app.OnRecordCreate(collection).BindFunc(check)
 		app.OnRecordUpdate(collection).BindFunc(check)
 	}
-
-	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
-		// GET /api/codes/suggest?kind=thing|location&type=<type id>&count=<n>
-		//
-		// Codes that are free at the moment they are returned. They are NOT
-		// reserved: in a space of about 210 million per prefix, a clash between
-		// suggesting and creating is negligible, and if one happens the unique
-		// index refuses the create and the client asks again. Reserving would
-		// need a table, an expiry and a cleanup job to prevent something that
-		// does not happen.
-		//
-		// The inventory roles only, the same ones that can create the records
-		// these codes are for.
-		se.Router.GET("/api/codes/suggest", func(re *core.RequestEvent) error {
-			orgID, _, err := requireMembership(re, membershipCollection, rolesInventory)
-			if err != nil {
-				return err
-			}
-
-			q := re.Request.URL.Query()
-			kindName := q.Get("kind")
-			if kindName == "" {
-				kindName = "thing"
-			}
-			kind, ok := codeKinds[kindName]
-			if !ok {
-				return re.BadRequestError("kind must be thing or location", nil)
-			}
-
-			count := 1
-			if s := q.Get("count"); s != "" {
-				count, err = strconv.Atoi(s)
-				if err != nil || count < 1 || count > suggestMax {
-					return re.BadRequestError(fmt.Sprintf("count must be between 1 and %d", suggestMax), nil)
-				}
-			}
-
-			prefix, err := typePrefix(re.App, kind.typeCollection, q.Get("type"), orgID)
-			if err != nil {
-				return re.BadRequestError(err.Error(), nil)
-			}
-
-			// Deduplicated within the response too: two identical codes in one
-			// batch of labels would pass every database check and still put the
-			// same sticker on two devices.
-			seen := make(map[string]bool, count)
-			codes := make([]string, 0, count)
-			for len(codes) < count {
-				code, err := NewUniqueCode(re.App, orgID, prefix)
-				if err != nil {
-					return re.InternalServerError("failed to generate a code", err)
-				}
-				if seen[code] {
-					continue
-				}
-				seen[code] = true
-				codes = append(codes, code)
-			}
-
-			return re.JSON(200, map[string]any{
-				"prefix": prefix,
-				"codes":  codes,
-			})
-		}).Bind(apis.RequireAuth("users"))
-
-		return se.Next()
-	})
 }

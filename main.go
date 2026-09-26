@@ -368,8 +368,8 @@ func main() {
 	hooks.RegisterOrgCode(app, orgCollection)
 
 	// Thing and Location codes are generated when left blank, and type prefixes
-	// stay separate between the two (ADR 0003). Also GET /api/codes/suggest.
-	hooks.RegisterCodes(app, membershipCollection)
+	// stay separate between the two (ADR 0003).
+	hooks.RegisterCodes(app)
 
 	// Platform-owned hooks: auto-provision NATS account + Nebula CA per new org.
 	hooks.RegisterOrgProvisioning(app, hooks.OrgProvisioningOptions{

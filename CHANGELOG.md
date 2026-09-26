@@ -30,9 +30,6 @@ and this file starts where the versioned releases do.
 - **`prefix` on Thing Types and Location Types**: 1–4 capitals, copied into
   generated codes. Thing and Location prefixes are separate sets per
   organization.
-- **`GET /api/codes/suggest?kind=thing|location&type=<id>&count=<n>`**, for
-  the inventory roles: codes that are free when returned, for a form to
-  pre-fill or a batch of labels to pre-print. Not reserved.
 - **The Scanner's filter accepts `{value:lower}`**, so
   `code:lower = "{value:lower}"` finds a code typed in the wrong case.
 
@@ -51,8 +48,9 @@ and this file starts where the versioned releases do.
 - **A Thing's or Location's type is frozen once set.** A blank type may be
   set once; a wrong one is fixed by delete and recreate. The forms disable the
   type picker once a type is set, and show the code read-only when editing.
-- **The Thing form no longer derives the code from the name.** It suggests one
-  from the server on request, or leaves it blank for the server to generate.
+- **The Thing form no longer derives the code from the name.** Left blank, the
+  server generates it at save; the help text shows what one will look like for
+  the selected type.
 - **The v5 pin is gone because its reason had a fix.** v6 no longer inlines its
   tile-parsing worker, and after bundling it looks for a file the build never
   emitted, so the map drew only its background colour. `useLeafletMap.ts` now

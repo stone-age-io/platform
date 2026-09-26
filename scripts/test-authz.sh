@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=264         # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=256         # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -1916,31 +1916,6 @@ req PATCH "/collections/things/records/$UNTYPED_THING" "$TA" "{\"type\":\"$TT_CA
 expect "a thing with no type may be typed once" 200 "$RCODE" "$RBODY"
 req PATCH "/collections/things/records/$UNTYPED_THING" "$TA" "{\"type\":\"$TT_SN\"}"
 expect "and after that its type is frozen" "403|400|404" "$RCODE" "$RBODY"
-
-# GET /api/codes/suggest: the inventory roles only, the caller's own types only.
-req GET "/codes/suggest" ""
-expect "anonymous cannot ask for code suggestions" 401 "$RCODE" "$RBODY"
-req GET "/codes/suggest" "$TG"
-expect "dashboard cannot ask for code suggestions" "403|400" "$RCODE" "$RBODY"
-req GET "/codes/suggest" "$TV"
-expect "viewer cannot ask for code suggestions" "403|400" "$RCODE" "$RBODY"
-req GET "/codes/suggest?kind=thing&type=$TT_CA&count=3" "$TP"
-expect "member CAN ask for code suggestions" 200 "$RCODE" "$RBODY"
-SUGGESTED=$(jn "$RBODY" "o.codes.length === 3 && new Set(o.codes).size === 3 && o.codes.every(c => /^CA-$GEN_RE\$/.test(c)) ? 'yes' : ''")
-if [ "$SUGGESTED" = "yes" ]; then
-  ok "three distinct CA-XXX-XXX suggestions came back"
-else
-  no "suggestions were not three distinct CA-XXX-XXX codes: $RBODY"
-fi
-req GET "/codes/suggest?kind=bogus" "$TP"
-expect "an unknown kind is refused" 400 "$RCODE" "$RBODY"
-req GET "/codes/suggest?count=501" "$TP"
-expect "more than 500 suggestions is refused" 400 "$RCODE" "$RBODY"
-req POST /collections/location_types/records "$SU" \
-  "{\"name\":\"Other Building\",\"code\":\"adr3-other\",\"prefix\":\"OB\",\"organization\":\"$ORG2\"}"
-OTHER_LT=$(j "$RBODY" id)
-req GET "/codes/suggest?kind=location&type=$OTHER_LT" "$TP"
-expect "suggestions for another organization's type are refused" 400 "$RCODE" "$RBODY"
 
 # ----------------------------------------------------------------------- result
 
