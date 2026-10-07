@@ -6,19 +6,17 @@ import { formatDate, formatBytes } from '@/utils/format'
 import { useAuthStore } from '@/stores/auth'
 import type { NatsAccount } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
-import { useEscapeKey } from '@/composables/useEscapeKey'
+import { useConfirm } from '@/composables/useConfirm'
 
 const toast = useToast()
+const { confirm } = useConfirm()
 const authStore = useAuthStore()
 
 const account = ref<NatsAccount | null>(null)
 const loading = ref(true)
 const rotating = ref(false)
-const showRotateModal = ref(false)
 const addingKey = ref(false)
 const removingKey = ref('')
-const showRemoveKeyModal = ref(false)
-const keyToRemove = ref('')
 
 /**
  * Load account by Organization ID (Singleton)
@@ -76,14 +74,29 @@ async function applyKeyAction(action: KeyAction, publicKey?: string) {
   await loadAccount()
 }
 
-async function confirmRotateKeys() {
+// What happens after a key change, from pb-nats (internal/sync/manager.go):
+// NATS rejects a user JWT whose issuer is no longer one of the account's signing
+// keys, so every deployed .creds file signed with a removed key dies at once.
+// pb-nats then reissues a file for every ACTIVE user in the account by itself
+// (regenerateUsersInAccount), and skips suspended ones, so a rotation is not a
+// way back for a revoked device. The work left to a person is DELIVERING those
+// files, not regenerating them -- the old dialog said the opposite.
+async function rotateKeys() {
   if (!account.value) return
+
+  const confirmed = await confirm({
+    title: 'Rotate All Signing Keys',
+    message: 'Replace every signing key on this account with one new key?',
+    details: 'Every .creds file in use in this account stops working immediately, on every device and app. New files are issued automatically for every active user; suspended users stay suspended. Each device then needs its new file. Use this when a signing key has leaked.',
+    confirmText: 'Rotate All Keys',
+    variant: 'danger',
+  })
+  if (!confirmed) return
 
   rotating.value = true
   try {
     await applyKeyAction('rotate')
-    toast.success('Keys rotated successfully')
-    showRotateModal.value = false
+    toast.success('Keys rotated. Deliver the new .creds files.')
   } catch (err: any) {
     toast.error(err.message || 'Failed to rotate keys')
   } finally {
@@ -105,20 +118,23 @@ async function addSigningKey() {
   }
 }
 
-function promptRemoveKey(publicKey: string) {
-  keyToRemove.value = publicKey
-  showRemoveKeyModal.value = true
-}
+// See rotateKeys for what follows a removal.
+async function removeKey(publicKey: string) {
+  if (!account.value) return
 
-async function confirmRemoveKey() {
-  if (!account.value || !keyToRemove.value) return
+  const confirmed = await confirm({
+    title: 'Remove Signing Key',
+    message: `Remove signing key ${publicKey.slice(0, 12)}…?`,
+    details: 'Any .creds file signed with this key stops working immediately. New files are issued automatically for every active user in the account, and devices holding a file signed with this key need theirs.',
+    confirmText: 'Remove Key',
+    variant: 'danger',
+  })
+  if (!confirmed) return
 
-  removingKey.value = keyToRemove.value
+  removingKey.value = publicKey
   try {
-    await applyKeyAction('remove_signing', keyToRemove.value)
+    await applyKeyAction('remove_signing', publicKey)
     toast.success('Signing key removed')
-    showRemoveKeyModal.value = false
-    keyToRemove.value = ''
   } catch (err: any) {
     toast.error(err.message || 'Failed to remove signing key')
   } finally {
@@ -145,10 +161,6 @@ onUnmounted(() => {
   window.removeEventListener('organization-changed', handleOrgChange)
 })
 
-// Escape closes these; see useEscapeKey for why the dialogs do not get it
-// from the browser and which ones are deliberately left out.
-useEscapeKey(showRotateModal, () => { showRotateModal.value = false })
-useEscapeKey(showRemoveKeyModal, () => { showRemoveKeyModal.value = false })
 </script>
 
 <template>
@@ -291,9 +303,10 @@ useEscapeKey(showRemoveKeyModal, () => { showRemoveKeyModal.value = false })
                     Add Key
                   </button>
                   <button
-                    @click="showRotateModal = true"
+                    @click="rotateKeys"
                     class="btn btn-sm btn-outline btn-warning"
                     title="Emergency Key Rotation"
+                    :disabled="rotating"
                   >
                     <span class="text-lg">🔄</span>
                     Rotate All
@@ -331,7 +344,7 @@ useEscapeKey(showRemoveKeyModal, () => { showRemoveKeyModal.value = false })
                         class="btn btn-ghost btn-xs"
                       >Copy</button>
                       <button
-                        @click="promptRemoveKey(getSigningKeyPublicKey(key))"
+                        @click="removeKey(getSigningKeyPublicKey(key))"
                         class="btn btn-ghost btn-xs text-error"
                         :disabled="removingKey === getSigningKeyPublicKey(key) || account.signing_keys!.length <= 1"
                         :title="account.signing_keys!.length <= 1 ? 'Cannot remove the only signing key' : 'Remove this signing key'"
@@ -359,44 +372,5 @@ useEscapeKey(showRemoveKeyModal, () => { showRemoveKeyModal.value = false })
         </div>
       </div>
     </template>
-
-    <!-- Rotate All Keys Modal -->
-    <dialog class="modal" :class="{ 'modal-open': showRotateModal }">
-      <div class="modal-box">
-        <h3 class="font-bold text-lg text-warning">Emergency Key Rotation?</h3>
-        <p class="py-4">
-          This will <strong>purge ALL existing signing keys</strong> and generate a single new one.
-          <br><br>
-          <strong>Warning:</strong> All user JWTs in this account will be immediately invalidated.
-          Users will need their credentials regenerated individually.
-        </p>
-        <div class="modal-action">
-          <button class="btn" @click="showRotateModal = false" :disabled="rotating">Cancel</button>
-          <button class="btn btn-warning" @click="confirmRotateKeys" :disabled="rotating">
-            <span v-if="rotating" class="loading loading-spinner"></span> Rotate All Keys
-          </button>
-        </div>
-      </div>
-      <form method="dialog" class="modal-backdrop" @click="showRotateModal = false"><button>close</button></form>
-    </dialog>
-
-    <!-- Remove Signing Key Modal -->
-    <dialog class="modal" :class="{ 'modal-open': showRemoveKeyModal }">
-      <div class="modal-box">
-        <h3 class="font-bold text-lg text-error">Remove Signing Key?</h3>
-        <p class="py-4">
-          User JWTs signed by this key will become invalid.
-          <br><br>
-          <code class="text-xs break-all">{{ keyToRemove }}</code>
-        </p>
-        <div class="modal-action">
-          <button class="btn" @click="showRemoveKeyModal = false" :disabled="!!removingKey">Cancel</button>
-          <button class="btn btn-error" @click="confirmRemoveKey" :disabled="!!removingKey">
-            <span v-if="removingKey" class="loading loading-spinner"></span> Remove Key
-          </button>
-        </div>
-      </div>
-      <form method="dialog" class="modal-backdrop" @click="showRemoveKeyModal = false"><button>close</button></form>
-    </dialog>
   </div>
 </template>

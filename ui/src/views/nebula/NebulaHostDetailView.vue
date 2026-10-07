@@ -10,7 +10,6 @@ import type { NebulaHost } from '@/types/pocketbase'
 import DangerZone from '@/components/common/DangerZone.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import JsonViewer from '@/components/common/JsonViewer.vue'
-import { useEscapeKey } from '@/composables/useEscapeKey'
 
 const router = useRouter()
 const route = useRoute()
@@ -21,7 +20,6 @@ const host = ref<NebulaHost | null>(null)
 const loading = ref(true)
 const deleting = ref(false)
 const regenerating = ref(false)
-const showRegenerateModal = ref(false)
 const certIsStale = ref(false)
 
 const hostId = route.params.id as string
@@ -90,14 +88,35 @@ async function handleDelete() {
  * `renew` is an action field: pb-nebula re-issues on the false -> true edge and
  * resets it in the same save, so it never reads back as state.
  */
+/**
+ * Re-issue: a new key pair and certificate, and a config built around them.
+ *
+ * Never on an inactive host, and the button is not offered for one. A
+ * deactivated host is revoked by its certificate's FINGERPRINT sitting in every
+ * peer's pki.blocklist, and pb-nebula builds that list from the certificate
+ * currently STORED on the record. Re-issuing would replace the stored
+ * certificate, so the next blocklist rebuild under this CA would list the new
+ * fingerprint and drop the old -- un-revoking the certificate the device
+ * actually holds. pb-nebula's own renewal sweep skips inactive hosts for that
+ * reason (internal/sync/renewal.go); its manual `renew` flag does not yet.
+ * Reactivating is the way back, and it re-issues by itself.
+ */
 async function confirmRegenerate() {
-  if (!host.value) return
+  if (!host.value || !host.value.active) return
+
+  const confirmed = await confirm({
+    title: 'Re-issue Certificate',
+    message: `Issue a new key pair and certificate for "${host.value.hostname}"?`,
+    details: 'The config is regenerated around them. The host keeps running on its old certificate until the new config is downloaded and deployed to it. The fingerprint changes, and a fingerprint is what peers blocklist when a host is deactivated, so re-issue when you intend to redeploy.',
+    confirmText: 'Re-issue',
+    variant: 'warning',
+  })
+  if (!confirmed) return
 
   regenerating.value = true
   try {
     await pb.collection('nebula_hosts').update(host.value.id, { renew: true })
     toast.success('Certificate re-issued — redeploy this host\'s config')
-    showRegenerateModal.value = false
     await loadHost()
   } catch (err: any) {
     toast.error(err.message || 'Failed to re-issue certificate')
@@ -127,10 +146,6 @@ function copyToClipboard(text: string, label: string) {
 onMounted(() => {
   loadHost()
 })
-
-// Escape closes these; see useEscapeKey for why the dialogs do not get it
-// from the browser and which ones are deliberately left out.
-useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
 </script>
 
 <template>
@@ -189,7 +204,7 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
             Re-issue it below, then redeploy this host's config.
           </div>
         </div>
-        <button class="btn btn-sm" @click="showRegenerateModal = true">Re-issue</button>
+        <button v-if="host.active" class="btn btn-sm" @click="confirmRegenerate">Re-issue</button>
       </div>
 
       <!-- Content Grid -->
@@ -326,12 +341,16 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
                     <span class="text-lg">📥</span>
                     Config
                   </button>
-                  <button 
-                    @click="showRegenerateModal = true" 
-                    class="btn btn-sm btn-outline btn-error"
+                  <!-- Not on an inactive host: see confirmRegenerate. -->
+                  <button
+                    v-if="host.active"
+                    @click="confirmRegenerate"
+                    class="btn btn-sm btn-outline"
                     title="Re-issue certificate"
+                    :disabled="regenerating"
                   >
                     <span class="text-lg">🔄</span>
+                    Re-issue
                   </button>
                 </div>
               </div>
@@ -389,41 +408,5 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
         </button>
       </DangerZone>
     </template>
-
-    <!-- Regenerate Modal -->
-    <dialog class="modal" :class="{ 'modal-open': showRegenerateModal }">
-      <div class="modal-box">
-        <h3 class="font-bold text-lg text-warning">Re-issue Certificate?</h3>
-        <p class="py-4">
-          A new key pair and certificate are issued immediately, and this host's config is
-          regenerated around them. The host keeps running on its old certificate until you
-          download the new config and redeploy it.
-        </p>
-        <p class="pb-4 text-sm text-base-content/70">
-          The certificate's fingerprint changes, which is what peers blocklist when a host
-          is deactivated — so re-issue when you intend to redeploy, not to tidy up.
-        </p>
-        <div class="modal-action">
-          <button 
-            class="btn" 
-            @click="showRegenerateModal = false"
-            :disabled="regenerating"
-          >
-            Cancel
-          </button>
-          <button 
-            class="btn btn-error" 
-            @click="confirmRegenerate"
-            :disabled="regenerating"
-          >
-            <span v-if="regenerating" class="loading loading-spinner"></span>
-            Re-issue
-          </button>
-        </div>
-      </div>
-      <form method="dialog" class="modal-backdrop">
-        <button @click="showRegenerateModal = false">close</button>
-      </form>
-    </dialog>
   </div>
 </template>

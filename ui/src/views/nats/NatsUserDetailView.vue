@@ -8,7 +8,6 @@ import { formatDate } from '@/utils/format'
 import type { NatsUser } from '@/types/pocketbase'
 import DangerZone from '@/components/common/DangerZone.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
-import { useEscapeKey } from '@/composables/useEscapeKey'
 import SubjectChip from '@/components/common/SubjectChip.vue'
 
 const router = useRouter()
@@ -20,11 +19,8 @@ const user = ref<NatsUser | null>(null)
 const loading = ref(true)
 const deleting = ref(false)
 const regenerating = ref(false)
-const showRegenerateModal = ref(false)
 const revoking = ref(false)
-const showRevokeModal = ref(false)
 const reenabling = ref(false)
-const showReenableModal = ref(false)
 
 function getSubjectArray(val: any): string[] {
   if (!val) return []
@@ -104,11 +100,19 @@ async function handleDelete() {
 async function confirmRegenerate() {
   if (!user.value) return
 
+  const confirmed = await confirm({
+    title: 'Regenerate Credentials',
+    message: `Issue a fresh .creds file for "${user.value.nats_username}"?`,
+    details: 'This does not invalidate the current file: every copy keeps working, because the key does not change. If the credentials leaked, use Revoke instead.',
+    confirmText: 'Regenerate',
+    variant: 'warning',
+  })
+  if (!confirmed) return
+
   regenerating.value = true
   try {
     await pb.collection('nats_users').update(user.value.id, { regenerate: true })
     toast.success('Credentials regenerated')
-    showRegenerateModal.value = false
     await loadUser()
   } catch (err: any) {
     toast.error(err.message || 'Failed to regenerate credentials')
@@ -131,11 +135,19 @@ async function confirmRegenerate() {
 async function confirmRevoke() {
   if (!user.value) return
 
+  const confirmed = await confirm({
+    title: 'Revoke Credentials',
+    message: `Reject every copy of the current .creds file for "${user.value.nats_username}"?`,
+    details: 'Its key goes onto the account revocation list, so NATS rejects every copy of the existing file, permanently. A new key and a new .creds file are issued in the same step and the user stays active: deliver the new file to whoever should hold it. This does not take the identity out of service.',
+    confirmText: 'Revoke',
+    variant: 'danger',
+  })
+  if (!confirmed) return
+
   revoking.value = true
   try {
     await pb.collection('nats_users').update(user.value.id, { revoke: true })
     toast.success('Credentials revoked and replaced')
-    showRevokeModal.value = false
     await loadUser()
   } catch (err: any) {
     toast.error(err.message || 'Failed to revoke credentials')
@@ -152,11 +164,19 @@ async function confirmRevoke() {
 async function confirmReenable() {
   if (!user.value) return
 
+  const confirmed = await confirm({
+    title: 'Re-enable User',
+    message: `Mark "${user.value.nats_username}" active and issue a fresh .creds file?`,
+    details: 'Deliver the new file to wherever this identity connects from. Credentials revoked before this stay permanently invalid.',
+    confirmText: 'Re-enable',
+    variant: 'info',
+  })
+  if (!confirmed) return
+
   reenabling.value = true
   try {
     await pb.collection('nats_users').update(user.value.id, { active: true, regenerate: true })
     toast.success('User re-enabled with fresh credentials')
-    showReenableModal.value = false
     await loadUser()
   } catch (err: any) {
     toast.error(err.message || 'Failed to re-enable user')
@@ -196,12 +216,6 @@ function downloadCredsFile() {
 onMounted(() => {
   loadUser()
 })
-
-// Escape closes these; see useEscapeKey for why the dialogs do not get it
-// from the browser and which ones are deliberately left out.
-useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
-useEscapeKey(showRevokeModal, () => { showRevokeModal.value = false })
-useEscapeKey(showReenableModal, () => { showReenableModal.value = false })
 </script>
 
 <template>
@@ -350,7 +364,7 @@ useEscapeKey(showReenableModal, () => { showReenableModal.value = false })
                       .creds
                     </button>
                     <button
-                      @click="showRegenerateModal = true"
+                      @click="confirmRegenerate"
                       class="btn btn-sm btn-outline"
                       title="Issue a fresh .creds file"
                     >
@@ -358,7 +372,7 @@ useEscapeKey(showReenableModal, () => { showReenableModal.value = false })
                       Regenerate
                     </button>
                     <button
-                      @click="showRevokeModal = true"
+                      @click="confirmRevoke"
                       class="btn btn-sm btn-outline btn-error"
                       title="Reject the current credentials and issue replacements"
                     >
@@ -369,7 +383,7 @@ useEscapeKey(showReenableModal, () => { showReenableModal.value = false })
                   <!-- Revoked / inactive user: re-enable with fresh credentials -->
                   <button
                     v-else
-                    @click="showReenableModal = true"
+                    @click="confirmReenable"
                     class="btn btn-sm btn-outline btn-success"
                     title="Re-enable this user and issue new credentials"
                   >
@@ -451,108 +465,5 @@ useEscapeKey(showReenableModal, () => { showReenableModal.value = false })
         </button>
       </DangerZone>
     </template>
-
-    <!-- Regenerate Modal -->
-    <dialog class="modal" :class="{ 'modal-open': showRegenerateModal }">
-      <div class="modal-box">
-        <h3 class="font-bold text-lg text-warning">Regenerate Credentials?</h3>
-        <p class="py-4">
-          A fresh <code>.creds</code> file will be issued for this user. Note that regeneration
-          does <strong>not</strong> invalidate previously distributed credentials — they keep
-          working until the user is revoked. To immediately reject the current credentials, use
-          <span class="font-semibold">Revoke</span> instead.
-        </p>
-        <div class="modal-action">
-          <button
-            class="btn"
-            @click="showRegenerateModal = false"
-            :disabled="regenerating"
-          >
-            Cancel
-          </button>
-          <button
-            class="btn btn-warning"
-            @click="confirmRegenerate"
-            :disabled="regenerating"
-          >
-            <span v-if="regenerating" class="loading loading-spinner"></span>
-            Regenerate
-          </button>
-        </div>
-      </div>
-      <form method="dialog" class="modal-backdrop">
-        <button @click="showRegenerateModal = false">close</button>
-      </form>
-    </dialog>
-
-    <!-- Revoke Modal -->
-    <dialog class="modal" :class="{ 'modal-open': showRevokeModal }">
-      <div class="modal-box">
-        <h3 class="font-bold text-lg text-error">Revoke Credentials?</h3>
-        <p class="py-4">
-          This immediately and permanently invalidates every credential currently issued to
-          <span class="font-mono font-semibold">{{ user?.nats_username }}</span>: its key is added
-          to the account's revocation list, so NATS rejects every copy of the existing
-          <code>.creds</code> file.
-        </p>
-        <p class="pb-4 text-sm text-base-content/70">
-          A new key and a fresh <code>.creds</code> file are issued in the same step, and the user
-          <strong>stays active</strong>. Use this when credentials have leaked, then deliver the new
-          file to whoever should hold it. It does not take the identity out of service.
-        </p>
-        <div class="modal-action">
-          <button
-            class="btn"
-            @click="showRevokeModal = false"
-            :disabled="revoking"
-          >
-            Cancel
-          </button>
-          <button
-            class="btn btn-error"
-            @click="confirmRevoke"
-            :disabled="revoking"
-          >
-            <span v-if="revoking" class="loading loading-spinner"></span>
-            Revoke
-          </button>
-        </div>
-      </div>
-      <form method="dialog" class="modal-backdrop">
-        <button @click="showRevokeModal = false">close</button>
-      </form>
-    </dialog>
-
-    <!-- Re-enable Modal -->
-    <dialog class="modal" :class="{ 'modal-open': showReenableModal }">
-      <div class="modal-box">
-        <h3 class="font-bold text-lg text-success">Re-enable User?</h3>
-        <p class="py-4">
-          This marks <span class="font-mono font-semibold">{{ user?.nats_username }}</span> active
-          and issues a fresh <code>.creds</code> file. You'll need to distribute the new credentials
-          to the user's devices — any previously revoked credentials remain permanently invalid.
-        </p>
-        <div class="modal-action">
-          <button
-            class="btn"
-            @click="showReenableModal = false"
-            :disabled="reenabling"
-          >
-            Cancel
-          </button>
-          <button
-            class="btn btn-success"
-            @click="confirmReenable"
-            :disabled="reenabling"
-          >
-            <span v-if="reenabling" class="loading loading-spinner"></span>
-            Re-enable
-          </button>
-        </div>
-      </div>
-      <form method="dialog" class="modal-backdrop">
-        <button @click="showReenableModal = false">close</button>
-      </form>
-    </dialog>
   </div>
 </template>

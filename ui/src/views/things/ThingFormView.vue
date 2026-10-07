@@ -931,7 +931,8 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
         <div class="modal-box">
           <h3 class="font-bold text-lg text-success">Thing Provisioned Successfully</h3>
           <p class="py-4 text-sm text-base-content/70">
-            Use these credentials to bootstrap the edge agent.
+            The device signs in with these. An edge agent uses them to fetch its
+            leaf configuration.
             <strong>Save this password now, it cannot be recovered later.</strong>
           </p>
 
@@ -951,7 +952,10 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
             <button class="btn btn-primary" @click="copyCredentials">Copy & Close</button>
           </div>
         </div>
-        <div class="modal-backdrop" @click="closeSuccessModal"></div>
+        <!-- No click-to-close: this is the only time the password is shown,
+             and a stray click on the dim area loses it exactly as the Escape
+             key this dialog deliberately leaves out would. -->
+        <div class="modal-backdrop"></div>
       </dialog>
     </Teleport>
 

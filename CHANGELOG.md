@@ -110,6 +110,19 @@ user, are in its `CHANGELOG.md`.
   existing credentials would be invalidated immediately. They are not:
   Regenerate keeps the key, so every copy of the old file keeps working. The
   dialog now says so and points to Revoke.
+- **The account key rotation dialog said users needed their credentials
+  regenerated one by one.** pb-nats already reissues every active user's file
+  after a rotation or a key removal, and leaves suspended users suspended. The
+  work left is delivering the new files, and the dialog now says so.
+- **Re-issue is no longer offered on a deactivated Nebula host.** A deactivated
+  host is revoked by its certificate's fingerprint, and the blocklist is built
+  from the stored certificate, so re-issuing one would un-revoke the
+  certificate the device still holds the next time peer configs are rebuilt.
+  Reactivating re-issues it anyway. The API does not refuse it yet; that fix
+  belongs in pb-nebula.
+- **The one-time password dialogs no longer close on a stray click** outside
+  them, after creating a Thing or an organization. They already ignored
+  Escape for the same reason.
 - **A deactivated Thing no longer offers credential actions.** Regenerate was
   still shown on one, and regenerating an inactive identity issues a credential
   that works, putting the device back on NATS while the page said it was cut

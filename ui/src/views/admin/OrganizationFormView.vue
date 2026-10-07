@@ -508,7 +508,9 @@ onMounted(() => {
             <button class="btn" @click="closePasswordModal">Done</button>
           </div>
         </div>
-        <div class="modal-backdrop" @click="closePasswordModal"></div>
+        <!-- No click-to-close: the password is shown once, and a stray click
+             on the dim area would lose it. Done is the way out. -->
+        <div class="modal-backdrop"></div>
       </dialog>
     </Teleport>
   </div>
