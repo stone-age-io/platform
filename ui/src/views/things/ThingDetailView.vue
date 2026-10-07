@@ -596,6 +596,15 @@ onMounted(() => {
             <div v-else class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">
               <span class="text-2xl block mb-2">📡</span>
               <p class="text-sm">No NATS user linked</p>
+              <!-- A way forward for the reader who can attach one, rather than
+                   a dead end. Attaching is the edit form's job (its NATS card
+                   creates or links in one place), and the gate is the one that
+                   form uses for its identity cards. -->
+              <router-link
+                v-if="authStore.can.manageInfrastructure"
+                :to="`/things/${thing.id}/edit`"
+                class="btn btn-sm btn-outline mt-3"
+              >Attach a NATS user</router-link>
             </div>
 
             <!-- Divider -->
@@ -632,6 +641,11 @@ onMounted(() => {
             <div v-else class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">
               <span class="text-2xl block mb-2">🌐</span>
               <p class="text-sm">No Nebula host linked</p>
+              <router-link
+                v-if="authStore.can.manageInfrastructure"
+                :to="`/things/${thing.id}/edit`"
+                class="btn btn-sm btn-outline mt-3"
+              >Attach a Nebula host</router-link>
             </div>
           </BaseCard>
 

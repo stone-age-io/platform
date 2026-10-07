@@ -89,6 +89,8 @@ user, are in its `CHANGELOG.md`.
 - **The photo is edited where it is shown.** On the Thing and Location forms
   it moved out of its own card and into Basic Information, beside Name and
   Description, as on the detail pages.
+- On the Thing page, "No NATS user linked" and "No Nebula host linked" offer
+  owners and admins a link to attach one, instead of ending there.
 - **The Thing Type form has one Subjects card.** It replaces "Subject &
   Capabilities" (the capabilities field it named was removed earlier) and the
   separate Operations card. It shows the prefix, the operations and the subjects
