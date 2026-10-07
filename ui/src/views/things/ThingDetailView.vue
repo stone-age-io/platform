@@ -462,8 +462,13 @@ onMounted(() => {
         </div>
         
         <div class="space-y-6">
-          <BaseCard>
+          <BaseCard title="Connectivity">
             <!--
+              The title is BaseCard's own, like every other card on the page.
+              It was a hand-drawn `card-title text-base` header, 16px against
+              the 20px the rest use, left over from when it held the controls
+              below.
+
               The three controls used to sit up here in a row under
               "Connectivity", which is one heading over two identities. Two of
               them were download buttons with the same 📥 on them, and the NATS
@@ -479,10 +484,6 @@ onMounted(() => {
               (552px and 557px tall). It costs 56px either way, which buys the
               two labels and the touch targets.
             -->
-            <template #header>
-              <h3 class="card-title text-base mb-2">Connectivity</h3>
-            </template>
-
             <!-- NATS Section.
 
                  flex-wrap rather than a breakpoint: at 393px and up the label

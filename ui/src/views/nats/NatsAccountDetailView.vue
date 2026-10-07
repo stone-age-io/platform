@@ -289,8 +289,8 @@ onUnmounted(() => {
         <div class="space-y-6">
           <BaseCard>
             <template #header>
-              <div class="flex justify-between items-center mb-4">
-                <h3 class="card-title text-base">Security & Keys</h3>
+              <div class="flex flex-wrap justify-between items-center gap-2 mb-4">
+                <h2 class="card-title">Security & Keys</h2>
                 <div class="flex gap-2">
                   <button
                     @click="addSigningKey"

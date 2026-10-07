@@ -449,7 +449,10 @@ onUnmounted(() => cleanupMap())
         <!-- Right Column: Combined Location Map card (floorplan and/or coordinates) -->
         <div class="lg:col-span-7 flex flex-col gap-6">
           <BaseCard class="flex flex-col h-full min-h-[550px]" :no-padding="true">
-            <div class="p-4 border-b border-base-300 flex justify-between items-center bg-base-200/30 gap-3">
+            <!-- px-8 pt-8 is .card-body's padding, so this title starts where
+                 Basic Information's does in the card beside it. The bottom
+                 stays 16px: the tabs' -mb-[17px] is measured against it. -->
+            <div class="px-8 pt-8 pb-4 border-b border-base-300 flex justify-between items-center bg-base-200/30 gap-3">
               <!-- Tabs when both exist; static label otherwise -->
               <div v-if="location.floorplan && location.coordinates" role="tablist" class="tabs tabs-bordered -mb-[17px]">
                 <a
@@ -465,8 +468,12 @@ onUnmounted(() => cleanupMap())
                   @click="activeTab = 'coordinates'"
                 >📍 Geo Map</a>
               </div>
-              <h2 v-else class="font-bold uppercase text-[10px] tracking-widest opacity-60 flex items-center gap-2">
-                {{ location.floorplan ? '🖼️ Floor Plan' : location.coordinates ? '📍 Geo Location' : '🗺️ Location' }}
+              <!-- The page's card-title, like every other card on it. This was a
+                   10px uppercase label, the smallest of three heading sizes on
+                   the page. The tabs above are controls, not a heading, and
+                   keep their own size. -->
+              <h2 v-else class="card-title">
+                {{ location.floorplan ? 'Floor Plan' : location.coordinates ? 'Geo Location' : 'Location' }}
               </h2>
             </div>
 
@@ -530,7 +537,7 @@ onUnmounted(() => cleanupMap())
         <BaseCard :no-padding="true" v-if="subLocations.length > 0 || subLocSearch || subLocLoading">
           <template #header>
             <div class="flex justify-between items-center mb-2">
-              <h3 class="card-title">Sub-Locations</h3>
+              <h2 class="card-title">Sub-Locations</h2>
               <!-- Search Input -->
               <input 
                 v-model="subLocSearch"
@@ -572,7 +579,7 @@ onUnmounted(() => cleanupMap())
         <BaseCard :no-padding="true" v-if="things.length > 0 || thingSearch || thingLoading">
           <template #header>
             <div class="flex justify-between items-center mb-2">
-              <h3 class="card-title">Associated Things</h3>
+              <h2 class="card-title">Associated Things</h2>
               <!-- Search Input -->
               <input 
                 v-model="thingSearch"

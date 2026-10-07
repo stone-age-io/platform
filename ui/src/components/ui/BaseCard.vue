@@ -28,7 +28,10 @@ defineProps<{
   -->
   <div class="card bg-base-100 border border-base-300 shadow-sm">
     <div v-if="title || $slots.header || $slots.actions" class="card-body pb-0">
-      <div class="flex items-center justify-between">
+      <!-- Only when there is something to put in it. Rendered empty, this row
+           still took part in .card-body's 8px flex gap, so every card drawing
+           its own #header started 8px lower than a card using `title`. -->
+      <div v-if="title || $slots.actions" class="flex items-center justify-between">
         <h2 v-if="title" class="card-title">{{ title }}</h2>
         <div v-if="$slots.actions" class="flex items-center gap-2">
           <slot name="actions" />

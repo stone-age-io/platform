@@ -331,7 +331,7 @@ onMounted(() => {
           <BaseCard>
             <template #header>
               <div class="flex justify-between items-center mb-4">
-                <h3 class="card-title text-base">Configuration</h3>
+                <h2 class="card-title">Configuration</h2>
                 <div class="flex gap-2">
                   <button 
                     v-if="host.config_yaml"

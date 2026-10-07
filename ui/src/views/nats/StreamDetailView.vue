@@ -315,7 +315,7 @@ useEscapeKey(() => !!selectedMessage.value, () => { selectedMessage.value = null
           <BaseCard>
             <template #header>
               <div class="flex justify-between items-center mb-4">
-                <h3 class="card-title text-base">Consumers ({{ consumers.length }})</h3>
+                <h2 class="card-title">Consumers ({{ consumers.length }})</h2>
                 <button @click="loadConsumers" class="btn btn-ghost btn-sm" :disabled="consumersLoading">
                   <span v-if="consumersLoading" class="loading loading-spinner loading-xs"></span>
                   <span v-else>Refresh</span>
@@ -395,7 +395,7 @@ useEscapeKey(() => !!selectedMessage.value, () => { selectedMessage.value = null
       <BaseCard>
         <template #header>
           <div class="flex flex-wrap justify-between items-center gap-2 mb-4">
-            <h3 class="card-title text-base">Recent Messages</h3>
+            <h2 class="card-title">Recent Messages</h2>
             <div v-if="messagesLoaded" class="flex items-center gap-2">
               <select
                 v-model.number="messageLimit"

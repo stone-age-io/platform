@@ -351,7 +351,7 @@ onMounted(() => {
           <BaseCard>
             <template #header>
               <div class="flex flex-wrap justify-between items-center gap-2 mb-4">
-                <h3 class="card-title text-base">Security & Credentials</h3>
+                <h2 class="card-title">Security & Credentials</h2>
                 <div class="flex flex-wrap gap-2">
                   <!-- Active user: download / rotate / revoke -->
                   <template v-if="user.active">

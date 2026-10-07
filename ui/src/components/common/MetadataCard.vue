@@ -125,11 +125,14 @@ async function copyMetadata() {
              `flex-1` so the target is all the header width the actions don't
              claim, rather than hugging the text: a ~150px hit area next to two
              small buttons is a bad aim on touch and reads as a heading, not a
-             control, on desktop. Hence also the hover tint and 44px minimum. -->
+             control, on desktop. Hence also the hover tint and 44px minimum.
+             The hover padding is cancelled by a matching negative margin on
+             both axes, so the title lines up with every other card's rather
+             than sitting 4px in and down. -->
         <button
           type="button"
           class="flex flex-1 items-center gap-2 min-w-0 text-left -mx-2 px-2 rounded-lg
-                 min-h-[44px] sm:min-h-0 sm:py-1
+                 min-h-[44px] sm:min-h-0 sm:py-1 sm:-my-1
                  hover:bg-base-200 focus-visible:outline-none focus-visible:ring-2
                  focus-visible:ring-primary/50 transition-colors"
           :aria-expanded="expanded"
@@ -158,7 +161,7 @@ async function copyMetadata() {
               />
             </svg>
           </span>
-          <h3 class="card-title text-base">Metadata</h3>
+          <h2 class="card-title">Metadata</h2>
           <span class="text-xs text-base-content/50 shrink-0">
             {{ isEmpty ? 'empty' : `${fieldCount} field${fieldCount === 1 ? '' : 's'}` }}
           </span>
