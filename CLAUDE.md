@@ -489,6 +489,19 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
     - The Nebula half takes effect on redeploy, not instantly; Nebula has no CRL.
       Requires pb-nebula v0.2.0, and from v0.3.0 the blocklist is CA-scoped rather
       than network-scoped. Full reasoning: `hooks/active_flag.go`.
+    - **The mirror runs one way, so the identities are guarded the other.**
+      While a Thing is deactivated, `guardLinkedIdentity` refuses any save that
+      leaves its NATS user or Nebula host active, and any minting trigger on them
+      (`regenerate`, `revoke`, `renew`). Before it, Re-enable on the NATS user
+      page or the Nebula form's Active toggle put the device back on the bus or
+      the mesh under a "Deactivated" badge. The libraries mint for an INACTIVE
+      identity on all three triggers, which
+      `TestDeactivatedThingIdentitiesStayDown` shows by failing case by case with
+      the guard removed. It is an invariant, so a hook (the line under **Roles &
+      Authorization**), bound at negative priority to run before the libraries
+      act, and LEVEL-keyed for the `Record.Original()` reason. The cascade passes
+      it because it runs after the Thing's own save. Reactivating the Thing is the
+      way back. Any new trigger that mints belongs on the list.
 
 15b. **Rotating an organization's Nebula CA** - `POST /api/org/nebula-ca/rotate`,
     owner/admin, `{"step":"prepare"|"commit"|"finish"}`. A route rather than a

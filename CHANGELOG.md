@@ -125,6 +125,13 @@ user, are in its `CHANGELOG.md`.
 - **The one-time password dialogs no longer close on a stray click** outside
   them, after creating a Thing or an organization. They already ignored
   Escape for the same reason.
+- **A deactivated Thing's identities can no longer be brought back on their
+  own.** Re-enable on the NATS user page, or the Active toggle on the Nebula
+  host form, put the device back on NATS or the mesh while the Thing still
+  said it was deactivated. Regenerate, Revoke and Renew did the same by
+  minting a working credential. The server now refuses all of these while the
+  Thing is deactivated, naming the Thing, and the console points at it
+  instead. Reactivating the Thing brings both identities back, as before.
 - **A deactivated Thing no longer offers credential actions.** Regenerate was
   still shown on one, and regenerating an inactive identity issues a credential
   that works, putting the device back on NATS while the page said it was cut

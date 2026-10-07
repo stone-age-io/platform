@@ -3,8 +3,11 @@ package hooks
 import (
 	"log"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
+	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/hook"
 )
 
 // ActiveFlagOptions names the collection that carries an `active` flag whose
@@ -121,6 +124,79 @@ func RegisterActiveFlag(app *pocketbase.PocketBase, opts ActiveFlagOptions) {
 		mirrorActiveFlag(e, opts.NatsUserCollection, "nats_user", "NATS identity", now)
 		mirrorActiveFlag(e, opts.NebulaHostCollection, "nebula_host", "Nebula host", now)
 		return nil
+	})
+
+	// The mirror above runs one way, so the identities need a guard in the
+	// other: see suspendedByThing.
+	guardLinkedIdentity(app, opts.ThingCollection, opts.NatsUserCollection, "nats_user",
+		"NATS identity", []string{"regenerate", "revoke"})
+	guardLinkedIdentity(app, opts.ThingCollection, opts.NebulaHostCollection, "nebula_host",
+		"Nebula host", []string{"renew"})
+}
+
+// guardLinkedIdentity refuses to bring back an identity whose Thing is
+// deactivated.
+//
+// The mirror makes a deactivated Thing's identities inactive, but nothing
+// stopped them being re-enabled on their own: the NATS user page's Re-enable,
+// the Nebula host form's Active toggle, or a PATCH. Each put the device back on
+// NATS or the mesh while the Thing still said it was cut off -- the inert-flag
+// failure this file exists to prevent, arrived at from the other side. The
+// Thing's flag is the one authority for a device; reactivating the Thing is the
+// way back, and it re-enables both identities through the mirror.
+//
+// Refused, while a Thing linking the identity is inactive:
+//   - the identity being active after the save. LEVEL, not the false->true edge:
+//     Original() is the last database read, not the state before this write
+//     (see CLAUDE.md), and the invariant is the state anyway. An identity
+//     already out of step can still be saved inactive, which is the repair.
+//   - a minting trigger. pb-nats mints a working credential for an INACTIVE
+//     user on `regenerate` (past the revocation cutoff) and `revoke` (a new key
+//     pair, never revoked). pb-nebula re-issues an inactive host's certificate
+//     on `renew`, and since the blocklist is built from the STORED certificate,
+//     the device's real one drops off it at the next rebuild.
+//
+// The mirror itself always passes: it runs after the Thing's own save, so the
+// Thing read here is already active on a reactivation, and a deactivation
+// writes `active = false`, which is never refused.
+//
+// Bound at a negative priority so it runs before pb-nats and pb-nebula act on
+// the same save -- their handlers carry none, and returning an error after
+// they have minted would be too late.
+func guardLinkedIdentity(app *pocketbase.PocketBase, thingCollection, identityCollection, relationField, label string, triggers []string) {
+	if identityCollection == "" {
+		return // not configured on this deployment
+	}
+
+	app.OnRecordUpdate(identityCollection).Bind(&hook.Handler[*core.RecordEvent]{
+		Priority: -100,
+		Func: func(e *core.RecordEvent) error {
+			reviving := e.Record.GetBool("active")
+			for _, f := range triggers {
+				if e.Record.GetBool(f) {
+					reviving = true
+				}
+			}
+			if !reviving {
+				return e.Next()
+			}
+
+			thing, err := e.App.FindFirstRecordByFilter(thingCollection,
+				relationField+" = {:id} && active = false", dbx.Params{"id": e.Record.Id})
+			if err != nil || thing == nil {
+				return e.Next() // no deactivated Thing links it
+			}
+
+			name := thing.GetString("code")
+			if name == "" {
+				name = thing.GetString("name")
+			}
+			return apis.NewBadRequestError(
+				"This "+label+" belongs to Thing "+name+", which is deactivated. "+
+					"Reactivate the Thing to bring it back.",
+				nil,
+			)
+		},
 	})
 }
 

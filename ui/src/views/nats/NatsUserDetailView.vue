@@ -9,6 +9,7 @@ import type { NatsUser } from '@/types/pocketbase'
 import DangerZone from '@/components/common/DangerZone.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import SubjectChip from '@/components/common/SubjectChip.vue'
+import { findLinkedThing, type LinkedThing } from '@/utils/linkedThing'
 
 const router = useRouter()
 const route = useRoute()
@@ -62,10 +63,18 @@ async function loadUser() {
   } catch (err: any) {
     toast.error(err.message || 'Failed to load NATS user')
     router.push('/nats/users')
+    return
   } finally {
     loading.value = false
   }
+  linkedThing.value = await findLinkedThing('nats_user', userId)
 }
+
+// The Thing this identity belongs to, if it is a device's. While that Thing is
+// deactivated the server refuses Re-enable (hooks/active_flag.go), so the page
+// points at the Thing instead of offering a button that fails.
+const linkedThing = ref<LinkedThing | null>(null)
+const heldByDeactivatedThing = computed(() => linkedThing.value?.active === false)
 
 /**
  * Handle delete
@@ -380,9 +389,11 @@ onMounted(() => {
                       Revoke
                     </button>
                   </template>
-                  <!-- Revoked / inactive user: re-enable with fresh credentials -->
+                  <!-- Revoked / inactive user: re-enable with fresh credentials.
+                       Not for a deactivated Thing's identity: the server
+                       refuses it, and the notice below names the Thing. -->
                   <button
-                    v-else
+                    v-else-if="!heldByDeactivatedThing"
                     @click="confirmReenable"
                     class="btn btn-sm btn-outline btn-success"
                     title="Re-enable this user and issue new credentials"
@@ -420,7 +431,14 @@ onMounted(() => {
               <!-- Revoked / inactive notice -->
               <div v-if="!user.active" class="alert alert-warning py-2 text-sm">
                 <span class="text-lg">⛔</span>
-                <span>
+                <span v-if="heldByDeactivatedThing && linkedThing">
+                  This identity belongs to the deactivated Thing
+                  <router-link :to="`/things/${linkedThing.id}`" class="link font-semibold">{{ linkedThing.code || linkedThing.name }}</router-link>,
+                  so NATS rejects its credentials. Reactivate the Thing to bring it back:
+                  that issues a fresh <code>.creds</code> file and restores the device's
+                  sign-in and Nebula host with it.
+                </span>
+                <span v-else>
                   This user is inactive — any credentials it currently holds are rejected by NATS.
                   Use <span class="font-semibold">Re-enable</span> to issue a fresh <code>.creds</code> file;
                   previously revoked credentials stay permanently invalid.

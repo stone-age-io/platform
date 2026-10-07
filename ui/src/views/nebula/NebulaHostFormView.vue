@@ -8,6 +8,7 @@ import type { NebulaHost, NebulaNetwork } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import RecordPicker from '@/components/common/RecordPicker.vue'
 import type { PickerOption } from '@/types/picker'
+import { findLinkedThing, type LinkedThing } from '@/utils/linkedThing'
 
 const props = defineProps<{
   embedded?: boolean
@@ -157,10 +158,19 @@ async function loadHost() {
   } catch (err: any) {
     toast.error('Failed to load Nebula host')
     router.push('/nebula/hosts')
+    return
   } finally {
     loading.value = false
   }
+  linkedThing.value = await findLinkedThing('nebula_host', hostId)
 }
+
+// The Thing this host belongs to, if it is a device's. While that Thing is
+// deactivated the server refuses to make the host active (hooks/active_flag.go),
+// so the toggle is locked and says where the lever is instead of saving into a
+// refusal.
+const linkedThing = ref<LinkedThing | null>(null)
+const heldByDeactivatedThing = computed(() => linkedThing.value?.active === false)
 
 /**
  * Handle form submission
@@ -483,14 +493,20 @@ onMounted(() => {
               <!-- Active -->
               <div class="form-control">
                 <label class="label cursor-pointer justify-start gap-4">
-                  <input 
+                  <input
                     v-model="formData.active"
-                    type="checkbox" 
+                    type="checkbox"
                     class="toggle toggle-success"
+                    :disabled="heldByDeactivatedThing"
                   />
                   <span class="label-text">
                     <span class="font-medium">Active Status</span>
-                    <span class="block text-sm text-base-content/70">
+                    <span v-if="heldByDeactivatedThing && linkedThing" class="block text-sm text-base-content/70">
+                      This host belongs to the deactivated Thing
+                      <router-link :to="`/things/${linkedThing.id}`" class="link">{{ linkedThing.code || linkedThing.name }}</router-link>.
+                      Reactivate the Thing to bring it back.
+                    </span>
+                    <span v-else class="block text-sm text-base-content/70">
                       Allow this host to connect to the network
                     </span>
                   </span>
