@@ -14,6 +14,7 @@ import { useNatsStore } from '@/stores/nats'
 import { useAuthStore } from '@/stores/auth'
 import RecordTimestamps from '@/components/common/RecordTimestamps.vue'
 import RecordPhoto from '@/components/common/RecordPhoto.vue'
+import PhotoQuickAdd from '@/components/common/PhotoQuickAdd.vue'
 import MetadataCard from '@/components/common/MetadataCard.vue'
 import DangerZone from '@/components/common/DangerZone.vue'
 import QrLabelModal from '@/components/common/QrLabelModal.vue'
@@ -373,6 +374,15 @@ onUnmounted(() => cleanupMap())
                   :record="location"
                   :filename="location.photo"
                   :alt="`Photo of ${location.name || 'this site'}`"
+                />
+              </div>
+              <!-- The empty slot, only for someone who can fill it. -->
+              <div v-else-if="canEditMetadata" class="shrink-0 sm:order-last">
+                <PhotoQuickAdd
+                  collection="locations"
+                  :record-id="location.id"
+                  hint="What the site looks like on arrival."
+                  @saved="(f) => { if (location) location.photo = f }"
                 />
               </div>
 

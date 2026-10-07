@@ -8,7 +8,9 @@
  * already gate on `v-if="record.photo"`, and that outer gate is load-bearing
  * rather than redundant: it also drops the flex wrapper, so the card's `gap-5`
  * does not leave a phantom column where a photo would have been. This
- * component's own `v-if` is the backstop for a caller that forgets.
+ * component's own `v-if` is the backstop for a caller that forgets. The
+ * empty slot a WRITER sees is a different component, PhotoQuickAdd, in the
+ * caller's `v-else`; it is not a third state of this one.
  *
  * RESOLVING STILL NEEDS THE PLATE, which is the one piece of this worth
  * keeping. Every file field is protected, so the URL needs a file token, and

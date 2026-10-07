@@ -770,6 +770,18 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
       take the full width, and clicking the plate opens the stored image with no
       thumb parameter at all. The full-size URL resolves only on open, so a page
       with several photos does not fetch full copies of images nobody clicked.
+      The edit forms put it in the same place, beside Name and Description.
+    - **The empty slot is for writers only.** With `can.manageInventory` and no
+      photo, the gutter holds `PhotoQuickAdd`: a dashed plate (not a skeleton,
+      which reads as loading) that uploads one photo and saves at once, like
+      MetadataCard's quick edit. Anyone else still gets nothing there. Its body
+      is `photo` and nothing else, because multipart cannot omit a field and
+      the member branch of `things.updateRule` freezes several -- section 23 of
+      `scripts/test-authz.sh` is the assertion it relies on. It shares
+      `ImageUploadField` with the forms and nothing more: the forms stage until
+      Save, the detail view does not, and one component switching on a prop
+      would be the mode flag `RecordPhoto` shed. Add only; replacing or removing
+      a photo stays on the form.
       `RecordPhoto` takes three props and no more: the thumb size, the plate
       size and the click-to-zoom were props until both call sites turned out to
       pass identical values for all three, which is a constant wearing a prop's

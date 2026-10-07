@@ -54,7 +54,7 @@ const formData = ref({
 
 const metadataEditor = ref<InstanceType<typeof MetadataEditor> | null>(null)
 
-// Photo state (edit mode only -- see the Photo card in the template for why).
+// Photo state (edit mode only -- see the photo in Basic Information for why).
 // The loaded record is kept whole: ImageUploadField resolves its own URL,
 // because every file field is protected and needs a file token.
 const loadedThing = ref<Thing | null>(null)
@@ -509,8 +509,8 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
     <form v-else @submit.prevent="handleSubmit" class="space-y-6">
 
       <!-- Laid out like the detail view, so a field is edited where it is
-           read: what the Thing IS on the left (Basic Information, Photo,
-           Metadata), how it CONNECTS on the right (Authentication, NATS,
+           read: what the Thing IS on the left (Basic Information with its
+           photo, Metadata), how it CONNECTS on the right (Authentication, NATS,
            Nebula). On a phone that also puts the inventory first, which is all
            a member ever sees here. -->
       <div
@@ -522,29 +522,64 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
         <div class="space-y-6">
           <BaseCard title="Basic Information">
             <div class="space-y-4">
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text">Name *</span>
-                </label>
-                <input
-                  v-model="formData.name"
-                  type="text"
-                  placeholder="e.g. Warehouse HVAC"
-                  class="input input-bordered"
-                  required
-                />
-              </div>
+              <!--
+                The photo sits beside Name and Description, where the detail
+                view shows it, rather than in a card of its own -- above them
+                on a phone, as there. Beside those two only: the rows below
+                hold paired inputs that need the card's full width.
 
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text">Description</span>
-                </label>
-                <textarea
-                  v-model="formData.description"
-                  class="textarea textarea-bordered"
-                  rows="2"
-                  placeholder="Optional description"
-                ></textarea>
+                EDIT ONLY. Creating a Thing goes through POST /api/org/things,
+                a JSON provisioning route that writes the Thing and its
+                NATS/Nebula identities in one server-side transaction. It
+                cannot carry a multipart upload, and bolting a second client
+                call onto it is exactly the pattern that route exists to have
+                removed -- three unguarded calls whose partial failure orphaned
+                a signed credential. It also matches how the photo gets taken:
+                the record is created at a desk, the device is photographed
+                where it is installed, usually another day and another person.
+              -->
+              <div class="flex flex-col sm:flex-row sm:items-start gap-5">
+                <div v-if="isEdit" class="shrink-0 sm:order-last">
+                  <ImageUploadField
+                    v-model:file="photoFile"
+                    v-model:removed="photoRemoved"
+                    :source="
+                      loadedThing?.photo
+                        ? { record: loadedThing, filename: loadedThing.photo, thumb: '400x400' }
+                        : null
+                    "
+                    :size="140"
+                    add-label="Add photo"
+                    empty-label="No photo"
+                  />
+                </div>
+
+                <div class="flex-1 min-w-0 space-y-4">
+                  <div class="form-control">
+                    <label class="label">
+                      <span class="label-text">Name *</span>
+                    </label>
+                    <input
+                      v-model="formData.name"
+                      type="text"
+                      placeholder="e.g. Warehouse HVAC"
+                      class="input input-bordered"
+                      required
+                    />
+                  </div>
+
+                  <div class="form-control">
+                    <label class="label">
+                      <span class="label-text">Description</span>
+                    </label>
+                    <textarea
+                      v-model="formData.description"
+                      class="textarea textarea-bordered"
+                      rows="2"
+                      placeholder="Optional description"
+                    ></textarea>
+                  </div>
+                </div>
               </div>
 
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -629,41 +664,6 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
                 <span class="text-xs text-base-content/50 uppercase block mb-1">Generated Identity</span>
                 <span class="font-mono text-sm select-all break-all">{{ thingEmail }}</span>
               </div>
-            </div>
-          </BaseCard>
-
-          <!--
-            Photo: EDIT ONLY.
-
-            Creating a Thing goes through POST /api/org/things, a JSON
-            provisioning route that writes the Thing and its NATS/Nebula
-            identities in one server-side transaction. It cannot carry a
-            multipart upload, and bolting a second client call onto it is
-            exactly the pattern that route exists to have removed -- three
-            unguarded calls whose partial failure orphaned a signed credential.
-
-            It also matches how the photo gets taken. The record is created at a
-            desk; the device is photographed where it is installed, which is a
-            different day and usually a different person.
-          -->
-          <BaseCard v-if="isEdit" title="Photo">
-            <div class="flex flex-col items-center gap-2">
-              <ImageUploadField
-                v-model:file="photoFile"
-                v-model:removed="photoRemoved"
-                :source="
-                  loadedThing?.photo
-                    ? { record: loadedThing, filename: loadedThing.photo, thumb: '400x400' }
-                    : null
-                "
-                :size="180"
-                add-label="Add photo"
-                empty-label="No photo"
-              />
-              <p class="text-xs text-base-content/60 text-center max-w-xs">
-                What this looks like where it is installed &mdash; the answer to
-                &ldquo;is this the right one&rdquo; after scanning its label.
-              </p>
             </div>
           </BaseCard>
 

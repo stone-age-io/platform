@@ -15,6 +15,7 @@ import MetadataCard from '@/components/common/MetadataCard.vue'
 import ExpiryBadge from '@/components/common/ExpiryBadge.vue'
 import RecordTimestamps from '@/components/common/RecordTimestamps.vue'
 import RecordPhoto from '@/components/common/RecordPhoto.vue'
+import PhotoQuickAdd from '@/components/common/PhotoQuickAdd.vue'
 import DangerZone from '@/components/common/DangerZone.vue'
 import QrLabelModal from '@/components/common/QrLabelModal.vue'
 import OperationSubjects from '@/components/things/OperationSubjects.vue'
@@ -365,7 +366,9 @@ onMounted(() => {
 
               With no photo the list simply takes the full width. That is
               better than the em-dash the labelled version had to render, since
-              there is no longer a field sitting empty.
+              there is no longer a field sitting empty. The exception is a
+              reader who can add one: they get PhotoQuickAdd's dashed plate in
+              the same gutter, at the same size.
             -->
             <div class="flex flex-col sm:flex-row sm:items-start gap-5">
               <div v-if="thing.photo" class="shrink-0 sm:order-last">
@@ -373,6 +376,15 @@ onMounted(() => {
                   :record="thing"
                   :filename="thing.photo"
                   :alt="`Photo of ${thing.name || 'this thing'}`"
+                />
+              </div>
+              <!-- The empty slot, only for someone who can fill it. -->
+              <div v-else-if="canEditMetadata" class="shrink-0 sm:order-last">
+                <PhotoQuickAdd
+                  collection="things"
+                  :record-id="thing.id"
+                  hint="What it looks like where it is installed."
+                  @saved="(f) => { if (thing) thing.photo = f }"
                 />
               </div>
 

@@ -339,31 +339,55 @@ onMounted(() => {
         <div class="space-y-6">
           <BaseCard title="Basic Information">
             <div class="space-y-4">
-              <!-- Name -->
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text">Name *</span>
-                </label>
-                <input 
-                  v-model="formData.name"
-                  type="text" 
-                  placeholder="Enter location name"
-                  class="input input-bordered"
-                  required
-                />
-              </div>
-              
-              <!-- Description -->
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text">Description</span>
-                </label>
-                <textarea 
-                  v-model="formData.description"
-                  class="textarea textarea-bordered"
-                  rows="3"
-                  placeholder="Optional description"
-                ></textarea>
+              <!-- The photo beside Name and Description, where the detail view
+                   shows it, rather than in a card of its own in the other
+                   column. See ThingFormView for why beside those two only.
+                   Unlike a Thing's, a location's photo works on create too:
+                   locations use the plain record API with FormData. -->
+              <div class="flex flex-col sm:flex-row sm:items-start gap-5">
+                <div class="shrink-0 sm:order-last">
+                  <ImageUploadField
+                    v-model:file="photoFile"
+                    v-model:removed="photoRemoved"
+                    :source="
+                      loadedLocation?.photo
+                        ? { record: loadedLocation, filename: loadedLocation.photo, thumb: '400x400' }
+                        : null
+                    "
+                    :size="140"
+                    add-label="Add photo"
+                    empty-label="No photo"
+                  />
+                </div>
+
+                <div class="flex-1 min-w-0 space-y-4">
+                  <!-- Name -->
+                  <div class="form-control">
+                    <label class="label">
+                      <span class="label-text">Name *</span>
+                    </label>
+                    <input
+                      v-model="formData.name"
+                      type="text"
+                      placeholder="Enter location name"
+                      class="input input-bordered"
+                      required
+                    />
+                  </div>
+
+                  <!-- Description -->
+                  <div class="form-control">
+                    <label class="label">
+                      <span class="label-text">Description</span>
+                    </label>
+                    <textarea
+                      v-model="formData.description"
+                      class="textarea textarea-bordered"
+                      rows="2"
+                      placeholder="Optional description"
+                    ></textarea>
+                  </div>
+                </div>
               </div>
               
               <!-- Code -->
@@ -477,26 +501,6 @@ onMounted(() => {
             </div>
           </BaseCard>
           
-          <BaseCard title="Site Photo">
-            <div class="flex flex-col items-center gap-2">
-              <ImageUploadField
-                v-model:file="photoFile"
-                v-model:removed="photoRemoved"
-                :source="
-                  loadedLocation?.photo
-                    ? { record: loadedLocation, filename: loadedLocation.photo, thumb: '400x400' }
-                    : null
-                "
-                :size="180"
-                add-label="Add photo"
-                empty-label="No photo"
-              />
-              <p class="text-xs text-base-content/60 text-center max-w-xs">
-                What the site looks like on arrival. Large images are scaled down before upload.
-              </p>
-            </div>
-          </BaseCard>
-
           <BaseCard title="Floorplan">
             <div class="flex flex-col items-center gap-2">
               <!-- Accepts SVG, which the photo field deliberately does not: a

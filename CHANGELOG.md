@@ -65,6 +65,10 @@ user, are in its `CHANGELOG.md`.
 - **Save stays on screen** on the Thing and Thing Type forms. Cancel and Save
   sit in a bar pinned to the bottom of the window, so a long form no longer
   hides Save at the end of the page.
+- **Add a photo from the Thing or Location page.** Where there is no photo
+  yet, anyone who can edit inventory sees a dashed **Add photo** plate in its
+  place. It uploads and saves in one step, without opening the edit form.
+  Viewers still see nothing there.
 - **Revoke on the Thing page.** It sits beside `.creds` and Regenerate, as on
   the NATS user page: the current `.creds` file is rejected everywhere, and a
   new key and file are issued in the same step. Use it when a device's
@@ -78,10 +82,13 @@ user, are in its `CHANGELOG.md`.
   save. Keys the schema does not list appear as ordinary rows under **Other
   fields**, instead of being editable only in the JSON view.
 - **The Thing edit form is laid out like the Thing page.** What the Thing is
-  (Basic Information, Photo, Metadata) is on the left, and how it connects
+  (Basic Information, Metadata) is on the left, and how it connects
   (Authentication, NATS, Nebula) is on the right. On a phone, inventory comes
   first. A member, who has no identity cards, gets one column instead of half
   an empty page.
+- **The photo is edited where it is shown.** On the Thing and Location forms
+  it moved out of its own card and into Basic Information, beside Name and
+  Description, as on the detail pages.
 - **The Thing Type form has one Subjects card.** It replaces "Subject &
   Capabilities" (the capabilities field it named was removed earlier) and the
   separate Operations card. It shows the prefix, the operations and the subjects
