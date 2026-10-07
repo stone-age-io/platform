@@ -11,6 +11,54 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+**pb-nats v0.3.0: an empty NATS permission list now grants nothing.** Until
+now, a NATS role saved with a blank publish or subscribe list, held by a user
+with no permissions of its own, was signed with `>`: everything in the
+organization's account, including device command subjects and every KV bucket.
+The account boundary held, so no other tenant was exposed. Now an empty
+direction is signed as a deny of everything. See **Upgrading** before you
+deploy.
+
+### Upgrading
+
+Nothing changes when the new binary starts. No role or user is modified and no
+credential is reissued. A user gets a JWT under the new rule the next time it
+is reissued: a role or user edit, a regenerate, a revoke, or a reactivation.
+
+- **Find roles with an empty Allow list.** Open **NATS → Roles** in the
+  console, or `nats_roles` in `/_`, and look for a blank publish or subscribe
+  list. Each one now grants nothing in that direction, unless the user has
+  permissions of its own. The role page shows these as `None`, which is now
+  accurate.
+- **Write down what each one should grant.** For full access, enter `>` on
+  publish and `>`, `_INBOX.>` on subscribe. Saving the role reissues its users'
+  credentials. A role that sends requests needs `_INBOX.>` on subscribe.
+- **Revoke where the old grant must stop now.** A credential minted before the
+  upgrade still carries `>` and keeps working, because a reissue keeps the same
+  key pair. Use **Revoke** on that NATS user, then deploy the new `.creds` to the
+  device.
+- **Re-enter Response Permissions on old deployments.** A database created
+  before January 2026 had no `allow_response` fields on `nats_roles`, so the
+  toggle on the role form saved nothing and every role read it as off. The
+  fields now exist, but values set earlier were never stored. Turn it back on
+  where it is needed.
+
+pb-nats' own upgrade notes, including a SQL query that lists every affected
+user, are in its `CHANGELOG.md`.
+
+### Changed
+
+- The NATS role form says what an empty Allow list means. Its subscribe
+  placeholder was `>`, which suggested a blank list meant everything. That was
+  true before this release and is the opposite now.
+
+### Fixed
+
+- **Response Permissions on a NATS role are stored.** `schema.json` now
+  declares `allow_response`, `allow_response_max` and `allow_response_ttl`
+  (migration `schema_update_role_response_fields`), and pb-nats v0.3.0 adds
+  any missing role field at startup.
+
 ## [0.9.0] - 2026-10-06
 
 **Two security fixes that any multi-user deployment should take.** A location

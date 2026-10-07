@@ -205,6 +205,17 @@ onMounted(() => { if (isEdit.value) loadRole() })
         <div class="space-y-6">
           <BaseCard title="Permissions">
             <div class="space-y-6">
+              <!-- An empty allow list is a hard deny in that direction, since
+                   pb-nats v0.3.0. It used to sign `>` -- everything in the
+                   account -- and this form gave no hint either way, while the
+                   subscribe placeholder read `>` and looked like the default. -->
+              <p class="text-xs text-base-content/70">
+                An empty <strong>Allow</strong> list grants <strong>nothing</strong> in
+                that direction. Enter <code>&gt;</code> to allow everything in the
+                account. A role that sends requests also needs <code>_INBOX.&gt;</code>
+                on subscribe to receive the replies.
+              </p>
+
               <div class="space-y-3">
                 <div class="flex items-center gap-2">
                   <span class="text-sm">📤</span>
@@ -229,7 +240,7 @@ onMounted(() => { if (isEdit.value) loadRole() })
                 </div>
                 <div class="form-control">
                   <label class="label py-1"><span class="label-text text-xs">Allow Subjects</span></label>
-                  <textarea v-model="formData.subscribe_permissions" class="textarea textarea-bordered font-mono text-xs" rows="3" placeholder=">"></textarea>
+                  <textarea v-model="formData.subscribe_permissions" class="textarea textarea-bordered font-mono text-xs" rows="3" placeholder="cmd.>, _INBOX.>"></textarea>
                 </div>
                 <div class="form-control">
                   <label class="label py-1"><span class="label-text text-xs text-error font-bold">Deny Subjects</span></label>

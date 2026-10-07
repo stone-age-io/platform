@@ -1124,6 +1124,25 @@ Rules to follow when touching authorization:
 - **`nats_users.publish_permissions` is copied verbatim into the signed JWT**
   (pb-nats `internal/jwt/generator.go`). Write access to that collection is
   equivalent to granting NATS permissions, so it is owner/admin only.
+- **An empty allow list grants NOTHING, since pb-nats v0.3.0.** Role and user
+  lists are unioned per direction; if the union is empty the JWT gets
+  `deny: [">"]` for that direction. Before v0.3.0 it got `>` — everything in
+  the account — which was the "blank scope is a wildcard" bug in a fourth
+  costume, inside the NATS trust chain this time. Two details that follow: an
+  empty allow list in a JWT is NO restriction to nats-server, which is why the
+  fix is a deny rather than `[]`; and `_INBOX.>` is never added for you, so a
+  role that sends requests must list it on subscribe. Full access is written
+  as `>` explicitly, so it is visible on the role. A credential minted before
+  the upgrade keeps its `>` until revoked, since a reissue keeps the key pair.
+- **`nats_roles` fields come from two places, and `schema.json` must list
+  every one pb-nats uses.** pb-nats creates the collection before
+  `schema.json` is imported, so a fresh database gets the library's fields
+  regardless; a database older than one of the library's field additions did
+  not, and PocketBase silently drops writes to it. That is how the role form's
+  `allow_response` toggle stored nothing on early deployments. Declare a
+  library's field with PocketBase's deterministic id (see the re-import bullet
+  below); `migrations/role_response_fields_test.go` shows how to test it,
+  since a fresh app passes whether or not the field is declared.
 - **An `authRule` is checked at the auth endpoint only, never on an existing
   token.** PocketBase evaluates it in `apis.RecordAuthResponse`
   (`apis/record_helpers.go`), reached from `/auth-with-password` and friends —
