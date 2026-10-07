@@ -18,7 +18,6 @@ import RecordPhoto from '@/components/common/RecordPhoto.vue'
 import DangerZone from '@/components/common/DangerZone.vue'
 import QrLabelModal from '@/components/common/QrLabelModal.vue'
 import OperationSubjects from '@/components/things/OperationSubjects.vue'
-import { useEscapeKey } from '@/composables/useEscapeKey'
 
 const router = useRouter()
 const route = useRoute()
@@ -30,7 +29,7 @@ const authStore = useAuthStore()
 const thing = ref<Thing | null>(null)
 const loading = ref(true)
 const regenerating = ref(false)
-const showRegenerateModal = ref(false)
+const revoking = ref(false)
 const showLabelModal = ref(false)
 const deleting = ref(false)
 const togglingActive = ref(false)
@@ -119,20 +118,79 @@ function downloadNatsCreds() {
   toast.success('Credentials downloaded')
 }
 
-async function confirmRegenerate() {
+/**
+ * Whether the credential controls are offered at all.
+ *
+ * Both of them mint. `regenerate` re-signs for the same key and `revoke` hands
+ * back a working replacement, and pb-nats does either on an inactive identity,
+ * which issues a credential past the revocation cutoff -- the same thing
+ * Reactivate does. So on a deactivated Thing they would be two ways back onto
+ * the bus that skip Reactivate, under a badge saying the device is cut off.
+ * Reactivate is the one lever, because it is the one that also restores the
+ * Thing's own sign-in and its Nebula host (hooks/active_flag.go).
+ *
+ * There is deliberately no Re-enable here, unlike the NATS user page: for a
+ * device `nats_users.active` mirrors `things.active`, and re-enabling the
+ * identity alone would put the two out of step.
+ */
+const credentialsLive = computed(() => {
+  const natsUser = thing.value?.expand?.nats_user as NatsUser | undefined
+  return thing.value?.active !== false && !!natsUser?.active
+})
+
+// Regenerate is NOT a leak response: it re-signs for the SAME key, so every
+// copy of the old file keeps working. What it is for on a device is renewing a
+// credential before the expiry shown beside the username.
+async function regenerateCreds() {
   const natsUser = thing.value?.expand?.nats_user as NatsUser
   if (!natsUser) return
+
+  const confirmed = await confirm({
+    title: 'Regenerate Credentials',
+    message: `Issue a fresh .creds file for "${natsUser.nats_username}"?`,
+    details: 'This does not invalidate the current file: every copy keeps working, because the key does not change. If the credentials leaked, use Revoke instead.',
+    confirmText: 'Regenerate',
+    variant: 'warning',
+  })
+  if (!confirmed) return
 
   regenerating.value = true
   try {
     await pb.collection('nats_users').update(natsUser.id, { regenerate: true })
     toast.success('Credentials regenerated')
-    showRegenerateModal.value = false
     await loadThing()
   } catch (err: any) {
     toast.error(err.message || 'Failed to regenerate credentials')
   } finally {
     regenerating.value = false
+  }
+}
+
+// The "credentials leaked" button, not a suspend: a new key pair, the old
+// public key onto the account's revocation list, and a working replacement on
+// the same record. Taking the device out of service is Deactivate.
+async function revokeCreds() {
+  const natsUser = thing.value?.expand?.nats_user as NatsUser
+  if (!natsUser) return
+
+  const confirmed = await confirm({
+    title: 'Revoke Credentials',
+    message: `Reject every copy of the current .creds file for "${natsUser.nats_username}"?`,
+    details: 'A new key and a new .creds file are issued in the same step, and the device stays active. It is offline until the new file is installed on it. To take the device out of service instead, use Deactivate.',
+    confirmText: 'Revoke',
+    variant: 'danger',
+  })
+  if (!confirmed) return
+
+  revoking.value = true
+  try {
+    await pb.collection('nats_users').update(natsUser.id, { revoke: true })
+    toast.success('Credentials revoked and replaced')
+    await loadThing()
+  } catch (err: any) {
+    toast.error(err.message || 'Failed to revoke credentials')
+  } finally {
+    revoking.value = false
   }
 }
 
@@ -217,10 +275,6 @@ async function handleDelete() {
 onMounted(() => {
   loadThing()
 })
-
-// Escape closes these; see useEscapeKey for why the dialogs do not get it
-// from the browser and which ones are deliberately left out.
-useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
 </script>
 
 <template>
@@ -430,15 +484,34 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
               <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider">NATS</span>
               <!-- Same condition the section body below uses, so the two
                    not-expanded states show a heading with no controls under
-                   it rather than a download for something unreadable. -->
-              <div v-if="thing.expand?.nats_user" class="connectivity-actions flex gap-2">
+                   it rather than a download for something unreadable. Plus
+                   credentialsLive: see its note for why a cut-off device
+                   offers none of them. -->
+              <div v-if="thing.expand?.nats_user && credentialsLive" class="connectivity-actions credential-actions flex gap-2 w-full sm:w-auto">
                 <button @click="downloadNatsCreds" class="btn btn-sm btn-outline" title="Download .creds file">
                   <span>📥</span>
                   <span>.creds</span>
                 </button>
-                <button @click="showRegenerateModal = true" class="btn btn-sm btn-outline btn-error" title="Regenerate credentials">
+                <!-- Plain outline: regenerate invalidates nothing, so the
+                     danger colour it used to wear oversold it. Revoke is the
+                     one that breaks a deployed device. -->
+                <button
+                  @click="regenerateCreds"
+                  class="btn btn-sm btn-outline"
+                  title="Issue a fresh .creds file for the same key"
+                  :disabled="regenerating || revoking"
+                >
                   <span>🔄</span>
                   <span>Regenerate</span>
+                </button>
+                <button
+                  @click="revokeCreds"
+                  class="btn btn-sm btn-outline btn-error"
+                  title="Reject the current credentials and issue replacements"
+                  :disabled="regenerating || revoking"
+                >
+                  <span>⛔</span>
+                  <span>Revoke</span>
                 </button>
               </div>
             </div>
@@ -482,6 +555,22 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
                 </span>
                 <span v-else class="font-mono text-sm text-base-content/60">—</span>
               </div>
+              <!-- Says where the controls went. A deactivated Thing already has
+                   the page banner; this covers the identity being inactive on
+                   its own, which a Thing reached only out of step. -->
+              <p v-if="!credentialsLive" class="text-xs text-base-content/60">
+                <template v-if="thing.active === false">
+                  Credential actions return when the Thing is reactivated.
+                </template>
+                <template v-else>
+                  This NATS identity is inactive, so its credentials are rejected.
+                  <router-link
+                    v-if="authStore.can.manageInfrastructure"
+                    :to="`/nats/users/${thing.nats_user}`"
+                    class="link link-primary"
+                  >Open the NATS user</router-link>
+                </template>
+              </p>
             </div>
             <!-- Linked, but the caller cannot read nats_users (members see only
                  their own row). The relation ID is on the things record and IS
@@ -574,20 +663,6 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
       </DangerZone>
     </template>
 
-    <dialog class="modal" :class="{ 'modal-open': showRegenerateModal }">
-      <div class="modal-box">
-        <h3 class="font-bold text-lg text-warning">Regenerate Credentials?</h3>
-        <p class="py-4">This will invalidate the existing credentials immediately.</p>
-        <div class="modal-action">
-          <button class="btn" @click="showRegenerateModal = false" :disabled="regenerating">Cancel</button>
-          <button class="btn btn-error" @click="confirmRegenerate" :disabled="regenerating">
-            <span v-if="regenerating" class="loading loading-spinner"></span> Regenerate
-          </button>
-        </div>
-      </div>
-      <form method="dialog" class="modal-backdrop"><button @click="showRegenerateModal = false">close</button></form>
-    </dialog>
-
     <!--
       No organization-name prop: a console user is scoped to one organization and
       already knows whose device this is. The helpdesk passes it because its staff
@@ -618,15 +693,16 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
   }
 }
 
-.custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: oklch(var(--bc) / 0.2);
-  border-radius: 10px;
-}
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
+/*
+  Three credential buttons do not fit beside the NATS heading on a phone, and
+  left to wrap they stranded Revoke on a row of its own. Below `sm` they take
+  the full row under the heading instead, as three equal buttons.
+*/
+@media (max-width: 639px) {
+  .credential-actions .btn {
+    flex: 1 1 0;
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+  }
 }
 </style>

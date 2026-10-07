@@ -21,7 +21,8 @@ deploy.
 
 Also: a Thing's page lists the NATS subjects it speaks on, a type's inventory
 schema guides the metadata form without ever blocking a save, and the Thing
-and Thing Type forms keep Save on screen.
+and Thing Type forms keep Save on screen. A device's credentials can be revoked
+from its Thing page.
 
 ### Upgrading
 
@@ -62,6 +63,10 @@ user, are in its `CHANGELOG.md`.
 - **Save stays on screen** on the Thing and Thing Type forms. Cancel and Save
   sit in a bar pinned to the bottom of the window, so a long form no longer
   hides Save at the end of the page.
+- **Revoke on the Thing page.** It sits beside `.creds` and Regenerate, as on
+  the NATS user page: the current `.creds` file is rejected everywhere, and a
+  new key and file are issued in the same step. Use it when a device's
+  credentials leak. To take a device out of service, use Deactivate.
 
 ### Changed
 
@@ -92,6 +97,14 @@ user, are in its `CHANGELOG.md`.
   declares `allow_response`, `allow_response_max` and `allow_response_ttl`
   (migration `schema_update_role_response_fields`), and pb-nats v0.3.0 adds
   any missing role field at startup.
+- **The Thing page described Regenerate wrongly.** Its dialog said the
+  existing credentials would be invalidated immediately. They are not:
+  Regenerate keeps the key, so every copy of the old file keeps working. The
+  dialog now says so and points to Revoke.
+- **A deactivated Thing no longer offers credential actions.** Regenerate was
+  still shown on one, and regenerating an inactive identity issues a credential
+  that works, putting the device back on NATS while the page said it was cut
+  off. Reactivate is the way back.
 
 ## [0.9.0] - 2026-10-06
 
