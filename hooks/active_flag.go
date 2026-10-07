@@ -152,9 +152,12 @@ func RegisterActiveFlag(app *pocketbase.PocketBase, opts ActiveFlagOptions) {
 //     already out of step can still be saved inactive, which is the repair.
 //   - a minting trigger. pb-nats mints a working credential for an INACTIVE
 //     user on `regenerate` (past the revocation cutoff) and `revoke` (a new key
-//     pair, never revoked). pb-nebula re-issues an inactive host's certificate
-//     on `renew`, and since the blocklist is built from the STORED certificate,
-//     the device's real one drops off it at the next rebuild.
+//     pair, never revoked). pb-nebula re-issued an inactive host's certificate
+//     on `renew` until v0.3.3, and since the blocklist is built from the STORED
+//     certificate, the device's real one dropped off it at the next rebuild.
+//     v0.3.3 refuses that itself (ErrHostInactive). `renew` stays listed here
+//     anyway: this guard is the one that names the Thing as the reason, and it
+//     must not depend on a library version to hold.
 //
 // The mirror itself always passes: it runs after the Thing's own save, so the
 // Thing read here is already active on a reactivation, and a deactivation

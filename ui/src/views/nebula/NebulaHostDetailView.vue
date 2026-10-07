@@ -97,9 +97,10 @@ async function handleDelete() {
  * currently STORED on the record. Re-issuing would replace the stored
  * certificate, so the next blocklist rebuild under this CA would list the new
  * fingerprint and drop the old -- un-revoking the certificate the device
- * actually holds. pb-nebula's own renewal sweep skips inactive hosts for that
- * reason (internal/sync/renewal.go); its manual `renew` flag does not yet.
- * Reactivating is the way back, and it re-issues by itself.
+ * actually holds. Since pb-nebula v0.3.3 the server refuses `renew` on an
+ * inactive host with a 400, so hiding the button is no longer the only thing
+ * standing in the way -- it just saves the admin a refusal. Reactivating is
+ * the way back, and it re-issues by itself.
  */
 async function confirmRegenerate() {
   if (!host.value || !host.value.active) return

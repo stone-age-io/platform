@@ -494,10 +494,14 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
       leaves its NATS user or Nebula host active, and any minting trigger on them
       (`regenerate`, `revoke`, `renew`). Before it, Re-enable on the NATS user
       page or the Nebula form's Active toggle put the device back on the bus or
-      the mesh under a "Deactivated" badge. The libraries mint for an INACTIVE
-      identity on all three triggers, which
+      the mesh under a "Deactivated" badge. pb-nats mints for an INACTIVE
+      identity on `regenerate` and `revoke`, which
       `TestDeactivatedThingIdentitiesStayDown` shows by failing case by case with
-      the guard removed. It is an invariant, so a hook (the line under **Roles &
+      the guard removed. pb-nebula did the same on `renew` until v0.3.3, which
+      now refuses it on any inactive host by itself -- so with the guard removed
+      the `renew` case still passes, on the library's refusal. `renew` stays on
+      the guard's list regardless: the invariant should not rest on a library
+      version. It is an invariant, so a hook (the line under **Roles &
       Authorization**), bound at negative priority to run before the libraries
       act, and LEVEL-keyed for the `Record.Original()` reason. The cascade passes
       it because it runs after the Thing's own save. Reactivating the Thing is the

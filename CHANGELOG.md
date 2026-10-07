@@ -120,8 +120,13 @@ user, are in its `CHANGELOG.md`.
   host is revoked by its certificate's fingerprint, and the blocklist is built
   from the stored certificate, so re-issuing one would un-revoke the
   certificate the device still holds the next time peer configs are rebuilt.
-  Reactivating re-issues it anyway. The API does not refuse it yet; that fix
-  belongs in pb-nebula.
+  Reactivating re-issues it anyway. **The API now refuses it too** (pb-nebula
+  v0.3.3): setting `renew` on an inactive host returns a 400 that says why,
+  whether it comes from a script, `stone`, or the PocketBase admin panel. One
+  save that deactivates a host and changes its groups, hostname or overlay IP
+  no longer re-signs it either, which had meant the deactivation revoked a
+  fresh certificate rather than the one on the device. Such an edit is kept
+  and takes effect when the host is reactivated.
 - **The one-time password dialogs no longer close on a stray click** outside
   them, after creating a Thing or an organization. They already ignored
   Escape for the same reason.
