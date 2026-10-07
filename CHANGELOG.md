@@ -59,7 +59,9 @@ user, are in its `CHANGELOG.md`.
   are readable by every role, so members and viewers see it even where the NATS
   and Nebula details are locked. If a variable cannot be filled in, usually a
   missing location, the card says so instead of showing a subject the device
-  cannot use.
+  cannot use. Each operation is one line, with the prefix the type's subjects
+  share drawn quietly. A type with more than ten operations shows eight, with
+  **Show all** and a filter.
 - **Save stays on screen** on the Thing and Thing Type forms. Cancel and Save
   sit in a bar pinned to the bottom of the window, so a long form no longer
   hides Save at the end of the page.

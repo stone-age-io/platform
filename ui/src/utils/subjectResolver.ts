@@ -83,6 +83,14 @@ export interface OperationSubject {
   name: string
   capability: string
   subject: string
+  /**
+   * The two halves of `subject`, resolved: the type's prefix, shared by every
+   * operation of the type, and this operation's own suffix ('' when it has
+   * none). `subject` is exactly `prefix + '.' + suffix`, or `prefix` alone, so
+   * a view can draw the shared half quietly without re-parsing the string.
+   */
+  prefix: string
+  suffix: string
 }
 
 // Speaking order: what the device sends, then what it answers. Anything not
@@ -101,14 +109,23 @@ export function resolveOperationSubjects(
     const i = CAPABILITY_ORDER.indexOf(c)
     return i === -1 ? CAPABILITY_ORDER.length : i
   }
+  // Resolving the halves separately gives the same string as resolving the
+  // joined template: every variable is a whole token and `.` never sits inside
+  // one, so no substitution can span the join.
+  const head = resolveThing(join(prefix, ''), ctx)
   return [...operations]
     .sort((a, b) => rank(a.capability) - rank(b.capability) || a.name.localeCompare(b.name))
-    .map(op => ({
-      id: op.id,
-      name: op.name,
-      capability: op.capability,
-      subject: resolveThing(join(prefix, op.subject_suffix), ctx),
-    }))
+    .map(op => {
+      const suffix = op.subject_suffix ? resolveThing(op.subject_suffix, ctx) : ''
+      return {
+        id: op.id,
+        name: op.name,
+        capability: op.capability,
+        subject: suffix ? `${head}.${suffix}` : head,
+        prefix: head,
+        suffix,
+      }
+    })
 }
 
 // Produce a NATS role-level subject pattern:

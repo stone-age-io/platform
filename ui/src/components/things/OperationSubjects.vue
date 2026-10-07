@@ -1,6 +1,6 @@
 <!-- ui/src/components/things/OperationSubjects.vue -->
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import {
   resolveOperationSubjects,
   hasUnresolved,
@@ -34,6 +34,55 @@ const rows = computed(() => resolveOperationSubjects(props.prefix, props.operati
 
 const incomplete = computed(() => props.forThing && rows.value.some(r => hasUnresolved(r.subject)))
 
+// A LONG list collapses to PREVIEW rows and gains a filter; anything up to LONG
+// renders whole with neither. The gap between the two is deliberate: collapsing
+// eleven rows to eight hides three, while collapsing nine to eight would put a
+// button where one row would have fitted. Collapsed rather than scrolled inside
+// a fixed height: a scroll box inside a scrolling page traps the wheel, hides
+// rows from the browser's find, and cuts a row in half at an arbitrary line.
+// The demo types declare one to six operations, so most pages never see either.
+const LONG = 10
+const PREVIEW = 8
+
+const isLong = computed(() => rows.value.length > LONG)
+const query = ref('')
+const expanded = ref(false)
+
+// Matches the name as well as the subject, since the name is not on screen
+// (it is the row's tooltip) but is what a type's author called the operation.
+const filtered = computed(() => {
+  const q = query.value.trim().toLowerCase()
+  if (!q) return rows.value
+  return rows.value.filter(r =>
+    r.subject.toLowerCase().includes(q) ||
+    r.name.toLowerCase().includes(q) ||
+    r.capability.includes(q),
+  )
+})
+
+// A filter shows every match: the reader has already narrowed the list, and a
+// second "show all" behind it would only hide what they asked for.
+const visible = computed(() =>
+  !isLong.value || expanded.value || query.value.trim()
+    ? filtered.value
+    : filtered.value.slice(0, PREVIEW),
+)
+const hiddenCount = computed(() => filtered.value.length - visible.value.length)
+
+// A subject cut into its tokens, each keeping the dot after it, so the
+// template can offer a line break after every dot and nowhere else.
+// `break-all` broke anywhere -- `heartbea|t` -- in a column that is
+// rarely wide enough for a whole subject. A single token too long for the
+// line still breaks, via break-words, rather than overflowing the card.
+function pieces(r: { prefix: string; suffix: string }) {
+  const cut = (s: string, more: boolean) =>
+    s.split('.').map((t, i, all) => (i < all.length - 1 || more ? `${t}.` : t))
+  return [
+    ...cut(r.prefix, !!r.suffix).map(text => ({ text, shared: true })),
+    ...(r.suffix ? cut(r.suffix, false).map(text => ({ text, shared: false })) : []),
+  ]
+}
+
 const BADGE: Record<string, string> = {
   publish: 'badge-primary',
   request: 'badge-secondary',
@@ -44,21 +93,76 @@ const BADGE: Record<string, string> = {
 
 <template>
   <div>
-    <ul v-if="rows.length" class="space-y-2">
-      <li
-        v-for="r in rows"
-        :key="r.id"
-        class="bg-base-200 rounded-lg p-3 border border-base-300"
+    <template v-if="rows.length">
+      <input
+        v-if="isLong"
+        v-model="query"
+        type="search"
+        class="input input-bordered input-sm w-full mb-3"
+        :placeholder="`Filter ${rows.length} subjects`"
+        aria-label="Filter subjects"
+        @keydown.enter.prevent
+      />
+      <!-- Enter is swallowed because on the Thing Type form this input sits
+           inside the form, where Enter would submit it and save the type. -->
+
+      <!--
+        One line per operation, in one bordered list. Each used to be its own
+        box with the operation name on a line above the subject, about 70px a
+        row; a type with twenty operations was a card taller than the page.
+
+        The name moved to the row's tooltip: what a reader copies is the
+        subject, and the suffix usually repeats the name anyway.
+
+        The type's prefix is the same on every row, so it is drawn quietly and
+        the suffix -- the part that tells rows apart -- plainly. Every piece
+        stays in the one <code>, so select-all still copies the WHOLE subject;
+        showing the suffix alone would hand a technician half a subject to
+        paste. The <wbr> after each dot adds no character to the copy.
+      -->
+      <ul
+        v-if="visible.length"
+        class="rounded-lg border border-base-300 bg-base-200 divide-y divide-base-300"
       >
-        <div class="flex items-center gap-2 mb-1 min-w-0">
-          <span class="badge badge-sm badge-outline shrink-0" :class="BADGE[r.capability] || ''">
+        <li
+          v-for="r in visible"
+          :key="r.id"
+          :title="r.name"
+          class="flex items-baseline gap-2 px-3 py-2 min-w-0"
+        >
+          <!-- Fixed width, so the subjects line up whatever the capability. -->
+          <span
+            class="badge badge-sm badge-outline shrink-0 w-[4.75rem] justify-center"
+            :class="BADGE[r.capability] || ''"
+          >
             {{ r.capability }}
           </span>
-          <span class="text-xs text-base-content/60 truncate">{{ r.name }}</span>
-        </div>
-        <code class="font-mono text-sm break-all select-all">{{ r.subject }}</code>
-      </li>
-    </ul>
+          <code class="font-mono text-sm break-words select-all min-w-0">
+            <template v-for="(p, i) in pieces(r)" :key="i"><span :class="{ 'text-base-content/50': p.shared }">{{ p.text }}</span><wbr /></template>
+          </code>
+        </li>
+      </ul>
+      <p v-else class="text-sm text-base-content/60 italic">
+        No subject matches “{{ query.trim() }}”.
+      </p>
+
+      <button
+        v-if="hiddenCount > 0"
+        type="button"
+        class="btn btn-ghost btn-sm w-full mt-2"
+        @click="expanded = true"
+      >
+        Show all {{ rows.length }}
+      </button>
+      <button
+        v-else-if="isLong && expanded && !query.trim()"
+        type="button"
+        class="btn btn-ghost btn-sm w-full mt-2"
+        @click="expanded = false"
+      >
+        Show fewer
+      </button>
+    </template>
     <p v-else class="text-sm text-base-content/60 italic">
       No operations declared, so no subjects to show.
     </p>

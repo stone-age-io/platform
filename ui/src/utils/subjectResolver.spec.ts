@@ -107,6 +107,28 @@ describe('resolveOperationSubjects', () => {
       .toEqual(['publish_alarm', 'publish_state', 'subscribe_grant', 'reply_diag'])
   })
 
+  // The card draws the shared prefix quietly and the suffix plainly, while
+  // select-all copies the whole subject. That only holds if the halves add up
+  // to exactly the subject, so pin it -- including an operation with no suffix,
+  // which is the prefix alone and must not grow a trailing dot.
+  it('splits each subject into the shared prefix and its own suffix', () => {
+    const withBare = [...ops, { id: '5', name: 'publish_bare', capability: 'publish', subject_suffix: '' }]
+    const out = resolveOperationSubjects('acc.{location}.door.{thing}', withBare, { location: 'KC', thing: 'D-1' })
+    for (const o of out) {
+      expect(o.prefix).toBe('acc.KC.door.D-1')
+      expect(o.suffix ? `${o.prefix}.${o.suffix}` : o.prefix).toBe(o.subject)
+    }
+    expect(out.find(o => o.id === '5')).toMatchObject({ subject: 'acc.KC.door.D-1', suffix: '' })
+    expect(out.find(o => o.id === '1')?.suffix).toBe('cmd.grant')
+  })
+
+  // A suffix may use a variable too, and it resolves the same as in the whole.
+  it('resolves variables in the suffix', () => {
+    const op = { id: '1', name: 'p', capability: 'publish', subject_suffix: 'evt.{org}' }
+    expect(resolveOperationSubjects('', [op], { org: 'acme', thingTypeCode: 'door', thing: 'D-1' })[0])
+      .toMatchObject({ subject: 'door.D-1.evt.acme', suffix: 'evt.acme' })
+  })
+
   it('does not reorder the array it was given', () => {
     const copy = [...ops]
     resolveOperationSubjects('', ops, {})
