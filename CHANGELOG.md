@@ -19,6 +19,10 @@ The account boundary held, so no other tenant was exposed. Now an empty
 direction is signed as a deny of everything. See **Upgrading** before you
 deploy.
 
+Also: a Thing's page lists the NATS subjects it speaks on, a type's inventory
+schema guides the metadata form without ever blocking a save, and the Thing
+and Thing Type forms keep Save on screen.
+
 ### Upgrading
 
 Nothing changes when the new binary starts. No role or user is modified and no
@@ -46,8 +50,38 @@ is reissued: a role or user edit, a regenerate, a revoke, or a reactivation.
 pb-nats' own upgrade notes, including a SQL query that lists every affected
 user, are in its `CHANGELOG.md`.
 
+### Added
+
+- **A Subjects card on the Thing page.** It lists each operation of the
+  Thing's type as the full subject it resolves to for this Thing, with its
+  capability (`publish`, `subscribe`, `request`, `reply`). Types and operations
+  are readable by every role, so members and viewers see it even where the NATS
+  and Nebula details are locked. If a variable cannot be filled in, usually a
+  missing location, the card says so instead of showing a subject the device
+  cannot use.
+- **Save stays on screen** on the Thing and Thing Type forms. Cancel and Save
+  sit in a bar pinned to the bottom of the window, so a long form no longer
+  hides Save at the end of the page.
+
 ### Changed
 
+- **A type's inventory schema is a form hint, not a rule.** Nothing on the
+  server ever validated `metadata` against `metadata_schema`, and the form now
+  agrees: required fields are marked and ranges are shown, but neither blocks a
+  save. Keys the schema does not list appear as ordinary rows under **Other
+  fields**, instead of being editable only in the JSON view.
+- **The Thing edit form is laid out like the Thing page.** What the Thing is
+  (Basic Information, Photo, Metadata) is on the left, and how it connects
+  (Authentication, NATS, Nebula) is on the right. On a phone, inventory comes
+  first. A member, who has no identity cards, gets one column instead of half
+  an empty page.
+- **The Thing Type form has one Subjects card.** It replaces "Subject &
+  Capabilities" (the capabilities field it named was removed earlier) and the
+  separate Operations card. It shows the prefix, the operations and the subjects
+  they resolve to, updating as you edit.
+- **Metadata opens expanded on wide screens.** It collapsed whenever a record
+  had more than four fields. That is still the rule on a phone, where the page
+  is one column, but on a desktop the space beside it was empty.
 - The NATS role form says what an empty Allow list means. Its subscribe
   placeholder was `>`, which suggested a blank list meant everything. That was
   true before this release and is the opposite now.
