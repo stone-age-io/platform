@@ -99,8 +99,8 @@ the two demos name the same tenants.
 
 Northwind's inventory also carries the **stone-access estate** — four access
 controllers and ten doors and gates, with the contract layer to match
-(`acc.{location}.door.{thing}`, decision and alarm schemas, the operator-grant
-command). Every one of those codes is also a record in
+(`acc.{location}.door.{thing}`, decision and alarm operations, the
+operator-grant command). Every one of those codes is also a record in
 [access-control](https://github.com/stone-age-io/access-control), whose own
 `accessd demo-seed --confirm` seeds the same three sites by the same codes. Run
 both and a door in one app and a Thing in the other are the same door — which is
@@ -165,8 +165,11 @@ Codes are optional but **immutable**: mutability, not optionality, was what
 disqualified the alternative. See ADR 0002 in
 [platform-docs](https://github.com/stone-age-io/platform-docs).
 
-**QR labels.** Print an operator-branded label for any thing or location that
-has a code, sized in millimetres to real thermal stock (2″ × 1″ and 4″ × 2″).
+**QR labels.** Print a label for any thing or location that has a code, sized
+in millimetres to real thermal stock (2″ × 1″ and 4″ × 2″). Everything on it is
+the organization's own data — its code, then the record's code and name — and
+no operator brand, because a deployment-wide brand says nothing true about who
+owns the device.
 The payload is the **bare code** — no host, no organization, no kind
 token — because a sticker in a public hallway is something a stranger can
 replace, and a URL payload would let a forged label send a person to arbitrary
@@ -184,9 +187,10 @@ Payload *shape* is deliberately not described. A `message_schemas` collection
 held a JSON Schema per operation and was dropped: nothing validated against it,
 so an invalid schema document saved cleanly and rendered zero fields.
 
-**Edge sites.** A site is a Thing. There is no separate record type for one:
-its `thing_types` entry already says it is a gateway, and a second marker would
-be a second thing to get wrong. Its agent — the
+**Edge sites.** A site is a Thing. There is no separate record type for one,
+and nothing in the schema marks which Things are gateways — "gateway" is a
+naming convention a tenant chooses for its own Thing Types, so do not build on a
+marker that does not exist. Its agent — the
 [Agent](https://github.com/stone-age-io/agent), which absorbed the old
 `leaf-sync` — authenticates as that Thing and calls
 `GET /api/me/leaf-config` for the public trust material a NATS leaf server
