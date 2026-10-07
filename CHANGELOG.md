@@ -11,8 +11,92 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-06
+
+**Two security fixes that any multi-user deployment should take.** A location
+name could run script in the session of every owner or admin who opened a map,
+and any role, `dashboard` included, could link its own membership to another
+identity in the same organization and read that identity's NATS seed. Both are
+closed, and both were confirmed live before the fix. See **Security**.
+
+**Codes now name things, and locations know where they are.** A Thing or
+Location saved without a code gets a generated one under its type's prefix,
+codes are unique regardless of case, and every location carries a `path` of
+codes from the root down. "Everything under BD-3" is one filter. ADR 0003 and
+ADR 0004 in platform-docs.
+
+**Charts draw time correctly.** Several series per chart on a real time axis, a
+per-chart time window, a state timeline chart type, and messages stamped with
+the time they happened rather than the time the browser saw them.
+
+Also: `organizations.active` now suspends the tenant's NATS account (it used to
+do nothing), every uploaded file needs a token to fetch, things and locations
+can carry a photo, and new organizations get JetStream storage limits.
+
+### Upgrading
+
+Read this before `migrate up`. Four migrations can change behaviour you rely on.
+
+- **Codes that differ only by case stop the migration.** It names the
+  conflicting records and changes nothing. Rename one of each pair, then run it
+  again.
+- **An organization already marked inactive loses its NATS account at its next
+  save.** Until now the flag did nothing, so an organization may carry
+  `active = false` from an old click. Before you deploy, find them:
+
+  ```sql
+  SELECT id, name, code FROM organizations WHERE active = 0;
+  ```
+
+  Set `active` back on any that should stay connected. The operator and system
+  organizations are exempt.
+- **File URLs without a token now return 404.** Every file field is protected,
+  existing deployments included. The console requests tokens itself. A file
+  URL that you copied into another place, such as a wiki or an external
+  dashboard, stops working.
+- **A Thing Type with an empty subject prefix publishes on a different
+  subject.** The default changed from `{thing_type_code}.{location}.{thing}` to
+  `{thing_type_code}.{thing}`. If devices or rules depend on the old subject,
+  set the prefix to the old pattern explicitly. See **Changed**.
+
+The new JetStream and connection limits apply to organizations provisioned
+after the upgrade. Existing accounts keep their limits until you edit the
+`nats_accounts` record.
+
 ### Security
 
+- **Map labels no longer execute stored HTML.** Leaflet assigns a string
+  tooltip or popup to `innerHTML`, and every map label here is data that
+  someone else wrote. Any `member` can name a location, so a name such as
+  `<img src=x onerror=...>` ran script in the session of every owner or admin
+  who opened the Locations map or a location's mini-map. That is a privilege
+  escalation, with the PocketBase token and the NATS credentials in reach. The
+  same sink took the location type and description in the mini-map popup, KV
+  values on map-widget markers (which devices write), and static marker labels
+  from imported dashboards. Labels are now set as text. A test reads the source
+  and fails on any Leaflet content call that does not get a built element.
+- **A member could read another identity's NATS credential in the same
+  organization.** The self branch of `memberships.updateRule` let any role
+  choose which NATS identity its membership links to, and `nats_users.viewRule`
+  serves the `creds_file` of the linked identity. A `dashboard` login could
+  link itself to a gateway or to the owner and read the seed.
+  `relation_tenancy` refuses only another tenant's records, so it did not stop
+  this. A member can now keep or clear its link. Only owner and admin can
+  choose one.
+- **An operator could create another operator.** The operator branch of
+  `users.createRule` did not refuse `is_operator`. It does now, which matches
+  `users.updateRule`: only a superuser or `bootstrap` grants operator status.
+- **A suspended NATS identity could un-suspend itself.**
+  `POST /api/me/nats-creds/rotate` did not check `nats_users.active`. A
+  regenerate mints a JWT issued after the revocation cutoff, which NATS
+  accepts, so the rotate button reconnected a suspended identity. The route now
+  returns 403 for a suspended identity.
+- **Every uploaded file is protected.** An unprotected PocketBase file URL is
+  served to anyone, with no auth and no expiry. The URL was a bearer credential
+  that could not be revoked and that leaked through Referer headers,
+  screenshots and logs. Now a fetch needs a file token, and the collection's
+  `viewRule` decides. The migration reads the live schema, so a file field that
+  is added later is also protected on upgrade.
 - **`maplibre-gl` 5.24.0 → 6.11.1, which closes GHSA-jrc7-96c5-q579.** The
   critical `DOM.sanitize()` bypass was fixed in 6.4.1 and never backported,
   so the v5 pin carried it with nothing to upgrade to. It was not reachable (its
@@ -44,8 +128,73 @@ and this file starts where the versioned releases do.
   republishes each record, and Telegraf writes `stone_thing_info` and
   `stone_location_info`. Dashboards join readings against them for location,
   name and type as they are now. No platform route.
+- **Several series per chart, on a real time axis.** `chartConfig.series` is a
+  list of `{label, path, subject?}`. The subject filter separates devices that
+  publish the same payload shape. The x-axis was a list of time strings, which
+  aligned series by array position. It is now a time axis, and a legend shows
+  when there is more than one series. A chart without `series` draws from its
+  old JSONPath, and the form converts it to a one-entry list on the next save.
+- **A per-chart time window** (`chartConfig.window`, for example `30m`).
+  Messages older than the window are dropped, and the window is also the
+  JetStream replay window. It is optional: empty means the last N messages, as
+  before.
+- **A state timeline chart type.** One row per series, with equal consecutive
+  values merged into one segment. Threshold rules give the colour and an
+  optional label, for example `true` → "running".
+- **Messages carry the time they happened.** The widget's `timestampPath` comes
+  first, then the time JetStream stored the message, then the receive time. A
+  JetStream replay no longer collapses onto the moment it arrived.
+- **Hide system subjects on a wildcard subscription.** A console on `>` showed
+  mostly the dashboard's own `$JS.API` and `_INBOX` traffic, which also pushed
+  real messages out of its buffer. `dataSource.hideSystemSubjects` drops them,
+  but only on a subscription whose first token is a wildcard. New console
+  widgets turn it on. Saved dashboards are unchanged.
+- **Suspending an organization withdraws its NATS account.** See
+  **Upgrading**. Clearing `organizations.active` (operator only) removes the
+  account claim, so every device, edge agent and browser in the tenant
+  disconnects. This is reversible: no credential is revoked, and the same
+  credentials connect again when the flag is set. It does not change Nebula,
+  console sign-in or device tokens, and the form says so.
+- **A photo on things and locations**, on their detail views. Click it to open
+  the full image. The browser reduces the image before upload, so a phone photo
+  fits under the 2 MiB limit. You add a Thing's photo when you edit the Thing,
+  not when you create it.
+- **JetStream storage limits per account**, 5 GiB disk and 64 MiB memory by
+  default (`nats.default_limits`). Before, every organization had unlimited
+  storage, so one tenant could fill a shared box.
+- **The activity feed connects to the record.** Thing and Location detail
+  views, and the three type forms, show when the record was created and last
+  updated. Click an activity row to see its details and to open the record or
+  filter the feed to that record's history.
+- **Typed confirmation for deletes that you cannot undo.** Deleting a Thing,
+  Location, Nebula host, Nebula network, NATS user or organization requires you
+  to type its code or name. Delete moved off list rows to the detail view, in a
+  Danger Zone section. Deleting a Thing does not revoke its credentials, so
+  Deactivate is almost always the correct action.
+- **The Locations map draws one pin per site.** A location gets a pin only when
+  no ancestor has coordinates. Its rooms and floors are in the drawer. Nearby
+  sites cluster.
+- **Sorting on the KV bucket and stream lists.**
+- **Users' avatars appear on Members, member detail and the audit log**, and
+  settings has a control to remove an avatar.
+- **The organization switcher shows each organization's logo.** The brand slot
+  above it always shows the operator's brand.
 
 ### Changed
+
+- **New organizations get higher connection and subscription limits**, 100 and
+  5000 (were 10 and 50). The old values were less than what the console itself
+  opens.
+- **Pie and gauge chart types are removed.** Nothing in the UI could select
+  them, and the Gauge widget exists. An imported chart with either draws as a
+  line.
+- **Widgets fed by JetStream show the stored time, not the arrival time.** The
+  Status widget therefore reports a replayed message at its real age, and the
+  Stream Table's "Received:" label is now "Time:".
+- **QR labels print the organization's code, not the operator brand**, and the
+  code size fits each label. The type is no longer printed.
+- **The Revoke dialog describes revoke correctly.** It issues a working
+  replacement credential on a new key pair. It never made the user inactive.
 
 - **The default subject is `{thing_type_code}.{thing}`**, without
   `{location}`. A Thing Type with an empty subject prefix used to resolve to
@@ -83,6 +232,59 @@ and this file starts where the versioned releases do.
 - **CI checks that the worker is emitted**, and now expects `maplibre-gl` 6.
   The major is still asserted even though it is no longer held back: a v7 that
   moves the worker again would fail the same way, with no error on the page.
+
+### Fixed
+
+- **A dashboard kept receiving the previous device after a variable change.**
+  Unsubscribe used the current variable values, which had already changed, so
+  it unsubscribed from the new device and left the old one running. A
+  dashboard switch also left the old dashboard's subscriptions and JetStream
+  consumers running. Widgets now unsubscribe from what they subscribed to.
+- **A kept buffer mixed devices and doubled replays.** After a variable change
+  a chart drew the old device's history and then the new device's readings as
+  one series. When you came back to a dashboard, every JetStream message
+  appeared twice. Both are fixed.
+- **The Status widget in KV mode ignored its JSONPath**, and showed an old key
+  as live after every page load.
+- **The KV widget showed the read time as the update time.** It now shows when
+  the value was written.
+- **Saving a widget config changed valid zero and false values** to defaults:
+  a slider at 0 became 50, a gauge maximum of 0 became 100, and a `false`
+  switch payload became `{"state": "off"}`. A switch with a payload that is not
+  valid JSON now shows an error instead of saving nothing.
+- **Tables, console and stat read their buffers incorrectly.** A nanosecond
+  timestamp blanked a whole table, "x ago" never updated on a quiet stream,
+  the stream table ordered by arrival, the paused "missed" count read 0 once
+  the buffer was full, and the stat card never showed a trend on a new card.
+- **Text, stat and gauge show "—" for no data**, not "undefined", "NaN" or
+  "0.00". Threshold rules with `>`, `>=`, `<` and `<=` compare numbers only.
+  Before, `> 40` matched every word.
+- **New charts hold 200 messages**, not 10.
+- **The camera stayed on after the scanner closed** if it closed while the
+  browser was asking for camera permission.
+- **A map widget removed while it loaded** left a map and a WebGL context
+  running.
+- **The Publisher's `{org}` is the organization's code**, not its name. An
+  organization with no code leaves `{org}` as is.
+- **The organization detail page showed wrong counts.** The member and thing
+  counts used the reader's organization, not the one on screen, so Things read
+  0 for every other organization. They are removed. Two "Provision" buttons
+  that every caller was refused are replaced with text that says who can act.
+- **The Nebula certificate warning named the wrong window** for the CA, which
+  is warned at 90 days, not 30.
+- **Org-scoped reads on things and locations used no index**, so every list
+  scanned every tenant. New indexes fix this.
+- **Mobile and list layout.** Touch targets of at least 44px on card actions,
+  the pager and the Thing connectivity controls. Modal button rows wrap instead of hiding a
+  button off the left edge. Long names and locations take the full card row.
+  Badges grow to fit their text. Descriptions are under the name on every
+  list. Column widths no longer give the most space to the column with the
+  least content. Search placeholders list every field the search matches.
+- **The KV key browser** is a grid, so keys no longer wrap on a phone or on a
+  desktop.
+- **The location detail view** uses the shared pager.
+- **A test that read a `.vue` file could not pass on a Windows checkout**, and
+  a leaf-visibility test failed when the leaf answered before the hub.
 
 ## [0.8.0] - 2026-09-19
 
@@ -2126,7 +2328,8 @@ repository public. Each of these was reproduced before being fixed.
 - `scripts/test-authz.sh` grew from 135 to 147 checks, covering the membership
   lifecycle, the code uniqueness constraint, and the frozen leaf-node code.
 
-[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/stone-age-io/platform/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/stone-age-io/platform/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/stone-age-io/platform/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/stone-age-io/platform/compare/v0.5.1...v0.6.0
