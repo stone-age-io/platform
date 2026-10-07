@@ -66,6 +66,17 @@ routine "bump everything" pass must not drag them along:
   runs the TS 6 compiler under a TS 7 name. 6.0 is the ceiling until the Vue
   tooling type-checks with TS 7 itself.
 
+Holding Tailwind 3 back has a security cost: it keeps vulnerable build-time
+dependencies in the tree. `overrides` in `ui/package.json` forces
+`postcss-selector-parser` to `^7.1.6` (GHSA-rj75-hqrm-r3gf) under Tailwind 3,
+which asks for `^6`. 7.0.0's one breaking change is "insertions during iteration
+are safe". When the override went in, all 27 built CSS files came out
+byte-identical with and without it, and that comparison is the only evidence it
+is safe. Repeat it after any Tailwind config change. Remove the override with
+the Tailwind 4 migration. `braces` (via `chokidar`/`micromatch`) also shows in
+`npm audit`, but no fixed release exists. All of these parse only our own CSS
+and globs, at build time.
+
 The only automated guard is the `Assert the deliberately pinned majors` step in
 `.github/workflows/ci.yml`, which fails the build if any of these three package
 majors moves. It also asserts `maplibre-gl` 6, which is current rather than held
