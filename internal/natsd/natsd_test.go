@@ -2,25 +2,11 @@ package natsd
 
 import (
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 )
-
-// freePort returns a TCP port nothing is listening on. Racy in principle, fine
-// in practice, and unavoidable here: a cluster route has to name a port before
-// the peer is running, so -1 (let the kernel choose) is not an option.
-func freePort(t *testing.T) int {
-	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("could not pick a free port: %v", err)
-	}
-	defer ln.Close()
-	return ln.Addr().(*net.TCPAddr).Port
-}
 
 func writeConf(t *testing.T, body string) string {
 	t.Helper()
@@ -43,35 +29,42 @@ func writeConf(t *testing.T, body string) string {
 //
 // It also justifies Stats().Routes existing. A route count that could only ever
 // be zero would be a metric nobody can act on; this proves it is not.
+//
+// Every port is -1, so the kernel assigns it at bind time and nothing can take
+// it first. This used to reserve four ports up front by opening and closing a
+// listener, which raced: a parallel test package bound one in the gap and node
+// A failed with "address already in use". Only B has to name a route; one
+// direction is enough to form a cluster, and B dials A's port once A holds it.
+// The empty clientURL skips Start's port check, which needs a fixed port.
 func TestEmbeddedServerClustersWithAPeer(t *testing.T) {
-	clientA, clientB := freePort(t), freePort(t)
-	routeA, routeB := freePort(t), freePort(t)
-
-	conf := func(name string, clientPort, routePort, peerRoutePort int) string {
+	conf := func(name, routes string) string {
 		return fmt.Sprintf(`
 server_name: %q
-port: %d
+host: "127.0.0.1"
+port: -1
 cluster {
   name: "stone-age-test"
-  listen: "127.0.0.1:%d"
-  routes: ["nats://127.0.0.1:%d"]
+  host: "127.0.0.1"
+  port: -1
+  routes: [%s]
 }
-`, name, clientPort, routePort, peerRoutePort)
+`, name, routes)
 	}
 
-	srvA, err := Start(
-		writeConf(t, conf("node-a", clientA, routeA, routeB)),
-		fmt.Sprintf("nats://127.0.0.1:%d", clientA),
-		"nats.server_url",
-	)
+	srvA, err := Start(writeConf(t, conf("node-a", "")), "", "nats.server_url")
 	if err != nil {
 		t.Fatalf("node A refused to start with a cluster block: %v", err)
 	}
 	defer srvA.Stop()
 
+	routeA := srvA.ns.ClusterAddr()
+	if routeA == nil {
+		t.Fatal("node A has no cluster listener")
+	}
+
 	srvB, err := Start(
-		writeConf(t, conf("node-b", clientB, routeB, routeA)),
-		fmt.Sprintf("nats://127.0.0.1:%d", clientB),
+		writeConf(t, conf("node-b", fmt.Sprintf(`"nats://127.0.0.1:%d"`, routeA.Port))),
+		"",
 		"nats.server_url",
 	)
 	if err != nil {
