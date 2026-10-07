@@ -7,7 +7,7 @@ import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { useNatsStore } from '@/stores/nats'
 import { useAuthStore } from '@/stores/auth'
-import type { Thing, ThingType, NatsUser, NebulaHost } from '@/types/pocketbase'
+import type { Thing, ThingType, ThingTypeOperation, NatsUser, NebulaHost, Location } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import KvDashboard from '@/components/nats/KvDashboard.vue'
 import { TWIN_BUCKET, TWIN_DESIRED_BUCKET } from '@/utils/twin'
@@ -17,6 +17,7 @@ import RecordTimestamps from '@/components/common/RecordTimestamps.vue'
 import RecordPhoto from '@/components/common/RecordPhoto.vue'
 import DangerZone from '@/components/common/DangerZone.vue'
 import QrLabelModal from '@/components/common/QrLabelModal.vue'
+import OperationSubjects from '@/components/things/OperationSubjects.vue'
 import { useEscapeKey } from '@/composables/useEscapeKey'
 
 const router = useRouter()
@@ -62,11 +63,27 @@ function onMetadataSaved(metadata: Record<string, any> | null) {
 const thingCode = computed(() => thing.value?.code)
 const hasTwinConfig = computed(() => !!thingCode.value)
 
+// What this device speaks on: its type's operations resolved against this
+// Thing. Types and operations are readable by every role in the organization,
+// so unlike the identity details above this needs no administrator. Resolved
+// exactly as the Publisher widget resolves a bound operation: codes, never
+// names, and the id where a Thing has no code.
+const thingType = computed(() => thing.value?.expand?.type as ThingType | undefined)
+const typeOperations = computed(
+  () => (thingType.value?.expand?.operations as ThingTypeOperation[] | undefined) || [],
+)
+const subjectContext = computed(() => ({
+  org: authStore.currentOrg?.code || '',
+  location: (thing.value?.expand?.location as Location | undefined)?.code || '',
+  thing: thing.value?.code || thing.value?.id || '',
+  thingTypeCode: thingType.value?.code || '',
+}))
+
 async function loadThing() {
   loading.value = true
   try {
     thing.value = await pb.collection('things').getOne<Thing>(thingId, {
-      expand: 'type,location,nats_user.role_id,nebula_host',
+      expand: 'type.operations,location,nats_user.role_id,nebula_host',
     })
   } catch (err: any) {
     toast.error(err.message || 'Failed to load thing')
@@ -515,6 +532,18 @@ useEscapeKey(showRegenerateModal, () => { showRegenerateModal.value = false })
               <span class="text-2xl block mb-2">🌐</span>
               <p class="text-sm">No Nebula host linked</p>
             </div>
+          </BaseCard>
+
+          <!-- Its own card rather than a third section of Connectivity: those
+               two sections describe identities a member may not be able to
+               read, while this reads only the type and is open to every role. -->
+          <BaseCard v-if="thingType" title="Subjects">
+            <OperationSubjects
+              :prefix="thingType.subject_prefix"
+              :operations="typeOperations"
+              :context="subjectContext"
+              for-thing
+            />
           </BaseCard>
         </div>
       </div>

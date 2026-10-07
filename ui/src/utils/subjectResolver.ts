@@ -61,6 +61,56 @@ export function resolveThing(tmpl: string, ctx: ThingContext): string {
   return applyReplacements(tmpl, pairs)
 }
 
+// A variable token still present after resolution. On a Thing's own page this
+// means a context value was missing (no location for a `{location}` prefix, an
+// organization without a code) and the subject shown is not one the device can
+// actually use. On the type form, where no Thing exists, it is expected.
+const UNRESOLVED = /\{(org|location|thing|thing_type_code)\}/
+
+export function hasUnresolved(subject: string): boolean {
+  return UNRESOLVED.test(subject)
+}
+
+export interface OperationLike {
+  id: string
+  name: string
+  capability: string
+  subject_suffix: string
+}
+
+export interface OperationSubject {
+  id: string
+  name: string
+  capability: string
+  subject: string
+}
+
+// Speaking order: what the device sends, then what it answers. Anything not
+// listed (a capability added later) sorts last rather than disappearing.
+const CAPABILITY_ORDER = ['publish', 'request', 'subscribe', 'reply']
+
+// Every operation of a type as the full subject it resolves to for `ctx` —
+// the list a Thing page and the type form both show, so the two cannot
+// disagree about what a device speaks on.
+export function resolveOperationSubjects(
+  prefix: string | undefined | null,
+  operations: OperationLike[],
+  ctx: ThingContext,
+): OperationSubject[] {
+  const rank = (c: string) => {
+    const i = CAPABILITY_ORDER.indexOf(c)
+    return i === -1 ? CAPABILITY_ORDER.length : i
+  }
+  return [...operations]
+    .sort((a, b) => rank(a.capability) - rank(b.capability) || a.name.localeCompare(b.name))
+    .map(op => ({
+      id: op.id,
+      name: op.name,
+      capability: op.capability,
+      subject: resolveThing(join(prefix, op.subject_suffix), ctx),
+    }))
+}
+
 // Produce a NATS role-level subject pattern:
 //   - {thing} always becomes "*"
 //   - {location} becomes the supplied value or "*" if empty

@@ -7,6 +7,8 @@ import {
   join,
   resolveThing,
   resolveRolePattern,
+  resolveOperationSubjects,
+  hasUnresolved,
 } from './subjectResolver'
 
 describe('DEFAULT_PREFIX', () => {
@@ -79,5 +81,47 @@ describe('resolveRolePattern', () => {
       .toBe('freezer.KC-DC1.*')
     expect(resolveRolePattern('freezer.{location}.{thing}'))
       .toBe('freezer.*.*')
+  })
+})
+
+describe('resolveOperationSubjects', () => {
+  const ops = [
+    { id: '1', name: 'subscribe_grant', capability: 'subscribe', subject_suffix: 'cmd.grant' },
+    { id: '2', name: 'publish_state', capability: 'publish', subject_suffix: 'evt.state' },
+    { id: '3', name: 'reply_diag', capability: 'reply', subject_suffix: 'diag' },
+    { id: '4', name: 'publish_alarm', capability: 'publish', subject_suffix: 'evt.alarm' },
+  ]
+
+  // The Thing page and the type form both render this list; the full subject is
+  // the type's prefix (or the default) joined to the operation's suffix.
+  it('joins each suffix to the prefix and resolves it for the thing', () => {
+    const out = resolveOperationSubjects('acc.{location}.door.{thing}', ops, { location: 'KC', thing: 'D-1' })
+    expect(out.find(o => o.id === '4')?.subject).toBe('acc.KC.door.D-1.evt.alarm')
+    expect(resolveOperationSubjects('', [ops[1]], { thingTypeCode: 'door', thing: 'D-1' })[0].subject)
+      .toBe('door.D-1.evt.state')
+  })
+
+  // What the device sends first, then what it listens for; by name within one.
+  it('orders by capability, then name', () => {
+    expect(resolveOperationSubjects('', ops, {}).map(o => o.name))
+      .toEqual(['publish_alarm', 'publish_state', 'subscribe_grant', 'reply_diag'])
+  })
+
+  it('does not reorder the array it was given', () => {
+    const copy = [...ops]
+    resolveOperationSubjects('', ops, {})
+    expect(ops).toEqual(copy)
+  })
+})
+
+describe('hasUnresolved', () => {
+  it('spots a variable the context could not fill', () => {
+    expect(hasUnresolved('acc.{location}.door.D-1')).toBe(true)
+    expect(hasUnresolved('acc.KC.door.D-1')).toBe(false)
+  })
+
+  // Braces that are not one of the four variables are just characters.
+  it('ignores braces that are not a variable', () => {
+    expect(hasUnresolved('weird.{other}.x')).toBe(false)
   })
 })

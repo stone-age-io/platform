@@ -57,12 +57,17 @@ const fieldCount = computed(() => Object.keys(props.modelValue || {}).length)
 //
 // Which is why the initial state is a function of size rather than a constant:
 // collapsing earns its click on the 11-field record it was written for, and on a
-// two-field one it is a click to reveal two lines. Read once at setup, not a
-// computed — after that the state belongs to the reader. (Deliberately not
-// persisted: remembering it per record is the version of this that needs a
-// store, and nobody has asked for it.)
+// two-field one it is a click to reveal two lines. And only below `lg`, where the
+// detail pages' grid becomes one column: the size cutoff once applied at every
+// width, so a five-field Thing loaded collapsed on a desktop with the room beside
+// it empty, hiding the inventory a technician opened the page to read. Read once
+// at setup, not a computed — after that the state belongs to the reader, and a
+// window resize should not snap it open or shut. (Deliberately not persisted:
+// remembering it per record is the version of this that needs a store, and
+// nobody has asked for it.)
 const AUTO_EXPAND_MAX = 4
-const expanded = ref(fieldCount.value <= AUTO_EXPAND_MAX)
+const WIDE = '(min-width: 1024px)' // Tailwind `lg`, the detail grid's breakpoint
+const expanded = ref(window.matchMedia(WIDE).matches || fieldCount.value <= AUTO_EXPAND_MAX)
 
 function startEdit() {
   // Editing a collapsed card would otherwise show nothing. One click, not two.

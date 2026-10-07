@@ -7,7 +7,9 @@ import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import DangerZone from '@/components/common/DangerZone.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
-import { DEFAULT_PREFIX } from '@/utils/subjectResolver'
+import { DEFAULT_PREFIX, resolveThing } from '@/utils/subjectResolver'
+import OperationSubjects from '@/components/things/OperationSubjects.vue'
+import StickyFormActions from '@/components/common/StickyFormActions.vue'
 import ThingTypeOperationFormView from '@/views/things/ThingTypeOperationFormView.vue'
 import MetadataSchemaCard from '@/components/common/MetadataSchemaCard.vue'
 import RecordPicker from '@/components/common/RecordPicker.vue'
@@ -87,7 +89,22 @@ const operationOptions = computed<PickerOption[]>(() =>
 
 const showOperationModal = ref(false)
 
-const effectivePrefix = computed(() => form.value.subject_prefix?.trim() || DEFAULT_PREFIX)
+// The subjects as far as a type can resolve them: the organization and this
+// type's code fill in, while `{thing}` (and `{location}`, if used) stay as
+// tokens because no Thing exists here. Recomputed as the prefix, the code and
+// the selection change, so the effect of an edit is visible before Save.
+const subjectContext = computed(() => ({
+  org: authStore.currentOrg?.code || '',
+  thingTypeCode: form.value.code?.trim() || '',
+}))
+
+const effectivePrefix = computed(() =>
+  resolveThing(form.value.subject_prefix?.trim() || DEFAULT_PREFIX, subjectContext.value),
+)
+
+const selectedOperations = computed(() =>
+  availableOperations.value.filter(op => form.value.operations.includes(op.id)),
+)
 
 function onOperationCreated(record: ThingTypeOperation) {
   availableOperations.value.push(record)
@@ -219,8 +236,11 @@ useEscapeKey(showOperationModal, () => { showOperationModal.value = false })
           </div>
         </BaseCard>
 
-        <!-- Right Column: Subject + Capabilities -->
-        <BaseCard title="Subject & Capabilities">
+        <!-- Right Column: Subjects. The prefix, the operations and what they
+             resolve to in one card, because each only means something with the
+             others. (This was "Subject & Capabilities" beside a separate
+             Operations card; the capabilities field it named was dropped.) -->
+        <BaseCard title="Subjects">
           <div class="space-y-4">
             <div class="form-control">
               <label class="label">Subject Prefix</label>
@@ -248,33 +268,37 @@ useEscapeKey(showOperationModal, () => { showOperationModal.value = false })
               </p>
             </div>
 
+            <div class="form-control">
+              <label class="label">Operations</label>
+              <RecordPicker
+                v-model="form.operations"
+                :options="operationOptions"
+                title="Operations"
+                placeholder="Select operations..."
+                multiple
+                empty-text="No operations defined for this organization yet."
+              >
+                <template #footer="{ close }">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-ghost w-full justify-start"
+                    @click="close(); showOperationModal = true"
+                  >
+                    + New Operation
+                  </button>
+                </template>
+              </RecordPicker>
+            </div>
+
+            <OperationSubjects
+              v-if="selectedOperations.length"
+              :prefix="form.subject_prefix"
+              :operations="selectedOperations"
+              :context="subjectContext"
+            />
           </div>
         </BaseCard>
       </div>
-
-      <BaseCard title="Operations">
-        <div class="form-control">
-          <label class="label">Operations</label>
-          <RecordPicker
-            v-model="form.operations"
-            :options="operationOptions"
-            title="Operations"
-            placeholder="Select operations..."
-            multiple
-            empty-text="No operations defined for this organization yet."
-          >
-            <template #footer="{ close }">
-              <button
-                type="button"
-                class="btn btn-sm btn-ghost w-full justify-start"
-                @click="close(); showOperationModal = true"
-              >
-                + New Operation
-              </button>
-            </template>
-          </RecordPicker>
-        </div>
-      </BaseCard>
 
       <MetadataSchemaCard
         ref="metadataSchemaCard"
@@ -282,14 +306,13 @@ useEscapeKey(showOperationModal, () => { showOperationModal.value = false })
         noun="device"
       />
 
-      <!-- Actions (Outside Card) -->
-      <div class="flex justify-end gap-2">
-        <button type="button" class="btn btn-ghost" @click="router.back()">Cancel</button>
-        <button type="submit" class="btn btn-primary" :disabled="loading">
+      <StickyFormActions>
+        <button type="button" class="btn btn-ghost flex-1 sm:flex-none" @click="router.back()">Cancel</button>
+        <button type="submit" class="btn btn-primary flex-1 sm:flex-none" :disabled="loading">
           <span v-if="loading" class="loading loading-spinner"></span>
           Save
         </button>
-      </div>
+      </StickyFormActions>
     </form>
 
     <DangerZone v-if="isEdit">

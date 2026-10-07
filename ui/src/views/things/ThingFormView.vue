@@ -9,6 +9,7 @@ import type { Thing, ThingType, Location, NatsUser, NatsAccount, NatsRole, Nebul
 import BaseCard from '@/components/ui/BaseCard.vue'
 import MetadataEditor from '@/components/common/MetadataEditor.vue'
 import ImageUploadField from '@/components/common/ImageUploadField.vue'
+import StickyFormActions from '@/components/common/StickyFormActions.vue'
 import NatsUserFormView from '@/views/nats/NatsUserFormView.vue'
 import NebulaHostFormView from '@/views/nebula/NebulaHostFormView.vue'
 import LocationFormView from '@/views/locations/LocationFormView.vue'
@@ -78,6 +79,13 @@ const canManageIdentities = computed(() => authStore.can.manageInfrastructure)
 
 // Only owner/admin may set a Thing's password (things.manageRule).
 const canSetThingPassword = computed(() => authStore.can.decommissionInventory)
+
+// Whether the right-hand column has any card to show. Spelled out from the two
+// capabilities rather than assumed from one, because they are separate entries
+// in the capability map and need not always travel together.
+const hasIdentityColumn = computed(
+  () => canManageIdentities.value || (isEdit.value && canSetThingPassword.value),
+)
 
 // Provisioning modes (create mode only). The default follows the capability: a
 // member auto-provisioning would fail on the nats_users create, which is what
@@ -500,9 +508,17 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
     <!-- Form -->
     <form v-else @submit.prevent="handleSubmit" class="space-y-6">
 
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+      <!-- Laid out like the detail view, so a field is edited where it is
+           read: what the Thing IS on the left (Basic Information, Photo,
+           Metadata), how it CONNECTS on the right (Authentication, NATS,
+           Nebula). On a phone that also puts the inventory first, which is all
+           a member ever sees here. -->
+      <div
+        class="grid grid-cols-1 gap-6 items-start"
+        :class="hasIdentityColumn ? 'lg:grid-cols-2' : 'max-w-3xl'"
+      >
 
-        <!-- Left Column: Identity & Info -->
+        <!-- Left Column: what the Thing is -->
         <div class="space-y-6">
           <BaseCard title="Basic Information">
             <div class="space-y-4">
@@ -616,6 +632,55 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
             </div>
           </BaseCard>
 
+          <!--
+            Photo: EDIT ONLY.
+
+            Creating a Thing goes through POST /api/org/things, a JSON
+            provisioning route that writes the Thing and its NATS/Nebula
+            identities in one server-side transaction. It cannot carry a
+            multipart upload, and bolting a second client call onto it is
+            exactly the pattern that route exists to have removed -- three
+            unguarded calls whose partial failure orphaned a signed credential.
+
+            It also matches how the photo gets taken. The record is created at a
+            desk; the device is photographed where it is installed, which is a
+            different day and usually a different person.
+          -->
+          <BaseCard v-if="isEdit" title="Photo">
+            <div class="flex flex-col items-center gap-2">
+              <ImageUploadField
+                v-model:file="photoFile"
+                v-model:removed="photoRemoved"
+                :source="
+                  loadedThing?.photo
+                    ? { record: loadedThing, filename: loadedThing.photo, thumb: '400x400' }
+                    : null
+                "
+                :size="180"
+                add-label="Add photo"
+                empty-label="No photo"
+              />
+              <p class="text-xs text-base-content/60 text-center max-w-xs">
+                What this looks like where it is installed &mdash; the answer to
+                &ldquo;is this the right one&rdquo; after scanning its label.
+              </p>
+            </div>
+          </BaseCard>
+
+          <BaseCard title="Metadata">
+            <MetadataEditor
+              ref="metadataEditor"
+              v-model="formData.metadata"
+              :schema="selectedTypeMetadataSchema"
+            />
+          </BaseCard>
+        </div>
+
+        <!-- Right Column: identities. Every card here is owner/admin only, so
+             for a member this column is absent and the grid above is a single
+             column instead of half a page of nothing. -->
+        <div v-if="hasIdentityColumn" class="space-y-6">
+
           <!-- Authentication: Edit mode only -->
           <!-- Setting a Thing password is owner/admin only (things.manageRule). -->
           <BaseCard v-if="isEdit && canSetThingPassword" title="Authentication">
@@ -659,10 +724,6 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
               </div>
             </div>
           </BaseCard>
-        </div>
-
-        <!-- Right Column: Connectivity & Metadata -->
-        <div class="space-y-6">
 
           <!-- NATS Connectivity -->
           <BaseCard v-if="canManageIdentities" title="NATS Connectivity">
@@ -841,71 +902,27 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
               No Nebula VPN connectivity.
             </div>
           </BaseCard>
-
-          <!--
-            Photo: EDIT ONLY.
-
-            Creating a Thing goes through POST /api/org/things, a JSON
-            provisioning route that writes the Thing and its NATS/Nebula
-            identities in one server-side transaction. It cannot carry a
-            multipart upload, and bolting a second client call onto it is
-            exactly the pattern that route exists to have removed -- three
-            unguarded calls whose partial failure orphaned a signed credential.
-
-            It also matches how the photo gets taken. The record is created at a
-            desk; the device is photographed where it is installed, which is a
-            different day and usually a different person.
-          -->
-          <BaseCard v-if="isEdit" title="Photo">
-            <div class="flex flex-col items-center gap-2">
-              <ImageUploadField
-                v-model:file="photoFile"
-                v-model:removed="photoRemoved"
-                :source="
-                  loadedThing?.photo
-                    ? { record: loadedThing, filename: loadedThing.photo, thumb: '400x400' }
-                    : null
-                "
-                :size="180"
-                add-label="Add photo"
-                empty-label="No photo"
-              />
-              <p class="text-xs text-base-content/60 text-center max-w-xs">
-                What this looks like where it is installed &mdash; the answer to
-                &ldquo;is this the right one&rdquo; after scanning its label.
-              </p>
-            </div>
-          </BaseCard>
-
-          <BaseCard title="Metadata">
-            <MetadataEditor
-              ref="metadataEditor"
-              v-model="formData.metadata"
-              :schema="selectedTypeMetadataSchema"
-            />
-          </BaseCard>
         </div>
       </div>
 
-      <!-- Actions -->
-      <div class="flex flex-col sm:flex-row justify-end gap-2 sm:gap-4">
+      <StickyFormActions>
         <button
           type="button"
           @click="router.back()"
-          class="btn btn-ghost order-2 sm:order-1"
+          class="btn btn-ghost flex-1 sm:flex-none"
           :disabled="loading"
         >
           Cancel
         </button>
         <button
           type="submit"
-          class="btn btn-primary order-1 sm:order-2"
+          class="btn btn-primary flex-1 sm:flex-none"
           :disabled="loading"
         >
           <span v-if="loading" class="loading loading-spinner"></span>
           <span v-else>{{ isEdit ? 'Update' : 'Provision' }} Thing</span>
         </button>
-      </div>
+      </StickyFormActions>
     </form>
 
     <!-- Success Modal (create only) -->
