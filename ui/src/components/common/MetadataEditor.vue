@@ -4,6 +4,7 @@ import { ref, computed, watch } from 'vue'
 import JsonSchemaForm from './JsonSchemaForm.vue'
 import JsonViewer from './JsonViewer.vue'
 import { useToast } from '@/composables/useToast'
+import { describedKeys, undescribedEntries, mergeRows } from '@/utils/metadataDoc'
 
 // MetadataEditor — edits (or displays) a free-form `metadata` object with a
 // Form / JSON toggle, following the contract MetadataSchemaCard already
@@ -13,12 +14,14 @@ import { useToast } from '@/composables/useToast'
 //
 // Two form modes, chosen by whether a schema was supplied:
 //
-//   schema given → JsonSchemaForm renders typed inputs. This is the
-//     thing_types / location_types `metadata_schema` path: an admin describes
-//     the fields tracked for a class of record once, and a member fills in a
-//     form.
+//   schema given → JsonSchemaForm renders typed inputs for the keys the
+//     schema describes, and key/value rows below it hold everything else. This
+//     is the thing_types / location_types `metadata_schema` path: an admin
+//     describes the fields usually tracked for a class of record, and a member
+//     fills in a form. The schema is a HINT — a record may carry keys it does
+//     not name, and nothing blocks a save on it. See utils/metadataDoc.ts.
 //
-//   no schema → key/value rows. The generic fallback, and the only mode
+//   no schema → key/value rows only. The generic fallback, and the only mode
 //     available to a type with no schema.
 //
 // NESTING is handled per key, not by a recursive editor. A row whose value is
@@ -89,15 +92,9 @@ const hasSchema = computed(() => {
   return !!(s && s.type === 'object' && s.properties && Object.keys(s.properties).length > 0)
 })
 
-// Keys present on the record but absent from the schema. JsonSchemaForm spreads
-// the existing model on every edit so these survive a save — but they are
-// invisible in the form, and silently carrying data the user cannot see is the
-// same failure the SchemaBuilder notice exists to prevent.
-const extraKeys = computed(() => {
-  if (!hasSchema.value) return []
-  const known = new Set(Object.keys(props.schema.properties))
-  return Object.keys(doc.value).filter(k => !known.has(k))
-})
+// The keys the schema form owns. The rows own everything else — all of it when
+// there is no schema.
+const described = computed(() => describedKeys(props.schema))
 
 function isContainer(v: any): boolean {
   return typeof v === 'object' && v !== null
@@ -114,7 +111,7 @@ function inferType(v: any): RowType {
 }
 
 function rowsFromDoc(d: Record<string, any>): Row[] {
-  return Object.entries(d).map(([key, value]) => {
+  return undescribedEntries(d, described.value).map(([key, value]) => {
     const type = inferType(value)
     return {
       key,
@@ -126,8 +123,10 @@ function rowsFromDoc(d: Record<string, any>): Row[] {
   })
 }
 
+// The schema is watched too: the Thing form swaps it when the type picker
+// changes, and the rows must then give up or take over keys accordingly.
 watch(
-  () => props.modelValue,
+  [() => props.modelValue, () => props.schema],
   () => {
     if (suppressNextWatch) { suppressNextWatch = false; return }
     rows.value = rowsFromDoc(doc.value)
@@ -140,22 +139,16 @@ function refreshJsonFromDoc() {
   jsonText.value = isEmpty.value ? '' : JSON.stringify(doc.value, null, 2)
 }
 
-// Rows → document. Blank keys are skipped (an empty row is a row in progress,
-// not an instruction to write ""), and on a duplicate key the last row wins —
-// which matches what the JSON view would produce from the same text.
+// Rows → document, keeping the schema-described keys as they stand. The merge
+// rules (blank keys skipped, last duplicate wins) live in mergeRows.
 function emitFromRows() {
-  const next: Record<string, any> = {}
-  for (const r of rows.value) {
-    const k = r.key.trim()
-    if (!k) continue
-    next[k] = r.value
-  }
   suppressNextWatch = true
-  emit('update:modelValue', Object.keys(next).length ? next : null)
+  emit('update:modelValue', mergeRows(doc.value, described.value, rows.value))
 }
 
+// A row named like a schema field collides with it too, and the row wins.
 const duplicateKeys = computed(() => {
-  const seen = new Set<string>()
+  const seen = new Set<string>(described.value)
   const dupes = new Set<string>()
   for (const r of rows.value) {
     const k = r.key.trim()
@@ -444,30 +437,24 @@ defineExpose({ commit })
         </template>
       </template>
 
-      <!-- (b) Schema-driven: typed fields defined on the type. -->
-      <template v-else-if="hasSchema">
-        <JsonSchemaForm
-          :schema="schema"
-          :model-value="doc"
-          @update:model-value="onSchemaFormUpdate"
-        />
-
-        <div v-if="extraKeys.length" class="alert alert-info text-xs mt-4">
-          <span>
-            {{ extraKeys.length }} field{{ extraKeys.length === 1 ? '' : 's' }} on this record
-            {{ extraKeys.length === 1 ? 'is' : 'are' }} not described by this type's schema
-            (<template v-for="(k, i) in extraKeys" :key="k"
-              ><code>{{ k }}</code><span v-if="i < extraKeys.length - 1">, </span
-            ></template>).
-            {{ extraKeys.length === 1 ? 'It is' : 'They are' }} kept on save — switch to
-            <strong>JSON</strong> to see or edit {{ extraKeys.length === 1 ? 'it' : 'them' }}.
-          </span>
-        </div>
-      </template>
-
-      <!-- (a) Free-form key/value rows. -->
+      <!-- Editor. With a schema: typed fields for the keys it describes, then
+           the same key/value rows for everything else. Without one: rows only. -->
       <template v-else>
-        <div v-if="rows.length === 0" class="text-sm text-base-content/60 italic mb-3">
+        <template v-if="hasSchema">
+          <JsonSchemaForm
+            :schema="schema"
+            :model-value="doc"
+            @update:model-value="onSchemaFormUpdate"
+          />
+
+          <div class="divider text-xs text-base-content/50 my-4">Other fields</div>
+
+          <div v-if="rows.length === 0" class="text-xs text-base-content/60 italic mb-3">
+            Anything this type's schema does not list can be added here.
+          </div>
+        </template>
+
+        <div v-else-if="rows.length === 0" class="text-sm text-base-content/60 italic mb-3">
           No metadata yet. Add a field to record something about this record —
           a service date, an asset tag, a warranty reference.
         </div>
@@ -476,7 +463,7 @@ defineExpose({ commit })
              same mobile exception as the read-only list above. Unbounded here
              means the header's Save can scroll away, which is what the mobile
              action bar at the foot of MetadataCard is for. -->
-        <div v-else class="space-y-2 mb-3 sm:max-h-[500px] sm:overflow-y-auto custom-scrollbar sm:pr-1">
+        <div v-if="rows.length" class="space-y-2 mb-3 sm:max-h-[500px] sm:overflow-y-auto custom-scrollbar sm:pr-1">
           <!-- One field per row on a wide screen; two lines on a narrow one.
                Four controls do not fit in ~330px: at `flex-1` each, the key and
                the value ended up ~81px wide apiece while the type select took
@@ -591,7 +578,8 @@ defineExpose({ commit })
 
         <div v-if="duplicateKeys.size" class="text-xs text-error mb-2">
           Duplicate key{{ duplicateKeys.size === 1 ? '' : 's' }}:
-          <code>{{ [...duplicateKeys].join(', ') }}</code> — the last row wins.
+          <code>{{ [...duplicateKeys].join(', ') }}</code> — the last row wins, and a
+          row wins over a form field of the same name.
         </div>
 
         <button type="button" class="btn btn-sm w-full sm:w-auto" @click="addRow">

@@ -88,6 +88,14 @@ function castOnInput(f: Field, raw: string): any {
 function stepFor(f: Field): string {
   return f.type === 'integer' ? '1' : 'any'
 }
+
+function rangeHint(f: Field): string {
+  const lo = f.minimum, hi = f.maximum
+  if (lo !== undefined && hi !== undefined) return `Expected ${lo} to ${hi}`
+  if (lo !== undefined) return `Expected at least ${lo}`
+  if (hi !== undefined) return `Expected at most ${hi}`
+  return ''
+}
 </script>
 
 <template>
@@ -130,17 +138,18 @@ function stepFor(f: Field): string {
         <code class="text-xs text-base-content/60">{{ modelValue[f.name] ? 'true' : 'false' }}</code>
       </label>
 
-      <!-- Primitive scalar → typed input -->
+      <!-- Primitive scalar → typed input. Deliberately no `required`, `min` or
+           `max` attribute: the host form runs browser validation, so each of
+           those would block the save, and the schema is a hint, not a rule (see
+           utils/metadataDoc.ts). `required` shows as the asterisk above and a
+           range as the text below. -->
       <input
         v-else-if="isPrimitive(f)"
         :type="inputType(f)"
         class="input input-bordered input-sm font-mono"
-        :min="f.minimum"
-        :max="f.maximum"
         :step="inputType(f) === 'number' ? stepFor(f) : undefined"
         :value="modelValue[f.name] ?? ''"
         :disabled="disabled"
-        :required="f.required"
         @input="setField(f.name, castOnInput(f, ($event.target as HTMLInputElement).value))"
       />
 
@@ -156,6 +165,7 @@ function stepFor(f: Field): string {
         }"
       ></textarea>
 
+      <div v-if="rangeHint(f)" class="text-[10px] text-base-content/60 mt-0.5">{{ rangeHint(f) }}</div>
       <div v-if="f.description" class="text-[10px] text-base-content/60 mt-0.5">{{ f.description }}</div>
     </div>
   </div>

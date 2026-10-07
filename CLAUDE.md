@@ -281,6 +281,17 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
 3. **NATS Integration** - Account/User/Role provisioning, real-time WebSocket connection
 4. **Nebula Networks** - Certificate Authority, network, and host management
 5. **Resource Inventory** - Things and Locations with type definitions and metadata
+    - **`metadata_schema` is a form hint, not a contract.** Nothing on the
+      server validates `metadata` against it, a record may carry keys the type
+      does not list, and the form never blocks a save on it (no `required`,
+      `min` or `max` attribute reaches the input). A rule that one client
+      enforces and the API, the CLI and `POST /api/org/things` do not is half a
+      rule, and half a rule invites someone to finish it in a hook. Do not add
+      server-side validation without deciding what happens to records saved
+      before a schema tightened. The editor splits one document between typed
+      fields and key/value rows (`ui/src/utils/metadataDoc.ts`); any key that
+      falls between the two halves is deleted on the next save, which is what
+      `metadataDoc.spec.ts` pins.
 6. **Digital Twin** - Live state via NATS KV buckets, revision history
 7. **Audit Logging** - Comprehensive audit trail with searchable viewer
     (operator-only: `audit_logs` has no `organization` column, so there is
@@ -1250,7 +1261,8 @@ you, so pushing an absolute one would make the login form an open redirect (the
   `twinDrift`, `useSubscriptionManager` (including the per-widget system-subject
   filter), `useEscapeKey`, the `can` capability
   map, dashboard import/export, `createDefaultWidget`, the JSON Schema
-  round trip in `schemaFields` + `inferSchema`, the file-token cache,
+  round trip in `schemaFields` + `inferSchema`, the metadata document split
+  between schema fields and free rows in `metadataDoc`, the file-token cache,
   `targetDimensions`, the label code sizing in `fitCodePt`, and every decision the chart widget makes about its data
   (`utils/chartSeries` — series extraction, timeline segments — plus the
   `duration` and message `timestamp` parsers). A spec that needs a DOM opts in
