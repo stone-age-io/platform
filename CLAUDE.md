@@ -403,6 +403,13 @@ app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) 
       `leaf_status` bucket. A heartbeat travels over the very link whose failure
       it reports. It is a dashboard widget recipe against
       `$SYS.REQ.ACCOUNT.PING.CONNZ`, deliberately not a screen.
+    - **The agent is a NATS micro service, `stone-agent`**, so which agents are
+      up, and their versions, is asked with `$SRV.PING.stone-agent` -- the same
+      ask-never-store shape as CONNZ, inside the tenant account. Its role needs
+      `$SRV.>` on subscribe (the seeded `device` and `gateway` roles carry it).
+      **Behind a leaf, the uplink credential needs it as well**: the leaf
+      connection filters `$SRV` like any other subject, so the agent's own grant
+      is not enough. `TestServiceDiscoveryCrossesALeafOnlyIfTheUplinkAllowsIt`.
     - **Tenant roles carry no `$SYS` publish deny, and adding one is a
       regression.** The account boundary already blocks the operator-wide
       endpoints, and in NATS a publish DENY beats a publish ALLOW — so a deny
@@ -1460,7 +1467,7 @@ you, so pushing an absolute one would make the login form an open redirect (the
 - `ui/src/components/common/UserAvatar.vue` / `RecordPhoto.vue` - the read-only halves. UserAvatar is for people (initial-circle fallback, and a viewRule that is NOT org-scoped, so it belongs only on owner/admin or operator screens); RecordPhoto is for things and locations
 - `ui/src/utils/nebula.ts` - rotation state derived from the CA's certificates (never a stored status), the rotation call, and the `/32` audit fetch. The audit swallows its own failure and returns an empty set: it drives an advisory badge, and a list view that refused to render because an advisory endpoint was down would be the worse outcome
 - `ui/src/utils/managedExports.ts` - names the platform-provisioned export/import pair so the console can present them read-only; mirrors `managedExportName` in `hooks/managed_org_exports.go`, and `hooks/managed_org_exports_test.go` reads this file to keep the two honest
-- `internal/health/leaf_visibility_test.go` - what a tenant can learn about its own leaf nodes, asserted against a real hub with a real leaf attached. Nothing in the platform ships a view on it — site connectivity is a dashboard widget recipe — but the recipe only works if these three nats-server behaviours hold: CONNZ names leaves by `server_name`, the **account** (not any permission we write) blocks the operator-wide `SERVER.PING.*` endpoints, and a publish DENY beats a publish ALLOW
+- `internal/health/leaf_visibility_test.go` - what a tenant can learn about its own leaf nodes, asserted against a real hub with a real leaf attached. Nothing in the platform ships a view on it — site connectivity is a dashboard widget recipe — but the recipe only works if these three nats-server behaviours hold: CONNZ names leaves by `server_name`, the **account** (not any permission we write) blocks the operator-wide `SERVER.PING.*` endpoints, and a publish DENY beats a publish ALLOW. A fourth is the agent's: `$SRV` discovery asked at the hub reaches a service behind a leaf only if the leaf's uplink credential allows it
 - `ui/src/stores/auth.ts` - Authentication and organization context
 - `ui/src/stores/nats.ts` - NATS WebSocket connection manager
 - `ui/src/stores/dashboard.ts` - Dashboard state and persistence

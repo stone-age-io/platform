@@ -632,6 +632,17 @@ var roleTemplates = []roleFixture{
 	// that had `_INBOX.>` on subscribe only, which is the requester's side of the
 	// pair, not the responder's.
 	//
+	// `$SRV.>` is on SUBSCRIBE for the edge agent, which registers its commands
+	// as a NATS micro service named stone-agent, so one request to
+	// $SRV.PING.stone-agent lists every agent in the account. A service answers
+	// discovery by subscribing to those subjects and replying to an inbox, which
+	// `_INBOX.>` on publish already covers. Without it nothing breaks -- the
+	// agent still answers its commands -- but it is missing from discovery and
+	// its nats_permissions check warns. Both roles an agent runs under carry it.
+	// Behind a leaf node the gateway credential is also the uplink a hub-side
+	// request has to cross, and the uplink filters it like any other subject:
+	// TestServiceDiscoveryCrossesALeafOnlyIfTheUplinkAllowsIt.
+	//
 	// TestEveryThingTypeCanSpeakItsOwnContract now checks both directions for
 	// every type against the role it actually points at. Nothing at runtime does:
 	// a role is a set of subject patterns, a thing type is a prefix plus a list
@@ -660,7 +671,7 @@ var roleTemplates = []roleFixture{
 	{Name: "device", IsDefault: true,
 		Description:      "A field device: publishes its own telemetry and status, listens for commands addressed to it.",
 		Publish:          []string{"telemetry.>", "event.>", "asset.>", "line.>", "turbine.>", "status.>", "acc.>", "_INBOX.>"},
-		Subscribe:        []string{"telemetry.>", "event.>", "asset.>", "line.>", "turbine.>", "status.>", "acc.>", "cmd.>", "config.>", "_INBOX.>"},
+		Subscribe:        []string{"telemetry.>", "event.>", "asset.>", "line.>", "turbine.>", "status.>", "acc.>", "cmd.>", "config.>", "_INBOX.>", "$SRV.>"},
 		MaxSubscriptions: 64, MaxPayload: 1048576},
 
 	{Name: "gateway",
@@ -683,7 +694,7 @@ var roleTemplates = []roleFixture{
 		// would not even let it bind a bucket — half a permission is worse than
 		// none, because it reads as support for something that cannot work.
 		Publish:          []string{"telemetry.>", "event.>", "status.>", "gateway.>", "acc.>", "kiosk.>", "_INBOX.>", "$JS.API.>", "$KV.>"},
-		Subscribe:        []string{"telemetry.>", "event.>", "status.>", "gateway.>", "acc.>", "kiosk.>", "cmd.>", "config.>", "_INBOX.>"},
+		Subscribe:        []string{"telemetry.>", "event.>", "status.>", "gateway.>", "acc.>", "kiosk.>", "cmd.>", "config.>", "_INBOX.>", "$SRV.>"},
 		MaxSubscriptions: 512, MaxPayload: 4194304},
 
 	{Name: "application",

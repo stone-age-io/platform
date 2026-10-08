@@ -39,6 +39,14 @@ package health
 //     "re-tightens" tenant permissions back to a blanket $SYS deny and then
 //     debugs a dead widget for a day.
 //
+// One more, for the edge agent rather than a dashboard. The agent registers its
+// commands as a NATS micro service, and a $SRV discovery request asked at the
+// hub reaches one behind a leaf only if the leaf's UPLINK credential allows
+// $SRV.> -- the uplink filters $SRV like any other subject, so the agent's own
+// credential is not enough. That is
+// TestServiceDiscoveryCrossesALeafOnlyIfTheUplinkAllowsIt, and it is why the
+// gateway role in internal/demoseed/contract.go carries the grant.
+//
 // Fixtures cannot answer any of this, which is the same reason
 // TestBuildLeafConfIsAcceptedByNATSServer runs the generated config through the
 // real server rather than grepping it.
@@ -56,6 +64,7 @@ import (
 	"github.com/nats-io/jwt/v2"
 	natsserver "github.com/nats-io/nats-server/v2/server"
 	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/micro"
 	"github.com/nats-io/nkeys"
 )
 
@@ -173,6 +182,14 @@ func startFromConf(t *testing.T, name, conf string) *natsserver.Server {
 // carrying an `account` key.
 func startHubWithLeaf(t *testing.T, w leafWorld) *natsserver.Server {
 	t.Helper()
+	hub, _ := startHubWithLeafAs(t, w, userCreds(t, w.orgKP, "edge", nil, nil))
+	return hub
+}
+
+// startHubWithLeafAs is startHubWithLeaf with the leaf's uplink credential
+// chosen by the caller, returning the leaf as well as the hub.
+func startHubWithLeafAs(t *testing.T, w leafWorld, uplinkCreds string) (hub, leaf *natsserver.Server) {
+	t.Helper()
 
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -181,7 +198,7 @@ func startHubWithLeaf(t *testing.T, w leafWorld) *natsserver.Server {
 	leafPort := l.Addr().(*net.TCPAddr).Port
 	l.Close()
 
-	hub := startFromConf(t, "hub.conf", fmt.Sprintf(`
+	hub = startFromConf(t, "hub.conf", fmt.Sprintf(`
 server_name: %q
 operator: %q
 system_account: %s
@@ -193,8 +210,8 @@ resolver_preload: {
 leafnodes { port: %d }
 `, hubServerName, w.opJWT, w.sysPub, w.sysPub, w.sysJWT, w.orgPub, w.orgJWT, leafPort))
 
-	remoteCreds := writeTemp(t, "edge.creds", userCreds(t, w.orgKP, "edge", nil, nil))
-	startFromConf(t, "leaf.conf", fmt.Sprintf(`
+	remoteCreds := writeTemp(t, "edge.creds", uplinkCreds)
+	leaf = startFromConf(t, "leaf.conf", fmt.Sprintf(`
 server_name: %q
 operator: %q
 resolver: MEMORY
@@ -230,7 +247,7 @@ leafnodes {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	return hub
+	return hub, leaf
 }
 
 // leafIsNamed reports whether the hub holds a leaf connection carrying `name`.
@@ -443,6 +460,115 @@ func TestTenantCannotReachServerEndpoints(t *testing.T) {
 			t.Errorf("a tenant reached %s with no deny list; account scoping is not being enforced, "+
 				"and the roles in internal/demoseed/contract.go need their $SYS deny back", subject)
 		}
+	}
+}
+
+// uplinkCreds mints a leaf uplink user whose SUBSCRIBE list is subAllow (nil is
+// unrestricted) and whose publish list is unrestricted. userCreds varies publish
+// only, which is the half the monitoring tests above are about.
+func uplinkCreds(t *testing.T, acc nkeys.KeyPair, subAllow []string) string {
+	t.Helper()
+	ukp, _ := nkeys.CreateUser()
+	upub, _ := ukp.PublicKey()
+	uc := jwt.NewUserClaims(upub)
+	uc.Name = "edge"
+	uc.Permissions.Sub.Allow = subAllow
+	userJWT, err := uc.Encode(acc)
+	if err != nil {
+		t.Fatalf("encode uplink user: %v", err)
+	}
+	seed, _ := ukp.Seed()
+	raw, err := jwt.FormatUserConfig(userJWT, seed)
+	if err != nil {
+		t.Fatalf("FormatUserConfig uplink: %v", err)
+	}
+	return string(raw)
+}
+
+// connectTo opens a connection to srv as the holder of credsPath, closed when
+// the test ends.
+func connectTo(t *testing.T, srv *natsserver.Server, credsPath string) *nats.Conn {
+	t.Helper()
+	nc, err := nats.Connect(srv.ClientURL(),
+		nats.UserCredentials(credsPath),
+		nats.MaxReconnects(0),
+		nats.NoReconnect(),
+		nats.ErrorHandler(func(_ *nats.Conn, _ *nats.Subscription, err error) {
+			t.Logf("async: %v", err)
+		}),
+	)
+	if err != nil {
+		t.Fatalf("connect to %s: %v", srv.Name(), err)
+	}
+	t.Cleanup(nc.Close)
+	return nc
+}
+
+// TestServiceDiscoveryCrossesALeafOnlyIfTheUplinkAllowsIt: a micro service on a
+// leaf -- the edge agent, in production -- answers $SRV discovery asked at the
+// hub only when the leaf's uplink credential lets $SRV.> through. The agent's
+// own credential allowing it is not enough.
+//
+// Each case proves the leaf is attached and passing traffic BEFORE asking the
+// discovery question, by getting an answer to an ordinary command first. A
+// silent $SRV.PING means nothing on its own -- it is equally what a leaf that
+// never attached looks like. The service subscribes to $SRV before it adds the
+// command endpoint, and the leaf propagates that interest in order over one
+// connection, so once the command answers, any $SRV interest the uplink allows
+// has already reached the hub.
+func TestServiceDiscoveryCrossesALeafOnlyIfTheUplinkAllowsIt(t *testing.T) {
+	w := mintLeafWorld(t)
+
+	// No `$` in these names: a subtest's TempDir is named after it, and Windows
+	// rejects the character in a path.
+	cases := []struct {
+		name      string
+		uplinkSub []string
+		wantPing  bool
+	}{
+		{name: "uplink allows discovery", uplinkSub: nil, wantPing: true},
+		{name: "uplink without discovery", uplinkSub: []string{"agents.>", "_INBOX.>"}, wantPing: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			hub, leaf := startHubWithLeafAs(t, w, uplinkCreds(t, w.orgKP, tc.uplinkSub))
+
+			// The agent: unrestricted on its own credential, so whatever stops
+			// discovery below can only be the uplink.
+			agent := connectTo(t, leaf, writeTemp(t, "agent.creds", userCreds(t, w.orgKP, "agent", nil, nil)))
+			svc, err := micro.AddService(agent, micro.Config{Name: "stone-agent", Version: "1.0.0"})
+			if err != nil {
+				t.Fatalf("AddService: %v", err)
+			}
+			pong := micro.HandlerFunc(func(r micro.Request) { _ = r.Respond([]byte(`{"status":"pong"}`)) })
+			if err := svc.AddEndpoint("ping", pong, micro.WithEndpointSubject("agents."+leafServerName+".cmd.ping")); err != nil {
+				t.Fatalf("AddEndpoint: %v", err)
+			}
+			if err := agent.Flush(); err != nil {
+				t.Fatalf("flush: %v", err)
+			}
+
+			// A tenant session at the hub, which is where the console connects.
+			console := connectTo(t, hub, writeTemp(t, "console.creds", userCreds(t, w.orgKP, "console", nil, nil)))
+
+			deadline := time.Now().Add(10 * time.Second)
+			for {
+				if _, err := console.Request("agents."+leafServerName+".cmd.ping", nil, 500*time.Millisecond); err == nil {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatal("a command to the service on the leaf never answered from the hub, so the discovery result below would mean nothing")
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+
+			_, err = console.Request("$SRV.PING.stone-agent", nil, time.Second)
+			if answered := err == nil; answered != tc.wantPing {
+				t.Errorf("$SRV.PING from the hub answered = %v, want %v (uplink subscribe allow: %q)",
+					answered, tc.wantPing, tc.uplinkSub)
+			}
+		})
 	}
 }
 
