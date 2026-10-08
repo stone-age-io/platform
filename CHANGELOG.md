@@ -11,6 +11,8 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-08
+
 **pb-nats v0.3.0: an empty NATS permission list now grants nothing.** Until
 now, a NATS role saved with a blank publish or subscribe list, held by a user
 with no permissions of its own, was signed with `>`: everything in the
@@ -72,6 +74,19 @@ deploying. Two parts of it can affect a deployment:
 agent does not appear in discovery and reports `degraded`. Behind a leaf node,
 the gateway's own credential needs the grant too, because a request from the
 hub has to cross that leaf connection.
+
+### Security
+
+- **Six Dependabot alerts in `ui/` are closed.** None was reachable from the
+  console. `dompurify` 3.4.16 fixes two XSS advisories in `IN_PLACE` mode. The
+  Markdown widget calls `sanitize()` on a string and never uses that mode.
+  `vue` 3.5.43 brings `@vue/server-renderer` past an attribute-name XSS. The
+  console never renders on the server. `source-map-js` and `brace-expansion`
+  were refreshed in the lockfile. `postcss-selector-parser` is forced to 7.x
+  under the held-back Tailwind 3. All 27 built CSS files are byte-identical
+  with and without that override. `braces` still shows in `npm audit` because
+  no fixed release exists. Like the others, it is a build-time dependency that
+  parses only this repository's own globs.
 
 ### Added
 
@@ -2486,7 +2501,8 @@ repository public. Each of these was reproduced before being fixed.
 - `scripts/test-authz.sh` grew from 135 to 147 checks, covering the membership
   lifecycle, the code uniqueness constraint, and the frozen leaf-node code.
 
-[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/stone-age-io/platform/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/stone-age-io/platform/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/stone-age-io/platform/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/stone-age-io/platform/compare/v0.6.0...v0.7.0
