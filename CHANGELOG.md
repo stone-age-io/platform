@@ -51,6 +51,28 @@ is reissued: a role or user edit, a regenerate, a revoke, or a reactivation.
 pb-nats' own upgrade notes, including a SQL query that lists every affected
 user, are in its `CHANGELOG.md`.
 
+**The embedded NATS server is now v2.15.0** (it was v2.14.5). Read the
+[2.15 upgrade guide](https://docs.nats.io/release-notes/upgrade-to-2.15) before
+deploying. Two parts of it can affect a deployment:
+
+- **A stream now allows at most 1000 consumers by default.** Every open KV view
+  in the console and every dashboard widget that reads a stream holds a
+  consumer on the hub. A busy tenant with many screens open can reach the
+  limit. Once it is reached, new consumers are refused, and existing ones are
+  never removed. Raise it with `max_consumers` on the stream or the account, or
+  server-wide with `default_max_consumers` under `jetstream { limits { ... } }`
+  in `nats.conf`.
+- **If the Control Plane's server is one node of a cluster,** NATS recommends
+  upgrading from v2.14.7 or later, and holding off stream scale and move
+  operations until every node runs 2.15. A single embedded server needs neither.
+
+**The edge agent is now a NATS micro service**, discoverable through
+`$SRV.PING.stone-agent`, starting with its next release. Its NATS role needs
+`$SRV.>` on subscribe. Without it the agent's commands still work, but the
+agent does not appear in discovery and reports `degraded`. Behind a leaf node,
+the gateway's own credential needs the grant too, because a request from the
+hub has to cross that leaf connection.
+
 ### Added
 
 - **A Subjects card on the Thing page.** It lists each operation of the
@@ -101,6 +123,11 @@ user, are in its `CHANGELOG.md`.
 - The NATS role form says what an empty Allow list means. Its subscribe
   placeholder was `>`, which suggested a blank list meant everything. That was
   true before this release and is the opposite now.
+- **nats-server v2.15.0 and nats.go v1.54.0.** See the note above for what the
+  server upgrade can change.
+- **The demo seed's `device` and `gateway` roles allow `$SRV.>` on subscribe**,
+  so seeded agents appear in service discovery. Re-running `demo-seed` updates
+  roles that already exist.
 
 ### Fixed
 
