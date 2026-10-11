@@ -11,18 +11,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useNatsStore } from '@/stores/nats'
+import { computed } from 'vue'
 import { useDashboardStore } from '@/stores/dashboard'
-import { decodeBytes } from '@/utils/encoding'
+import { useKvKey } from '@/composables/useKvKey'
 import { resolveTemplate } from '@/utils/variables'
-import { Kvm } from '@nats-io/kv'
 import { JSONPath } from 'jsonpath-plus'
 import type { MapMarkerItem } from '@/types/dashboard'
 
 /**
  * Marker Item: KV Display
- * 
+ *
  * Watches a NATS KV bucket/key and displays the value.
  * Supports JSONPath extraction.
  */
@@ -31,163 +29,39 @@ const props = defineProps<{
   item: MapMarkerItem
 }>()
 
-const natsStore = useNatsStore()
 const dashboardStore = useDashboardStore()
 
-const value = ref<any>(null)
-const error = ref<string | null>(null)
-const isEmpty = ref(false)
+const { entry, status, error } = useKvKey(
+  () => resolveTemplate(props.item.kvConfig?.kvBucket ?? '', dashboardStore.currentVariableValues),
+  () => resolveTemplate(props.item.kvConfig?.kvKey ?? '', dashboardStore.currentVariableValues),
+)
 
-let watcher: any = null
+const value = computed(() => {
+  if (!entry.value) return null
+  const parsed = entry.value.value
+  const path = props.item.kvConfig?.jsonPath
+  if (!path || typeof parsed !== 'object') return parsed
+  try {
+    const extracted = JSONPath({ path, json: parsed as object, wrap: false })
+    return extracted !== undefined ? extracted : parsed
+  } catch {
+    return parsed
+  }
+})
+
+const isEmpty = computed(() => status.value === 'missing')
 
 const displayValue = computed(() => {
   if (error.value) return '—'
   if (isEmpty.value) return '<empty>'
   if (value.value === null) return '...'
-  
+
   // Format objects as JSON
   if (typeof value.value === 'object') {
     return JSON.stringify(value.value)
   }
   return String(value.value)
 })
-
-async function startWatcher() {
-  if (!natsStore.nc || !natsStore.isConnected || !props.item.kvConfig) return
-  
-  const cfg = props.item.kvConfig
-  const bucket = resolveTemplate(cfg.kvBucket, dashboardStore.currentVariableValues)
-  const key = resolveTemplate(cfg.kvKey, dashboardStore.currentVariableValues)
-  
-  if (!bucket || !key) return
-  
-  error.value = null
-  isEmpty.value = false
-  
-  try {
-    const kvm = new Kvm(natsStore.nc)
-    const kv = await kvm.open(bucket)
-    
-    // Get initial value
-    try {
-      const entry = await kv.get(key)
-      if (entry) {
-        processValue(entry.value)
-      } else {
-        isEmpty.value = true
-      }
-    } catch (e: any) {
-      if (e.message?.includes('key not found')) {
-        isEmpty.value = true
-      } else {
-        throw e
-      }
-    }
-    
-    // Start watching for updates
-    const iter = await kv.watch({ key })
-    watcher = iter
-    
-    ;(async () => {
-      try {
-        for await (const e of iter) {
-          if (e.key === key) {
-            if (e.operation === 'PUT') {
-              processValue(e.value!)
-              isEmpty.value = false
-            } else if (e.operation === 'DEL' || e.operation === 'PURGE') {
-              value.value = null
-              isEmpty.value = true
-            }
-          }
-        }
-      } catch {
-        // Watcher ended
-      }
-    })()
-    
-  } catch (err: any) {
-    console.error('[MarkerItemKv] Watch error:', err)
-    if (err.message?.includes('stream not found')) {
-      error.value = `Bucket not found`
-    } else {
-      error.value = err.message || 'Watch failed'
-    }
-  }
-}
-
-function processValue(data: Uint8Array) {
-  try {
-    const text = decodeBytes(data)
-    let parsed: any = text
-    
-    try {
-      parsed = JSON.parse(text)
-    } catch {
-      // Keep as string
-    }
-    
-    // Apply JSONPath if configured
-    if (props.item.kvConfig?.jsonPath && typeof parsed === 'object') {
-      try {
-        const extracted = JSONPath({ 
-          path: props.item.kvConfig.jsonPath, 
-          json: parsed, 
-          wrap: false 
-        })
-        if (extracted !== undefined) {
-          parsed = extracted
-        }
-      } catch {
-        // Keep original
-      }
-    }
-    
-    value.value = parsed
-  } catch (err) {
-    console.error('[MarkerItemKv] Process error:', err)
-  }
-}
-
-function stopWatcher() {
-  if (watcher) {
-    try {
-      watcher.stop()
-    } catch {
-      // Ignore cleanup errors
-    }
-    watcher = null
-  }
-}
-
-// Lifecycle
-onMounted(() => {
-  if (natsStore.isConnected) {
-    startWatcher()
-  }
-})
-
-onUnmounted(() => {
-  stopWatcher()
-})
-
-// Reconnection handling
-watch(() => natsStore.isConnected, (connected) => {
-  if (connected) {
-    stopWatcher()
-    startWatcher()
-  } else {
-    stopWatcher()
-  }
-})
-
-// Variable changes - restart watcher
-watch(() => dashboardStore.currentVariableValues, () => {
-  if (natsStore.isConnected) {
-    stopWatcher()
-    startWatcher()
-  }
-}, { deep: true })
 </script>
 
 <style scoped>

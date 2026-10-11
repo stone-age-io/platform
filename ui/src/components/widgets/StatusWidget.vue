@@ -52,10 +52,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useWidgetDataStore } from '@/stores/widgetData'
-import { useNatsStore } from '@/stores/nats'
 import { useDashboardStore } from '@/stores/dashboard'
-import { Kvm } from '@nats-io/kv'
-import { decodeBytes } from '@/utils/encoding'
+import { useKvKey } from '@/composables/useKvKey'
 import { resolveTemplate } from '@/utils/variables'
 import { extractJsonPath } from '@/utils/jsonPath'
 import type { WidgetConfig } from '@/types/dashboard'
@@ -68,7 +66,6 @@ const props = withDefaults(defineProps<{
 })
 
 const dataStore = useWidgetDataStore()
-const natsStore = useNatsStore()
 const dashboardStore = useDashboardStore()
 
 // Config Accessors
@@ -84,7 +81,6 @@ const latestMsg = computed(() => buffer.value[buffer.value.length - 1])
 // State
 const now = ref(Date.now())
 let timer: number | null = null
-let kvWatcher: any = null
 
 // Computed State Logic
 const isStale = computed(() => {
@@ -145,98 +141,42 @@ const timeAgo = computed(() => {
 })
 
 // --- KV Logic ---
-// Bumped on every stop, so a start still awaiting kvm.open() when the
-// variables change again gives up instead of running beside its replacement.
-let kvGeneration = 0
+const kvKey = useKvKey(
+  () => isKvMode.value ? resolveTemplate(props.config.dataSource.kvBucket, dashboardStore.currentVariableValues) : '',
+  () => isKvMode.value ? resolveTemplate(props.config.dataSource.kvKey, dashboardStore.currentVariableValues) : '',
+)
 
-async function startKvWatcher() {
-  if (!natsStore.nc || !natsStore.isConnected) return
-
-  const bucket = resolveTemplate(props.config.dataSource.kvBucket, dashboardStore.currentVariableValues)
-  const key = resolveTemplate(props.config.dataSource.kvKey, dashboardStore.currentVariableValues)
-
-  if (!bucket || !key) return
-
-  const gen = kvGeneration
-  try {
-    const kvm = new Kvm(natsStore.nc)
-    const kv = await kvm.open(bucket)
-    if (gen !== kvGeneration) return
-
-    // The watcher delivers the current value first (KvWatchInclude.LastValue
-    // is the default), so there is no separate get: that read every value in
-    // twice.
-    const iter = await kv.watch({ key })
-    if (gen !== kvGeneration) { try { iter.stop() } catch {} return }
-    kvWatcher = iter
-    ;(async () => {
-      try {
-        for await (const e of iter) {
-          if (e.key === key && e.operation === 'PUT') {
-            // The same shape a subscription delivers: parsed JSON, the
-            // widget's JSONPath applied, and the time the value was WRITTEN.
-            // It used to push the raw string stamped with the time it was
-            // read, so `$.state` never applied and a key untouched for hours
-            // read as live for a minute after every page load.
-            const text = decodeBytes(e.value!)
-            let raw: unknown = text
-            try { raw = JSON.parse(text) } catch { /* plain string */ }
-            const value = extractJsonPath(raw, props.config.jsonPath)
-            dataStore.batchAddMessages([{
-              widgetId: props.config.id, value, raw, subject: 'KV', timestamp: e.created.getTime(),
-            }])
-          }
-        }
-      } catch {}
-    })()
-  } catch (err) {
-    console.error('[StatusWidget] KV Error:', err)
+watch(kvKey.entry, (e) => {
+  if (!isKvMode.value) return
+  // No entry: the key was deleted, or a variable change points this widget at
+  // another key. Either way the old value must not stand in for it.
+  if (!e) {
+    dataStore.clearBuffer(props.config.id)
+    return
   }
-}
-
-function stopKvWatcher() {
-  kvGeneration++
-  if (kvWatcher) {
-    try { kvWatcher.stop() } catch {}
-    kvWatcher = null
-  }
-  // A variable change points this widget at another key; the old key's value
-  // must not stand in for a key that may not exist.
-  if (isKvMode.value) dataStore.clearBuffer(props.config.id)
-}
-
-function handleRefresh() {
-  if (isKvMode.value) {
-    stopKvWatcher()
-    startKvWatcher()
-  }
-}
+  // The same shape a subscription delivers: parsed JSON, the widget's
+  // JSONPath applied, and the time the value was WRITTEN. It used to push the
+  // raw string stamped with the time it was read, so `$.state` never applied
+  // and a key untouched for hours read as live for a minute after every load.
+  dataStore.batchAddMessages([{
+    widgetId: props.config.id,
+    value: extractJsonPath(e.value, props.config.jsonPath),
+    raw: e.value,
+    subject: 'KV',
+    timestamp: e.updated.getTime(),
+  }])
+})
 
 // Lifecycle
 onMounted(() => {
   timer = window.setInterval(() => {
     now.value = Date.now()
   }, 1000)
-
-  if (isKvMode.value) {
-    startKvWatcher()
-  }
-  window.addEventListener('dashboard:refresh', handleRefresh)
 })
 
 onUnmounted(() => {
   if (timer) clearInterval(timer)
-  stopKvWatcher()
-  window.removeEventListener('dashboard:refresh', handleRefresh)
 })
-
-// Watch for mode changes or connection changes
-watch([() => natsStore.isConnected, isKvMode, () => dashboardStore.currentVariableValues], () => {
-  stopKvWatcher()
-  if (isKvMode.value && natsStore.isConnected) {
-    startKvWatcher()
-  }
-}, { deep: true })
 </script>
 
 <style scoped>

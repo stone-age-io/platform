@@ -88,8 +88,8 @@
       {{ publishStatus }}
     </div>
     
-    <div v-if="error" class="error-message">
-      {{ error }}
+    <div v-if="shownError" class="error-message">
+      {{ shownError }}
       <button class="retry-btn" @click="retry">Retry</button>
     </div>
   </div>
@@ -99,7 +99,7 @@
 import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue'
 import { useNatsStore } from '@/stores/nats'
 import { useDashboardStore } from '@/stores/dashboard'
-import { Kvm } from '@nats-io/kv'
+import { useKvKey } from '@/composables/useKvKey'
 import { JSONPath } from 'jsonpath-plus'
 import type { WidgetConfig } from '@/types/dashboard'
 import { encodeString, decodeBytes } from '@/utils/encoding'
@@ -122,8 +122,6 @@ const error = ref<string | null>(null)
 const publishStatus = ref<string | null>(null)
 const pendingValue = ref<number | null>(null)
 
-let kvWatcher: any = null
-let kvInstance: any = null
 let subscription: any = null
 
 const cfg = computed(() => props.config.sliderConfig!)
@@ -140,6 +138,24 @@ const resolvedConfig = computed(() => {
     stateSubject: resolveTemplate(cfg.value.stateSubject, vars),
   }
 })
+
+// KV mode: the key holds the value. A key that is missing (never written, or
+// deleted) shows the configured default, as a fresh widget does, rather than
+// whatever the previous key held.
+const kvKey = useKvKey(
+  () => mode.value === 'kv' ? resolvedConfig.value.kvBucket : '',
+  () => mode.value === 'kv' ? resolvedConfig.value.kvKey : '',
+)
+watch(kvKey.entry, (e) => { if (e) processIncomingData(e.text) })
+watch(kvKey.status, (s) => {
+  if (s === 'missing' && !isDragging.value) localValue.value = cfg.value.defaultValue
+})
+
+const kvConfigMissing = computed(() =>
+  mode.value === 'kv' && natsStore.isConnected
+  && (!resolvedConfig.value.kvBucket || !resolvedConfig.value.kvKey))
+const shownError = computed(() =>
+  error.value || kvKey.error.value || (kvConfigMissing.value ? 'KV Bucket/Key required' : null))
 
 const displayValue = computed(() => {
   return localValue.value.toFixed(getDecimalPlaces(cfg.value.step))
@@ -167,52 +183,11 @@ const statusClass = computed(() => {
   return ''
 })
 
+// Core mode only: KV mode is useKvKey's job.
 async function initialize() {
-  if (!natsStore.isConnected) return
+  if (!natsStore.isConnected || mode.value === 'kv') return
   error.value = null
-  if (mode.value === 'kv') await initializeKv()
-  else await initializeCore()
-}
-
-async function initializeKv() {
-  const bucket = resolvedConfig.value.kvBucket
-  const key = resolvedConfig.value.kvKey
-  if (!bucket || !key) {
-    error.value = 'KV Bucket/Key required'
-    return
-  }
-
-  try {
-    const kvm = new Kvm(natsStore.nc!)
-    const kv = await kvm.open(bucket)
-    kvInstance = kv
-
-    try {
-      const entry = await kv.get(key)
-      if (entry) processIncomingData(decodeBytes(entry.value))
-    } catch (e: any) {
-      if (!e.message?.includes('key not found')) throw e
-    }
-
-    const iter = await kv.watch({ key })
-    kvWatcher = iter
-    ;(async () => {
-      try {
-        for await (const e of iter) {
-          if (e.key === key && e.operation === 'PUT') {
-            processIncomingData(decodeBytes(e.value!))
-          }
-        }
-      } catch (err) {}
-    })()
-  } catch (err: any) {
-    console.error('[Slider] KV Error:', err)
-    if (err.message.includes('stream not found')) {
-      error.value = `Bucket "${bucket}" not found`
-    } else {
-      error.value = err.message
-    }
-  }
+  await initializeCore()
 }
 
 async function initializeCore() {
@@ -300,8 +275,7 @@ async function publishValue(val: number) {
 
   try {
     if (mode.value === 'kv') {
-      if (!kvInstance || !resolvedConfig.value.kvKey) throw new Error('KV not initialized')
-      await kvInstance.put(resolvedConfig.value.kvKey, data)
+      await kvKey.put(data)
     } else {
       natsStore.nc!.publish(resolvedConfig.value.publishSubject, data)
     }
@@ -319,15 +293,17 @@ async function publishValue(val: number) {
 
 function retry() {
   error.value = null
-  initialize()
+  if (mode.value === 'kv') {
+    kvKey.restart()
+  } else {
+    cleanup()
+    initialize()
+  }
 }
 
 function cleanup() {
-  if (kvWatcher) { try { kvWatcher.stop() } catch {} }
   if (subscription) { try { subscription.unsubscribe() } catch {} }
-  kvWatcher = null
   subscription = null
-  kvInstance = null
 }
 
 function handleRefresh() {

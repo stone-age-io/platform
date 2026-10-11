@@ -26,6 +26,19 @@ and this file starts where the versioned releases do.
   in one organization and a viewer in the next, on a page a viewer cannot open
   (NATS Users, say), stayed on it and saw a mostly empty screen. The page now
   goes to the dashboard, as opening it directly would.
+- **A deleted KV key no longer keeps its last value on screen.** The Slider
+  and Status widgets ignored deletes, so a removed key went on showing what it
+  last held. The Slider now returns to its default value, as it does for a key
+  that was never written (or when a variable points it at another key), and
+  Status shows no data.
+- **A Switch on a deleted KV key shows its default state.** It always showed
+  OFF, whatever the switch's default was set to.
+- **A Switch whose KV value is not JSON keeps updating.** A plain-text value
+  such as `ON` stopped the switch reading its key, silently, until the page
+  was reloaded.
+- **A Switch toggle that is never confirmed stops showing "...".** If no state
+  message matched within five seconds the switch stayed on "..." until one
+  did. It now returns to the last state it knows.
 
 ## [0.10.0] - 2026-10-08
 

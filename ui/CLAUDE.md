@@ -202,6 +202,17 @@ A record page (any route with a param) goes to the list its path sits under
 instead of remounting, since its record belongs to the org being left; and
 logout remounts nothing. `MainLayout.vue` says why.
 
+## Reading one KV key
+
+Watch a single key with `useKvKey(bucket, key)` (`composables/useKvKey.ts`),
+never with a hand-rolled `Kvm` open/get/watch. Four widgets carried their own
+copy and had drifted apart on what a deleted key means, on reading every value
+twice, and on whether a restart could race the one it replaced. The header of
+that file says why it does `get` before `watch`. A key prefix is a different
+job: `useNatsKv` (the twin and the KV browser) or `useNatsKvWatcher` (tables and
+maps). It was checked against a real `serve --nats` server rather than a mock,
+since everything it decides depends on what the server sends.
+
 ## Features
 
 The numbers match the feature index in the root `CLAUDE.md`.
