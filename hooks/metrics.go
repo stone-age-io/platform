@@ -134,7 +134,7 @@ func (c *dbCollector) Collect(ch chan<- prometheus.Metric) {
 		count(col, descRecords, []string{col})
 	}
 
-	// The decommissioning flag from CLAUDE.md's "A flag is not a control unless
+	// The decommissioning flag from AUTHORIZATION.md's "A flag is not a control unless
 	// something acts on it": this one has teeth (token kill + NATS revoke), so it
 	// is worth counting.
 	count("things", descInactive, []string{"things"}, dbx.HashExp{"active": false})

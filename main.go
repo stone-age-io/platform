@@ -714,7 +714,7 @@ func main() {
 // deliberately not hidden, because the identity owning them has to read them
 // back — `nats_users.creds_file`, which contains the user's NKEY seed, and
 // `nebula_hosts.config_yaml`, which carries the host private key inline. The
-// credential note in the authorization section of CLAUDE.md is right that
+// credential note in AUTHORIZATION.md is right that
 // ROW SCOPING is what protects those, and that hiding them would break the
 // browser's NATS connection and the config download for no gain. But
 // audit_logs has no row scoping: it is one flat collection holding a copy of

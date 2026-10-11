@@ -35,7 +35,7 @@ import (
 // column, so it answers every query the single-column index did.
 //
 // A plain re-import applies all of this: indexes are collection properties,
-// replaced wholesale on import, unlike field definitions (see CLAUDE.md on
+// replaced wholesale on import, unlike field definitions (see migrations/CLAUDE.md on
 // re-imports keeping the live field). TestReadIndexes checks the live tables
 // rather than trusting that.
 func init() {

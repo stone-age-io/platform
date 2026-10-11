@@ -55,7 +55,7 @@ import (
 //
 //     Note this does NOT make reads role-scoped -- there is still no role
 //     branch, so every role in an org still reads the whole inventory, which
-//     CLAUDE.md documents as deliberate. It makes them membership-scoped, which
+//     AUTHORIZATION.md documents as deliberate. It makes them membership-scoped, which
 //     is what "org-scoped" was always supposed to mean.
 //
 //  2. users.createRule no longer accepts `current_organization`. The update

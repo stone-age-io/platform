@@ -83,7 +83,7 @@ func ActivityCollectionNames() []string {
 // hooks/active_flag.go calls RefreshTokenKey() before its save, and pb-nats and
 // pb-nebula both write generated fields back on the way through -- all of which
 // would be attributed to the person who clicked. Capturing first is also the
-// rule CLAUDE.md already states for exactly this reason: take the "before"
+// rule TESTING.md already states for exactly this reason: take the "before"
 // state immediately before the action it belongs to.
 //
 // WHAT e.Next() RETURNING NIL MEANS. For plain CRUD it means committed: with no

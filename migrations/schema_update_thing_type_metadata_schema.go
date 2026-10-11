@@ -18,7 +18,7 @@ import (
 // lets the Thing form render typed inputs (ui/src/components/common/
 // MetadataEditor.vue) instead of a textarea.
 //
-// No backfill is needed and none is included. The rule in CLAUDE.md — a new
+// No backfill is needed and none is included. The rule in migrations/CLAUDE.md — a new
 // non-null column with a live rule over it must be backfilled in the same
 // migration, or existing rows land as the zero value and fail the rule — does
 // not bite here on either count: the field is nullable, and no API rule

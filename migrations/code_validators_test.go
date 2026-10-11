@@ -74,7 +74,7 @@ func codeField(t *testing.T, app core.App, collection, id string) *core.TextFiel
 // migration runs against a field that already has the constraint and passes
 // without changing anything.
 //
-// It is also the specific check CLAUDE.md demands before trusting any
+// It is also the specific check migrations/CLAUDE.md demands before trusting any
 // re-import migration: PocketBase's importer re-adds every live field the
 // import did not carry BY ID, and FieldsList.add then keeps the live definition
 // over the imported one. A field whose id in schema.json does not match the

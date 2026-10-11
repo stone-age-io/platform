@@ -148,7 +148,7 @@ func RegisterActiveFlag(app *pocketbase.PocketBase, opts ActiveFlagOptions) {
 // Refused, while a Thing linking the identity is inactive:
 //   - the identity being active after the save. LEVEL, not the false->true edge:
 //     Original() is the last database read, not the state before this write
-//     (see CLAUDE.md), and the invariant is the state anyway. An identity
+//     (see hooks/CLAUDE.md), and the invariant is the state anyway. An identity
 //     already out of step can still be saved inactive, which is the repair.
 //   - a minting trigger. pb-nats mints a working credential for an INACTIVE
 //     user on `regenerate` (past the revocation cutoff) and `revoke` (a new key

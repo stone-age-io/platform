@@ -46,7 +46,7 @@ import (
 // Nothing else creates this collection, so they are used verbatim rather than
 // reconciled -- but they follow the convention so that a future library or a
 // re-import cannot silently keep a different definition. See the re-import note
-// in CLAUDE.md.
+// in migrations/CLAUDE.md.
 //
 // Import-only. No rows are seeded and nothing existing is touched, so there is
 // nothing to back-fill and nothing a down-migration could do that dropping the

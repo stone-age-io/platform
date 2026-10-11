@@ -83,7 +83,7 @@ type inviteEmailData struct {
 //     request hook fires for REST calls only, so an invitation created by a seed,
 //     a migration or a test got neither -- a row with a blank token and a zero
 //     expiry, which the accept endpoint reads as "expired" and deletes. This is
-//     the same trap CLAUDE.md already documents for pb-nats trigger fields: if it
+//     the same trap hooks/CLAUDE.md already documents for pb-nats trigger fields: if it
 //     has to happen on every path, it belongs on the MODEL hook. `invited_by`
 //     stays on the request hook, because it is the request's auth record and has
 //     no meaning without one.

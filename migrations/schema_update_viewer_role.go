@@ -15,7 +15,7 @@ import (
 // usually means a migration is wrong:
 //
 //   - No rule changes, because every write branch in schema.json is an ALLOWLIST
-//     that names the roles it admits (see CLAUDE.md). A role value that appears
+//     that names the roles it admits (see AUTHORIZATION.md). A role value that appears
 //     in no allowlist is denied everywhere by construction. That is the whole
 //     dividend of the allowlist refactor: a read-only role costs one enum entry
 //     on the server. If you find yourself editing a rule to keep `viewer` out,

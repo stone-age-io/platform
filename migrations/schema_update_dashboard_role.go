@@ -28,7 +28,7 @@ import (
 // This rename cannot widen access. Every rule in schema.json is an ALLOWLIST
 // naming owner/admin/member explicitly, so an option disappearing from the
 // select grants nothing — which is the whole reason the deny-list lesson in
-// CLAUDE.md exists. A row left holding `badge` would fail every allowlist and be
+// AUTHORIZATION.md exists. A row left holding `badge` would fail every allowlist and be
 // locked out of writes rather than escalated, so the failure mode here is closed,
 // not open. The UPDATE still runs so those logins keep working.
 func init() {

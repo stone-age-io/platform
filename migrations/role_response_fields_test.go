@@ -12,7 +12,7 @@ import (
 
 // responseFields are keyed by id, not name: the schema.json ids must be the ones
 // PocketBase assigns to the fields pb-nats adds at startup, or a re-import keeps
-// the live field and ignores the schema's definition (CLAUDE.md).
+// the live field and ignores the schema's definition (migrations/CLAUDE.md).
 var responseFields = map[string]string{
 	"bool1483994014":   "allow_response",
 	"number1537381278": "allow_response_max",

@@ -39,7 +39,7 @@ import (
 // the previous binary was re-migrated by this one and `locations.floorplan`
 // read back with the list populated. That check is not optional here -- a
 // re-import silently keeps the LIVE field definition whenever a name matches
-// and the field id does not (see the re-import note in CLAUDE.md), and this
+// and the field id does not (see the re-import note in migrations/CLAUDE.md), and this
 // migration is exactly the shape that fails that way. It applies because
 // schema.json carries the same id the live column has (`file3043290937`).
 func init() {

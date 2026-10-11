@@ -35,7 +35,7 @@ vi.mock('./pb', () => ({
 // The `jti` nonce is load-bearing. Two tokens minted with the same expiry are
 // otherwise byte-identical, so "the token changed" silently becomes "the token
 // is the same" and the assertion passes for the wrong reason -- the same trap
-// the NATS credential note in CLAUDE.md describes, in miniature. Every test
+// the NATS credential note in AUTHORIZATION.md describes, in miniature. Every test
 // below still asserts the CALL COUNT as its primary evidence; the nonce only
 // stops the secondary assertion lying.
 let mintCounter = 0

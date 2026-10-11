@@ -20,7 +20,7 @@ type MembershipLifecycleOptions struct {
 // When this was written, every read rule on the inventory collections was
 // `organization = @request.auth.current_organization`, with no membership or
 // role branch -- deliberately, because reads are org-scoped rather than
-// role-scoped (see CLAUDE.md). That made users.current_organization the entire
+// role-scoped (see AUTHORIZATION.md). That made users.current_organization the entire
 // read boundary for a console user, and nothing was clearing it when the
 // membership behind it went away. (The read rules have since gained a
 // correlated membership clause -- migrations/schema_update_tenancy_sentinel.go

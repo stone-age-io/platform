@@ -63,7 +63,7 @@ type OrgProvisioningOptions struct {
 // WHY THE WORK HAPPENS BEFORE e.Next() AND THE ERROR AFTER IT. Returning early
 // would skip every handler bound after this one -- RegisterManagedOrgExports and
 // RegisterOrgMembership -- because hook.Trigger chains handlers through
-// e.Next(). That is the failure CLAUDE.md documents at length, and it would
+// e.Next(). That is the failure hooks/CLAUDE.md documents at length, and it would
 // trade a reported NATS failure for an owner with no membership row, who cannot
 // write anything in the tenant they just created. The provisioning runs where it
 // always did (managed exports read the account this creates), the chain

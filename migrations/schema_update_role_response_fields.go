@@ -29,7 +29,7 @@ import (
 //
 // The ids are PocketBase's deterministic ones (type + crc32 of the name), the
 // same ids PocketBase assigns to the fields pb-nats adds. A different id would be
-// the trap CLAUDE.md describes: the re-import would keep the live field and
+// the trap migrations/CLAUDE.md describes: the re-import would keep the live field and
 // silently ignore this definition.
 //
 // Values set before this cannot be recovered; they were never stored. A role

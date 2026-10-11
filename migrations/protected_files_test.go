@@ -105,7 +105,7 @@ func TestProtectFileFieldsIsIdempotent(t *testing.T) {
 // ID, and FieldsList.add then keeps the EXISTING definition -- so a re-import
 // against a database whose field id does not match schema.json logs its ✅ and
 // changes nothing. That has bitten this repo twice already (see the re-import
-// note in CLAUDE.md). For a mime-type list it is survivable. For the flag that
+// note in migrations/CLAUDE.md). For a mime-type list it is survivable. For the flag that
 // decides whether a file is served to unauthenticated strangers it is not.
 //
 // This drives a live field's id away from the one schema.json carries and

@@ -264,7 +264,7 @@ func TestCheckCredsRejectsAnUntrustedOperator(t *testing.T) {
 }
 
 // The matching positive case. Without it the test above passes for a
-// CheckCreds that rejects everything, which is the failure mode CLAUDE.md warns
+// CheckCreds that rejects everything, which is the failure mode AUTHORIZATION.md warns
 // about: a blanket deny that looks like a working check.
 func TestCheckCredsAcceptsATrustedOperator(t *testing.T) {
 	opJWT, sysPub, sysJWT, creds := mintOperatorWorld(t)

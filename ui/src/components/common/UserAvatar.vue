@@ -20,7 +20,7 @@
  * only correct on a screen already gated to owner/admin or to an operator.
  * Putting it somewhere every role can reach means some roles get a permanent
  * fallback circle for a user who does have an avatar, which is the
- * "gate on what the reader can READ" trap in CLAUDE.md.
+ * "gate on what the reader can READ" trap in AUTHORIZATION.md.
  *
  * IN PARTICULAR, NOT THE ACTIVITY FEED. `activity.actor` is a plain-text
  * snapshot rather than a relation, deliberately (hooks/activity.go): a

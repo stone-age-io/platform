@@ -17,7 +17,7 @@ import (
 // to read them back: `nats_users.creds_file`, which contains the user's NKEY
 // seed, and `nebula_hosts.config_yaml`, which carries the host private key
 // inline. Row scoping is what protects those on their own collections
-// (see the credential note in CLAUDE.md) -- and `audit_logs` has no row
+// (see the credential note in AUTHORIZATION.md) -- and `audit_logs` has no row
 // scoping, so every credential this platform ever minted was sitting in it in
 // plaintext, exempt from at-rest encryption (which covers the `seed` and
 // `private_key` columns, the hidden ones) and never expiring, since retention
@@ -54,7 +54,7 @@ import (
 // the collection on a virgin database. They have to agree: core.ImportCollections
 // re-adds any existing field the import does not carry BY ID, and FieldsList.add
 // then keeps the live definition -- so a hand-picked id here would make this
-// migration log its tick and change nothing. See the re-import note in CLAUDE.md.
+// migration log its tick and change nothing. See the re-import note in migrations/CLAUDE.md.
 func init() {
 	m.Register(func(app core.App) error {
 		if len(SchemaJSON) == 0 {

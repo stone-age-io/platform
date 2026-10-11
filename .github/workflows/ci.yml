@@ -53,10 +53,10 @@ jobs:
         run: npm ci
 
       # Three packages in ui/package.json are deliberately held back, across the
-      # two pins CLAUDE.md describes (tailwind and daisyui move together), and
+      # two pins ui/CLAUDE.md describes (tailwind and daisyui move together), and
       # a fourth major is asserted without being held back. The
       # reasons are written down at the top of ui/tailwind.config.js and in
-      # CLAUDE.md. This step is their only guard: the frontend test runner below
+      # ui/CLAUDE.md. This step is their only guard: the frontend test runner below
       # covers pure logic only, so `vue-tsc && vite build` stays green while the
       # console renders wrong. That is exactly why the check is here.
       #
@@ -82,7 +82,7 @@ jobs:
             actual="$(node -p "require('$1/package.json').version")"
             major="${actual%%.*}"
             if [ "$major" != "$2" ]; then
-              echo "::error::$1 is $actual, expected major $2. See ui/tailwind.config.js and CLAUDE.md before changing this."
+              echo "::error::$1 is $actual, expected major $2. See ui/tailwind.config.js and ui/CLAUDE.md before changing this."
               exit 1
             fi
             echo "ok  $1 $actual (major $2)"

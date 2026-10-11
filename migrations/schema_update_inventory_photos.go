@@ -75,7 +75,7 @@ var inventoryPhotoCollections = []string{"things", "locations"}
 // this.
 //
 // It adds the field EXPLICITLY rather than re-importing schema.json. A
-// re-import would work for an addition -- the trap in CLAUDE.md is about
+// re-import would work for an addition -- the trap in migrations/CLAUDE.md is about
 // removals and id mismatches -- but it would also replay every other collection
 // definition in the file as a side effect of adding one field, which makes the
 // migration's blast radius "whatever else changed in schema.json since the last

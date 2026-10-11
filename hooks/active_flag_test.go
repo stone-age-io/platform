@@ -145,7 +145,7 @@ func TestDeactivatedThingIdentitiesStayDown(t *testing.T) {
 		t.Run("nats "+c.name+" is refused", func(t *testing.T) {
 			freshlyDeactivated()
 			// A user JWT re-minted for the same key in the same wall-clock
-			// second is byte-identical (CLAUDE.md, the re-minted credential
+			// second is byte-identical (TESTING.md, the re-minted credential
 			// bullet), so without this a regenerate that went through would
 			// still compare equal. The baseline is read right before the call.
 			time.Sleep(1100 * time.Millisecond)
