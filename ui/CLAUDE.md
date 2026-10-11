@@ -196,10 +196,11 @@ org-change handling** — no listener, no `watch` on `currentOrgId`. A `window`
 event once did this job through 18 hand-copied handlers, and they had drifted:
 only one reset the page number, so page 2 of a long list showed an empty page in
 a shorter org. Things that outlive the page and care about the org (the NATS
-reconnect in `App.vue`) watch `currentOrgId` themselves. A record page (any
-route with a param) goes to the list its path sits under instead of remounting,
-since its record belongs to the org being left; and logout remounts nothing.
-`MainLayout.vue` says why for both.
+reconnect in `App.vue`) watch `currentOrgId` themselves. The switch re-runs the
+router guard against the new role, so a page the role cannot reach goes to `/`.
+A record page (any route with a param) goes to the list its path sits under
+instead of remounting, since its record belongs to the org being left; and
+logout remounts nothing. `MainLayout.vue` says why.
 
 ## Features
 

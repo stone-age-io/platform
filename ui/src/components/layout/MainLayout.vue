@@ -18,27 +18,35 @@ const router = useRouter()
 // handling of their own: there used to be a window event with 18 hand-copied
 // handlers, and they had drifted (only one reset the page number).
 //
-// A record page (any route with a param: /things/:id, /nats/streams/:name/edit)
-// is the exception. Its record belongs to the organization being left, so a
-// remount could only fail -- a not-found toast, then the page's own redirect. It
-// goes to the list its path sits under instead, and the new page mounts fresh
-// on its own. The router's catch-all sends a prefix with no route to `/`.
+// The switch goes through the router rather than around it, so the guard in
+// router/index.ts judges the page against the NEW role. Admin in one
+// organization and viewer in the next, on NATS Users, lands on `/` exactly as a
+// fresh visit would, instead of a remounted page the role cannot use. One guard,
+// not a second copy of it here. A page that passes is the same location, which
+// the router reuses rather than remounts, so the key does that part.
 //
-// Two transitions are deliberately left alone. Null to an organization (the
+// A record page (any route with a param: /things/:id, /nats/streams/:name/edit)
+// goes to the list its path sits under instead. Its record belongs to the
+// organization being left, so a remount could only fail -- a not-found toast,
+// then the page's own redirect. The router's catch-all sends a prefix with no
+// route to `/`.
+//
+// Two transitions are deliberately different. Null to an organization (the
 // first one chosen at sign-in) leaves no organization behind, so even a record
-// page just remounts. An organization to null is logout: remounting then would
-// fire every request of the new page unauthenticated a moment before the
-// redirect to /login.
+// page stays put. An organization to null is logout: remounting then would fire
+// every request of the new page unauthenticated a moment before the redirect to
+// /login, so nothing happens at all.
 const pageKey = ref(0)
-watch(() => authStore.currentOrgId, (orgId, previous) => {
+watch(() => authStore.currentOrgId, async (orgId, previous) => {
   if (!orgId) return
+  const before = route.fullPath
   const path = route.matched[route.matched.length - 1]?.path ?? ''
   const firstParam = path.indexOf('/:')
-  if (previous && firstParam > 0) {
-    router.replace(path.slice(0, firstParam))
-  } else {
-    pageKey.value++
-  }
+  const target = previous && firstParam > 0
+    ? { path: path.slice(0, firstParam) }
+    : { path: route.path, query: route.query, hash: route.hash }
+  await router.replace({ ...target, force: true })
+  if (route.fullPath === before) pageKey.value++
 })
 </script>
 
