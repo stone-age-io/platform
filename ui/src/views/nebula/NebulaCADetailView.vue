@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
 import { formatDate } from '@/utils/format'
@@ -94,17 +94,8 @@ function downloadCert() {
   toast.success('Certificate downloaded')
 }
 
-function handleOrgChange() {
-  loadCA()
-}
-
 onMounted(() => {
   loadCA()
-  window.addEventListener('organization-changed', handleOrgChange)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('organization-changed', handleOrgChange)
 })
 </script>
 

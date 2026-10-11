@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { usePagination } from '@/composables/usePagination'
 import { useServerSearch } from '@/composables/useServerSearch'
 import { formatDate, formatRelativeTime, formatConstant } from '@/utils/format'
@@ -138,23 +138,8 @@ function getEventBadgeClass(eventType: string) {
   return 'badge-ghost'
 }
 
-/**
- * Handle organization change event
- * Audit logs might be global or org-specific depending on backend rules,
- * but refreshing ensures UI consistency.
- */
-function handleOrgChange() {
-  searchQuery.value = ''
-  loadLogs()
-}
-
 onMounted(() => {
   loadLogs()
-  window.addEventListener('organization-changed', handleOrgChange)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('organization-changed', handleOrgChange)
 })
 </script>
 

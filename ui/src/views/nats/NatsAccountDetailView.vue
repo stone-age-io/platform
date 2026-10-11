@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
 import { formatDate, formatBytes } from '@/utils/format'
@@ -148,19 +148,9 @@ function getSigningKeyPublicKey(key: any): string {
 }
 
 // Watch for org changes
-function handleOrgChange() {
-  loadAccount()
-}
-
 onMounted(() => {
   loadAccount()
-  window.addEventListener('organization-changed', handleOrgChange)
 })
-
-onUnmounted(() => {
-  window.removeEventListener('organization-changed', handleOrgChange)
-})
-
 </script>
 
 <template>

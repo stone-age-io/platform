@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useUIStore } from '@/stores/ui'
 import { useNatsStore } from '@/stores/nats'
@@ -228,11 +228,6 @@ onMounted(() => {
   natsStore.loadSettings()
   loadIdentities()
 })
-
-
-
-// Reload identities if user switches org while on Settings page
-watch(() => authStore.currentOrgId, loadIdentities)
 </script>
 
 <template>

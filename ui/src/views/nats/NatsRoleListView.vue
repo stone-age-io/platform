@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
 import { useServerSearch } from '@/composables/useServerSearch'
@@ -108,21 +108,8 @@ function handleRowClick(role: NatsRole) {
   router.push(`/nats/roles/${role.id}`)
 }
 
-/**
- * Handle organization change
- */
-function handleOrgChange() {
-  searchQuery.value = ''
-  loadRoles()
-}
-
 onMounted(() => {
   loadRoles()
-  window.addEventListener('organization-changed', handleOrgChange)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('organization-changed', handleOrgChange)
 })
 </script>
 

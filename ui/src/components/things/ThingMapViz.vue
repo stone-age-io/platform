@@ -116,10 +116,6 @@ async function loadData() {
 }
 
 watch(() => uiStore.theme, (newTheme) => updateTheme(newTheme === 'dark'))
-watch(() => authStore.currentOrgId, () => {
-  closeDrawer()
-  loadData()
-})
 
 watch(markersForMap, (next) => {
   renderMarkers(next, handleMarkerClick, { fitBounds: true })

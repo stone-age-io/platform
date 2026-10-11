@@ -259,7 +259,6 @@ export const useAuthStore = defineStore('auth', () => {
     }
     currentOrgId.value = orgId
     user.value.current_organization = orgId
-    window.dispatchEvent(new CustomEvent('organization-changed', { detail: { orgId } }))
   }
 
   async function updateCurrentMembership(data: Partial<Membership>) {

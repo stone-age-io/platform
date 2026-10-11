@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
 import { useServerSearch } from '@/composables/useServerSearch'
@@ -113,18 +113,8 @@ function getRoleBadgeClass(role: string): string {
   }
 }
 
-function handleOrgChange() {
-  searchQuery.value = ''
-  loadMembers()
-}
-
 onMounted(() => {
   loadMembers()
-  window.addEventListener('organization-changed', handleOrgChange)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('organization-changed', handleOrgChange)
 })
 </script>
 

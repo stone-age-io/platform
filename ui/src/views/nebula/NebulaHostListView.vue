@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
 import { useServerSearch } from '@/composables/useServerSearch'
@@ -133,25 +133,9 @@ function handleRowClick(host: NebulaHost) {
   router.push(`/nebula/hosts/${host.id}`)
 }
 
-/**
- * Handle organization change
- */
-function handleOrgChange() {
-  searchQuery.value = ''
-  loadHosts()
-  // The audit is org-scoped on the server, so a stale set from the previous
-  // organization would badge rows that have nothing to do with it.
-  loadStaleHosts()
-}
-
 onMounted(() => {
   loadHosts()
   loadStaleHosts()
-  window.addEventListener('organization-changed', handleOrgChange)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('organization-changed', handleOrgChange)
 })
 </script>
 

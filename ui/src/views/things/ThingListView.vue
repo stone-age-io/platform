@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
 import { useServerSearch } from '@/composables/useServerSearch'
@@ -173,24 +173,10 @@ function handleRowClick(thing: Thing) {
 }
 
 /**
- * Handle organization change event
- */
-function handleOrgChange() {
-  // Reset search when org changes
-  searchQuery.value = ''
-  loadThings()
-}
-
-/**
  * Initialize on mount
  */
 onMounted(() => {
   loadThings()
-  window.addEventListener('organization-changed', handleOrgChange)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('organization-changed', handleOrgChange)
 })
 </script>
 

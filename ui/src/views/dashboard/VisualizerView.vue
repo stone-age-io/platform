@@ -216,12 +216,6 @@ const { shortcuts } = useKeyboardShortcuts([
 
 // --- Lifecycle ---
 
-function handleOrgChange() {
-  if (natsStore.isConnected) {
-    dashboardStore.refreshRemoteKeys()
-  }
-}
-
 // Warn user before leaving with unsaved changes
 function handleBeforeUnload(e: BeforeUnloadEvent) {
   if (dashboardStore.isDirty) {
@@ -235,14 +229,12 @@ onMounted(() => {
   if (natsStore.isConnected) {
     subscribeAllWidgets()
   }
-  window.addEventListener('organization-changed', handleOrgChange)
   window.addEventListener('beforeunload', handleBeforeUnload)
 })
 
 onUnmounted(() => {
   // Grug say: keep data warm during navigation
   unsubscribeAllWidgets(true)
-  window.removeEventListener('organization-changed', handleOrgChange)
   window.removeEventListener('beforeunload', handleBeforeUnload)
   if (kioskHintTimer) clearTimeout(kioskHintTimer)
   // Exit kiosk on navigating away so MainLayout returns to normal

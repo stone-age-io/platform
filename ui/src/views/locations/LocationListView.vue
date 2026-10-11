@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 import { pb } from '@/utils/pb'
@@ -129,10 +129,6 @@ function handleRowClick(location: Location) {
   router.push(`/locations/${location.id}`)
 }
 
-function handleOrgChange() {
-  loadLocations()
-}
-
 // Reset page on search
 watch(searchQuery, () => {
   currentPage.value = 1
@@ -140,11 +136,6 @@ watch(searchQuery, () => {
 
 onMounted(() => {
   loadLocations()
-  window.addEventListener('organization-changed', handleOrgChange)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('organization-changed', handleOrgChange)
 })
 </script>
 

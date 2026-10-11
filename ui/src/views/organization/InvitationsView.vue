@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { usePagination } from '@/composables/usePagination'
 import { useServerSearch } from '@/composables/useServerSearch'
 import { useAuthStore } from '@/stores/auth'
@@ -277,23 +277,9 @@ async function handleDelete(invite: Invitation) {
   }
 }
 
-/**
- * Handle organization change
- */
-function handleOrgChange() {
-  searchQuery.value = ''
-  showInviteForm.value = false
-  loadInvitations()
-}
-
 onMounted(() => {
   loadInvitations()
   loadOrganizations()
-  window.addEventListener('organization-changed', handleOrgChange)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('organization-changed', handleOrgChange)
 })
 </script>
 

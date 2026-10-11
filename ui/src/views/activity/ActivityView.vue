@@ -14,7 +14,7 @@
  * a detail dialog rather than navigating, because an entry is not a record --
  * the thing it describes may since have been deleted.
  */
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { usePagination } from '@/composables/usePagination'
 import { useServerSearch } from '@/composables/useServerSearch'
 import { useAuthStore } from '@/stores/auth'
@@ -186,18 +186,9 @@ function clearFocus() {
   loadEntries()
 }
 
-function handleOrgChange() {
-  searchQuery.value = ''
-  focusedResource.value = null
-  page.value = 1
-  loadEntries()
-}
-
 onMounted(() => {
   loadEntries()
-  window.addEventListener('organization-changed', handleOrgChange)
 })
-onUnmounted(() => window.removeEventListener('organization-changed', handleOrgChange))
 </script>
 
 <template>

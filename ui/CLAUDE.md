@@ -187,6 +187,20 @@ only when it is a relative in-app path — it arrives in a URL someone can send
 you, so pushing an absolute one would make the login form an open redirect (the
 `//` case is not redundant: `//evil.test/x` is protocol-relative).
 
+## Switching organization remounts the page
+
+`MainLayout` keys its `<router-view>` on the active organization, so a switch
+throws the page away and mounts a fresh one: page one, empty search, its own
+`onMounted` load. **Do not give a page, or anything inside one, its own
+org-change handling** — no listener, no `watch` on `currentOrgId`. A `window`
+event once did this job through 18 hand-copied handlers, and they had drifted:
+only one reset the page number, so page 2 of a long list showed an empty page in
+a shorter org. Things that outlive the page and care about the org (the NATS
+reconnect in `App.vue`) watch `currentOrgId` themselves. A record page (any
+route with a param) goes to the list its path sits under instead of remounting,
+since its record belongs to the org being left; and logout remounts nothing.
+`MainLayout.vue` says why for both.
+
 ## Features
 
 The numbers match the feature index in the root `CLAUDE.md`.
