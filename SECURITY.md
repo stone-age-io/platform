@@ -74,10 +74,19 @@ NATS credential and every overlay host config. That is the line the feature
 actually defends, and it is worth stating because the two halves have very
 different remediation costs:
 
-- **NATS**: rotate. Set `regenerate` on each `nats_users` row; the revocation
-  cutoff in the account JWT is permanent, so the old `.creds` stays dead.
-  Central, scriptable, and delivery already exists (`GET /api/me/leaf-config`,
-  the console download).
+- **NATS**: rotate the key pair. Set `revoke` on each `nats_users` row: pb-nats
+  generates a new key pair, puts the old public key on the account's
+  revocation list so every copy of the old `.creds` is rejected, and leaves a
+  working replacement on the record, which stays active. **Not** `regenerate`
+  — it re-signs a JWT for the *same* stored seed and revokes nothing, and
+  every stolen `creds_file` contains that seed, so the leaked credential keeps
+  working. Central and scriptable, but each device then needs its replacement
+  `.creds` redelivered (`GET /api/me/leaf-config`, the console download).
+  `guardLinkedIdentity` in `hooks/active_flag.go` refuses `revoke` on the
+  identity of a deactivated Thing. Those devices are already cut off:
+  deactivation put their key on the revocation list. Reactivating one
+  re-signs for the same leaked seed, so set `revoke` on it once it is active
+  again.
 - **Nebula**: re-issue *and* blocklist *and* redeliver. There is no CRL, so a
   revoked certificate is a fingerprint in every peer's `pki.blocklist`, applied
   when that peer's config is redeployed. This is the expensive half.

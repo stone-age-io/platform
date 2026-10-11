@@ -11,6 +11,18 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+### Security
+
+- **After a stolen database, rotate NATS credentials with `revoke`, not
+  `regenerate`.** `SECURITY.md` said to set `regenerate` on every `nats_users`
+  row, and the 0.5.0 and 0.7.0 notes said the same. `regenerate` signs a new
+  JWT for the *same* stored seed and revokes nothing, and every stolen
+  `creds_file` contains that seed, so the leaked credentials kept working.
+  `revoke` generates a new key pair and puts the old public key on the
+  account's revocation list. Each device then needs its replacement `.creds`
+  redelivered. If you followed the old advice, set `revoke` now.
+  Documentation only. The code has not changed.
+
 ### Fixed
 
 - **Switching organization starts every list over.** Only the Activity list
