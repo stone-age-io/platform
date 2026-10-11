@@ -25,6 +25,24 @@ and this file starts where the versioned releases do.
 
 ### Fixed
 
+- **A NATS role created without its limits now works.** A role created through
+  the API, `stone nats-role create` or `stone apply` without `max_subscriptions`,
+  `max_data` and `max_payload` stored 0 for each, and NATS reads 0 as none.
+  Every user of the role was disconnected as soon as it connected, and the
+  browser reconnected every few seconds with no message in the console UI. A
+  limit left unset is now -1: no per-user limit, and the account limit still
+  applies. The upgrade sets -1 on every role limit that holds 0 and re-signs
+  the users of those roles. The console picks up the new credential when it
+  next connects. A device that stores its `.creds` file needs the file fetched
+  again.
+- **A NATS limit of 0 is now refused.** A write that sets a role limit, or an
+  account's connection, subscription, payload or data limit, to 0 gets an error
+  that says what 0 would do. The console forms show that error. JetStream 0
+  is still allowed, because it means JetStream off. An account limit that is
+  already 0 is left as it is. `stone-age` now refuses to start with 0 for
+  `nats.default_limits.max_connections`, `max_subscriptions` or `max_payload`.
+  In `nats-server.conf` 0 means "use the server default", but these values go
+  into the account JWT, where it means none.
 - **Switching organization starts every list over.** Only the Activity list
   reset its page number, so page 2 of a long list switched to an empty page
   in an organization with fewer records. A list now opens on page one with no

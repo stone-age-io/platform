@@ -6,6 +6,7 @@ import { useFileUrl } from '@/composables/useFileUrl'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import { formatDate } from '@/utils/format'
+import { apiErrorMessage } from '@/utils/apiError'
 import type { Organization, User, NatsAccount } from '@/types/pocketbase'
 import { useConfirm } from '@/composables/useConfirm'
 import BaseCard from '@/components/ui/BaseCard.vue'
@@ -166,7 +167,8 @@ async function saveLimits() {
     await loadNatsAccount()
     editingLimits.value = false
   } catch (err: any) {
-    toast.error(`Failed to update limits: ${err.message}`)
+    // A limit of 0 is refused, and the reason is in the field errors.
+    toast.error(`Failed to update limits: ${apiErrorMessage(err, 'unknown error')}`)
   } finally {
     savingLimits.value = false
   }

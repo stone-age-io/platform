@@ -375,8 +375,16 @@ func main() {
 	// RegisterCodes, so a generated code is in place before the path is built.
 	hooks.RegisterLocationPath(app)
 
+	// A NATS limit left unset is -1, never 0, which a JWT reads as "none": a role
+	// created without its limits signed credentials that could not stay
+	// connected. See hooks/nats_limits.go.
+	hooks.RegisterNatsLimits(app, hooks.NatsLimitsOptions{
+		RoleCollection:    natsOptions.RoleCollectionName,
+		AccountCollection: natsOptions.AccountCollectionName,
+	})
+
 	// Platform-owned hooks: auto-provision NATS account + Nebula CA per new org.
-	hooks.RegisterOrgProvisioning(app, hooks.OrgProvisioningOptions{
+	provisioningOptions := hooks.OrgProvisioningOptions{
 		OrgCollection:                 orgCollection,
 		NatsAccountCollection:         natsOptions.AccountCollectionName,
 		NebulaCACollection:            nebulaOptions.CACollectionName,
@@ -386,7 +394,11 @@ func main() {
 		NatsMaxJetStreamDiskStorage:   viper.GetInt64("nats.default_limits.max_jetstream_disk_storage"),
 		NatsMaxJetStreamMemoryStorage: viper.GetInt64("nats.default_limits.max_jetstream_memory_storage"),
 		NebulaDefaultCAValidityYears:  viper.GetInt("nebula.default_ca_validity_years"),
-	})
+	}
+	if err := provisioningOptions.Validate(); err != nil {
+		log.Fatalf("❌ %v", err)
+	}
+	hooks.RegisterOrgProvisioning(app, provisioningOptions)
 
 	// Platform-owned hooks: `active` on an organization withdraws its NATS
 	// account, which is the only thing it has ever been allowed to mean.

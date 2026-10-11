@@ -87,7 +87,9 @@ nats:
   #
   # -1 means unlimited. 0 on either JetStream field disables JetStream for the
   # account entirely, taking the digital twin with it -- never use 0 to mean
-  # "no limit".
+  # "no limit". These values go into the account JWT, where 0 means none -- not
+  # "use the default" as it does in nats-server.conf -- so stone-age refuses to
+  # start with 0 for max_connections, max_subscriptions or max_payload.
   default_limits:
     max_connections: 100
     max_subscriptions: 5000

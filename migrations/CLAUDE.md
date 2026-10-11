@@ -12,6 +12,16 @@ touches an API rule, also read `AUTHORIZATION.md` and run
   `authRule: "active = true"` without the `UPDATE` in
   `schema_update_device_active_flag.go` would lock every already-provisioned
   device out of the API on deploy.
+- **A backfill of anything pb-nats signs must save through `app.Save`, not
+  `UPDATE`.** The row is not the defect; the credentials signed from it are. A
+  role update makes pb-nats re-sign every active user holding the role, and a
+  plain `UPDATE` fixes the row while every JWT minted from it stays as it was.
+  `schema_update_nats_role_limits.go` is the worked example. Its test runs it
+  through the real migrations runner rather than calling the body, because
+  the runner wraps migrations in a transaction and the re-sign is an
+  after-success hook deferred to the commit. Contrast
+  `schema_update_device_active_flag.go`, where a save would only fire a hook
+  with nothing to do, so `UPDATE` is the right call.
 - **`nats_roles` fields come from two places, and `schema.json` must list
   every one pb-nats uses.** pb-nats creates the collection before
   `schema.json` is imported, so a fresh database gets the library's fields

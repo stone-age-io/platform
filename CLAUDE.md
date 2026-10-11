@@ -253,6 +253,8 @@ reasoning, and the incident that taught it, are in `AUTHORIZATION.md`.
   `GET /api/me/leaf-config` instead of adding a read branch.
 - **An empty NATS allow list grants nothing** (pb-nats v0.3.0 and later). Write
   full access as an explicit `>`.
+- **An unset NATS limit is -1, and 0 is refused.** In a JWT 0 means none, and a
+  credential with 0 subscriptions is disconnected as soon as it connects.
 - **An `authRule` is checked only at the auth endpoint, never on an existing
   token.** Disabling an identity also needs `RefreshTokenKey()`.
 - **A flag is not a control unless something acts on it.** And `revoke` is not
@@ -265,6 +267,8 @@ PocketBase traps that bite here (`hooks/CLAUDE.md`):
 - `Record.Original()` is the state at the last database READ, not before this write.
 - pb-nats trigger fields fire from `app.Save()` only because pb-nats binds them
   to the MODEL hook.
+- A record request hook's `RequestInfo().Body` holds prepared values, not what
+  the client sent: a number field's `null` is already 0 there.
 
 Schema traps (`migrations/CLAUDE.md`):
 - A `schema.json` change needs a new `migrations/schema_update_*.go`. A new

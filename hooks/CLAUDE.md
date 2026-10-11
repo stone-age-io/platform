@@ -58,6 +58,18 @@ one-line rules are in the root `CLAUDE.md`; the reasoning is there.
   fires. Both of those suites would otherwise pass against a hook that does
   nothing.
 
+- **A record request hook does not see the body the client sent.** Before
+  `OnRecordCreateRequest` or `OnRecordUpdateRequest` fires, the record
+  handlers replace `RequestInfo().Body` with `Record.ReplaceModifiers(body)`
+  (`apis/record_crud.go`), which stores each field's PREPARED value. So a
+  number field's `null` and `""` are already 0 there, and a modifier key
+  (`max_payload-`) has become the plain field name. Key presence survives;
+  the raw value does not. To tell "blank" from "0", bind the body again with
+  `e.BindBody`: the router wraps every body, batch sub-requests included, in
+  a `RereadableReadCloser`. `hooks/nats_limits.go` (`rawRequestBody`) does
+  this. Its first version read `RequestInfo()` and refused every blank form
+  field as an explicit 0.
+
 ## Features
 
 The numbers match the feature index in the root `CLAUDE.md`.
@@ -402,6 +414,7 @@ The numbers match the feature index in the root `CLAUDE.md`.
 - `hooks/nebula_routes.go` - `POST /api/org/nebula-ca/rotate` (owner/admin, three steps) and `GET /api/org/nebula/cert-audit`. Both are routes for the same reason `nats_account_routes.go` is: a PocketBase rule cannot say "this one field and nothing else", and the audit needs a Nebula certificate parsed, which the browser cannot do
 - `hooks/activity.go` - the tenant activity feed. The collection list IS the safety argument (see feature 7b); bound to the request hooks because they are the only layer carrying the actor, and best-effort because an observation must never cost the user their write
 - `hooks/relation_tenancy.go` - the one hook-based enforcement in the platform: no relation may point into another organization's records. Derived from the schema rather than listing the nineteen relations, bound to the MODEL hooks, and applied to superusers too. See the invariants-vs-permissions bullet in `AUTHORIZATION.md`
+- `hooks/nats_limits.go` - an unset NATS role limit is stored as -1, and a request that sends 0 for a role or account limit is refused with a field error. Two layers because only a request can tell "omitted" from "0". Accounts get only the refusal, edge-keyed, because an account's -1 really is unlimited and a 0 already stored must not block a library's later save. The long form, and why 0 is refused rather than kept: the limits bullet in `AUTHORIZATION.md`
 - `hooks/org_provisioning.go` - every organization's NATS account and Nebula CA. Create-if-missing and bound to update as well as create, so re-saving the organization RETRIES a failed provision; failures are returned rather than logged, and returned AFTER `e.Next()` so a NATS outage cannot cost the owner their membership row
 - `hooks/org_active_flag.go` - what `organizations.active` means: the tenant's NATS account is withdrawn, and nothing else. Level-triggered so a reported failure can be retried by re-saving (`Record.Original()` is the last READ, not the last write), and it refuses the flip on the operator and system orgs. The device-scope sibling is `hooks/active_flag.go`, which is edge-keyed and whose revocation is permanent — read both before changing either
 - `hooks/schema_fields.go` - the fields that exist only once `schema.json` has been imported, shared by `bootstrap` (fatal) and the `schema` readiness check (a Fail). One list, because PocketBase discards a write to a missing field in silence and two copies drift

@@ -4,6 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
+import { apiErrorMessage } from '@/utils/apiError'
 import type { NatsRole } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 
@@ -127,7 +128,8 @@ async function handleSubmit() {
       router.push('/nats/roles')
     }
   } catch (err: any) {
-    toast.error(err.message || 'Failed to save role')
+    // The server explains a refused limit in the field errors, not the message.
+    toast.error(apiErrorMessage(err, 'Failed to save role'))
   } finally {
     loading.value = false
   }
@@ -197,7 +199,13 @@ onMounted(() => { if (isEdit.value) loadRole() })
                 <label class="label"><span class="label-text">Max Payload (bytes)</span></label>
                 <input v-model="formData.max_payload" type="number" class="input input-bordered font-mono" />
               </div>
-              <p class="text-[10px] text-base-content/50 italic px-1">-1 = Unlimited</p>
+              <!-- These go into every user JWT signed from the role, where 0
+                   means none: a credential with 0 subscriptions is disconnected
+                   as soon as it connects. The server refuses 0 (hooks/nats_limits.go). -->
+              <p class="text-[10px] text-base-content/50 italic px-1">
+                -1 = no per-user limit (the account limit still applies). 0 is not allowed:
+                NATS reads it as none. To stop a role publishing or subscribing, leave that Allow list empty.
+              </p>
             </div>
           </BaseCard>
         </div>

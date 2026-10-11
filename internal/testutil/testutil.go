@@ -242,6 +242,14 @@ func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
 		UserCollection:       "users",
 	})
 
+	// Changes what a write stores, so it belongs here: a role saved without its
+	// limits gets -1 rather than the 0 every JWT reads as "none". Without it the
+	// harness would mint the dead credentials production no longer mints.
+	hooks.RegisterNatsLimits(app, hooks.NatsLimitsOptions{
+		RoleCollection:    natsOpts.RoleCollectionName,
+		AccountCollection: natsOpts.AccountCollectionName,
+	})
+
 	// DELIBERATELY NOT REGISTERED, and this is the harness's actual boundary
 	// rather than an oversight:
 	//

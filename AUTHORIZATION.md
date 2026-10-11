@@ -252,6 +252,48 @@ Rules to follow when touching authorization:
   role that sends requests must list it on subscribe. Full access is written
   as `>` explicitly, so it is visible on the role. A credential minted before
   the upgrade keeps its `>` until revoked, since a reissue keeps the key pair.
+- **An unset NATS limit is -1, and 0 is refused.** The same family the other
+  way round: a value nobody set did not mean "no limit", it meant NONE.
+  PocketBase number fields have no default, so a `nats_roles` record created
+  without `max_subscriptions`, `max_data` and `max_payload` (the record API,
+  `stone nats-role create` without the flags, a `stone apply` workspace that
+  does not list them) stored 0. pb-nats copies the value into the user JWT and
+  maps only a negative to `NoLimit`, which is correct NATS and documented. And
+  nats-server v2.15 checks the subscription limit at CONNECT: a credential with
+  `Subs: 0` is closed 20ms after it connects, before its first subscribe, so it
+  cannot publish either. The browser reconnected every ~3s with nothing but
+  console errors and one server log line. The console form avoided it only by
+  pre-filling -1. `hooks/nats_limits.go` stores -1 for an unset role limit on
+  every save and refuses a request that sends 0, with a field error saying
+  what 0 would do. `schema_update_nats_role_limits.go` corrected the existing
+  rows and re-signed their users.
+  - **0 is refused rather than kept, because it expresses nothing.**
+    "Publish-only" is not a `Subs: 0` credential, which cannot stay connected.
+    It is an empty subscribe allow list, which signs deny `>` (the bullet above).
+    Payload 0 closes the connection on the first non-empty message, and
+    nats-server does not enforce a data limit at all. Rewriting an explicit 0
+    to -1 would silently grant what the writer meant to withhold, so a request
+    that asks for 0 gets a 400. Go code cannot be told apart from "unset" at
+    the model layer, so there a 0 becomes -1.
+  - **On a role, -1 means "the account limit applies", not unlimited.**
+    nats-server applies the lower of the user limit and the account limit, and
+    the account limits are operator-only, so the role default cannot widen a
+    tenant's envelope. On an ACCOUNT, -1 really is unlimited. So accounts get
+    only the refusal: no model rewrite, no backfill, JetStream 0 still allowed
+    (it means JetStream off), and the refusal is edge-keyed, so a 0 already
+    stored does not block later saves. The console limits form resubmits all
+    six fields on every save.
+  - **Two conventions meet here.** In `nats-server.conf`, 0 means "not set, use
+    the server default", which for subscriptions is unlimited. In a JWT, 0
+    means zero. `nats.default_limits` in `config.yaml` looks like the first and
+    is copied into the second, so `stone-age` refuses to start with 0
+    for `max_connections`, `max_subscriptions` or `max_payload`
+    (`OrgProvisioningOptions.Validate`).
+  - **The review question:** not "is this field set" but **"what does the zero
+    value mean to whatever reads it."** The `real server` case of
+    `TestNatsLimits` pins the server's side against a real nats-server. If an
+    upgrade ever lets a `Subs: 0` connection stay up, that case fails and says
+    to revisit this.
 - **An `authRule` is checked at the auth endpoint only, never on an existing
   token.** PocketBase evaluates it in `apis.RecordAuthResponse`
   (`apis/record_helpers.go`), reached from `/auth-with-password` and friends —

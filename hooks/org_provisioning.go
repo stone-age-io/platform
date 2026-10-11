@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
@@ -34,6 +35,39 @@ type OrgProvisioningOptions struct {
 	NatsMaxJetStreamMemoryStorage int64
 
 	NebulaDefaultCAValidityYears int
+}
+
+// Validate refuses account defaults that would provision a tenant that cannot
+// use NATS. In a nats-server config file 0 means "use the server default"; in
+// the account JWT these values are copied into, 0 means NONE
+// (hooks/nats_limits.go). So an operator who writes `max_subscriptions: 0`
+// meaning "no limit", as it would in nats-server.conf, would give every
+// new organization an account in which no client can stay connected. Nothing
+// refuses that account when it is created, because provisioning is not a request,
+// and the first symptom would be a device that cannot connect.
+//
+// The JetStream ceilings are not checked: 0 there disables JetStream, which is a
+// real NATS setting (see the field comment above), not a misreading.
+func (o OrgProvisioningOptions) Validate() error {
+	var zero []string
+	for _, l := range []struct {
+		key   string
+		value int
+	}{
+		{"max_connections", o.NatsMaxConnections},
+		{"max_subscriptions", o.NatsMaxSubscriptions},
+		{"max_payload", o.NatsMaxPayload},
+	} {
+		if l.value == 0 {
+			zero = append(zero, "nats.default_limits."+l.key)
+		}
+	}
+	if len(zero) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%s set to 0. In a NATS account JWT, 0 means none, not unlimited, "+
+		"so no client in a new organization could use NATS. Use -1 for unlimited",
+		strings.Join(zero, ", "))
 }
 
 // RegisterOrgProvisioning gives every organization the NATS account and Nebula
@@ -148,7 +182,9 @@ func ensureOrgNatsAccount(app core.App, opts OrgProvisioningOptions, org *core.R
 	// max_data stays unlimited because it is the wrong shape for the thing the
 	// price sheet promises: it is a CUMULATIVE byte cap in the account JWT, not
 	// a monthly one, so it cannot express a bandwidth allowance. A per-month
-	// figure has to be measured from $SYS, not fenced here.
+	// figure has to be measured from $SYS, not fenced here. (Nor would any value
+	// fence anything: nats-server v2.15 never reads Limits.Data, user or account.
+	// See hooks/nats_limits.go.)
 	rec.Set("max_data", -1)
 	rec.Set("max_payload", opts.NatsMaxPayload)
 	rec.Set("max_jetstream_disk_storage", opts.NatsMaxJetStreamDiskStorage)
