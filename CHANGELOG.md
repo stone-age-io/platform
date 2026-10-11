@@ -11,6 +11,22 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Switching organization starts every list over.** Only the Activity list
+  reset its page number, so page 2 of a long list switched to an empty page
+  in an organization with fewer records. A list now opens on page one with no
+  search and its default order, and loads once: a search typed before the
+  switch used to load it twice. The Locations list no longer carries the
+  previous organization's search into the next one.
+- **Switching organization on a record page goes to its list.** The record
+  belongs to the organization being left, so the page kept showing it, and any
+  action on it failed. A Thing goes to Things, a stream to Streams, and so on.
+- **Switching organization checks the page against your role there.** An owner
+  in one organization and a viewer in the next, on a page a viewer cannot open
+  (NATS Users, say), stayed on it and saw a mostly empty screen. The page now
+  goes to the dashboard, as opening it directly would.
+
 ## [0.10.0] - 2026-10-08
 
 **pb-nats v0.3.0: an empty NATS permission list now grants nothing.** Until
