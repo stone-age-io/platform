@@ -160,6 +160,14 @@ The numbers match the feature index in the root `CLAUDE.md`.
     - **The JetStream domain is the Thing's code**, computed and never stored. A
       stored column could disagree with the code, and the disagreement surfaced
       as a site that simply stopped appearing.
+    - **The hub's `nats.conf` and leaf-config take the domain from one key.**
+      `nats export` writes `jetstream { domain }` from `nats.jetstream_domain`,
+      the same key the route serves as `hub_domain`, plus a `leafnodes` listener
+      on 7422 (`main.go`, where the export command is registered). Keep both
+      reading that key. An exported config with no domain was the default
+      until this was wired, and every edge mirror from the hub failed against
+      it. The route answers 503 naming the key when `leaf_url` or the domain is
+      empty, rather than serve a config the agent will reject.
     - **`hub_domain` is cached by the agent, so changing it is not a live change.**
       The route serves it, but the agent stores it in its platform session file and
       re-fetches only when that is empty. A deployment that moves its hub's

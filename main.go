@@ -360,7 +360,17 @@ func main() {
 	}
 
 	// Register CLI Commands (for generating configs, keys, etc.)
-	pbnats.RegisterCommands(app)
+	//
+	// `nats export` writes a leafnode listener and the hub's JetStream domain
+	// because edge sites need both. The domain is nats.jetstream_domain, the
+	// same key GET /api/me/leaf-config serves as hub_domain, so the hub and its
+	// edges are told one name rather than two that can disagree.
+	natsCommandOptions := pbnats.DefaultCommandOptions()
+	natsCommandOptions.AccountCollectionName = natsOptions.AccountCollectionName
+	natsCommandOptions.EncryptionKey = natsOptions.EncryptionKey
+	natsCommandOptions.DefaultLeafnodePort = 7422
+	natsCommandOptions.DefaultJetstreamDomain = viper.GetString("nats.jetstream_domain")
+	pbnats.RegisterCommandsWithOptions(app, natsCommandOptions)
 
 	// Platform-owned hooks: every org gets an immutable `code`, the root of the
 	// public namespace (ADR 0002). Registered before the provisioning hook so a

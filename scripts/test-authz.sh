@@ -152,7 +152,10 @@ echo "=== initialising a throwaway database in $WORK ==="
   || die "superuser upsert failed"
 "$BIN" migrate up --dir "$WORK/pb_data" >/dev/null 2>&1 || die "migrate up failed"
 
-"$BIN" serve --http "127.0.0.1:$PORT" --dir "$WORK/pb_data" >"$WORK/server.log" 2>&1 &
+# A leaf URL, because /api/me/leaf-config refuses to serve without one. Nothing
+# dials it here; check 12 only needs the route to answer.
+STONE_AGE_NATS_LEAF_URL="nats-leaf://127.0.0.1:7422" \
+  "$BIN" serve --http "127.0.0.1:$PORT" --dir "$WORK/pb_data" >"$WORK/server.log" 2>&1 &
 SRV_PID=$!
 
 for _ in $(seq 1 40); do
@@ -742,9 +745,9 @@ TLC=$(j "$RBODY" token)
 req GET "/me/leaf-config" "$TLC"
 expect "a thing CAN reach /api/me/leaf-config" 200 "$RCODE" "$RBODY"
 LC_MISSING=$(jn "$RBODY" \
-  '["code","domain","creds","account_jwt","account_pub","operator_jwt","sys_account_jwt","sys_account_pub"].filter(k=>!o[k]).join(",")')
+  '["code","domain","creds","account_jwt","account_pub","operator_jwt","sys_account_jwt","sys_account_pub","hub_leaf_url","hub_domain"].filter(k=>!o[k]).join(",")')
 if [ -z "$LC_MISSING" ]; then
-  ok "leaf-config carries code, domain, creds, account/operator/sys JWTs and pubkeys"
+  ok "leaf-config carries code, domain, creds, account/operator/sys JWTs and pubkeys, and the hub's leaf URL and domain"
 else
   no "leaf-config response missing: $LC_MISSING"
 fi

@@ -33,6 +33,18 @@ process serves the API, the console, and the NATS server the console talks to.
 container cannot work out for itself — put the host's real name there rather than
 `localhost` if anyone else will use it.
 
+For [edge sites](#what-it-does), also publish the leaf node port and say where
+edge boxes reach it:
+
+```bash
+  -p 7422:7422 \
+  -e STONE_AGE_NATS_LEAF_URL='nats-leaf://hub.example.com:7422' \
+```
+
+The hub's leaf node listener and JetStream domain are already in the generated
+NATS config. Only the address is missing, and until it is set an edge box's
+agent is told so when it asks for its leaf config.
+
 ### From source — five commands
 
 Needs Go 1.26+ and Node 20.19+ (or 22.12+, whichever your distribution has).

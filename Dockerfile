@@ -17,6 +17,15 @@
 # STONE_AGE_NATS_WEBSOCKET_URLS is the address a BROWSER dials, which this
 # container cannot know: it is the host's name or address as the operator's users
 # reach it, not anything visible from inside. Nothing else is required.
+#
+# Edge sites need two more flags, for the same reason:
+#
+#     -p 7422:7422 \
+#     -e STONE_AGE_NATS_LEAF_URL='nats-leaf://<host the edge boxes reach>:7422' \
+#
+# The leafnode listener and the hub's JetStream domain are already in the
+# generated nats.conf. Only the address an EDGE BOX dials is missing, and
+# without it GET /api/me/leaf-config refuses and says so.
 
 # ----------------------------------------------------------------- 1. console
 # --platform=$BUILDPLATFORM: vite output is static JS and CSS, byte-identical
@@ -103,9 +112,10 @@ RUN mkdir -p /data && chown stoneage /data
 VOLUME /data
 USER stoneage
 
-# 8090 console + REST, 4222 NATS clients, 9222 NATS over WebSocket (browsers
-# cannot speak the NATS TCP protocol, so the console needs this one).
-EXPOSE 8090 4222 9222
+# 8090 console + REST, 4222 NATS clients, 7422 NATS leaf nodes (edge sites),
+# 9222 NATS over WebSocket (browsers cannot speak the NATS TCP protocol, so the
+# console needs this one).
+EXPOSE 8090 4222 7422 9222
 
 # /api/ready rather than PocketBase's /api/health, which only reports that the
 # HTTP server is listening -- true of every failure worth catching here. This

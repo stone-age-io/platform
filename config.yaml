@@ -58,10 +58,16 @@ nats:
   # container a different hostname. A Control Plane publishing to
   # nats://nats:4222 says nothing about what an edge box across a WAN can reach.
   #
-  # leaf_url empty = no edge box can bootstrap; startup rejects anything not
-  # beginning nats-leaf:// or tls://. jetstream_domain is what an edge addresses
-  # the hub AS across the link ($JS.<domain>.API), so it must match the
+  # leaf_url empty = no edge box can bootstrap, and GET /api/me/leaf-config
+  # answers 503 naming this key; startup rejects anything not beginning
+  # nats-leaf:// or tls://. jetstream_domain is what an edge addresses the hub
+  # AS across the link ($JS.<domain>.API), so it must match the
   # `jetstream { domain }` of the hub's own nats-server config.
+  #
+  # `nats export` writes that domain from this key, along with a
+  # `leafnodes { port: 7422 }` listener, so a fresh install agrees with itself.
+  # It does not rewrite an existing nats.conf: change this key on a running
+  # deployment and edit the hub's config to match, by hand.
   leaf_url: ""
   jetstream_domain: "hub"
 

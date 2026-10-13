@@ -2,6 +2,7 @@ package hooks
 
 import (
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -62,9 +63,7 @@ func TestLeafConfigDomainIsTheCode(t *testing.T) {
 	}
 }
 
-// Nothing here is per-caller, so the hub values must arrive verbatim. An edge
-// box that gets an empty leaf URL writes a remote that dials nowhere, and the
-// only symptom is a site that never appears.
+// Nothing here is per-caller, so the hub values must arrive verbatim.
 func TestLeafConfigCarriesTheHubValuesVerbatim(t *testing.T) {
 	got := leafConfigResponse(leafConfig{
 		Code:       "s01",
@@ -77,5 +76,28 @@ func TestLeafConfigCarriesTheHubValuesVerbatim(t *testing.T) {
 	}
 	if got["hub_domain"] != "hub" {
 		t.Errorf("hub_domain = %q", got["hub_domain"])
+	}
+}
+
+// A platform that is not set up for edge sites says so, naming the setting and
+// its environment variable. The agent would reject the empty value anyway, but
+// it can only name the field, which does not tell anyone what to change.
+func TestLeafConfigNamesTheMissingHubSetting(t *testing.T) {
+	tests := []struct {
+		leafURL, domain string
+		want            string // "" = set up
+	}{
+		{"nats-leaf://hub.example.com:7422", "hub", ""},
+		{"", "hub", "STONE_AGE_NATS_LEAF_URL"},
+		{"nats-leaf://hub.example.com:7422", "", "STONE_AGE_NATS_JETSTREAM_DOMAIN"},
+	}
+	for _, tt := range tests {
+		got := hubNotSetUp(LeafConfigRoutesOptions{HubLeafURL: tt.leafURL, HubDomain: tt.domain})
+		if tt.want == "" && got != "" {
+			t.Errorf("leaf_url %q, domain %q: refused with %q, want served", tt.leafURL, tt.domain, got)
+		}
+		if tt.want != "" && !strings.Contains(got, tt.want) {
+			t.Errorf("leaf_url %q, domain %q: got %q, want it to name %s", tt.leafURL, tt.domain, got, tt.want)
+		}
 	}
 }

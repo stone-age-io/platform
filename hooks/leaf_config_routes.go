@@ -1,6 +1,8 @@
 package hooks
 
 import (
+	"net/http"
+
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
@@ -63,6 +65,10 @@ func RegisterLeafConfigRoutes(app *pocketbase.PocketBase, opts LeafConfigRoutesO
 		se.Router.GET("/api/me/leaf-config", func(re *core.RequestEvent) error {
 			if err := requireThing(re, opts.ThingCollection); err != nil {
 				return err
+			}
+			if setting := hubNotSetUp(opts); setting != "" {
+				return re.Error(http.StatusServiceUnavailable,
+					"edge sites are not set up on this platform: "+setting+" is empty", nil)
 			}
 			thing := re.Auth // no id parameter to aim elsewhere
 
@@ -167,6 +173,23 @@ func leafConfigResponse(c leafConfig) map[string]string {
 		"hub_leaf_url":    c.HubLeafURL,
 		"hub_domain":      c.HubDomain,
 	}
+}
+
+// hubNotSetUp names the platform setting that keeps edge sites from working, or
+// returns "" when both are set.
+//
+// The route refuses rather than serve an empty value. The agent cannot use a
+// leaf config without either one, and rejects it, but all it can report is a
+// field name -- and whoever is at the edge box may not be the one who can
+// change this platform's config.
+func hubNotSetUp(opts LeafConfigRoutesOptions) string {
+	if opts.HubLeafURL == "" {
+		return "nats.leaf_url (STONE_AGE_NATS_LEAF_URL)"
+	}
+	if opts.HubDomain == "" {
+		return "nats.jetstream_domain (STONE_AGE_NATS_JETSTREAM_DOMAIN)"
+	}
+	return ""
 }
 
 // requireThing re-checks the caller's collection. RequireAuth already enforces

@@ -25,6 +25,23 @@ and this file starts where the versioned releases do.
 
 ### Fixed
 
+- **Edge sites can join a fresh install.** `nats export` wrote no leaf node
+  listener and no JetStream domain, so an edge box had nothing to connect to.
+  Even with a listener added by hand, every mirror from the hub failed: the
+  agent asks for the hub's JetStream as `$JS.hub.API`, and a hub with no domain
+  does not answer it. The export (pb-nats v0.3.1) now writes
+  `leafnodes { port: 7422 }`, and
+  `domain` inside `jetstream { }` from `nats.jetstream_domain`, the key that
+  `GET /api/me/leaf-config` already serves to agents as `hub_domain`. The
+  container exposes 7422. Set `STONE_AGE_NATS_LEAF_URL` to the address edge
+  boxes dial. When `nats.leaf_url` or `nats.jetstream_domain` is empty,
+  `GET /api/me/leaf-config` now answers 503 and names the setting, instead of
+  serving a config the agent rejects.
+  **An existing deployment keeps its `nats.conf`**, because the container only
+  exports when the file is missing. Add both by hand and restart: `domain: hub`
+  inside `jetstream { }` (or your `nats.jetstream_domain`), and
+  `leafnodes { port: 7422 }`. Adding the domain keeps existing streams and
+  buckets.
 - **A NATS role created without its limits now works.** A role created through
   the API, `stone nats-role create` or `stone apply` without `max_subscriptions`,
   `max_data` and `max_payload` stored 0 for each, and NATS reads 0 as none.
