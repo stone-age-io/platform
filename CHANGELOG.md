@@ -11,6 +11,53 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-12
+
+**Edge sites can join a fresh install.** The NATS config that `nats export`
+writes, and that the container generates on first boot, now has a leaf node
+listener on 7422 and the hub's JetStream domain. Before, an edge box had
+nothing to connect to, and with a listener added by hand every mirror from the
+hub still failed. Set `STONE_AGE_NATS_LEAF_URL` to the address edge boxes dial.
+An existing deployment needs two settings added to its `nats.conf`: see
+Upgrading.
+
+**A NATS role saved without its limits works again, and a limit of 0 is
+refused.** NATS reads 0 as none, so every user of such a role was disconnected
+as soon as it connected. An unset limit is now -1, and the upgrade repairs
+roles that hold 0.
+
+### Upgrading
+
+- **Add the leaf node listener and the domain to an existing `nats.conf`.**
+  Nothing rewrites it: the container generates it only on first boot, at
+  `/data/nats-config/nats.conf`. Add the two blocks by hand and restart. Use
+  your `nats.jetstream_domain` if it is not `hub`. Adding the domain keeps
+  existing streams and buckets.
+
+  ```
+  jetstream: {
+    store_dir: '...'    # leave as it is
+    domain: hub
+  }
+
+  leafnodes {
+    port: 7422
+  }
+  ```
+
+  In Docker, also publish the port with `-p 7422:7422`.
+- **Set `nats.leaf_url` before an edge box asks for its config.**
+  `GET /api/me/leaf-config` now answers 503 while it is empty. The agent shows
+  that message, which names `STONE_AGE_NATS_LEAF_URL`.
+- **Check `nats.default_limits` for 0 before deploying.** `stone-age` refuses
+  to start when `max_connections`, `max_subscriptions` or `max_payload` is 0.
+  Use -1 for no limit.
+- **Fetch `.creds` again on devices whose role held a 0 limit.** The upgrade
+  sets those limits to -1 and re-signs the role's users. The console picks up
+  its new credential by itself.
+- **If you rotated credentials with `regenerate` after a stolen database, set
+  `revoke` now.** See Security.
+
 ### Security
 
 - **After a stolen database, rotate NATS credentials with `revoke`, not
@@ -36,12 +83,8 @@ and this file starts where the versioned releases do.
   container exposes 7422. Set `STONE_AGE_NATS_LEAF_URL` to the address edge
   boxes dial. When `nats.leaf_url` or `nats.jetstream_domain` is empty,
   `GET /api/me/leaf-config` now answers 503 and names the setting, instead of
-  serving a config the agent rejects.
-  **An existing deployment keeps its `nats.conf`**, because the container only
-  exports when the file is missing. Add both by hand and restart: `domain: hub`
-  inside `jetstream { }` (or your `nats.jetstream_domain`), and
-  `leafnodes { port: 7422 }`. Adding the domain keeps existing streams and
-  buckets.
+  serving a config the agent rejects. An existing deployment keeps its
+  `nats.conf`: see Upgrading.
 - **A NATS role created without its limits now works.** A role created through
   the API, `stone nats-role create` or `stone apply` without `max_subscriptions`,
   `max_data` and `max_payload` stored 0 for each, and NATS reads 0 as none.
@@ -2577,7 +2620,8 @@ repository public. Each of these was reproduced before being fixed.
 - `scripts/test-authz.sh` grew from 135 to 147 checks, covering the membership
   lifecycle, the code uniqueness constraint, and the frozen leaf-node code.
 
-[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/stone-age-io/platform/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/stone-age-io/platform/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/stone-age-io/platform/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/stone-age-io/platform/compare/v0.7.0...v0.8.0
