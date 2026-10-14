@@ -153,7 +153,8 @@ boundary. The invitation email is editable in `/_` under Collections →
 
 **NATS in operator mode.** Creating an organization provisions its account.
 Roles are permission templates; a user JWT is signed from one. Credentials
-rotate, revocation actually disconnects, and account signing keys are manageable.
+rotate, revocation actually disconnects (at the hub at once, and on a site's leaf
+node at its agent's next leaf refresh), and account signing keys are manageable.
 Nothing about a device's *console* session gives it bus access — the signed
 credential is the capability.
 
@@ -475,6 +476,10 @@ To change it:
   `things` and taking no record id: the target is the caller's own record. There
   is deliberately no marker to gate it on — everything served is either public
   trust material or the caller's own credential.
+- **`GET /api/me/account-jwt`** → just the caller's account JWT and public key.
+  A running gateway polls it to learn when its leaf's preloaded account JWT
+  (where revocations live) is out of date, and fetches `leaf-config`, with its
+  credential, only when it is (`hooks/leaf_config_routes.go`).
 - **`POST /api/org/things`** → a Thing plus an optional NATS or Nebula identity in
   one transaction: member-level for the inventory half, owner/admin for the
   identity half (`hooks/thing_routes.go`).

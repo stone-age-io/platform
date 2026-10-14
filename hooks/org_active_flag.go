@@ -38,8 +38,8 @@ type OrgActiveFlagOptions struct {
 // WHY THAT IS THE WHOLE FEATURE. `nats_accounts.active` is pb-nats's own
 // account-scope suspend switch (internal/sync/manager.go, the account
 // AfterUpdateSuccess hook): the true->false edge schedules a DELETE of the
-// account claim, which disconnects every client in the tenant at once -- devices,
-// edge agents and the console's own browser connection -- and ReconcileAccounts
+// account claim, which disconnects every client of the tenant on the hub at once
+// -- devices, edge agents and the console's own browser connection -- and ReconcileAccounts
 // skips inactive accounts, so it stays withdrawn across restarts. There is no
 // cheaper lever with the same reach, because the account is the boundary; and
 // there is no need to fan out over things, nats_users or nebula_hosts to get it.
@@ -73,6 +73,13 @@ type OrgActiveFlagOptions struct {
 //     else. Closing that would need `active = true` on the organization relation
 //     in things.authRule PLUS a RefreshTokenKey() sweep over every Thing in the
 //     org, because an authRule is a latch and those tokens live seven days.
+//   - It does not reach a site's leaf node. A leaf runs `resolver: MEMORY` with a
+//     preloaded copy of the account JWT, and /api/me/leaf-config serves that JWT
+//     whether or not the account is active, so the agent's periodic leaf refresh
+//     does not carry the suspension either. Devices on the leaf keep working
+//     locally. The gateway's own uplink credential is in the withdrawn account,
+//     so the hub drops it with everything else and the site is islanded, not
+//     shut down. Say "disconnects from the hub", never "disconnects everything".
 //
 // WHY LEVEL-TRIGGERED RATHER THAN EDGE-TRIGGERED, which is where this differs
 // from hooks/active_flag.go. The mirror is reported rather than swallowed (see

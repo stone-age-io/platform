@@ -50,6 +50,10 @@ type ActiveFlagOptions struct {
 // and deliberately issues nothing back, so the device holds no working credential
 // until reactivated; false->true signs a JWT whose issue time is later than the
 // revocation cutoff, which NATS accepts while the old creds file stays rejected.
+// That is true at the hub at once. A site's leaf node checks credentials against
+// its own preloaded copy of the account JWT (`resolver: MEMORY`), so a device on
+// that leaf keeps connecting until the gateway's agent refreshes the copy
+// (platform.leaf_refresh_interval, or cmd.leaf_refresh).
 //
 // Do not reach for `revoke` here, despite the name. In pb-nats `revoke` is the
 // "these credentials leaked" button: it rotates the key pair and immediately

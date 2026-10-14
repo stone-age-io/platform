@@ -11,6 +11,18 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+**A gateway can check its leaf's account JWT without fetching its
+credential.** New route `GET /api/me/account-jwt` returns only the caller's
+account JWT and public key. The Agent's leaf refresh polls it and fetches
+`GET /api/me/leaf-config`, which carries the Thing's nkey seed, only when the
+JWT changed. Revocations live in the account JWT, so this is how a revocation
+reaches a site's leaf node without sending key material every few minutes.
+
+**The docs no longer say a revocation or suspension disconnects every device
+at once.** That holds at the hub. A site's leaf checks credentials against its
+own preloaded copy of the account JWT, so a revocation reaches it at the
+Agent's next leaf refresh, and an organization suspension does not reach it.
+
 ## [0.11.0] - 2026-10-12
 
 **Edge sites can join a fresh install.** The NATS config that `nats export`

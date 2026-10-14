@@ -76,7 +76,8 @@ different remediation costs:
 
 - **NATS**: rotate the key pair. Set `revoke` on each `nats_users` row: pb-nats
   generates a new key pair, puts the old public key on the account's
-  revocation list so every copy of the old `.creds` is rejected, and leaves a
+  revocation list so every copy of the old `.creds` is rejected (at the hub at
+  once; on a site's leaf node only after its agent's next leaf refresh), and leaves a
   working replacement on the record, which stays active. **Not** `regenerate`
   — it re-signs a JWT for the *same* stored seed and revokes nothing, and
   every stolen `creds_file` contains that seed, so the leaked credential keeps

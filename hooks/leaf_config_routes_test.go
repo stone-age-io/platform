@@ -46,6 +46,23 @@ func TestLeafConfigFieldNames(t *testing.T) {
 	}
 }
 
+// The probe the agent polls on every leaf refresh carries exactly the two public
+// account fields, under the same names leaf-config uses, and nothing else -- in
+// particular no `creds`, which is the whole reason the probe exists.
+func TestAccountJWTFieldNames(t *testing.T) {
+	got := accountJWTResponse("JWT", "PUB")
+
+	if len(got) != 2 || got["account_jwt"] != "JWT" || got["account_pub"] != "PUB" {
+		t.Errorf("account-jwt returns %v, want exactly account_jwt and account_pub", got)
+	}
+	leaf := leafConfigResponse(leafConfig{AccountJWT: "JWT", AccountPub: "PUB"})
+	for k, v := range got {
+		if leaf[k] != v {
+			t.Errorf("probe field %q = %q, but leaf-config names the same value %q", k, v, leaf[k])
+		}
+	}
+}
+
 // The JetStream domain is the Thing's code, computed rather than stored. A
 // stored domain would be a second name for an identifier the Thing already
 // carries, free to drift from it. Two directives in nats-leaf.conf depend on

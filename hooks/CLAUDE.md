@@ -286,9 +286,14 @@ The numbers match the feature index in the root `CLAUDE.md`.
     withdrawn.** `hooks/org_active_flag.go` mirrors the flag onto
     `nats_accounts.active`, which is pb-nats's own account-scope suspend switch —
     the true→false edge schedules a DELETE of the account claim, so every
-    device, edge agent and browser in the tenant disconnects at once, and
-    `ReconcileAccounts` skips inactive accounts so it stays withdrawn across
-    restarts. The flag enforced **nothing** before this: schema field, form
+    device, edge agent and browser in the tenant disconnects from the hub at
+    once, and `ReconcileAccounts` skips inactive accounts so it stays withdrawn
+    across restarts. **The hub only.** A site's leaf node runs `resolver: MEMORY`
+    with a preloaded copy of the account JWT, and `/api/me/leaf-config` serves
+    that JWT whether or not the account is active, so the agent's leaf refresh
+    does not carry the suspension. Devices on the leaf keep working locally; the
+    gateway's own uplink is in the withdrawn account, so the site is islanded
+    from the hub. The flag enforced **nothing** before this: schema field, form
     toggle and two red/green badges, and not one line of Go, TypeScript or rule
     text reading it back. Same shape as the `nats_users.active` checkbox that
     was removed, and the same lesson — a flag nobody enforces is worse than no

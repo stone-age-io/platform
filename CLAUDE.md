@@ -330,7 +330,7 @@ Features with a long note get one line here. The note lives where the code does.
 One line each. The `CLAUDE.md` in each file's directory says more.
 
 - `main.go` - Backend entry, PocketBase setup, hooks, bootstrap command
-- `hooks/leaf_config_routes.go` - `GET /api/me/leaf-config`: everything an edge agent needs
+- `hooks/leaf_config_routes.go` - `GET /api/me/leaf-config`: everything an edge agent needs; `GET /api/me/account-jwt`: the account JWT alone, which a gateway polls to know when to re-fetch
 - `hooks/thing_routes.go` - `POST /api/org/things`: a Thing and its optional identities in one transaction
 - `hooks/relation_tenancy.go` - the one enforcement hook: no relation may point into another organization
 - `hooks/org_provisioning.go` - every organization's NATS account and Nebula CA

@@ -39,7 +39,8 @@ type LeafConfigRoutesOptions struct {
 }
 
 // RegisterLeafConfigRoutes serves everything a Thing needs to stand up a NATS
-// leaf server: GET /api/me/leaf-config.
+// leaf server: GET /api/me/leaf-config, plus GET /api/me/account-jwt, which a
+// running gateway polls to learn when that config's account JWT has changed.
 //
 // WHY THIS IS A ROUTE. Exactly one value here is otherwise unreachable — the
 // operator JWT, which lives in a superuser-only collection. A Thing can already
@@ -134,8 +135,70 @@ func RegisterLeafConfigRoutes(app *pocketbase.PocketBase, opts LeafConfigRoutesO
 			}))
 		}).Bind(apis.RequireAuth(opts.ThingCollection))
 
+		// GET /api/me/account-jwt is the cheap half of the gateway's leaf
+		// refresh. A site's leaf checks credentials against its own preloaded
+		// copy of the account JWT, and revocations live in that JWT, so the
+		// agent re-checks it every few minutes. Asking leaf-config each time
+		// would carry the Thing's nkey seed over the wire on every check; this
+		// returns only the account JWT and its public key -- public trust
+		// material -- and the agent fetches leaf-config only when the JWT it
+		// gets here differs from the one it last loaded. Comparing the JWT
+		// itself, not a timestamp, means there is no revision to keep in step.
+		se.Router.GET("/api/me/account-jwt", func(re *core.RequestEvent) error {
+			if err := requireThing(re, opts.ThingCollection); err != nil {
+				return err
+			}
+			_, account, err := callerAccount(re, opts)
+			if err != nil {
+				return err
+			}
+			return re.JSON(200, accountJWTResponse(account.GetString("jwt"), account.GetString("public_key")))
+		}).Bind(apis.RequireAuth(opts.ThingCollection))
+
 		return se.Next()
 	})
+}
+
+// callerAccount returns the calling Thing's own NATS identity and the account
+// that identity belongs to, read with the app's privileges. It makes the same
+// lookup, with the same checks, as the leaf-config handler above, so the probe
+// can never name a different account than the config it stands in for. Change
+// the two together.
+func callerAccount(re *core.RequestEvent, opts LeafConfigRoutesOptions) (natsUser, account *core.Record, err error) {
+	thing := re.Auth // no id parameter to aim elsewhere
+
+	natsUserID := thing.GetString("nats_user")
+	if natsUserID == "" {
+		return nil, nil, re.NotFoundError("no NATS identity assigned to this thing yet", nil)
+	}
+	natsUser, err = re.App.FindRecordById(opts.NatsUserCollection, natsUserID)
+	if err != nil {
+		return nil, nil, re.NotFoundError("linked NATS identity not found", nil)
+	}
+
+	account, err = re.App.FindRecordById(opts.NatsAccountCollection, natsUser.GetString("account_id"))
+	if err != nil {
+		return nil, nil, re.NotFoundError("nats_account not found", nil)
+	}
+	// Defense in depth: the relation is server-provisioned, but never
+	// serve an account from outside the caller's own organization.
+	if account.GetString("organization") != thing.GetString("organization") {
+		return nil, nil, re.NotFoundError("nats_account not found", nil)
+	}
+	if account.GetString("jwt") == "" || account.GetString("public_key") == "" {
+		return nil, nil, re.NotFoundError("nats_account missing jwt/public_key", nil)
+	}
+	return natsUser, account, nil
+}
+
+// accountJWTResponse names the probe's fields on the wire. Like
+// leafConfigResponse, the keys are a cross-repo contract with the agent, and
+// they are the same two names leaf-config uses for the same values.
+func accountJWTResponse(jwt, pub string) map[string]string {
+	return map[string]string{
+		"account_jwt": jwt,
+		"account_pub": pub,
+	}
 }
 
 // leafConfig is the material a gateway needs, before it is named for the wire.
