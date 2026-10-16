@@ -11,6 +11,8 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-15
+
 **A gateway can check its leaf's account JWT without fetching its
 credential.** New route `GET /api/me/account-jwt` returns only the caller's
 account JWT and public key. The Agent's leaf refresh polls it and fetches
@@ -2632,7 +2634,8 @@ repository public. Each of these was reproduced before being fixed.
 - `scripts/test-authz.sh` grew from 135 to 147 checks, covering the membership
   lifecycle, the code uniqueness constraint, and the frozen leaf-node code.
 
-[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/stone-age-io/platform/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/stone-age-io/platform/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/stone-age-io/platform/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/stone-age-io/platform/compare/v0.8.0...v0.9.0
