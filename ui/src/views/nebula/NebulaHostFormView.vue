@@ -58,6 +58,14 @@ const formData = ref({
   unsafe_routes: [] as Array<{ route: string; via: string }>,
   mtu: '',
   tun_device: '',
+
+  // The rest of this host's static_host_map entry, and the two settings that
+  // control what it reports about itself. Newline-separated for the same
+  // reason the others are, except the allow list, which is Nebula's own nested
+  // object and is edited as JSON.
+  additional_host_ports: '',
+  advertise_addrs: '',
+  local_allow_list: '',
 })
 
 /** Split a textarea into trimmed, non-empty lines. */
@@ -154,6 +162,14 @@ async function loadHost() {
       unsafe_routes: (host.unsafe_routes || []).map(r => ({ ...r })),
       mtu: host.mtu ? String(host.mtu) : '',
       tun_device: host.tun_device || '',
+      additional_host_ports: (host.additional_host_ports || []).join('\n'),
+      advertise_addrs: (host.advertise_addrs || []).join('\n'),
+      // Pretty-printed so an operator can read the rules they are editing. An
+      // empty or absent object shows an empty box rather than "{}", so saving
+      // an untouched form sends nothing and the generated config is unchanged.
+      local_allow_list: host.local_allow_list && Object.keys(host.local_allow_list).length > 0
+        ? JSON.stringify(host.local_allow_list, null, 2)
+        : '',
     }
   } catch (err: any) {
     toast.error('Failed to load Nebula host')
@@ -187,6 +203,24 @@ async function handleSubmit() {
     return
   }
 
+  // The allow list is the one field the server cannot explain back to the
+  // operator usefully: a parse failure there arrives as a generic 400, so it
+  // is caught here where the text is still in front of them.
+  let localAllowList: Record<string, any> = {}
+  if (formData.value.local_allow_list.trim()) {
+    try {
+      const parsed = JSON.parse(formData.value.local_allow_list)
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        toast.error('Local allow list must be a JSON object')
+        return
+      }
+      localAllowList = parsed
+    } catch (err: any) {
+      toast.error(`Local allow list is not valid JSON: ${err.message}`)
+      return
+    }
+  }
+
   loading.value = true
   
   try {
@@ -216,6 +250,12 @@ async function handleSubmit() {
         .map(r => ({ route: r.route.trim(), via: r.via.trim() }))
         .filter(r => r.route && r.via),
       tun_device: formData.value.tun_device.trim(),
+      // Further addresses peers can reach this host at. public_host_port stays
+      // the primary and is never repeated here -- pb-nebula puts it first and
+      // refuses a duplicate.
+      additional_host_ports: lines(formData.value.additional_host_ports),
+      advertise_addrs: lines(formData.value.advertise_addrs),
+      local_allow_list: localAllowList,
       // 0 is pb-nebula's "inherit the default", and the schema's Min bound is
       // short-circuited on it -- so an empty box has to send 0, not null.
       mtu: formData.value.mtu ? parseInt(formData.value.mtu, 10) : 0,
@@ -490,6 +530,35 @@ onMounted(() => {
                 </label>
               </div>
 
+              <!-- Additional addresses (Conditional) -->
+              <div v-if="needsPublicEndpoint" class="form-control pl-8 border-l-2 border-base-300">
+                <label class="label">
+                  <span class="label-text">Additional Host:Port</span>
+                </label>
+                <textarea
+                  v-model="formData.additional_host_ports"
+                  rows="2"
+                  placeholder="[2001:db8::1]:4242&#10;192.168.10.5:4242"
+                  class="textarea textarea-bordered font-mono text-sm"
+                ></textarea>
+                <label class="label">
+                  <span class="label-text-alt">
+                    <template v-if="formData.is_lighthouse">
+                      Nebula's static host map takes a <strong>list</strong>, so one
+                      lighthouse can be dual-stack, sit behind two internet paths, or be
+                      reached at a LAN address by the peers in its own rack and the
+                      public one by everybody else. The address above is tried first.
+                      IPv6 must be bracketed, and no entry may use port 0 — a peer dials
+                      these as written.
+                    </template>
+                    <template v-else>
+                      Stored but unused on a relay: a relay's address is learned through
+                      the lighthouse at runtime and never appears in a peer's config.
+                    </template>
+                  </span>
+                </label>
+              </div>
+
               <!-- Active -->
               <div class="form-control">
                 <label class="label cursor-pointer justify-start gap-4">
@@ -643,6 +712,54 @@ onMounted(() => {
                   several addresses — usually the LAN this host sits on, so two machines in
                   one rack talk over private addresses instead of public ones. IPv6 is
                   allowed here and nowhere else, because this is not the overlay.
+                </span>
+              </label>
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Advertise Addresses</span>
+              </label>
+              <textarea
+                v-model="formData.advertise_addrs"
+                rows="2"
+                placeholder="203.0.113.9:4242&#10;198.51.100.7:0"
+                class="textarea textarea-bordered font-mono text-sm"
+              ></textarea>
+              <label class="label">
+                <span class="label-text-alt">
+                  Addresses this host <strong>reports</strong> to the lighthouses, on top
+                  of what Nebula discovers for itself — the complement of the static host
+                  map, not a duplicate of it. Behind cloud 1:1 NAT a host sees only its
+                  private address on the wire, so without this it reports
+                  <code>10.x</code> to every peer even while the static host map correctly
+                  points them at the public one. A port of <code>0</code> means "use the
+                  real listening port".
+                </span>
+              </label>
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Local Allow List</span>
+              </label>
+              <textarea
+                v-model="formData.local_allow_list"
+                rows="6"
+                placeholder='{&#10;  "interfaces": { "docker.*": false },&#10;  "172.17.0.0/16": false&#10;}'
+                class="textarea textarea-bordered font-mono text-sm"
+              ></textarea>
+              <label class="label">
+                <span class="label-text-alt">
+                  Which of this host's <strong>own</strong> interface addresses it
+                  advertises. Nebula's default is all of them, so a containerised host
+                  offers <code>docker0</code> and every VM bridge to peers that then wait
+                  out a handshake timeout each. Nebula's own structure: an optional
+                  <code>interfaces</code> map of name pattern to true/false, plus
+                  CIDR entries. Interface rules must all agree, and CIDR rules that mix
+                  allow and deny need an explicit <code>"0.0.0.0/0"</code> default — Nebula
+                  <strong>refuses to start</strong> otherwise. Leave blank to advertise
+                  everything.
                 </span>
               </label>
             </div>

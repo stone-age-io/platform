@@ -324,6 +324,28 @@ export interface NebulaHost extends AuthRecord {
   // else in the platform, because it constrains the underlay, not the overlay.
   preferred_ranges?: string[]
 
+  // The rest of this host's static_host_map entry, beyond public_host_port.
+  // Nebula's value there is a LIST, which is how a dual-stack lighthouse, one
+  // reachable over two internet paths, and a split-horizon deployment are all
+  // expressed. Only a LIGHTHOUSE's list reaches anyone else -- a relay's
+  // endpoint is learned at runtime and never embedded in a peer config.
+  additional_host_ports?: string[]
+
+  // What this host REPORTS about itself, as opposed to what peers are told
+  // about it. The two are not duplicates and behind NAT both are needed: a
+  // host in cloud 1:1 NAT sees only its private address on the wire, so
+  // without this it reports 10.x to every peer even while static_host_map
+  // correctly points them at the public one. Format "ip:port", and a port of 0
+  // means "use the real listening port".
+  advertise_addrs?: string[]
+
+  // Which of this host's OWN interface addresses it advertises. Nebula's
+  // default is all of them, so a containerised edge offers docker0 and every
+  // bridge to peers that then burn a handshake timeout each. Nebula's own
+  // structure: an optional `interfaces` map of name-regex to bool, plus
+  // CIDR-to-bool entries.
+  local_allow_list?: Record<string, any>
+
   // Action field: set true and pb-nebula re-issues the certificate immediately,
   // then resets it in the same save. Never read back as state.
   renew?: boolean

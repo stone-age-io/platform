@@ -742,6 +742,36 @@
         "type": "text"
       },
       {
+        "hidden": false,
+        "id": "json1061731025",
+        "maxSize": 1000,
+        "name": "additional_host_ports",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
+      },
+      {
+        "hidden": false,
+        "id": "json938472708",
+        "maxSize": 1000,
+        "name": "advertise_addrs",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
+      },
+      {
+        "hidden": false,
+        "id": "json915006535",
+        "maxSize": 2000,
+        "name": "local_allow_list",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
+      },
+      {
         "autogeneratePattern": "",
         "hidden": false,
         "id": "text563927626",
