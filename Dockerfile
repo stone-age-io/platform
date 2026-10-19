@@ -59,7 +59,7 @@ RUN npm run build
 # gives: with CGO_ENABLED=0 the Go toolchain cross-compiles for free, so running
 # an emulated compiler to produce the same static binary is pure cost.
 # TARGETOS/TARGETARCH are supplied by buildx, one value per target leg.
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
 WORKDIR /src
 
 COPY go.mod go.sum ./
