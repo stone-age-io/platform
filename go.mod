@@ -13,10 +13,11 @@ require (
 	github.com/prometheus/common v0.70.1
 	github.com/skeeeon/pb-audit v0.2.1
 	github.com/skeeeon/pb-nats v0.3.1
-	github.com/skeeeon/pb-nebula v0.3.3
+	github.com/skeeeon/pb-nebula v0.4.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	golang.org/x/term v0.46.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -67,7 +68,6 @@ require (
 	golang.org/x/time v0.16.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	modernc.org/libc v1.75.3 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.0 // indirect

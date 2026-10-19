@@ -108,8 +108,8 @@ github.com/skeeeon/pb-audit v0.2.1 h1:xtKLvSSJGANbXCHijpo+f/GfYmLtgWGgqzmQVMcWCN
 github.com/skeeeon/pb-audit v0.2.1/go.mod h1:SxFiaL6i8asVlgpdZ9LQ2SXgQrS7FjcV4Q9/11XbFvg=
 github.com/skeeeon/pb-nats v0.3.1 h1:h9lnSI0za2SEb8qKJujxTjoMprMzZFa3+wA/Ku/iIpY=
 github.com/skeeeon/pb-nats v0.3.1/go.mod h1:EEsPC2RaMf8A0JNC15bXEkhwA3JRrLXg74mEZRxKQFI=
-github.com/skeeeon/pb-nebula v0.3.3 h1:NexRKniOjfLQwYlDxApGjEplpwDInJsemaBBy32+NTg=
-github.com/skeeeon/pb-nebula v0.3.3/go.mod h1:1iDAMF48xWxMMwk56559cRu3WbVapwVHi80vN+lOQgQ=
+github.com/skeeeon/pb-nebula v0.4.0 h1:TNAdmrgNNbhSmQI1olpQJdqDbJ0e5knFPpmaQMHIg5s=
+github.com/skeeeon/pb-nebula v0.4.0/go.mod h1:1iDAMF48xWxMMwk56559cRu3WbVapwVHi80vN+lOQgQ=
 github.com/slackhq/nebula v1.11.0 h1:UVSVPTFw1/QxrfH/MIm27tzxGWn2dSnXZRGh7q0VhsQ=
 github.com/slackhq/nebula v1.11.0/go.mod h1:ASNK6VI3QkMJ1z9fONuu1XUdRMfzop606pYM0yijwRY=
 github.com/spf13/afero v1.15.0 h1:b/YBCLWAJdFWJTN9cLhiXXcD7mzKn9Dm86dNnfyQw1I=
