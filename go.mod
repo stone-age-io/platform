@@ -13,7 +13,7 @@ require (
 	github.com/prometheus/common v0.70.1
 	github.com/skeeeon/pb-audit v0.2.1
 	github.com/skeeeon/pb-nats v0.3.1
-	github.com/skeeeon/pb-nebula v0.4.0
+	github.com/skeeeon/pb-nebula v0.4.1
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	golang.org/x/term v0.46.0
