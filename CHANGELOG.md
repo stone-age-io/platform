@@ -11,6 +11,8 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-19
+
 **A lighthouse can be reached at more than one address, and a host can say
 where it really is.** Three optional columns on a Nebula host, all omitted from
 the generated config when unset, all added to an existing deployment at
