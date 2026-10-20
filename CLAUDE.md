@@ -97,7 +97,7 @@ The edge agent is a separate repo — [stone-age-io/agent](https://github.com/st
 ## Tech Stack
 
 ### Backend
-- **Go 1.26.0** with PocketBase 0.39.11
+- **Go 1.27.0** with PocketBase 0.40.5
 - **Cobra** for CLI commands (bootstrap, NATS management)
 - **Viper** for configuration management
 - **Key libraries**: pb-audit, pb-nats, pb-nebula, nats-io/jwt, slackhq/nebula (tenancy was pb-tenancy until it was absorbed into `hooks/`)

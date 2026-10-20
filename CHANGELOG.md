@@ -11,6 +11,73 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+**A lighthouse can be reached at more than one address, and a host can say
+where it really is.** Three optional columns on a Nebula host, all omitted from
+the generated config when unset, all added to an existing deployment at
+bootstrap:
+
+- `additional_host_ports` — the rest of a lighthouse's `static_host_map` entry.
+  Nebula's value there is a list and always was; one address was the shape of
+  the column, not of the feature. A dual-stack lighthouse, one reachable over
+  two internet paths, and split horizon — peers in the lighthouse's own rack
+  bootstrapping via its LAN address while roaming peers use the public one —
+  were all inexpressible. `public_host_port` stays the primary and remains the
+  only source of `listen.port`.
+- `advertise_addrs` — what a host reports about *itself* to the lighthouses, as
+  opposed to what peers are *told* about it. Behind cloud 1:1 NAT both are
+  needed: the host sees only its private address on the wire and reports that
+  to every peer that queries, while `static_host_map` is simultaneously and
+  correctly pointing those peers at the public one.
+- `local_allow_list` — which of a host's own interface addresses it advertises.
+  Nebula's default is all of them, so a containerised host offers `docker0` at
+  172.17.0.1 and every bridge to peers, who then burn a handshake timeout each.
+  The symptom is slow tunnel establishment rather than anything that logs as an
+  error.
+
+An existing one-address deployment renders byte-identical config after this
+upgrade, asserted as a whole-document comparison rather than key by key:
+`config_yaml` is pulled by devices, so a diff that is only whitespace still
+reads as "every host changed" and still earns a restart of the fleet.
+
+**`public_host_port` is parsed properly, and a malformed one is refused.** It
+was split on the last colon, and two shapes got through silently: an address
+with the port left off rendered `listen.port` 0, and a bare IPv6 address
+rendered `listen.port` 1. Either way the host is advertised to the whole
+network through every peer's `static_host_map` and reachable from none of it.
+
+**PocketBase v0.40.5, and Go 1.27 with it.** v0.40.0 raises the minimum Go
+version, so building from source now needs 1.27. PocketBase also moved its JSON
+column types onto `encoding/json/v2`, which does not HTML-escape by default: a
+NATS permission list stored as `[">"]` now serializes as `[">"]`. The
+value is identical and an empty allow list still grants nothing — that was
+checked specifically, by comparing both versions side by side, because `>` is
+the full-access wildcard and the two render differently. Nebula `config_yaml`
+is unaffected: it is generated with `yaml.Marshal` and never passes through
+JSON, so no device sees a changed config.
+
+**Off a dependency its author retracted.** `gabriel-vasile/mimetype` v1.4.15
+was withdrawn for spending quadratic time on specially crafted CDF files
+(GHSA-jjmc-jx7j-hp68). This binary now requires v1.4.16 directly, and
+pb-nebula v0.4.1, pb-audit v0.2.2 and pb-nats v0.3.2 carry the same correction
+so the requirement is no longer held here alone.
+
+### Upgrading
+
+- **Building from source needs Go 1.27.** The container image handles itself.
+  Nothing else changes for a deployment that runs the published image.
+
+- **Expect one JWT re-issue per NATS user, spread over time.** The escaping
+  change above means pb-nats sees each user's permission fields as changed the
+  first time that record is saved after the upgrade, and re-signs its JWT. It
+  is lazy — nothing happens until something writes the record — one per user,
+  and the new JWT carries identical claims. Credentials already in the field
+  keep working. The same one-time change appears in the audit trail's
+  `changed_fields`.
+
+- **No migration is required for the Nebula columns.** They are added at
+  bootstrap and omitted from generated config until set, so an existing host
+  renders exactly what it rendered before.
+
 ## [0.12.0] - 2026-10-15
 
 **A gateway can check its leaf's account JWT without fetching its

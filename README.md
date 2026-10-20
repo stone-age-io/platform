@@ -47,7 +47,7 @@ agent is told so when it asks for its leaf config.
 
 ### From source — five commands
 
-Needs Go 1.26+ and Node 20.19+ (or 22.12+, whichever your distribution has).
+Needs Go 1.27+ and Node 20.19+ (or 22.12+, whichever your distribution has).
 
 ```bash
 cd ui && npm install && npm run build && cd ..
