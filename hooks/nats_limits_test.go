@@ -617,21 +617,49 @@ func testRoleLimitsOnARealServer(t *testing.T, app *pocketbase.PocketBase, api *
 			}
 		}
 
-		// The server's own close reason, for the run where the client saw EOF. A
-		// connection refused inside the handshake may not be recorded yet, which
-		// is why this is one report among three rather than the assertion.
-		connz, err := ns.Connz(&natsserver.ConnzOptions{State: natsserver.ConnClosed})
-		if err != nil {
-			t.Fatalf("connz: %v", err)
+		namesLimit := func(rs []string) bool {
+			for _, r := range rs {
+				if strings.Contains(strings.ToLower(r), "maximum subscriptions exceeded") {
+					return true
+				}
+			}
+			return false
 		}
-		for _, ci := range connz.Conns {
-			reports = append(reports, "server: "+ci.Reason)
+
+		// The server's own close reason, for the run where the client saw EOF.
+		// It has to be POLLED, because the server's closed-connection accounting
+		// lags the socket in two separate ways and either one alone reads as
+		// "the limit is not enforced":
+		//
+		//   - the connection may not be in the closed ring yet, so Connz comes
+		//     back without it and there is no server report at all;
+		//   - it may be there holding the PROVISIONAL reason "Client Closed",
+		//     which is later replaced by "Maximum Subscriptions Exceeded".
+		//
+		// Both were observed on the same connection id, so this is the server
+		// revising its own record rather than a different connection being
+		// reported. The client side already gets this patience from the 5s
+		// select above; without it here the test asserts against whichever of
+		// the three endings won a race it never meant to run.
+		var server []string
+		deadline := time.Now().Add(2 * time.Second)
+		for {
+			connz, err := ns.Connz(&natsserver.ConnzOptions{State: natsserver.ConnClosed})
+			if err != nil {
+				t.Fatalf("connz: %v", err)
+			}
+			server = server[:0]
+			for _, ci := range connz.Conns {
+				server = append(server, "server: "+ci.Reason)
+			}
+			if namesLimit(server) || time.Now().After(deadline) {
+				break
+			}
+			time.Sleep(20 * time.Millisecond)
 		}
-		named := false
-		for _, r := range reports {
-			named = named || strings.Contains(strings.ToLower(r), "maximum subscriptions exceeded")
-		}
-		if !named {
+		reports = append(reports, server...)
+
+		if !namesLimit(reports) {
 			t.Errorf("nothing says the connection ended for its subscription limit: %v", reports)
 		}
 	})
