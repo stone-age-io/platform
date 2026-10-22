@@ -11,6 +11,96 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+Nothing here changes what the platform does. It is the console's internals, the
+contributor documentation that was missing, and a test that failed on CI for
+reasons that were never about the code under it. No schema migration, no
+dependency bump, no API surface — upgrading from 0.13.0 is replacing the binary
+or the image.
+
+**Adding a widget to the console meant editing six places across three
+directories, and two of them failed in silence.** `MOBILE_TITLED_TYPES` and
+`MOBILE_EXPANDABLE_TYPES` were hardcoded `Set`s of type strings inside
+`WidgetContainer.vue`: leaving a type out of either was an error nowhere, so
+the widget simply behaved wrong on a phone, where nobody developing it was
+looking. A seventh place was the Add Widget palette — sixteen hand-written
+`<button>` blocks — where the omission is total, since a widget missing from it
+cannot be added to a dashboard at all.
+
+All of it is one object now, `ui/src/components/dashboard/widgets.ts`: the
+renderer, the config panel, the palette entry, both mobile behaviours and
+whether the shared data-source panel applies, keyed by widget type. Adding a
+widget is the component plus one line there, and because the object is a
+`Record<WidgetType, …>`, a type with no entry does not compile. It is a map and
+not a plugin system, deliberately — no `import.meta.glob`, no manifest, no
+self-registration. Sixteen widget types that change about twice a year do not
+need a framework, and the object is less code than the switch, the two `Set`s,
+the second component map and the palette markup it replaced.
+
+Two things are visible from outside. Config panels load on demand now, because
+folding them into that object would otherwise have pulled twenty editor
+components into the chunk that renders a dashboard nobody is editing; the
+configure modal fetches its panel on open. And a widget category with nothing
+in it — which only happens where a caller restricts the palette — is no longer
+drawn as a heading over an empty row.
+
+**`WidgetConfig` is a discriminated union, so a widget's own config object is
+present rather than asserted.** Sixteen optional `xxxConfig?` fields on one
+interface meant every widget read `props.config.gaugeConfig!` — an assertion
+the compiler accepts and the browser finds out about — and a type could reach
+the palette without ever declaring a config at all. The field *names* are
+unchanged on purpose: a single `config` field would read better and would also
+rename keys inside every dashboard ever saved to localStorage, to a KV bucket,
+or to an exported JSON file somebody is keeping. Stored dashboards load exactly
+as they did.
+
+**The console has a widget gallery, in dev builds only.** `npm run dev`, then
+`/dev/widgets`, renders every widget type against fixtures with no NATS
+connection, no login and no dashboard. Roughly 24,000 of the console's lines
+are the dashboard and its widgets and CI renders none of them, so this is the
+nearest thing to an eye on them. The route is registered inside
+`if (import.meta.env.DEV)`, which Vite replaces with the literal `false`, so
+the view and its fixtures are dropped from a production bundle rather than
+merely unreachable from one.
+
+**Three components are now rendered by the test suite, bringing the total to
+five of 242.** The suite is otherwise pure logic on purpose, and the list at
+the top of `ui/vitest.config.ts` says what earns a mount: a failure that is
+both silent and total.
+
+- `ThingFormView` and `NebulaHostFormView`, the two places the UI meets
+  provisioning. What is pinned is the body each one submits, which is not a
+  shape the compiler checks — including that a member's Thing edit **omits**
+  `nats_user` and `nebula_host`. That is not tidiness: the member branch of
+  `things.updateRule` requires `nats_user:changed = false`, a field absent from
+  a JSON body counts as unchanged, and sending it turns an ordinary inventory
+  edit into a 404. `scripts/test-authz.sh` proves the server half; this proves
+  the client still sends what that half expects. The Nebula form's tests pin
+  the translations pb-nebula needs: comma-separated groups to an array,
+  textareas to trimmed lines, a half-filled unsafe route dropped, an empty MTU
+  sending `0` rather than `null`, and `validity_years` omitted when blank.
+- `AddWidgetModal`, because a widget missing from the palette cannot be added.
+
+**`ui/CONTRIBUTING.md`** is the short version for somebody who has not opened
+the repo before: running the console, the gallery, and how to add a widget in
+two files.
+
+**A NATS limits test polled a report the server revises.**
+`TestNatsLimits/real_server/a_Subs-0_credential` failed on CI twice in a row on
+a diff of three markdown files, at roughly two failures in eight locally. The
+safety property was never in doubt — the subtest fails if a `Subs-0` credential
+is still connected after five seconds, and that never fired. What failed was
+the follow-up assertion that something *names* the subscription limit: the
+server's closed-connection ring may not hold the entry yet, or may hold it
+under a provisional `Client Closed` reason that is replaced moments later. The
+server report is now polled for up to two seconds, the same patience the client
+report already had. The assertion itself is unchanged and deliberately not
+weakened to "closed is enough".
+
+### Upgrading
+
+- **Nothing to do.** No migration, no configuration change, no credential
+  re-issue. Dashboards saved by 0.13.0 load unchanged.
+
 ## [0.13.0] - 2026-10-19
 
 **A lighthouse can be reached at more than one address, and a host can say
