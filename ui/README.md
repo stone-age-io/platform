@@ -237,6 +237,9 @@ We prioritize simplicity and maintainability:
 
 ## 🏃‍♂️ Development
 
+**New here? [`CONTRIBUTING.md`](CONTRIBUTING.md)** is the short version: running
+it, the widget gallery, and how to add a widget.
+
 ### Setup
 ```bash
 npm install
@@ -248,6 +251,13 @@ npm run dev
 ```
 *   **Frontend:** `http://localhost:5173`
 *   **Backend Proxy:** API requests (`/api`, `/_`) are proxied to `http://127.0.0.1:8090`. Ensure the Go backend is running (`go run main.go serve` from the repo root).
+
+### Widget gallery
+
+`http://localhost:5173/dev/widgets` renders every widget type against fixtures —
+no NATS connection, no login, no dashboard. Dev builds only; the route is
+registered inside `if (import.meta.env.DEV)` so it is dropped from a production
+bundle rather than merely hidden.
 
 ### Type-check only
 ```bash

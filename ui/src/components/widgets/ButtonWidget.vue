@@ -59,13 +59,13 @@ import { ref, computed } from 'vue'
 import { useNatsStore } from '@/stores/nats'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useDesignTokens } from '@/composables/useDesignTokens'
-import type { WidgetConfig } from '@/types/dashboard'
+import type { WidgetConfigOf } from '@/types/dashboard'
 import { encodeString, decodeBytes } from '@/utils/encoding'
 import { resolveTemplate } from '@/utils/variables'
 import ResponseModal from '@/components/common/ResponseModal.vue'
 
 const props = withDefaults(defineProps<{
-  config: WidgetConfig
+  config: WidgetConfigOf<'button'>
   layoutMode?: 'standard' | 'card'
 }>(), {
   layoutMode: 'standard'

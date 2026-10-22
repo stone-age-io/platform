@@ -43,10 +43,10 @@ import { useNatsStore } from '@/stores/nats'
 import { useWidgetOperations } from '@/composables/useWidgetOperations'
 import { useNatsKvWatcher } from '@/composables/useNatsKvWatcher'
 import { resolveTemplate } from '@/utils/variables'
-import type { WidgetConfig } from '@/types/dashboard'
+import type { WidgetConfigOf } from '@/types/dashboard'
 
 const props = withDefaults(defineProps<{
-  config: WidgetConfig
+  config: WidgetConfigOf<'markdown'>
   layoutMode?: 'standard' | 'card'
 }>(), {
   layoutMode: 'standard'

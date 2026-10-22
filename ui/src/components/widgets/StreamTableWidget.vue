@@ -118,7 +118,7 @@ import { missedSince, newestFirst } from '@/utils/bufferView'
 import { JSONPath } from 'jsonpath-plus'
 import ResponsiveList, { type Column } from '@/components/ui/ResponsiveList.vue'
 import JsonViewer from '@/components/common/JsonViewer.vue'
-import type { WidgetConfig, TableColumn } from '@/types/dashboard'
+import type { WidgetConfigOf, TableColumn } from '@/types/dashboard'
 import type { BufferedMessage } from '@/stores/widgetData'
 import {
   cellClass as cellClassFor,
@@ -129,7 +129,7 @@ import {
 } from '@/utils/tableColumns'
 
 const props = withDefaults(defineProps<{
-  config: WidgetConfig
+  config: WidgetConfigOf<'streamtable'>
   layoutMode?: 'standard' | 'card'
 }>(), {
   layoutMode: 'standard'

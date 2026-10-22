@@ -1,6 +1,6 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { DataSourceConfig, WidgetConfig, Dashboard } from '@/types/dashboard'
+import type { DataSourceConfig, WidgetConfig, WidgetConfigOf, Dashboard } from '@/types/dashboard'
 
 // Unsubscribing used to re-derive subjects from the widget config and the
 // CURRENT variable values, but both unsubscribe paths run after what they read
@@ -31,7 +31,7 @@ const { useWidgetOperations } = await import('./useWidgetOperations')
 const { useDashboardStore } = await import('@/stores/dashboard')
 
 let n = 0
-function chart(subject: string, extra: Partial<WidgetConfig> = {}): WidgetConfig {
+function chart(subject: string, extra: Partial<WidgetConfigOf<'chart'>> = {}): WidgetConfigOf<'chart'> {
   return {
     id: `w${++n}`, type: 'chart', title: 't', x: 0, y: 0, w: 4, h: 4,
     dataSource: { type: 'subscription', subject, subjects: [subject] },

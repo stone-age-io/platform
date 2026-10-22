@@ -68,11 +68,13 @@ and globs, at build time.
 The only automated guard is the `Assert the deliberately pinned majors` step in
 `.github/workflows/ci.yml`, which fails the build if any of these three package
 majors moves. It also asserts `maplibre-gl` 6, which is current rather than held
-back, because its failure mode is the least visible (see the Leaflet entry above). That catches the upgrade and nothing else: Vitest covers pure logic
-only (see **Testing**), so nothing exercises a rendered map, a theme token or a
-built bundle — `vue-tsc && vite build` stays green while the UI renders wrong,
-whatever the versions say. That is exactly why these are written down rather than
-left to be rediscovered.
+back, because its failure mode is the least visible (see the Leaflet entry above). That catches the upgrade and nothing else: Vitest is pure logic plus
+five mounted components (see **Testing**), so nothing exercises a rendered map,
+a theme token or a built bundle — `vue-tsc && vite build` stays green while the
+UI renders wrong, whatever the versions say. The nearest thing to an eye on it
+is `/dev/widgets` (see **The widget gallery**), which renders every widget
+against fixtures in a dev build and is looked at by a person, not by CI. That is
+exactly why these are written down rather than left to be rediscovered.
 
 ## Directory structure
 
@@ -138,6 +140,52 @@ export function useNatsKv() {
 - Views: End with `View` (`LoginView.vue`)
 
 **Type Safety**: All types in `src/types/`, strict TypeScript enabled
+
+`ui/CONTRIBUTING.md` is the short version for a newcomer: how to run it, the
+widget gallery, and how to add a widget. This file is the reference behind it.
+
+## Widgets live in one object
+
+`components/dashboard/widgets.ts` holds `WIDGETS`, a
+`Record<WidgetType, WidgetDefinition>`: the renderer, the config panel, the Add
+Widget palette entry (label, icon, description, category), the two locked-mobile
+behaviours, and whether the shared data-source panel applies. Adding a widget is
+that entry plus the component.
+
+It replaced six places in three directories, **two of which failed in silence** —
+`MOBILE_TITLED_TYPES` and `MOBILE_EXPANDABLE_TYPES`, hardcoded `Set`s of type
+strings in `WidgetContainer.vue`. Leaving a type out of either was an error
+nowhere; the widget just behaved wrong on a phone, where nobody developing it
+was looking. A seventh was the palette in `AddWidgetModal.vue`, sixteen
+hand-written `<button>` blocks, where the omission is total: a widget missing
+from it cannot be added at all.
+
+- **It is a map, not a plugin system**, and must stay one. No `import.meta.glob`,
+  no manifest, no self-registration, no schema-driven form generation. Sixteen
+  widget types that change twice a year do not need a framework, and the object
+  is less code than the switch it replaced.
+- **Declaration order is the palette's order**, grouped by `category` in
+  `WIDGET_CATEGORIES` order.
+- **`WidgetConfig` is a discriminated union** keyed on `type`
+  (`types/dashboard.ts`), so a widget types its prop as `WidgetConfigOf<'gauge'>`
+  and reads `config.gaugeConfig` without a `!`. The field names are frozen:
+  every dashboard ever saved — localStorage, a KV bucket, an exported JSON file
+  — carries those keys, so renaming them to a single `config` is a data
+  migration rather than a refactor. The union is a compile-time claim about
+  data that arrives at runtime from user-editable JSON, so the `?.` reads that
+  remain in the widgets are load-bearing for an imported dashboard.
+
+## The widget gallery
+
+`/dev/widgets` renders every widget against fixtures
+(`views/dev/widgetFixtures.ts`) with no NATS connection, no login and no
+dashboard. 24,000 of this console's lines are the dashboard and its widgets and
+CI renders none of them, so this is the closest thing to an eye on them.
+
+The route is registered inside `if (import.meta.env.DEV)` in `router/index.ts`.
+Vite replaces that with the literal `false` in a production build, so the view
+and its fixtures are **dropped from the bundle**, not merely unreachable. Keep
+it that way: the gallery mounts widgets with no auth guard in front of them.
 
 ## NATS server URLs in the console
 
@@ -444,9 +492,13 @@ The numbers match the feature index in the root `CLAUDE.md`.
 
 ## Testing
 
-- `cd ui && npm test` — Vitest. Pure logic only, node environment, no component
-  mounting except `ConfirmDialog` and `QrLabelModal`, where the DOM contract IS
-  the subject. Covers the pure logic `vue-tsc && vite build` cannot protect:
+- `cd ui && npm test` — Vitest. Pure logic, node environment, with five
+  mounting exceptions listed at the top of `vitest.config.ts`: `ConfirmDialog`
+  and `QrLabelModal`, where the DOM contract IS the subject; `ThingFormView` and
+  `NebulaHostFormView`, where the UI meets provisioning and the submitted body
+  is not a shape the compiler checks; and `AddWidgetModal`, because a widget
+  missing from the palette cannot be added at all. Keep that list short. Covers
+  the pure logic `vue-tsc && vite build` cannot protect:
   `twinDrift`, `useSubscriptionManager` (including the per-widget system-subject
   filter), `useEscapeKey`, the `can` capability
   map, dashboard import/export, `createDefaultWidget`, the JSON Schema

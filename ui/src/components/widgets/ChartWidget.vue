@@ -46,7 +46,7 @@ import WidgetStateOverlay from '@/components/dashboard/WidgetStateOverlay.vue'
 import { parseDurationMs } from '@/utils/duration'
 import { resolveTemplate } from '@/utils/variables'
 import { seriesPoints, numericPoints, buildSegments, stableColorIndex } from '@/utils/chartSeries'
-import type { WidgetConfig, ChartSeries } from '@/types/dashboard'
+import type { WidgetConfigOf, ChartSeries } from '@/types/dashboard'
 
 use([
   LineChart,
@@ -60,7 +60,7 @@ use([
 ])
 
 const props = withDefaults(defineProps<{
-  config: WidgetConfig
+  config: WidgetConfigOf<'chart'>
   layoutMode?: 'standard' | 'card'
 }>(), {
   layoutMode: 'standard'

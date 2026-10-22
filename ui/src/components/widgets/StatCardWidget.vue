@@ -37,17 +37,17 @@ import { computed } from 'vue'
 import { useWidgetDataStore } from '@/stores/widgetData'
 import { useDesignTokens } from '@/composables/useDesignTokens'
 import { useThresholds } from '@/composables/useThresholds'
-import type { WidgetConfig } from '@/types/dashboard'
+import type { WidgetConfigOf } from '@/types/dashboard'
 
 const props = defineProps<{
-  config: WidgetConfig
+  config: WidgetConfigOf<'stat'>
 }>()
 
 const dataStore = useWidgetDataStore()
 const { baseColors } = useDesignTokens()
 const { evaluateThresholds } = useThresholds()
 
-const cfg = computed(() => props.config.statConfig!)
+const cfg = computed(() => props.config.statConfig)
 const showTrend = computed(() => cfg.value.showTrend ?? true)
 const trendWindow = computed(() => cfg.value.trendWindow ?? 10)
 const thresholds = computed(() => cfg.value.thresholds || [])

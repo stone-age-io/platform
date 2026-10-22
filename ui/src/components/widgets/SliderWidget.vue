@@ -101,12 +101,12 @@ import { useNatsStore } from '@/stores/nats'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useKvKey } from '@/composables/useKvKey'
 import { JSONPath } from 'jsonpath-plus'
-import type { WidgetConfig } from '@/types/dashboard'
+import type { WidgetConfigOf } from '@/types/dashboard'
 import { encodeString, decodeBytes } from '@/utils/encoding'
 import { resolveTemplate } from '@/utils/variables'
 
 const props = withDefaults(defineProps<{
-  config: WidgetConfig
+  config: WidgetConfigOf<'slider'>
   layoutMode?: 'standard' | 'card'
 }>(), {
   layoutMode: 'standard'
@@ -124,7 +124,7 @@ const pendingValue = ref<number | null>(null)
 
 let subscription: any = null
 
-const cfg = computed(() => props.config.sliderConfig!)
+const cfg = computed(() => props.config.sliderConfig)
 const mode = computed(() => cfg.value.mode || 'core')
 const isDisabled = computed(() => !natsStore.isConnected)
 

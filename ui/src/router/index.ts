@@ -156,6 +156,23 @@ const routes: RouteRecordRaw[] = [
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 
+// The widget gallery — every widget rendered against fixtures, no NATS, no
+// login, no dashboard. See views/dev/WidgetGalleryView.vue for why it exists.
+//
+// `import.meta.env.DEV` is replaced with the literal `false` in a production
+// build, so this whole block and the dynamic import inside it are dropped by
+// the bundler: the gallery is absent from the shipped app rather than merely
+// unreachable from it. Spliced in before the catch-all, which would otherwise
+// swallow the path.
+if (import.meta.env.DEV) {
+  routes.splice(routes.length - 1, 0, {
+    path: '/dev/widgets',
+    name: 'DevWidgetGallery',
+    component: () => import('@/views/dev/WidgetGalleryView.vue'),
+    meta: { title: 'Widget Gallery', requiresAuth: false },
+  })
+}
+
 const router = createRouter({
   history: createWebHistory(),
   routes,

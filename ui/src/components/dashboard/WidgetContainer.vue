@@ -61,31 +61,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onErrorCaptured, defineAsyncComponent } from 'vue'
+import { computed, ref, onErrorCaptured } from 'vue'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useNatsStore } from '@/stores/nats'
 import { useConfirm } from '@/composables/useConfirm'
+import { WIDGETS } from './widgets'
 import type { WidgetConfig } from '@/types/dashboard'
-
-// Lightweight widgets - imported synchronously
-import TextWidget from '@/components/widgets/TextWidget.vue'
-import ButtonWidget from '@/components/widgets/ButtonWidget.vue'
-import SwitchWidget from '@/components/widgets/SwitchWidget.vue'
-import SliderWidget from '@/components/widgets/SliderWidget.vue'
-import StatCardWidget from '@/components/widgets/StatCardWidget.vue'
-import StatusWidget from '@/components/widgets/StatusWidget.vue'
-
-// Heavy widgets - lazy-loaded to reduce initial bundle size
-const ChartWidget = defineAsyncComponent(() => import('@/components/widgets/ChartWidget.vue'))
-const GaugeWidget = defineAsyncComponent(() => import('@/components/widgets/GaugeWidget.vue'))
-const MapWidget = defineAsyncComponent(() => import('@/components/widgets/MapWidget.vue'))
-const KvWidget = defineAsyncComponent(() => import('@/components/widgets/KvWidget.vue'))
-const ConsoleWidget = defineAsyncComponent(() => import('@/components/widgets/ConsoleWidget.vue'))
-const PublisherWidget = defineAsyncComponent(() => import('@/components/widgets/PublisherWidget.vue'))
-const MarkdownWidget = defineAsyncComponent(() => import('@/components/widgets/MarkdownWidget.vue'))
-const KvTableWidget = defineAsyncComponent(() => import('@/components/widgets/KvTableWidget.vue'))
-const StreamTableWidget = defineAsyncComponent(() => import('@/components/widgets/StreamTableWidget.vue'))
-const ScannerWidget = defineAsyncComponent(() => import('@/components/widgets/ScannerWidget.vue'))
 
 const props = defineProps<{
   config?: WidgetConfig
@@ -105,42 +86,26 @@ const natsStore = useNatsStore()
 const { confirm } = useConfirm()
 const error = ref<string | null>(null)
 
-const widgetComponent = computed(() => {
-  if (!props.config) return null
-  switch (props.config.type) {
-    case 'text': return TextWidget
-    case 'chart': return ChartWidget
-    case 'button': return ButtonWidget
-    case 'kv': return KvWidget
-    case 'switch': return SwitchWidget
-    case 'slider': return SliderWidget
-    case 'stat': return StatCardWidget
-    case 'gauge': return GaugeWidget
-    case 'map': return MapWidget
-    case 'console': return ConsoleWidget
-    case 'publisher': return PublisherWidget
-    case 'status': return StatusWidget
-    case 'markdown': return MarkdownWidget
-    case 'kvtable': return KvTableWidget
-    case 'streamtable': return StreamTableWidget
-    case 'scanner': return ScannerWidget
-    default: return null
-  }
-})
+// A 16-case switch and two hardcoded Sets of type strings used to live here.
+// They are one object now: ./widgets.ts. The Sets were the worse half — leaving
+// a type out of either was an error nowhere, it just made the widget behave
+// wrong on a phone, where nobody developing it was looking.
+//
+// `?? null` rather than a non-null assertion: a dashboard is user data and can
+// be imported from a file, so `type` is only as trustworthy as the JSON it came
+// in on. An unknown type renders the error state below instead of throwing.
+const widget = computed(() => (props.config ? WIDGETS[props.config.type] ?? null : null))
 
-const MOBILE_TITLED_TYPES = new Set([
-  'kvtable', 'streamtable', 'gauge', 'markdown', 'stat', 'chart', 'map', 'scanner'
-])
-const MOBILE_EXPANDABLE_TYPES = new Set(['kvtable', 'streamtable', 'map', 'markdown', 'scanner'])
+const widgetComponent = computed(() => widget.value?.component ?? null)
 
 const shouldShowHeader = computed(() => {
   if (!dashboardStore.isLocked) return true
-  if (props.isMobile) return MOBILE_TITLED_TYPES.has(props.config?.type || '')
+  if (props.isMobile) return widget.value?.mobileTitled ?? false
   return true
 })
 const mobileCompact = computed(() => props.isMobile && dashboardStore.isLocked)
 const mobileExpandable = computed(() =>
-  mobileCompact.value && MOBILE_EXPANDABLE_TYPES.has(props.config?.type || '')
+  mobileCompact.value && (widget.value?.mobileExpandable ?? false)
 )
 
 async function handleDelete() {

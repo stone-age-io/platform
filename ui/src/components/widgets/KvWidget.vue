@@ -100,11 +100,11 @@ import JsonViewer from '@/components/common/JsonViewer.vue'
 import WidgetStateOverlay from '@/components/dashboard/WidgetStateOverlay.vue'
 import { useThresholds } from '@/composables/useThresholds'
 import { useNatsKvWatcher } from '@/composables/useNatsKvWatcher'
-import type { WidgetConfig } from '@/types/dashboard'
+import type { WidgetConfigOf } from '@/types/dashboard'
 import { resolveTemplate } from '@/utils/variables'
 
 const props = withDefaults(defineProps<{
-  config: WidgetConfig
+  config: WidgetConfigOf<'kv'>
   layoutMode?: 'standard' | 'card'
 }>(), {
   layoutMode: 'standard'

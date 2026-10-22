@@ -8,110 +8,18 @@
           <button class="close-btn" @click="close">✕</button>
         </div>
         <div class="modal-body">
-          <!-- Data Display -->
-          <div class="widget-category">
-            <div class="category-label">Data Display</div>
+          <div v-for="category in categories" :key="category.name" class="widget-category">
+            <div class="category-label">{{ category.name }}</div>
             <div class="widget-type-buttons">
-              <button v-show="isAllowed('text')" class="widget-type-btn" @click="selectType('text')">
-                <div class="widget-type-icon">📝</div>
-                <div class="widget-type-name">Text</div>
-                <div class="widget-type-desc">Display latest value</div>
-              </button>
-              <button v-show="isAllowed('stat')" class="widget-type-btn" @click="selectType('stat')">
-                <div class="widget-type-icon">📊</div>
-                <div class="widget-type-name">Stat Card</div>
-                <div class="widget-type-desc">KPI with trend</div>
-              </button>
-              <button v-show="isAllowed('gauge')" class="widget-type-btn" @click="selectType('gauge')">
-                <div class="widget-type-icon">⏲️</div>
-                <div class="widget-type-name">Gauge</div>
-                <div class="widget-type-desc">Circular meter</div>
-              </button>
-              <button v-show="isAllowed('status')" class="widget-type-btn" @click="selectType('status')">
-                <div class="widget-type-icon">🚦</div>
-                <div class="widget-type-name">Status</div>
-                <div class="widget-type-desc">State mapping & watchdog</div>
-              </button>
-              <button v-show="isAllowed('chart')" class="widget-type-btn" @click="selectType('chart')">
-                <div class="widget-type-icon">📈</div>
-                <div class="widget-type-name">Chart</div>
-                <div class="widget-type-desc">Line chart over time</div>
-              </button>
-              <button v-show="isAllowed('kv')" class="widget-type-btn" @click="selectType('kv')">
-                <div class="widget-type-icon">🗄️</div>
-                <div class="widget-type-name">KV Value</div>
-                <div class="widget-type-desc">Single KV entry</div>
-              </button>
-              <button v-show="isAllowed('kvtable')" class="widget-type-btn" @click="selectType('kvtable')">
-                <div class="widget-type-icon">📋</div>
-                <div class="widget-type-name">KV Table</div>
-                <div class="widget-type-desc">Live KV bucket table</div>
-              </button>
-              <button v-show="isAllowed('streamtable')" class="widget-type-btn" @click="selectType('streamtable')">
-                <div class="widget-type-icon">📡</div>
-                <div class="widget-type-name">Stream Table</div>
-                <div class="widget-type-desc">Live message stream as a table</div>
-              </button>
-            </div>
-          </div>
-
-          <!-- Controls -->
-          <div class="widget-category">
-            <div class="category-label">Controls</div>
-            <div class="widget-type-buttons">
-              <button v-show="isAllowed('button')" class="widget-type-btn" @click="selectType('button')">
-                <div class="widget-type-icon">📤</div>
-                <div class="widget-type-name">Button</div>
-                <div class="widget-type-desc">Publish messages</div>
-              </button>
-              <button v-show="isAllowed('switch')" class="widget-type-btn" @click="selectType('switch')">
-                <div class="widget-type-icon">🔄</div>
-                <div class="widget-type-name">Switch</div>
-                <div class="widget-type-desc">Toggle control</div>
-              </button>
-              <button v-show="isAllowed('slider')" class="widget-type-btn" @click="selectType('slider')">
-                <div class="widget-type-icon">🎚️</div>
-                <div class="widget-type-name">Slider</div>
-                <div class="widget-type-desc">Range control</div>
-              </button>
-              <button v-show="isAllowed('publisher')" class="widget-type-btn" @click="selectType('publisher')">
-                <div class="widget-type-icon">📨</div>
-                <div class="widget-type-name">Publisher</div>
-                <div class="widget-type-desc">Send ad-hoc messages</div>
-              </button>
-            </div>
-          </div>
-
-          <!-- Layout -->
-          <div class="widget-category">
-            <div class="category-label">Layout</div>
-            <div class="widget-type-buttons">
-              <button v-show="isAllowed('markdown')" class="widget-type-btn" @click="selectType('markdown')">
-                <div class="widget-type-icon">📝</div>
-                <div class="widget-type-name">Markdown</div>
-                <div class="widget-type-desc">Static text & images</div>
-              </button>
-              <button v-show="isAllowed('map')" class="widget-type-btn" @click="selectType('map')">
-                <div class="widget-type-icon">🗺️</div>
-                <div class="widget-type-name">Map</div>
-                <div class="widget-type-desc">Geographic location</div>
-              </button>
-              <button v-show="isAllowed('console')" class="widget-type-btn" @click="selectType('console')">
-                <div class="widget-type-icon">📟</div>
-                <div class="widget-type-name">Console</div>
-                <div class="widget-type-desc">Live log stream</div>
-              </button>
-            </div>
-          </div>
-
-          <!-- Tools -->
-          <div class="widget-category">
-            <div class="category-label">Tools</div>
-            <div class="widget-type-buttons">
-              <button v-show="isAllowed('scanner')" class="widget-type-btn" @click="selectType('scanner')">
-                <div class="widget-type-icon">📷</div>
-                <div class="widget-type-name">Scanner</div>
-                <div class="widget-type-desc">QR code lookup</div>
+              <button
+                v-for="w in category.widgets"
+                :key="w.type"
+                class="widget-type-btn"
+                @click="selectType(w.type)"
+              >
+                <div class="widget-type-icon">{{ w.icon }}</div>
+                <div class="widget-type-name">{{ w.label }}</div>
+                <div class="widget-type-desc">{{ w.description }}</div>
               </button>
             </div>
           </div>
@@ -122,6 +30,8 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+import { WIDGETS, WIDGET_CATEGORIES, type WidgetDefinition } from './widgets'
 import type { WidgetType } from '@/types/dashboard'
 
 interface Props {
@@ -135,6 +45,26 @@ function isAllowed(type: WidgetType): boolean {
   if (!props.allowedTypes) return true
   return props.allowedTypes.includes(type)
 }
+
+// This palette was sixteen hand-written <button> blocks, which made it the
+// seventh place a new widget had to be added — and the one whose omission is
+// total, since a widget missing from here cannot be added at all.
+//
+// Order comes from the declaration order of WIDGETS (object key order), not
+// from WIDGET_TYPES, which is sorted for its own reasons.
+//
+// A category with nothing allowed in it is now dropped. It used to render its
+// label over an empty row, because the buttons were hidden individually with
+// v-show rather than filtered out.
+const categories = computed(() => {
+  const all = Object.entries(WIDGETS) as [WidgetType, WidgetDefinition][]
+  return WIDGET_CATEGORIES.map(name => ({
+    name,
+    widgets: all
+      .filter(([type, w]) => w.category === name && isAllowed(type))
+      .map(([type, w]) => ({ type, ...w })),
+  })).filter(c => c.widgets.length > 0)
+})
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]

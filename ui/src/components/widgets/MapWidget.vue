@@ -96,10 +96,10 @@ import { resolveTemplate } from '@/utils/variables'
 import { JSONPath } from 'jsonpath-plus'
 import MarkerDetailPanel from './map/MarkerDetailPanel.vue'
 import DynamicMarkerPanel from './map/DynamicMarkerPanel.vue'
-import type { WidgetConfig, DynamicMarkerSource } from '@/types/dashboard'
+import type { WidgetConfigOf, DynamicMarkerSource } from '@/types/dashboard'
 
 const props = withDefaults(defineProps<{
-  config: WidgetConfig
+  config: WidgetConfigOf<'map'>
   isFullscreen?: boolean
 }>(), {
   isFullscreen: false

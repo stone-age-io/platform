@@ -64,12 +64,16 @@ describe('dashboard export/import round trip', () => {
     const got = reimported.localDashboards[0]
     expect(got.name).toBe('Cold Chain')
     expect(got.widgets).toHaveLength(1)
-    expect(got.widgets[0].type).toBe('kvtable')
     // Widget config has to survive, or an imported dashboard looks right and
     // shows nothing.
-    expect(got.widgets[0].kvtableConfig?.kvBucket).toBe(
-      original.widgets[0].kvtableConfig?.kvBucket,
-    )
+    const imported = got.widgets[0]
+    const seeded = original.widgets[0]
+    expect(imported.type).toBe('kvtable')
+    // WidgetConfig is narrowed by `type`, so reading kvtableConfig needs the
+    // check rather than a `?.`. The expect above is what proves the type; this
+    // is how the compiler is told.
+    if (imported.type !== 'kvtable' || seeded.type !== 'kvtable') throw new Error('not a kvtable widget')
+    expect(imported.kvtableConfig.kvBucket).toBe(seeded.kvtableConfig.kvBucket)
   })
 
   it('assigns new ids, so importing the same file twice does not collide', () => {

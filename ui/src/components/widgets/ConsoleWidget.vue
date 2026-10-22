@@ -108,10 +108,10 @@ import { useWidgetDataStore } from '@/stores/widgetData'
 import JsonViewer from '@/components/common/JsonViewer.vue'
 import WidgetStateOverlay from '@/components/dashboard/WidgetStateOverlay.vue'
 import { missedSince } from '@/utils/bufferView'
-import type { WidgetConfig } from '@/types/dashboard'
+import type { WidgetConfigOf } from '@/types/dashboard'
 
 const props = withDefaults(defineProps<{
-  config: WidgetConfig
+  config: WidgetConfigOf<'console'>
   layoutMode?: 'standard' | 'card'
 }>(), {
   layoutMode: 'standard'

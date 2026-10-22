@@ -443,9 +443,10 @@ export interface MapWidgetConfig {
 }
 
 // --- Main Widget Configuration ---
-export interface WidgetConfig {
+
+/** Everything a widget has regardless of its type. */
+export interface WidgetConfigBase {
   id: string
-  type: WidgetType
   title: string
   x: number
   y: number
@@ -457,24 +458,65 @@ export interface WidgetConfig {
   // Unset: JetStream's stored time, else the time the browser received it.
   timestampPath?: string
   buffer: BufferConfig
-  
-  chartConfig?: ChartWidgetConfig
-  textConfig?: TextWidgetConfig
-  buttonConfig?: ButtonWidgetConfig
-  kvConfig?: KvWidgetConfig
-  switchConfig?: SwitchWidgetConfig
-  sliderConfig?: SliderWidgetConfig
-  statConfig?: StatCardWidgetConfig
-  gaugeConfig?: GaugeWidgetConfig
-  mapConfig?: MapWidgetConfig
-  consoleConfig?: ConsoleWidgetConfig
-  publisherConfig?: PublisherWidgetConfig
-  statusConfig?: StatusWidgetConfig
-  markdownConfig?: MarkdownWidgetConfig
-  kvtableConfig?: KvTableWidgetConfig
-  streamtableConfig?: StreamTableWidgetConfig
-  scannerConfig?: ScannerWidgetConfig
 }
+
+/**
+ * The one config object each widget type owns.
+ *
+ * WHY THIS IS A MAP AND NOT SIXTEEN OPTIONAL FIELDS. It used to be sixteen
+ * `xxxConfig?:` fields stacked on one interface, each read by exactly one
+ * widget. That shape cannot help anybody: every widget had to write
+ * `props.config.gaugeConfig!` — an assertion the compiler accepts and the
+ * browser finds out about — and a new widget type could be added to
+ * WIDGET_TYPES, to the palette and to the container without ever declaring a
+ * config at all, with nothing to say so until it rendered empty.
+ *
+ * Keyed by `type`, the compiler becomes the checklist: a type listed in
+ * WIDGET_TYPES with no entry here does not compile, and inside a widget that
+ * has narrowed `config` by type, its own config object is present rather than
+ * asserted.
+ *
+ * THE FIELD NAMES ARE DELIBERATELY UNCHANGED. A single `config` field would
+ * read better and would also rename sixteen keys inside every dashboard ever
+ * saved — localStorage, the KV-backed dashboards, and every exported JSON file
+ * somebody is keeping. That is a data migration, not a refactor.
+ *
+ * Narrowing is a compile-time claim about data that arrives at runtime from
+ * user-editable JSON, so the import path still has to behave when a config
+ * object is missing. `types/dashboard.spec.ts` pins the construction side.
+ */
+export interface WidgetConfigByType {
+  chart: { chartConfig: ChartWidgetConfig }
+  text: { textConfig: TextWidgetConfig }
+  button: { buttonConfig: ButtonWidgetConfig }
+  kv: { kvConfig: KvWidgetConfig }
+  kvtable: { kvtableConfig: KvTableWidgetConfig }
+  streamtable: { streamtableConfig: StreamTableWidgetConfig }
+  switch: { switchConfig: SwitchWidgetConfig }
+  slider: { sliderConfig: SliderWidgetConfig }
+  stat: { statConfig: StatCardWidgetConfig }
+  gauge: { gaugeConfig: GaugeWidgetConfig }
+  map: { mapConfig: MapWidgetConfig }
+  console: { consoleConfig: ConsoleWidgetConfig }
+  publisher: { publisherConfig: PublisherWidgetConfig }
+  status: { statusConfig: StatusWidgetConfig }
+  markdown: { markdownConfig: MarkdownWidgetConfig }
+  scanner: { scannerConfig: ScannerWidgetConfig }
+}
+
+/** One widget, narrowed by `type`. */
+export type WidgetConfig = {
+  [T in WidgetType]: WidgetConfigBase & { type: T } & WidgetConfigByType[T]
+}[WidgetType]
+
+/**
+ * One widget of a known type — what a widget component takes as its prop:
+ *
+ *   defineProps<{ config: WidgetConfigOf<'gauge'> }>()
+ *
+ * which is how `config.gaugeConfig` stops needing a `!`.
+ */
+export type WidgetConfigOf<T extends WidgetType> = Extract<WidgetConfig, { type: T }>
 
 export type StorageType = 'local' | 'kv'
 
@@ -516,203 +558,235 @@ export const DEFAULT_BUFFER_CONFIG: BufferConfig = {
   maxCount: 10,
 }
 
-export function createDefaultWidget(type: WidgetType, position: { x: number; y: number }): WidgetConfig {
+/**
+ * What each widget type starts life as, beyond the fields every widget shares.
+ *
+ * This was a 16-case `switch` that mutated a half-built object. A `Record` over
+ * WidgetType instead, for the reason WIDGETS gives: a case missing from a
+ * switch falls through in silence, and what fell through here was a widget with
+ * no config object at all — added to the palette, addable to a dashboard, and
+ * empty on arrival. The entry's own type requires its config object, so there
+ * is no longer a way to write that widget.
+ *
+ * `title` is required because a widget with no title is unidentifiable on a
+ * grid of twelve. Anything else from the base is optional and overrides it.
+ */
+type WidgetDefaults<T extends WidgetType> = { title: string } &
+  Omit<WidgetConfigOf<T>, keyof WidgetConfigBase | 'type'> &
+  Partial<WidgetConfigBase>
+
+const WIDGET_DEFAULTS: { [T in WidgetType]: () => WidgetDefaults<T> } = {
+  chart: () => ({
+    title: 'Chart Widget',
+    // No widget-level jsonPath: each series reads the whole payload.
+    chartConfig: { chartType: 'line', series: [{ label: 'Value', path: '$.value' }] },
+    // The shared default of 10 is a latest-value buffer; a chart of 10 points
+    // is barely a line, and a time window would be capped long before it
+    // filled. Same bound as console and streamtable.
+    buffer: { maxCount: 200 },
+  }),
+
+  text: () => ({
+    title: 'Text Widget',
+    jsonPath: '$.value',
+    textConfig: { fontSize: 24, thresholds: [] },
+  }),
+
+  button: () => ({
+    title: 'Button Widget',
+    buttonConfig: {
+      label: 'Send',
+      publishSubject: 'cmd.thing.DEVICE_01.action',
+      payload: '{}',
+      actionType: 'publish',
+      timeout: 1000,
+    },
+  }),
+
+  kv: () => ({
+    title: 'KV Widget',
+    kvConfig: { displayFormat: 'json', thresholds: [] },
+  }),
+
+  switch: () => ({
+    title: 'Switch Control',
+    // A switch writes, so it defaults to the writable half of the twin.
+    // Widgets are general-purpose — any bucket works; these are only a
+    // starting point that points somewhere real.
+    switchConfig: {
+      mode: 'kv',
+      kvBucket: TWIN_DESIRED_BUCKET,
+      kvKey: 'thing.DEVICE_01.switch',
+      publishSubject: 'cmd.thing.DEVICE_01.switch',
+      onPayload: { state: 'on' },
+      offPayload: { state: 'off' },
+      labels: { on: 'ON', off: 'OFF' },
+    },
+  }),
+
+  slider: () => ({
+    title: 'Slider Control',
+    sliderConfig: {
+      mode: 'core',
+      publishSubject: 'cmd.thing.DEVICE_01.level',
+      min: 0,
+      max: 100,
+      step: 1,
+      defaultValue: 50,
+      valueTemplate: '{{value}}',
+      unit: '%',
+    },
+  }),
+
+  stat: () => ({
+    title: 'Stat Card',
+    jsonPath: '$.value',
+    dataSource: { type: 'subscription', subject: 'metrics.value' },
+    statConfig: { unit: '', showTrend: true, trendWindow: 10, thresholds: [] },
+  }),
+
+  gauge: () => ({
+    title: 'Gauge Meter',
+    jsonPath: '$.value',
+    dataSource: { type: 'subscription', subject: 'sensor.value' },
+    gaugeConfig: {
+      min: 0,
+      max: 100,
+      unit: '',
+      zones: [
+        { min: 0, max: 60, color: 'var(--color-success)' },
+        { min: 60, max: 80, color: 'var(--color-warning)' },
+        { min: 80, max: 100, color: 'var(--color-error)' },
+      ],
+    },
+  }),
+
+  map: () => ({
+    title: 'Map Widget',
+    mapConfig: {
+      center: { lat: 39.8283, lon: -98.5795 },
+      zoom: 4,
+      markers: [],
+    },
+  }),
+
+  console: () => ({
+    title: 'Console Stream',
+    dataSource: { type: 'subscription', subject: '>', subjects: ['>'], hideSystemSubjects: true },
+    consoleConfig: { fontSize: 12, showTimestamp: true },
+    // 200, matching streamtable. The 100 here was overridden by a second
+    // defaults function that ran afterwards, so 200 is what a console widget
+    // has actually had.
+    buffer: { maxCount: 200 },
+  }),
+
+  publisher: () => ({
+    title: 'Publisher',
+    publisherConfig: {
+      defaultSubject: 'test.subject',
+      defaultPayload: '{\n  "action": "test"\n}',
+      history: [],
+      timeout: 2000,
+    },
+  }),
+
+  status: () => ({
+    title: 'Status',
+    dataSource: { type: 'subscription', subject: 'service.status' },
+    statusConfig: {
+      mappings: [
+        { id: '1', value: 'online', color: 'var(--color-success)', label: 'Online', blink: false },
+        { id: '2', value: 'error', color: 'var(--color-error)', label: 'Error', blink: true },
+      ],
+      defaultColor: 'var(--color-info)',
+      defaultLabel: 'Unknown',
+      showStale: true,
+      stalenessThreshold: 60000,
+      staleColor: 'var(--muted)',
+      staleLabel: 'Stale',
+    },
+  }),
+
+  markdown: () => ({
+    // Empty title often looks better for static text: the content renders its
+    // own heading, so a title bar above it is the same words twice.
+    title: '',
+    markdownConfig: {
+      content: '### Hello World\n\nThis is a **markdown** widget.\n\nYou can use variables like {{device_id}}.',
+    },
+  }),
+
+  kvtable: () => ({
+    title: 'KV Table',
+    kvtableConfig: {
+      kvBucket: TWIN_BUCKET,
+      keyPattern: 'thing.>',
+      // reads reported state; see utils/twin.ts
+      columns: [{ id: 'col_1', label: 'Key', path: '__key_suffix__', format: 'text' }],
+      defaultSortDirection: 'desc',
+      maxRows: 500,
+    },
+  }),
+
+  streamtable: () => ({
+    title: 'Stream Table',
+    dataSource: { type: 'subscription', subjects: [] },
+    buffer: { maxCount: 200 },
+    streamtableConfig: {
+      columns: [
+        { id: 'col_subject', label: 'Subject', path: '__subject__', format: 'text' },
+        { id: 'col_timestamp', label: 'Time', path: '__timestamp__', format: 'relative-time' },
+      ],
+      defaultSortDirection: 'desc',
+    },
+  }),
+
+  scanner: () => ({
+    title: 'Scanner',
+    scannerConfig: {
+      kvEnabled: true,
+      kvBucket: '',
+      kvKeyTemplate: '{value}',
+      pbEnabled: false,
+      pbCollection: '',
+      pbFilter: '',
+      pbFields: '',
+      publishEnabled: false,
+      publishSubjectTemplate: 'scans.{purpose}.{scanner}',
+      deviceLabel: '',
+      scanPurpose: 'verify',
+      location: '',
+      dedupWindowMs: 3000,
+      lookupTimeoutMs: 5000,
+      allowManualEntry: true,
+    },
+  }),
+}
+
+export function createDefaultWidget<T extends WidgetType>(
+  type: T,
+  position: { x: number; y: number },
+): WidgetConfigOf<T> {
   const size = DEFAULT_WIDGET_SIZES[type]
   const id = `widget_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-  
-  const base: WidgetConfig = {
+
+  // The cast is the one place the compiler cannot follow: it checks each
+  // WIDGET_DEFAULTS entry against its own type, but cannot see that spreading
+  // the generic `WIDGET_DEFAULTS[type]()` over the base completes
+  // WidgetConfigOf<T>. The entries are what is actually checked, and they are
+  // the thing that used to be wrong.
+  return {
     id,
     type,
-    title: `New ${type.charAt(0).toUpperCase() + type.slice(1)} Widget`,
     x: position.x,
     y: position.y,
     w: size.w,
     h: size.h,
     dataSource: { type: 'subscription' },
     buffer: { ...DEFAULT_BUFFER_CONFIG },
-  }
-  
-  switch (type) {
-    case 'chart':
-      base.title = 'Chart Widget'
-      // No widget-level jsonPath: each series reads the whole payload.
-      base.chartConfig = { chartType: 'line', series: [{ label: 'Value', path: '$.value' }] }
-      // The shared default of 10 is a latest-value buffer; a chart of 10 points
-      // is barely a line, and a time window would be capped long before it
-      // filled. Same bound as console and streamtable.
-      base.buffer = { maxCount: 200 }
-      break
-    case 'text':
-      base.title = 'Text Widget'
-      base.jsonPath = '$.value'
-      base.textConfig = { fontSize: 24, thresholds: [] }
-      break
-    case 'button':
-      base.buttonConfig = {
-        label: 'Send',
-        publishSubject: 'cmd.thing.DEVICE_01.action',
-        payload: '{}',
-        actionType: 'publish',
-        timeout: 1000
-      }
-      base.title = 'Button Widget'
-      break
-    case 'kv':
-      base.title = 'KV Widget'
-      base.kvConfig = { displayFormat: 'json', thresholds: [] }
-      break
-    case 'switch':
-      // A switch writes, so it defaults to the writable half of the twin.
-      // Widgets are general-purpose — any bucket works; these are only a
-      // starting point that points somewhere real.
-      base.switchConfig = {
-        mode: 'kv',
-        kvBucket: TWIN_DESIRED_BUCKET,
-        kvKey: 'thing.DEVICE_01.switch',
-        publishSubject: 'cmd.thing.DEVICE_01.switch',
-        onPayload: { state: 'on' },
-        offPayload: { state: 'off' },
-        labels: { on: 'ON', off: 'OFF' }
-      }
-      base.title = 'Switch Control'
-      break
-    case 'slider':
-      base.sliderConfig = {
-        mode: 'core',
-        publishSubject: 'cmd.thing.DEVICE_01.level',
-        min: 0,
-        max: 100,
-        step: 1,
-        defaultValue: 50,
-        valueTemplate: '{{value}}',
-        unit: '%'
-      }
-      base.title = 'Slider Control'
-      break
-    case 'stat':
-      base.title = 'Stat Card'
-      base.jsonPath = '$.value'
-      base.dataSource = { type: 'subscription', subject: 'metrics.value' }
-      base.statConfig = {
-        unit: '',
-        showTrend: true,
-        trendWindow: 10,
-        thresholds: []
-      }
-      break
-    case 'gauge':
-      base.title = 'Gauge Meter'
-      base.jsonPath = '$.value'
-      base.dataSource = { type: 'subscription', subject: 'sensor.value' }
-      base.gaugeConfig = {
-        min: 0,
-        max: 100,
-        unit: '',
-        zones: [
-          { min: 0, max: 60, color: 'var(--color-success)' },
-          { min: 60, max: 80, color: 'var(--color-warning)' },
-          { min: 80, max: 100, color: 'var(--color-error)' }
-        ]
-      }
-      break
-    case 'map':
-      base.title = 'Map Widget'
-      base.mapConfig = {
-        center: { lat: 39.8283, lon: -98.5795 },
-        zoom: 4,
-        markers: []
-      }
-      break
-    case 'console':
-      base.title = 'Console Stream'
-      base.dataSource = { type: 'subscription', subject: '>', subjects: ['>'], hideSystemSubjects: true }
-      base.consoleConfig = { fontSize: 12, showTimestamp: true }
-      // 200, matching streamtable. The 100 here was overridden by a second
-      // defaults function that ran afterwards, so 200 is what a console widget
-      // has actually had.
-      base.buffer.maxCount = 200
-      break
-    case 'publisher':
-      base.title = 'Publisher'
-      base.publisherConfig = {
-        defaultSubject: 'test.subject',
-        defaultPayload: '{\n  "action": "test"\n}',
-        history: [],
-        timeout: 2000
-      }
-      break
-    case 'status':
-      base.title = 'Status'
-      base.dataSource = { type: 'subscription', subject: 'service.status' }
-      base.statusConfig = {
-        mappings: [
-          { id: '1', value: 'online', color: 'var(--color-success)', label: 'Online', blink: false },
-          { id: '2', value: 'error', color: 'var(--color-error)', label: 'Error', blink: true }
-        ],
-        defaultColor: 'var(--color-info)',
-        defaultLabel: 'Unknown',
-        showStale: true,
-        stalenessThreshold: 60000,
-        staleColor: 'var(--muted)',
-        staleLabel: 'Stale'
-      }
-      break
-    case 'markdown':
-      base.title = '' // Empty title often looks better for static text
-      base.markdownConfig = {
-        content: '### Hello World\n\nThis is a **markdown** widget.\n\nYou can use variables like {{device_id}}.'
-      }
-      break
-    case 'kvtable':
-      base.title = 'KV Table'
-      base.kvtableConfig = {
-        kvBucket: TWIN_BUCKET,
-        keyPattern: 'thing.>',
-        // reads reported state; see utils/twin.ts
-        columns: [
-          { id: 'col_1', label: 'Key', path: '__key_suffix__', format: 'text' }
-        ],
-        defaultSortDirection: 'desc',
-        maxRows: 500
-      }
-      break
-    case 'streamtable':
-      base.title = 'Stream Table'
-      base.dataSource = { type: 'subscription', subjects: [] }
-      base.buffer = { maxCount: 200 }
-      base.streamtableConfig = {
-        columns: [
-          { id: 'col_subject',   label: 'Subject', path: '__subject__',   format: 'text' },
-          { id: 'col_timestamp', label: 'Time',    path: '__timestamp__', format: 'relative-time' },
-        ],
-        defaultSortDirection: 'desc',
-      }
-      break
-    case 'scanner':
-      base.title = 'Scanner'
-      base.scannerConfig = {
-        kvEnabled: true,
-        kvBucket: '',
-        kvKeyTemplate: '{value}',
-        pbEnabled: false,
-        pbCollection: '',
-        pbFilter: '',
-        pbFields: '',
-        publishEnabled: false,
-        publishSubjectTemplate: 'scans.{purpose}.{scanner}',
-        deviceLabel: '',
-        scanPurpose: 'verify',
-        location: '',
-        dedupWindowMs: 3000,
-        lookupTimeoutMs: 5000,
-        allowManualEntry: true,
-      }
-      break
-  }
-  
-  return base
+    ...WIDGET_DEFAULTS[type](),
+  } as WidgetConfigOf<T>
 }
-
 export function createDefaultDashboard(name: string): Dashboard {
   const now = Date.now()
   return {

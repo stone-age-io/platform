@@ -56,10 +56,10 @@ import { useDashboardStore } from '@/stores/dashboard'
 import { useKvKey } from '@/composables/useKvKey'
 import { resolveTemplate } from '@/utils/variables'
 import { extractJsonPath } from '@/utils/jsonPath'
-import type { WidgetConfig } from '@/types/dashboard'
+import type { WidgetConfigOf } from '@/types/dashboard'
 
 const props = withDefaults(defineProps<{
-  config: WidgetConfig
+  config: WidgetConfigOf<'status'>
   layoutMode?: 'standard' | 'card'
 }>(), {
   layoutMode: 'standard'
@@ -69,7 +69,7 @@ const dataStore = useWidgetDataStore()
 const dashboardStore = useDashboardStore()
 
 // Config Accessors
-const cfg = computed(() => props.config.statusConfig!)
+const cfg = computed(() => props.config.statusConfig)
 const mappings = computed(() => cfg.value.mappings || [])
 const staleThreshold = computed(() => cfg.value.stalenessThreshold || 60000)
 const isKvMode = computed(() => props.config.dataSource.type === 'kv')

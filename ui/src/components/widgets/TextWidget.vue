@@ -37,11 +37,11 @@ import { computed } from 'vue'
 import { useWidgetDataStore } from '@/stores/widgetData'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useThresholds } from '@/composables/useThresholds'
-import type { WidgetConfig } from '@/types/dashboard'
+import type { WidgetConfigOf } from '@/types/dashboard'
 import { resolveTemplate } from '@/utils/variables'
 
 const props = withDefaults(defineProps<{
-  config: WidgetConfig
+  config: WidgetConfigOf<'text'>
   layoutMode?: 'standard' | 'card'
 }>(), {
   layoutMode: 'standard'

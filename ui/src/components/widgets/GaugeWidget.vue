@@ -80,10 +80,10 @@
 import { computed } from 'vue'
 import { useWidgetDataStore } from '@/stores/widgetData'
 import { useDesignTokens } from '@/composables/useDesignTokens'
-import type { WidgetConfig } from '@/types/dashboard'
+import type { WidgetConfigOf } from '@/types/dashboard'
 
 const props = defineProps<{
-  config: WidgetConfig
+  config: WidgetConfigOf<'gauge'>
 }>()
 
 const dataStore = useWidgetDataStore()
@@ -94,7 +94,7 @@ const center = size / 2
 const strokeWidth = 20
 const radius = (size / 2) - (strokeWidth / 2) - 5
 
-const cfg = computed(() => props.config.gaugeConfig!)
+const cfg = computed(() => props.config.gaugeConfig)
 const buffer = computed(() => dataStore.getBuffer(props.config.id))
 const hasData = computed(() => buffer.value.length > 0)
 

@@ -37,7 +37,13 @@ describe('createDefaultWidget', () => {
 
   // Each type's own config object has to be present, or its config modal opens
   // onto undefined and the widget cannot be set up at all.
-  const CONFIG_KEY: Partial<Record<WidgetType, keyof ReturnType<typeof createDefaultWidget>>> = {
+  //
+  // WidgetConfig is a discriminated union now, so the compiler already refuses
+  // a WIDGET_DEFAULTS entry that omits its config object. This stays as the
+  // runtime half: the entry can still be present and build the wrong shape, and
+  // a dashboard arriving from imported JSON has never been checked by anything.
+  // The keys are plain strings because `keyof` a union is only its shared keys.
+  const CONFIG_KEY: Record<WidgetType, string> = {
     chart: 'chartConfig',
     text: 'textConfig',
     button: 'buttonConfig',
@@ -59,8 +65,8 @@ describe('createDefaultWidget', () => {
   it.each(ALL)('gives %s its own config object', (type) => {
     const key = CONFIG_KEY[type]
     expect(key, `no config key mapped for ${type}`).toBeTruthy()
-    const w = createDefaultWidget(type, POSITION)
-    expect(w[key!], `${type} has no ${String(key)}`).toBeDefined()
+    const w = createDefaultWidget(type, POSITION) as unknown as Record<string, unknown>
+    expect(w[key], `${type} has no ${key}`).toBeDefined()
   })
 
   // The kvtable default is documented behaviour, not an arbitrary value: it

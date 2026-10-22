@@ -96,7 +96,7 @@ import { useNatsStore } from '@/stores/nats'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useWidgetOperations } from '@/composables/useWidgetOperations'
 import ResponseModal from '@/components/common/ResponseModal.vue'
-import type { WidgetConfig, PublisherHistoryItem } from '@/types/dashboard'
+import type { WidgetConfigOf, PublisherHistoryItem } from '@/types/dashboard'
 import type { Thing, ThingType, ThingTypeOperation, Location } from '@/types/pocketbase'
 import { encodeString, decodeBytes } from '@/utils/encoding'
 import { resolveTemplate } from '@/utils/variables'
@@ -105,7 +105,7 @@ import { pb } from '@/utils/pb'
 import { useAuthStore } from '@/stores/auth'
 
 const props = withDefaults(defineProps<{
-  config: WidgetConfig
+  config: WidgetConfigOf<'publisher'>
   layoutMode?: 'standard' | 'card'
 }>(), {
   layoutMode: 'standard'

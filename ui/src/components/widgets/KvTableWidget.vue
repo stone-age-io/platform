@@ -131,7 +131,7 @@ import { JSONPath } from 'jsonpath-plus'
 import ResponsiveList, { type Column } from '@/components/ui/ResponsiveList.vue'
 import JsonViewer from '@/components/common/JsonViewer.vue'
 import WidgetStateOverlay from '@/components/dashboard/WidgetStateOverlay.vue'
-import type { WidgetConfig, TableColumn } from '@/types/dashboard'
+import type { WidgetConfigOf, TableColumn } from '@/types/dashboard'
 import {
   cellClass as cellClassFor,
   compareMixed,
@@ -141,7 +141,7 @@ import {
 } from '@/utils/tableColumns'
 
 const props = withDefaults(defineProps<{
-  config: WidgetConfig
+  config: WidgetConfigOf<'kvtable'>
   layoutMode?: 'standard' | 'card'
 }>(), {
   layoutMode: 'standard'

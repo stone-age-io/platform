@@ -3,32 +3,15 @@
 // Extracted from ConfigureWidgetModal.vue — all form state management,
 // hydration, validation, and save logic for widget configuration.
 
-import { ref, computed, watch, type Ref, type Component } from 'vue'
+import { ref, computed, watch, type Ref } from 'vue'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useValidation } from '@/composables/useValidation'
 import { useWidgetOperations } from '@/composables/useWidgetOperations'
 import { createEmptyFormState } from '@/types/config'
 import { parseDurationMs } from '@/utils/duration'
+import { WIDGETS } from '@/components/dashboard/widgets'
 import type { WidgetFormState } from '@/types/config'
-import type { WidgetType, WidgetConfig } from '@/types/dashboard'
-
-// Config sub-components
-import ConfigText from '@/components/dashboard/config/ConfigText.vue'
-import ConfigChart from '@/components/dashboard/config/ConfigChart.vue'
-import ConfigStat from '@/components/dashboard/config/ConfigStat.vue'
-import ConfigGauge from '@/components/dashboard/config/ConfigGauge.vue'
-import ConfigButton from '@/components/dashboard/config/ConfigButton.vue'
-import ConfigKv from '@/components/dashboard/config/ConfigKv.vue'
-import ConfigSwitch from '@/components/dashboard/config/ConfigSwitch.vue'
-import ConfigSlider from '@/components/dashboard/config/ConfigSlider.vue'
-import ConfigMap from '@/components/dashboard/config/ConfigMap.vue'
-import ConfigConsole from '@/components/dashboard/config/ConfigConsole.vue'
-import ConfigPublisher from '@/components/dashboard/config/ConfigPublisher.vue'
-import ConfigStatus from '@/components/dashboard/config/ConfigStatus.vue'
-import ConfigMarkdown from '@/components/dashboard/config/ConfigMarkdown.vue'
-import ConfigKvTable from '@/components/dashboard/config/ConfigKvTable.vue'
-import ConfigStreamTable from '@/components/dashboard/config/ConfigStreamTable.vue'
-import ConfigScanner from '@/components/dashboard/config/ConfigScanner.vue'
+import type { WidgetType, WidgetConfig, WidgetConfigOf } from '@/types/dashboard'
 
 // ============================================================================
 // TYPES
@@ -36,13 +19,31 @@ import ConfigScanner from '@/components/dashboard/config/ConfigScanner.vue'
 
 type Validator = ReturnType<typeof useValidation>
 
-interface WidgetTypeHandler {
-  /** Extract widget-specific fields from WidgetConfig into flat form state */
-  hydrate?: (widget: WidgetConfig, state: WidgetFormState) => void
+// Each handler sees its OWN widget type, not the union, so `widget.textConfig`
+// inside the `text` handler is present rather than asserted. That is the whole
+// benefit of the discriminated union in types/dashboard.ts reaching this file.
+interface WidgetTypeHandler<T extends WidgetType> {
+  /** Extract widget-specific fields from the widget into flat form state */
+  hydrate?: (widget: WidgetConfigOf<T>, state: WidgetFormState) => void
   /** Add widget-specific validation errors */
   validate?: (form: WidgetFormState, errors: Record<string, string>, v: Validator) => void
   /** Build widget-specific update payload from form state */
-  buildUpdates?: (form: WidgetFormState, widget: WidgetConfig) => Partial<WidgetConfig>
+  buildUpdates?: (form: WidgetFormState, widget: WidgetConfigOf<T>) => Partial<WidgetConfigOf<T>>
+}
+
+type WidgetTypeHandlers = { [T in WidgetType]?: WidgetTypeHandler<T> }
+
+/**
+ * The handler for a widget, with its type parameter widened to the union.
+ *
+ * TypeScript cannot see that `typeHandlers[widget.type]` and `widget` are the
+ * same T — correlating an index into a mapped type with the value it came from
+ * is beyond what it tracks. This cast says that once, here, where the
+ * relationship is a line apart and obvious; every handler body above is checked
+ * against its own narrow type, which is where the mistakes actually happen.
+ */
+function handlerFor(type: WidgetType): WidgetTypeHandler<WidgetType> | undefined {
+  return typeHandlers[type] as WidgetTypeHandler<WidgetType> | undefined
 }
 
 export interface UseWidgetFormOptions {
@@ -51,33 +52,11 @@ export interface UseWidgetFormOptions {
   onClose: () => void
 }
 
-// ============================================================================
-// COMPONENT MAPPING
-// ============================================================================
-
-// Record<WidgetType, …> rather than Record<string, …>, which is the whole
-// point: a widget type with no config component here is a compile error instead
-// of a config modal that opens onto nothing. Nothing in this console renders an
-// error for a missing entry — the modal just comes up empty — and there is no
-// runtime check anywhere, so the type is the only thing that can catch it.
-const configComponents: Record<WidgetType, Component> = {
-  text: ConfigText,
-  chart: ConfigChart,
-  stat: ConfigStat,
-  gauge: ConfigGauge,
-  button: ConfigButton,
-  kv: ConfigKv,
-  switch: ConfigSwitch,
-  slider: ConfigSlider,
-  map: ConfigMap,
-  console: ConfigConsole,
-  publisher: ConfigPublisher,
-  status: ConfigStatus,
-  markdown: ConfigMarkdown,
-  kvtable: ConfigKvTable,
-  streamtable: ConfigStreamTable,
-  scanner: ConfigScanner,
-}
+// The per-type config component map that used to live here is now one column of
+// `WIDGETS` (components/dashboard/widgets.ts), alongside the widget component
+// itself and the palette entry. It was already a `Record<WidgetType, …>`, so a
+// missing entry was already a compile error; what it was not was in the same
+// place as the other five things adding a widget requires.
 
 // ============================================================================
 // SHARED HELPERS
@@ -118,11 +97,19 @@ function hydrateKvFields(widget: WidgetConfig, state: WidgetFormState): void {
   }
 }
 
-/** Types that use the standard shared data source config (subject + jsonPath + buffer) */
-const STANDARD_DATA_SOURCE_TYPES: WidgetType[] = ['text', 'chart', 'stat', 'gauge', 'console', 'streamtable']
+// Both of these were `WidgetType[]` literals here. They are now flags on
+// `WIDGETS`, so leaving a new type out of them is a compile error rather than a
+// configure modal that quietly offers the wrong data-source panel.
 
-/** Types that allow multiple subjects via the tag-input UI */
-const MULTI_SUBJECT_TYPES: WidgetType[] = ['console', 'streamtable', 'chart']
+/** Does this type use the shared data source config (subject + jsonPath + buffer)? */
+function usesStandardDataSource(type: WidgetType): boolean {
+  return WIDGETS[type].standardDataSource
+}
+
+/** Does this type take a list of subjects via the tag-input UI? */
+function usesMultipleSubjects(type: WidgetType): boolean {
+  return WIDGETS[type].multiSubject
+}
 
 /** Validate subscription-related fields shared across visualization widgets */
 function validateSubscriptionFields(
@@ -132,7 +119,7 @@ function validateSubscriptionFields(
   v: Validator
 ): void {
   // Multi-subject types (console, streamtable)
-  if (MULTI_SUBJECT_TYPES.includes(widgetType)) {
+  if (usesMultipleSubjects(widgetType)) {
     if (form.subjects.length === 0) {
       errors.subjects = 'At least one subject is required'
     }
@@ -178,7 +165,7 @@ function validateSubscriptionFields(
 
 /** Should this widget type go through shared subscription validation? */
 function needsSubscriptionValidation(widgetType: WidgetType, form: WidgetFormState): boolean {
-  if (STANDARD_DATA_SOURCE_TYPES.includes(widgetType)) return true
+  if (usesStandardDataSource(widgetType)) return true
   if (widgetType === 'markdown') return true
   if (widgetType === 'status' && form.dataSourceType === 'subscription') return true
   return false
@@ -188,7 +175,7 @@ function needsSubscriptionValidation(widgetType: WidgetType, form: WidgetFormSta
 // PER-TYPE HANDLERS
 // ============================================================================
 
-const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
+const typeHandlers: WidgetTypeHandlers = {
 
   // --- text ---
   text: {
@@ -735,7 +722,7 @@ const typeHandlers: Partial<Record<WidgetType, WidgetTypeHandler>> = {
       }
     },
     validate(form, errors) {
-      // Subjects are validated by the shared subscription validator (MULTI_SUBJECT_TYPES).
+      // Subjects are validated by the shared subscription validator (multiSubject in WIDGETS).
       if (form.streamTableColumns.length === 0) {
         errors.streamTableColumns = 'At least one column is required'
       } else {
@@ -873,18 +860,20 @@ export function useWidgetForm(options: UseWidgetFormOptions) {
 
   const activeConfigComponent = computed(() => {
     if (!widgetType.value) return null
-    return configComponents[widgetType.value] || null
+    return WIDGETS[widgetType.value]?.config || null
   })
 
   const showDataSourceConfig = computed(() => {
     if (!widgetType.value) return false
-    // Status, markdown, pocketbase, kvtable manage their own data source UI
-    if (widgetType.value === 'status' || widgetType.value === 'markdown' || widgetType.value === 'kvtable') return false
-    return STANDARD_DATA_SOURCE_TYPES.includes(widgetType.value)
+    // The three names that used to be excluded here by hand — status, markdown
+    // and kvtable, which all draw their own data-source UI — were already
+    // absent from the standard list, so the exclusion never decided anything.
+    // One flag now says it once.
+    return usesStandardDataSource(widgetType.value)
   })
 
   const isMultiSubject = computed(() =>
-    !!widgetType.value && MULTI_SUBJECT_TYPES.includes(widgetType.value)
+    !!widgetType.value && usesMultipleSubjects(widgetType.value)
   )
 
   // --- Hydration ---
@@ -913,7 +902,7 @@ export function useWidgetForm(options: UseWidgetFormOptions) {
     hydrateKvFields(widget, state)
 
     // Type-specific hydration
-    const handler = typeHandlers[widget.type]
+    const handler = handlerFor(widget.type)
     if (handler?.hydrate) {
       handler.hydrate(widget, state)
     }
@@ -941,7 +930,7 @@ export function useWidgetForm(options: UseWidgetFormOptions) {
     }
 
     // Type-specific validation
-    const handler = typeHandlers[widget.type]
+    const handler = handlerFor(widget.type)
     if (handler?.validate) {
       handler.validate(form.value, errors.value, validator)
     }
@@ -962,11 +951,11 @@ export function useWidgetForm(options: UseWidgetFormOptions) {
     const updates: any = { title: form.value.title.trim() }
 
     // Standard data source update for visualization widgets
-    if (STANDARD_DATA_SOURCE_TYPES.includes(widget.type)) {
+    if (usesStandardDataSource(widget.type)) {
       const trimmedSubject = form.value.subject.trim()
       // Multi-subject types manage their own subjects array.
       // All other widget types derive subjects from the single subject field.
-      const resolvedSubjects = MULTI_SUBJECT_TYPES.includes(widget.type)
+      const resolvedSubjects = usesMultipleSubjects(widget.type)
         ? form.value.subjects
         : trimmedSubject ? [trimmedSubject] : []
       updates.dataSource = {
@@ -984,7 +973,7 @@ export function useWidgetForm(options: UseWidgetFormOptions) {
     }
 
     // Type-specific updates
-    const handler = typeHandlers[widget.type]
+    const handler = handlerFor(widget.type)
     if (handler?.buildUpdates) {
       Object.assign(updates, handler.buildUpdates(form.value, widget))
     }

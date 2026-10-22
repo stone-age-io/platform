@@ -143,12 +143,12 @@ import { useNatsStore } from '@/stores/nats'
 import { useAuthStore } from '@/stores/auth'
 import { pb } from '@/utils/pb'
 import { encodeString, decodeBytes } from '@/utils/encoding'
-import type { WidgetConfig } from '@/types/dashboard'
+import type { WidgetConfigOf } from '@/types/dashboard'
 import { evaluateRules } from './scannerRules'
 import { buildScanPublish } from './scannerPublish'
 
 const props = withDefaults(defineProps<{
-  config: WidgetConfig
+  config: WidgetConfigOf<'scanner'>
   layoutMode?: 'standard' | 'card'
 }>(), {
   layoutMode: 'standard'

@@ -56,10 +56,10 @@ import { useSwitchState } from '@/composables/useSwitchState'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useNatsStore } from '@/stores/nats'
 import { resolveTemplate } from '@/utils/variables'
-import type { WidgetConfig } from '@/types/dashboard'
+import type { WidgetConfigOf } from '@/types/dashboard'
 
 const props = withDefaults(defineProps<{
-  config: WidgetConfig
+  config: WidgetConfigOf<'switch'>
   layoutMode?: 'standard' | 'card'
 }>(), {
   layoutMode: 'standard'
@@ -69,7 +69,7 @@ const dashboardStore = useDashboardStore()
 const natsStore = useNatsStore()
 const requestConfirm = inject('requestConfirm') as (title: string, message: string, onConfirm: () => void) => void
 
-const cfg = computed(() => props.config.switchConfig!)
+const cfg = computed(() => props.config.switchConfig)
 
 const resolvedConfig = computed(() => {
   const vars = dashboardStore.currentVariableValues
