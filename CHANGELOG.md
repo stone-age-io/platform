@@ -11,6 +11,8 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-10-21
+
 Nothing here changes what the platform does. It is the console's internals, the
 contributor documentation that was missing, and a test that failed on CI for
 reasons that were never about the code under it. No schema migration, no
@@ -2793,7 +2795,9 @@ repository public. Each of these was reproduced before being fixed.
 - `scripts/test-authz.sh` grew from 135 to 147 checks, covering the membership
   lifecycle, the code uniqueness constraint, and the frozen leaf-node code.
 
-[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.13.1...HEAD
+[0.13.1]: https://github.com/stone-age-io/platform/compare/v0.13.0...v0.13.1
+[0.13.0]: https://github.com/stone-age-io/platform/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/stone-age-io/platform/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/stone-age-io/platform/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/stone-age-io/platform/compare/v0.9.0...v0.10.0
