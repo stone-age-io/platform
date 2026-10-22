@@ -92,12 +92,18 @@ jobs:
           check typescript 6
           check maplibre-gl 6
 
-      # Pure-logic unit tests: widget defaults, the capability map, twin drift.
-      # No DOM and no component mounting -- all of it is reachable without one,
-      # and `vue-tsc && vite build` stays green while any of it is wrong, which
-      # is the gap this closes. It does NOT cover rendering: nothing here mounts
-      # a map, a theme or a widget. Runs before the build so a logic regression
-      # fails fast rather than after a 16-second bundle.
+      # Mostly pure-logic unit tests: widget defaults, the capability map, twin
+      # drift. All of it is reachable without a DOM, and `vue-tsc && vite build`
+      # stays green while any of it is wrong, which is the gap this closes.
+      #
+      # Five components are mounted, listed at the top of ui/vitest.config.ts:
+      # the two provisioning forms, where the submitted body is not a shape the
+      # compiler checks, plus ConfirmDialog, QrLabelModal and AddWidgetModal.
+      # Everything else is unrendered -- nothing here mounts a map, a theme or a
+      # widget, and /dev/widgets is the gallery a person looks at instead.
+      #
+      # Runs before the build so a logic regression fails fast rather than after
+      # a 16-second bundle.
       - name: Frontend unit tests
         working-directory: ui
         run: npm test
