@@ -11,6 +11,31 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+### Upgrading
+
+- **A duration setting that does not parse now stops the server.**
+  `audit.retention.max_age`, `readiness.interval` and `readiness.timeout` take
+  Go durations. A value like `30d` (days are not a unit) used to be ignored in
+  silence, which for `max_age` meant retention by age was off. Write `720h`.
+
+### Fixed
+
+- `bootstrap` stops if it cannot set `is_operator`, instead of warning and then
+  printing a summary that says it did.
+- The console waits for the first organization to be selected before loading a
+  page, so the first page no longer asks for data in the wrong context.
+- A failed organization switch shows an error, instead of doing nothing.
+- Moving from one location to another starts its sub-location and thing lists
+  on page one.
+- The debug panel reports a copy with a toast rather than `alert()`, and the
+  service worker no longer logs on every load.
+
+### Tests
+
+- `scripts/test-authz.sh` covers invitation edits and deletes and the NATS
+  export and import records, including a user who is admin in one organization
+  and dashboard in another (310 checks, from 275).
+
 ## [0.14.0] - 2026-10-24
 
 Authorization fixes around organization owners and device passwords, a

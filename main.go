@@ -188,6 +188,22 @@ func validateEncryptionKey(key, name string) {
 	}
 }
 
+// requireDuration reads a duration setting and refuses one that does not parse.
+// viper.GetDuration turns a typo into 0 without a word, and every caller treats
+// 0 as "not set", so a max_age of "30d" used to switch retention off quietly.
+// Empty is still "not set".
+func requireDuration(key string) time.Duration {
+	s := strings.TrimSpace(viper.GetString(key))
+	if s == "" {
+		return 0
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		log.Fatalf("❌ %s must be a Go duration such as \"15s\" or \"720h\" (got %q). Days are not a unit: 30 days is \"720h\".", key, s)
+	}
+	return d
+}
+
 func main() {
 	loadConfig()
 
@@ -337,11 +353,7 @@ func main() {
 		retention := &pbaudit.RetentionPolicy{
 			Interval: viper.GetString("audit.retention.interval"),
 		}
-		if maxAgeStr != "" {
-			if d, err := time.ParseDuration(maxAgeStr); err == nil {
-				retention.MaxAge = d
-			}
-		}
+		retention.MaxAge = requireDuration("audit.retention.max_age")
 		if maxRecords > 0 {
 			retention.MaxRecords = maxRecords
 		}
@@ -647,8 +659,8 @@ func main() {
 		// Closure, not a value: `serve --nats` assigns embeddedNATS during
 		// OnServe, long after this registration runs.
 		EmbeddedNATS:   func() *natsd.Server { return embeddedNATS },
-		ProbeInterval:  viper.GetDuration("readiness.interval"),
-		ProbeTimeout:   viper.GetDuration("readiness.timeout"),
+		ProbeInterval:  requireDuration("readiness.interval"),
+		ProbeTimeout:   requireDuration("readiness.timeout"),
 		MetricsEnabled: viper.GetBool("metrics.enabled"),
 		MetricsToken:   viper.GetString("metrics.token"),
 	})

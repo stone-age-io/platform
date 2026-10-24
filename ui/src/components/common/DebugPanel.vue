@@ -175,8 +175,10 @@ import { useDashboardStore } from '@/stores/dashboard'
 import { useWidgetDataStore } from '@/stores/widgetData'
 import { getSubscriptionManager } from '@/composables/useSubscriptionManager'
 import { useConfirm } from '@/composables/useConfirm'
+import { useToast } from '@/composables/useToast'
 
 const { confirm } = useConfirm()
+const toast = useToast()
 
 const props = defineProps<{ modelValue: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
@@ -243,8 +245,8 @@ function copyDebugInfo() {
     }
   }
   navigator.clipboard.writeText(JSON.stringify(info, null, 2))
-    .then(() => alert('Debug info copied!'))
-    .catch(() => alert('Failed to copy'))
+    .then(() => toast.success('Debug info copied'))
+    .catch(() => toast.error('Failed to copy debug info'))
 }
 
 const statusClass = computed(() => ({

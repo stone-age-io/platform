@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { pb } from '@/utils/pb'
 import { resetFileToken } from '@/utils/fileToken'
+import { useToast } from '@/composables/useToast'
 import type { User, Membership, Organization, SuperUser, NatsUser } from '@/types/pocketbase'
 import type { AuthProviderInfo } from 'pocketbase'
 
@@ -237,7 +238,7 @@ export const useAuthStore = defineStore('auth', () => {
     
     if (memberships.value.length > 0) {
       const firstOrgId = memberships.value[0].organization
-      switchOrganization(firstOrgId)
+      await switchOrganization(firstOrgId)
     } else {
       currentOrgId.value = null
     }
@@ -255,6 +256,7 @@ export const useAuthStore = defineStore('auth', () => {
       await pb.collection(collection).update(user.value.id, { current_organization: orgId })
     } catch (e) {
       console.warn('Organization persistence failed:', e)
+      useToast().error('Could not switch organization. Please try again.')
       return
     }
     currentOrgId.value = orgId
