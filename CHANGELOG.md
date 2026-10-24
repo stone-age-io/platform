@@ -11,6 +11,8 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-24
+
 Authorization fixes around organization owners and device passwords, a
 handful of small bugs found in a pre-release review, and documentation that
 had drifted from the code. One rule-only schema migration; no data changes.
@@ -2881,7 +2883,8 @@ repository public. Each of these was reproduced before being fixed.
 - `scripts/test-authz.sh` grew from 135 to 147 checks, covering the membership
   lifecycle, the code uniqueness constraint, and the frozen leaf-node code.
 
-[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.13.1...HEAD
+[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/stone-age-io/platform/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/stone-age-io/platform/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/stone-age-io/platform/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/stone-age-io/platform/compare/v0.11.0...v0.12.0
