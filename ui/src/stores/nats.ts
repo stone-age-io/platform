@@ -284,6 +284,13 @@ export const useNatsStore = defineStore('nats', () => {
           lastError.value = String((s as any).data ?? s.type)
           console.error('NATS Error:', s)
           break
+        case 'close':
+          // The client gave up for good (e.g. repeated auth errors after the
+          // credential was revoked or the org suspended). A local disconnect()
+          // bumps opGen first, so it returns above and never lands here.
+          status.value = 'disconnected'
+          window.dispatchEvent(new Event('nats:closed'))
+          break
       }
     }
   }

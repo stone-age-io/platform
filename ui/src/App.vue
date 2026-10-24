@@ -4,6 +4,8 @@ import { onMounted, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useUIStore } from '@/stores/ui'
 import { useNatsStore } from '@/stores/nats'
+import { useWidgetDataStore } from '@/stores/widgetData'
+import { useDashboardStore } from '@/stores/dashboard'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -54,7 +56,16 @@ watch(() => authStore.isAuthenticated, async (isAuth) => {
 //
 // { immediate: true } so that a session restored from localStorage pre-mount
 // (new-tab scenario) still triggers tryAutoConnect on the initial orgId.
-watch(() => authStore.currentOrgId, async (orgId) => {
+//
+// The two stores that outlive the page are reset here too, on a real switch
+// (prev is undefined only on the immediate first run). Widget buffers are keyed
+// by widget id and subject, and local dashboards are device-wide, so the same
+// keys exist in both orgs and org A's last values would keep drawing in org B.
+watch(() => authStore.currentOrgId, async (orgId, prev) => {
+  if (prev !== undefined) {
+    useWidgetDataStore().clearAllBuffers()
+    useDashboardStore().leaveRemoteDashboard()
+  }
   if (natsStore.status !== 'disconnected') {
     await natsStore.disconnect()
   }

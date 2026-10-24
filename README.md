@@ -45,7 +45,24 @@ The hub's leaf node listener and JetStream domain are already in the generated
 NATS config. Only the address is missing, and until it is set an edge box's
 agent is told so when it asks for its leaf config.
 
-### From source — five commands
+The container also reads these, all optional except the password:
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `STONE_AGE_BOOTSTRAP_PASSWORD` | — (required on first boot) | Password for the superuser and the platform operator |
+| `STONE_AGE_BOOTSTRAP_EMAIL` | `admin@example.com` | Their email |
+| `STONE_AGE_BOOTSTRAP_ORG` | `System` | Name of the `$SYS` organization |
+| `STONE_AGE_BOOTSTRAP_OPERATOR_ORG` | `Operator` | Name of the operator's own organization |
+| `STONE_AGE_HTTP_PORT` | `8090` | Port the API and console listen on |
+| `STONE_AGE_DATA_DIR` | `/data` | Holds `pb_data/` and `nats-config/` |
+
+The `BOOTSTRAP_*` values are read on first boot only. Any other `STONE_AGE_*`
+variable overrides `config.yaml` as usual ([Configuration](#configuration)).
+
+The image runs as uid 10001. A named volume just works; a bind mount must be
+writable by that uid (`chown -R 10001 /path/on/host`) or the first boot fails.
+
+### From source
 
 Needs Go 1.27+ and Node 20.19+ (or 22.12+, whichever your distribution has).
 
@@ -61,13 +78,15 @@ go build -o stone-age .
 
 The first line builds the console into `pb_public/`; the second embeds it.
 
-**The order of the middle three is load-bearing.** `bootstrap` writes
-`is_operator`, `is_system_org` and `is_operator_org`, which only exist after
-`schema.json` has been imported by `migrate up`. PocketBase silently discards a
+**The order of the four seeding commands (`superuser upsert` through
+`nats export`) is load-bearing.** `bootstrap` writes `is_operator`,
+`is_system_org` and `is_operator_org`, which only exist after `schema.json` has
+been imported by `migrate up`. PocketBase silently discards a
 write to a field that does not exist, so running `bootstrap` first would print
 success while leaving you with no platform operator at all. It now refuses to run
 in that state and says so. `superuser upsert` has to come first as well: it seeds
-the NATS operator and `$SYS` records the other two link up.
+the NATS operator and `$SYS` records the other two link up. `nats export` comes
+last, because there is no operator to export until `bootstrap` has run.
 
 Everything except the last line is once per deployment. After the first run,
 `./stone-age serve --nats` is the whole thing.
@@ -308,6 +327,7 @@ curl -s localhost:8090/api/ready
 | `nats_trust` | The NATS server **rejects this platform's `$SYS` credential**: its `nats.conf` carries a different operator, so every account claim fails, no organization reaches the bus, and the console looks fine |
 | `nats_websocket_urls` | *Warns* — unset, so the console falls back to `ws://localhost:9222` and no browser on another machine can reach the bus |
 | `encryption_at_rest` | *Warns* — NATS seeds and Nebula private keys are stored in plaintext |
+| `nebula_cert_expiry` | *Warns* — a Nebula host certificate or CA has expired or is inside its warning window (30 days for a host, 90 for a CA). Skipped when no certificates are issued |
 
 Only a failure returns 503. Warnings answer 200: a probe's only lever is to
 restart or de-register, and neither fixes "you have not set an encryption key".
@@ -342,6 +362,9 @@ or as HTTP Basic with any username, covering every scraper in common use.
 | `stone_age_records{collection}` | Rows **configured** — inventory, not availability |
 | `stone_age_inactive_records{collection}` | Decommissioned things (`active = false`) |
 | `stone_age_nats_users_revoked` | Credentials on their account's revocation list |
+| `stone_age_certificate_expiry_seconds{kind}` | Unix time the **soonest**-expiring Nebula certificate of that kind expires. Alert relative to `time()` |
+| `stone_age_certificates{kind}` | Nebula certificates in service (hosts: active only) |
+| `stone_age_certificates_expired{kind}` / `_expiring{kind}` | Already expired / inside the warning window |
 | `stone_age_database_size_bytes` | SQLite plus its WAL, for disk growth |
 | `stone_age_collector_errors` | Collectors that failed *this scrape* — the affected series are missing, not zero |
 | `stone_age_nats_*` | The embedded bus: `_embedded_up`, connections, cluster routes, leaf-node connections, slow consumers, msgs/bytes, JetStream bytes. **Only with `serve --nats`** — absent entirely with an external server, rather than reported as zero |
@@ -395,7 +418,7 @@ class hook.
 Backend and frontend separately, for hot module replacement:
 
 ```bash
-go run main.go serve
+go run . serve
 ```
 
 ```bash

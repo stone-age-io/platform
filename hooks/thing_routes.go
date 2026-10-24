@@ -87,6 +87,28 @@ type createThingRequest struct {
 // linked identity is verified to belong to that same organization. Do not assume
 // a rule is still protecting anything on this path.
 func RegisterThingRoutes(app *pocketbase.PocketBase, opts ThingRoutesOptions) {
+	// Only an owner or admin ever knows a Thing's password -- the same line
+	// things.manageRule draws for setting one. A member who knew it could sign in
+	// as the Thing once an admin later attached an identity, and read that
+	// identity's creds_file or host key through the Thing's own read branch. The
+	// route below withholds the generated one; this covers the plain record API,
+	// whose create admits members and must carry a password, so no rule can
+	// refuse the field. Replacing it here makes PocketBase skip its
+	// passwordConfirm check (forms/record_upsert.go, syncPasswordFields).
+	app.OnRecordCreateRequest(opts.ThingCollection).BindFunc(func(e *core.RecordRequestEvent) error {
+		if e.HasSuperuserAuth() {
+			return e.Next()
+		}
+		if _, _, err := requireMembership(e.RequestEvent, opts.MembershipCollection, rolesOrgManager); err != nil {
+			pw, err := randomSecret(16)
+			if err != nil {
+				return e.InternalServerError("failed to generate credential", err)
+			}
+			e.Record.SetPassword(pw)
+		}
+		return e.Next()
+	})
+
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
 		se.Router.POST("/api/org/things", func(re *core.RequestEvent) error {
 			var body createThingRequest
@@ -218,14 +240,23 @@ func RegisterThingRoutes(app *pocketbase.PocketBase, opts ThingRoutesOptions) {
 			RecordActivity(re.App, re, orgID, ActionProvisioned, "thing",
 				created.Id, created.GetString("name"))
 
+			resp := map[string]any{
+				"id":    created.Id,
+				"code":  created.GetString("code"),
+				"email": created.GetString("email"),
+			}
 			// The password is returned exactly once — PocketBase stores only its
 			// hash, so this response is the only chance to record it.
-			return re.JSON(200, map[string]any{
-				"id":       created.Id,
-				"code":     created.GetString("code"),
-				"email":    created.GetString("email"),
-				"password": thingPassword,
-			})
+			//
+			// Owner/admin only, the same line things.manageRule draws for setting
+			// one. A member who kept it could sign in as the Thing after an admin
+			// later attached an identity, and read that identity's creds_file or
+			// host key through the Thing's own read branch. A member's Thing gets
+			// its password from an owner or admin, who can set one on the form.
+			if role == "owner" || role == "admin" {
+				resp["password"] = thingPassword
+			}
+			return re.JSON(200, resp)
 		}).Bind(apis.RequireAuth("users"))
 
 		return se.Next()

@@ -118,7 +118,7 @@ Rules to follow when touching authorization:
   has two answers. Tenant-defined roles, if they ever land, belong in the rules:
   make `memberships.role` a relation to an org-scoped role collection with
   boolean capability columns and let the rules traverse it, the way
-  `organization.owner = @request.auth.id` already does.
+  `organization.memberships_via_organization.role` already does.
 
   **The unchanged-id shortcut inside that guard is off when the record's own
   `organization` moves.** Ids already present in `Original()` are skipped as
@@ -337,5 +337,23 @@ Rules to follow when touching authorization:
   expired. `hooks/active_flag.go` mirrors the flag to both, and the two cascades
   are independent — a device may hold either identity, both, or neither, so
   neither may short-circuit the other.
+- **Authority is the membership role. `organizations.owner` grants nothing.**
+  The memberships and invites rules carried an `organization.owner =
+  @request.auth.id` branch that never looked at the owner's membership, so the
+  field was a standing grant: an owner an admin had demoted to `dashboard`, or
+  removed, still managed invitations and members and could PATCH their own role
+  back. owner and admin were meant to be identical in the rules, and the
+  membership already says which is which. `hooks/org_membership.go` keeps the
+  field honest instead: creating an organization, or an operator reassigning
+  its owner, gives that user an owner membership. Do not add a rule branch on
+  the field.
+- **Only an owner or admin ever knows a Thing's password.** A Thing can read
+  the credential of its own linked identity, so whoever can sign in as a Thing
+  can read whatever identity an admin attaches to it later. Members create
+  Things, so `POST /api/org/things` returns the generated password to owner and
+  admin only, and a request hook replaces the password a member sends to the
+  record API, which no rule can refuse because PocketBase requires one to
+  create an auth record. The same line `things.manageRule` draws for setting
+  one.
 - **Run `./scripts/test-authz.sh` after any rule change** and add a check. Pair
   every "cannot" with a "can" on the same record, or a blanket deny passes.

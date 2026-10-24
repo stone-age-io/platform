@@ -30,7 +30,7 @@ const managedExportName = "helpdesk-events"
 //
 //   - managed = true  → a stream export of ExportSubject on the org's account,
 //     plus an import of it on the operator hub account remapped to an
-//     org-prefixed local subject ("helpdesk.>" → "helpdesk.{orgId}.>").
+//     org-prefixed local subject ("helpdesk.>" → "helpdesk.{orgCode}.>").
 //     The prefix lives in the hub's signed account JWT, so the org identity
 //     on the subject cannot be forged by the publisher.
 //   - managed = false (or org deleted) → the pair is removed.
@@ -95,14 +95,15 @@ func reconcile(rec *core.Record, desired []field) []string {
 // config, the imported account is a public key that can rotate, and both
 // descriptions embed a renameable org name.
 //
-// It stops being survivable once the subject roots at organizations.code
-// (ADR 0002, step 3): a stale local_subject would then be an outage that reports
-// nothing at all, because a consumer's filter is helpdesk.*.tickets.> and the
-// wildcard keeps matching a subject that no longer carries any traffic.
+// It stopped being survivable once the subject rooted at organizations.code
+// (ADR 0002, step 3): a stale local_subject is an outage that reports nothing
+// at all, because a consumer's filter is helpdesk.*.tickets.> and the wildcard
+// keeps matching a subject that no longer carries any traffic.
 //
-// Note for that step: reconciliation only runs when this hook fires, so changing
-// the token shape does not retroactively fix existing imports. Whatever makes
-// that switch has to touch every managed org, or re-save them.
+// Reconciliation only runs when this hook fires, so a change to the token shape
+// does not retroactively fix existing imports. The switch to codes re-saved
+// every managed org for that reason
+// (migrations/schema_update_subject_token_to_code.go); a future change must too.
 func ensureManagedExports(app core.App, opts ManagedOrgExportsOptions, org *core.Record) error {
 	account, _ := app.FindFirstRecordByFilter(opts.AccountCollection, "organization = {:org}", dbx.Params{"org": org.Id})
 	if account == nil {

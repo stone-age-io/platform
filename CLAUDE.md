@@ -32,7 +32,7 @@ them automatically. Open them when a row above says to.
 ### Development
 ```bash
 # Terminal 1: Backend
-go run main.go serve
+go run . serve
 
 # Terminal 2: Frontend with HMR
 cd ui
@@ -259,6 +259,9 @@ reasoning, and the incident that taught it, are in `AUTHORIZATION.md`.
   token.** Disabling an identity also needs `RefreshTokenKey()`.
 - **A flag is not a control unless something acts on it.** And `revoke` is not
   suspend.
+- **Authority is `memberships.role`; `organizations.owner` grants nothing.** Never
+  add a rule branch on it.
+- **Only an owner or admin ever knows a Thing's password.**
 - **Run `./scripts/test-authz.sh` after any rule change.** Pair every "cannot"
   with a "can" on the same record.
 

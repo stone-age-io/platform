@@ -11,6 +11,92 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+Authorization fixes around organization owners and device passwords, a
+handful of small bugs found in a pre-release review, and documentation that
+had drifted from the code. One rule-only schema migration; no data changes.
+
+### Upgrading
+
+- **Run `migrate up`** (the container does it on start). It re-imports
+  `schema.json` for the membership and invitation rules under Security.
+- **Read the migration's log for owners without a membership.**
+  `organizations.owner` no longer grants anything by itself, so an owner whose
+  owner or admin membership is gone loses access to the organization. The
+  migration names each such organization and grants nothing, because it cannot
+  tell an owner who was removed on purpose from one who never had a row. If
+  one should have access, invite them as admin; operators can invite into any
+  organization.
+- **`--config=/path` now works.** Only the space-separated form,
+  `--config /path`, was honoured before; the `=` form fell through to
+  `./config.yaml` or the built-in defaults without a word. If you have been
+  passing the `=` form, the file you named takes effect from this release.
+
+### Security
+
+- **Removing or demoting an organization's owner now takes effect.** The
+  memberships and invites rules had a branch on `organizations.owner` that
+  never looked at the owner's membership. An owner an admin had demoted, or
+  removed, kept managing invitations and members and could PATCH their own
+  role back to owner; and because `memberships.user` was frozen only for a
+  caller editing their own row, a removed owner could also PATCH any
+  membership in the organization to `{"user":"<self>","role":"owner"}` and be
+  back in, displacing the member who held it. The owner branches are gone, so
+  the membership role is the only authority, and `user` is frozen on every
+  branch. An operator who reassigns an organization's owner now gives the new
+  owner an owner membership with it; before, they got none and could not
+  write inventory.
+- **A member never learns a Thing's password.** Whoever can sign in as a
+  Thing can read the credential of any identity an admin later attaches to it,
+  and members create Things. `POST /api/org/things` now returns the generated
+  password to owner and admin only, and a password a member sends to the
+  record API is replaced. A member's Thing gets its password from an owner or
+  admin, who can set one on the Thing form.
+- **`/metrics` no longer lets an anonymous client mint time series.** The
+  `method` label was taken from the request as sent, Go accepts any token as a
+  method, and the catch-all route runs the metrics middleware, so every made-up
+  method added a counter and a histogram. Anything outside the standard methods
+  is now `method="other"`.
+- **The deactivated-device guard refuses on a database error.** A failed lookup
+  was treated as "no deactivated Thing links this identity", so a transient
+  error could let a decommissioned device's NATS user or Nebula host come back
+  up. It now fails the save.
+
+### Fixed
+
+- **The batch API no longer hangs on inventory collections.** The activity feed
+  wrote its row through the root app, which waited on SQLite's only write
+  connection while the batch transaction held it, so any `/api/batch` touching
+  things, locations or the three type collections timed out — and the feed row
+  landed anyway, describing a change that had rolled back. The row is now
+  written inside the request's transaction. The batch API is off by default and
+  the console does not use it.
+- **The console no longer sits on "Reconnecting…" forever** once the NATS
+  client gives up, as it does after repeated auth errors when the user's
+  credential is revoked or the organization is suspended. It shows
+  disconnected.
+- **Searching a location's sub-locations or things with a `"` in the query**
+  produced an invalid filter and the list silently kept its old rows. The query
+  is now bound with `pb.filter`, like every other search box.
+- **Switching organization no longer leaves the previous one on screen.** The
+  live values and chart history buffered for each widget, and an open shared
+  (KV) dashboard, carried over into the new organization. Both are reset on
+  the switch, falling back to a local dashboard.
+- **Viewers are no longer offered the floor plan's Position control.** The save
+  was refused by the API and the dragged marker stayed where it was dropped.
+
+### Dependencies
+
+Development scope only: nothing here reaches the binary or the console bundle
+at runtime.
+
+- **vite 8.3.5** (from 8.2.1), off three launch-editor advisories
+  (GHSA-587h-7wmj-h5pm, GHSA-698v-4r3x-3vcv, GHSA-r825-w8mm-5pxw, all
+  Windows-only). Rolldown moves 0.144 → 0.155; all 138 emitted chunks were
+  compared by sourcemap and none changed which packages it holds, and the
+  MapLibre worker is still emitted. Builds are about three times faster.
+- **vitest 4.1.12** (from 4.1.11), off two `@vitest/mocker` advisories
+  (GHSA-xp26-3454-mjgp, GHSA-qxg6-89mg-rqv8).
+
 ## [0.13.1] - 2026-10-21
 
 Nothing here changes what the platform does. It is the console's internals, the

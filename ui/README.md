@@ -250,7 +250,7 @@ npm install
 npm run dev
 ```
 *   **Frontend:** `http://localhost:5173`
-*   **Backend Proxy:** API requests (`/api`, `/_`) are proxied to `http://127.0.0.1:8090`. Ensure the Go backend is running (`go run main.go serve` from the repo root).
+*   **Backend Proxy:** API requests (`/api`, `/_`) are proxied to `http://127.0.0.1:8090`. Ensure the Go backend is running (`go run . serve` from the repo root).
 
 ### Widget gallery
 

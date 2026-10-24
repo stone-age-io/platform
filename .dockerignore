@@ -14,6 +14,7 @@ storage
 stone-age
 stone-age.exe
 stone-age-authz-test*
+stone-age-sortcheck*
 
 .claude
 *.log

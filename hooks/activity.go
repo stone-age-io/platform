@@ -90,9 +90,12 @@ func ActivityCollectionNames() []string {
 // enclosing transaction core.BaseApp.create/update take the autocommit path, and
 // delete commits its own transaction before returning. It is NOT guaranteed
 // under the batch API (apis/batch.go drives these same handlers inside
-// RunInTransaction), which is disabled by default and unused by the console. The
-// cost if someone enables it is a phantom row in an observation log, which is
-// not worth a transaction dance to prevent -- but it is worth writing down.
+// RunInTransaction), which is disabled by default and unused by the console.
+// That is why the entry is saved through e.App, not the root app: inside a
+// batch e.App is the transaction, so the row commits or rolls back with the
+// write it describes. Saving through the root app there deadlocked -- the
+// transaction holds SQLite's only write connection, and the root app waited on
+// it until the batch timed out.
 //
 // THE ENTRY LANDS AFTER THE RESPONSE. e.Next() writes the HTTP response as well
 // as performing the save, so a client can receive its 200 before the feed row
@@ -118,7 +121,7 @@ func RegisterActivity(app *pocketbase.PocketBase) {
 		// describe() saw an empty string. Everything else is still the
 		// pre-write snapshot, which is the point.
 		entry.ResourceID = e.Record.Id
-		entry.save(app)
+		entry.save(e.App)
 		return nil
 	})
 
@@ -127,7 +130,7 @@ func RegisterActivity(app *pocketbase.PocketBase) {
 		if err := e.Next(); err != nil {
 			return err
 		}
-		entry.save(app)
+		entry.save(e.App)
 		return nil
 	})
 
@@ -136,7 +139,7 @@ func RegisterActivity(app *pocketbase.PocketBase) {
 		if err := e.Next(); err != nil {
 			return err
 		}
-		entry.save(app)
+		entry.save(e.App)
 		return nil
 	})
 }
@@ -185,8 +188,9 @@ func describe(e *core.RecordRequestEvent, action string) entry {
 
 // save writes the row, best-effort.
 //
-// It takes the root app rather than the request's, so the write is not bound to
-// a transaction that has already finished by the time this runs.
+// Callers pass the request's app (e.App), never the captured root app. For
+// plain CRUD the two are the same; under the batch API only e.App can write,
+// because the batch transaction holds the single write connection.
 func (ent entry) save(app core.App) {
 	// No organization means nothing to scope the row to, and the column is
 	// required. Unreachable through these collections -- every one of them
