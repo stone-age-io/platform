@@ -14,6 +14,11 @@ dist-ssr
 
 /pb_data
 
+# Default output of `nats export` and the --nats config directory: the
+# resolver account JWTs and the JetStream store (tenant KV and twin data).
+/nats-config/
+.env
+
 # pb_public holds the compiled console, which main.go embeds with
 # `//go:embed all:pb_public/*`. A missing directory is a COMPILE error, so a
 # fresh clone could not run `go build`, `go vet` or `go test` without first
@@ -25,6 +30,7 @@ dist-ssr
 
 stone-age
 stone-age-authz-test
+stone-age-sortcheck*
 *.exe
 
 # Claude Code local state: per-machine settings, launch config, and git

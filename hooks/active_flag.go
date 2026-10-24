@@ -1,6 +1,9 @@
 package hooks
 
 import (
+	"database/sql"
+	"errors"
+	"fmt"
 	"log"
 
 	"github.com/pocketbase/dbx"
@@ -190,8 +193,14 @@ func guardLinkedIdentity(app *pocketbase.PocketBase, thingCollection, identityCo
 
 			thing, err := e.App.FindFirstRecordByFilter(thingCollection,
 				relationField+" = {:id} && active = false", dbx.Params{"id": e.Record.Id})
-			if err != nil || thing == nil {
+			if errors.Is(err, sql.ErrNoRows) {
 				return e.Next() // no deactivated Thing links it
+			}
+			if err != nil {
+				// Refuse rather than pass: this is an enforcement hook, and
+				// passing on a failed lookup would let a deactivated device
+				// back onto the bus or the mesh.
+				return fmt.Errorf("checking for a deactivated Thing: %w", err)
 			}
 
 			name := thing.GetString("code")

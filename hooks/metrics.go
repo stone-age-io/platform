@@ -1,6 +1,7 @@
 package hooks
 
 import (
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -385,7 +386,7 @@ func registerHTTPMetrics(app *pocketbase.PocketBase, set *metrics.Set) {
 			err := re.Next()
 
 			route := routePattern(re)
-			method := re.Request.Method
+			method := methodLabel(re.Request.Method)
 
 			m.duration.WithLabelValues(route, method).Observe(time.Since(started).Seconds())
 			m.requests.WithLabelValues(route, method, statusClass(re, err)).Inc()
@@ -412,6 +413,22 @@ func routePattern(re *core.RequestEvent) string {
 		return p[i+1:]
 	}
 	return p
+}
+
+// methodLabel keeps the method label to the standard verbs.
+//
+// The method is client input, not something the router chose: Go accepts any
+// token as a method, and the method-less catch-all route runs this middleware,
+// so an unauthenticated client sending XYZZY1, XYZZY2, ... would mint a new
+// series per request. Same cardinality bomb routePattern guards against, from
+// the other label.
+func methodLabel(m string) string {
+	switch m {
+	case http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut,
+		http.MethodPatch, http.MethodDelete, http.MethodOptions:
+		return m
+	}
+	return "other"
 }
 
 // statusClass buckets the response into 2xx/4xx/5xx rather than exact codes.

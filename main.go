@@ -39,6 +39,12 @@ func loadConfig() {
 			configPath = os.Args[i+1]
 			break
 		}
+		// Cobra accepts --config=path too, so it must not silently fall
+		// through to ./config.yaml here.
+		if v, ok := strings.CutPrefix(arg, "--config="); ok {
+			configPath = v
+			break
+		}
 	}
 
 	// 2. Set Configuration Source
@@ -131,7 +137,7 @@ func setDefaults() {
 	// and keep a backup — losing an enabled key loses the encrypted records.
 	viper.SetDefault("nats.encryption_key", "")
 	// Subject subtree exported from every managed org's account into the
-	// operator hub account (import remaps it to "<prefix>.{orgId}.>").
+	// operator hub account (import remaps it to "<prefix>.{orgCode}.>").
 	viper.SetDefault("nats.managed_export_subject", "helpdesk.>")
 
 	// Nebula

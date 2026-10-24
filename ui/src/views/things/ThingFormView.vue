@@ -353,7 +353,13 @@ async function handleCreate() {
       },
     })
 
-    // The route returns the generated password exactly once.
+    // The route returns the generated password exactly once, and only to an
+    // owner or admin: a member never learns a Thing's password.
+    if (!created.password) {
+      toast.success('Thing created. An owner or admin sets its password before the device can sign in.')
+      router.push('/things')
+      return
+    }
     successCredentials.value = {
       email: created.email,
       password: created.password,

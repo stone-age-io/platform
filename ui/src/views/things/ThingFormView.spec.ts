@@ -211,6 +211,20 @@ describe('ThingFormView submits', () => {
     expect(Object.keys(init.body.nebula).sort()).toEqual(['host_id', 'mode', 'network_id', 'overlay_ip'])
   })
 
+  it('does not open the credentials dialog when the route withholds the password', async () => {
+    signIn('member')
+    send.mockResolvedValue({ id: 'thing9', email: THING.email })
+    const wrapper = await mountForm()
+
+    await wrapper.find('input[placeholder="e.g. Warehouse HVAC"]').setValue('Lobby Camera')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(document.body.textContent).not.toContain('Thing Provisioned Successfully')
+    expect(push).toHaveBeenCalledWith('/things')
+  })
+
   it('refuses to auto-provision NATS with no role selected, before the round trip', async () => {
     signIn('owner')
     // No roles to pick from, so autoNatsRoleId stays empty while mode is auto.

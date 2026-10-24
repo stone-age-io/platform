@@ -454,6 +454,18 @@ export const useDashboardStore = defineStore('dashboard', () => {
     })()
   }
 
+  // On an organization switch. A KV dashboard lives in the bucket of the org
+  // being left, so keeping it on screen would draw one tenant's layout over the
+  // other's bus. Fall back to a local dashboard, which are device-wide.
+  function leaveRemoteDashboard() {
+    remoteKeys.value = []
+    if (activeDashboard.value?.storage !== 'kv') return
+    if (localDashboards.value.length === 0) {
+      localDashboards.value.push(createDefaultDashboard('My Dashboard'))
+    }
+    setActiveDashboard(localDashboards.value[0])
+  }
+
   // Dashboard Actions
   function setActiveDashboard(dashboard: Dashboard) {
     if (activeWatcher) {
@@ -729,7 +741,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
     storageError, dashboardCount, isAtLimit, isApproachingLimit, isLocked, isDirty, remoteChanged,
     kvBucketName, enableSharedDashboards, startupDashboard, MAX_DASHBOARDS, knownFolders,
     loadFromStorage, saveToStorage, getStorageSize, clearStorageError, toggleLock, setLocked,
-    setActiveDashboard, setStartupDashboard, clearStartupDashboard, setVariableValue, addVariable,
+    setActiveDashboard, leaveRemoteDashboard, setStartupDashboard, clearStartupDashboard, setVariableValue, addVariable,
     updateVariable, removeVariable, createDashboard, deleteDashboard, refreshRemoteKeys,
     loadRemoteDashboard, saveRemoteDashboard, createRemoteDashboard, deleteRemoteDashboard,
     uploadLocalToRemote, duplicateRemoteDashboard, fetchRemoteDashboardJson, updateDashboard,

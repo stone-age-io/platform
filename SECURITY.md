@@ -110,12 +110,14 @@ at 280 characters and lives outside the repository.
   security consequence. Transitive, via `pocketbase/tools/filesystem`'s
   thumbnail generation.
 
-  **Not reachable here: nothing accepts a TIFF.** All three file fields in
-  `schema.json` — `users.avatar`, `locations.floorplan`, `organizations.logo` —
-  restrict `mimeTypes` to jpeg, png, svg+xml, gif and webp, and PocketBase
-  sniffs file content rather than trusting the extension, so a renamed TIFF is
-  rejected on upload. Only `organizations.logo` declares `thumbs`, so it is the
-  single field that ever invokes `imaging` at all.
+  **Not reachable here: nothing accepts a TIFF.** All five file fields in
+  `schema.json` restrict `mimeTypes` to image types that exclude it:
+  `users.avatar`, `locations.floorplan` and `organizations.logo` to jpeg, png,
+  svg+xml, gif and webp, and `things.photo` and `locations.photo` to jpeg, png
+  and webp. PocketBase sniffs file content rather than trusting the extension,
+  so a renamed TIFF is rejected on upload, and `imaging` only ever sees a file
+  that got past that check. `organizations.logo`, `things.photo` and
+  `locations.photo` declare `thumbs`.
 
   There is also no fix to take: `disintegration/imaging` was last released in
   2019 and the advisory lists no patched version. **Revisit if a TIFF mime type

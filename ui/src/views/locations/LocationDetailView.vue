@@ -121,22 +121,19 @@ const breadcrumbs = computed(() => {
  */
 const subLocFilter = computed(() => {
   if (!location.value) return ''
-  let f = `parent = "${location.value.id}"`
+  const id = location.value.id
   const q = subLocSearch.value.trim().toLowerCase()
-  if (q) {
-    f += ` && (name ~ "${q}" || code ~ "${q}")`
-  }
-  return f
+  // pb.filter escapes q; interpolating it breaks on a typed quote.
+  if (!q) return pb.filter('parent = {:id}', { id })
+  return pb.filter('parent = {:id} && (name ~ {:q} || code ~ {:q})', { id, q })
 })
 
 const thingFilter = computed(() => {
   if (!location.value) return ''
-  let f = `location = "${location.value.id}"`
+  const id = location.value.id
   const q = thingSearch.value.trim().toLowerCase()
-  if (q) {
-    f += ` && (name ~ "${q}" || code ~ "${q}")`
-  }
-  return f
+  if (!q) return pb.filter('location = {:id}', { id })
+  return pb.filter('location = {:id} && (name ~ {:q} || code ~ {:q})', { id, q })
 })
 
 // All things (unpaginated) for the Floor Plan map
@@ -483,6 +480,7 @@ onUnmounted(() => cleanupMap())
                 v-if="location.floorplan"
                 :location="location"
                 :things="allThingsForMap"
+                :can-edit="canEditMetadata"
                 @update-position="handleUpdatePosition"
               />
             </div>

@@ -92,3 +92,18 @@ func TestStatusClassMatchesWhatTheRouterWouldSend(t *testing.T) {
 		t.Errorf("statusClassFor(0, plain error) = %q, but the router would send %d (%s)", got, sent, want)
 	}
 }
+
+// The method is client input, so anything outside the standard verbs must
+// collapse to one label or an anonymous client can mint series at will.
+func TestMethodLabelCollapsesNonStandardMethods(t *testing.T) {
+	for _, m := range []string{"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"} {
+		if got := methodLabel(m); got != m {
+			t.Errorf("methodLabel(%q) = %q, want it kept", m, got)
+		}
+	}
+	for _, m := range []string{"XYZZY1", "XYZZY2", "get", "PROPFIND", ""} {
+		if got := methodLabel(m); got != "other" {
+			t.Errorf("methodLabel(%q) = %q, want \"other\"", m, got)
+		}
+	}
+}

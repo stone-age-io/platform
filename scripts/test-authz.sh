@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=264         # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=275         # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -310,6 +310,30 @@ req PATCH "/collections/memberships/records/$MDASH" "$TG" '{"nats_user":""}'
 expect "dashboard CAN clear its own identity link" 200 "$RCODE" "$RBODY"
 req PATCH "/collections/memberships/records/$MBOB" "$TB" "{\"organization\":\"$ORG2\"}"
 expect "cannot move own membership into another tenant" "403|400|404" "$RCODE" "$RBODY"
+# Only the self branch froze `user`, and an organizations.owner branch that
+# outlived the owner membership let a removed owner re-point any row in the org
+# at themselves. eve is outside this org, so the unique (user, organization)
+# index cannot refuse it for the wrong reason.
+req PATCH "/collections/memberships/records/$MBOB" "$TA" "{\"user\":\"$EVE\"}"
+expect "owner cannot re-point a membership at another user" "403|400|404" "$RCODE" "$RBODY"
+req GET "/collections/memberships/records/$MBOB" "$SU"
+if [ "$(j "$RBODY" user)" = "$BOB" ]; then
+  ok "...and the membership still names bob"
+else
+  no "membership user changed, or the record could not be read back to prove it did not"
+fi
+# organizations.owner grants nothing: the membership role is the authority.
+# The rules used to carry an owner branch that ignored the role, so an owner an
+# admin had demoted could simply PATCH their own role back.
+req GET "/collections/memberships/records?filter=(user='$ALICE'%26%26organization='$ORG')" "$SU"
+MALICE=$(jn "$RBODY" 'o.items[0].id')
+[ -z "$MALICE" ] && die "alice has no owner membership: $RBODY"
+req PATCH "/collections/memberships/records/$MALICE" "$SU" '{"role":"dashboard"}'
+req PATCH "/collections/memberships/records/$MALICE" "$TA" '{"role":"owner"}'
+expect "a demoted owner cannot restore their own role" "403|400|404" "$RCODE" "$RBODY"
+req PATCH "/collections/memberships/records/$MALICE" "$SU" '{"role":"owner"}' # reset
+req PATCH "/collections/memberships/records/$MALICE" "$TA" '{"role":"owner"}'
+expect "...and CAN send it once the membership says owner (same request, so the deny was the role)" 200 "$RCODE" "$RBODY"
 req PATCH "/collections/memberships/records/$MBOB" "$TA" '{"role":"admin"}'
 expect "owner CAN change a member's role (admin UX intact)" 200 "$RCODE" "$RBODY"
 req PATCH "/collections/memberships/records/$MBOB" "$SU" '{"role":"member"}' # reset
@@ -605,6 +629,18 @@ TO=$(login oper@test.local)
 req PATCH "/collections/organizations/records/$ORG" "$TO" '{"name":"Renamed By Operator"}'
 expect "platform operator CAN update it (same field, so the deny was authz)" 200 "$RCODE" "$RBODY"
 
+# With no rule consulting organizations.owner, a reassigned owner would hold
+# nothing at all; the reassignment has to bring the membership with it.
+HEIR=$(mkuser heir@test.local)
+req PATCH "/collections/organizations/records/$ORG2" "$TO" "{\"owner\":\"$HEIR\"}"
+expect "platform operator CAN reassign an organization's owner" 200 "$RCODE" "$RBODY"
+req GET "/collections/memberships/records?filter=(user='$HEIR'%26%26organization='$ORG2')" "$SU"
+if [ "$(jn "$RBODY" 'o.items[0]?.role')" = "owner" ]; then
+  ok "...and the new owner holds an owner membership"
+else
+  no "the reassigned owner got no owner membership: $RBODY"
+fi
+
 # An operator onboards users; it does not mint operators. The operator branch
 # of users.createRule was a bare is_operator check, so this POST used to succeed.
 req POST /collections/users/records "$TO" \
@@ -626,6 +662,22 @@ expect "dashboard cannot create a thing" "403|400|404" "$RCODE" "$RBODY"
 req POST /collections/things/records "$TB" \
   "{\"email\":\"memberthing@test.local\",\"password\":\"Password123!\",\"passwordConfirm\":\"Password123!\",\"emailVisibility\":true,\"name\":\"Member Thing\",\"code\":\"MT1\",\"organization\":\"$ORG\"}"
 expect "member CAN create a thing (same payload, so the deny was authz)" 200 "$RCODE" "$RBODY"
+MTHING=$(j "$RBODY" id)
+
+# ...but never with a password the member knows. A member who could sign in as
+# the Thing would read the credential of any identity an admin later attached.
+# The create must carry a password, so a hook replaces it rather than a rule
+# refusing it. Activated by the superuser so the authRule is not the reason.
+req PATCH "/collections/things/records/$MTHING" "$SU" '{"active":true}'
+req POST /collections/things/auth-with-password "" \
+  '{"identity":"memberthing@test.local","password":"Password123!"}'
+expect "a member cannot sign in as a thing with the password they created it with" "400|401|403" "$RCODE" "$RBODY"
+req POST /collections/things/records "$TA" \
+  "{\"email\":\"ownerthing@test.local\",\"password\":\"Password123!\",\"passwordConfirm\":\"Password123!\",\"emailVisibility\":true,\"name\":\"Owner Thing\",\"code\":\"OWT1\",\"organization\":\"$ORG\",\"active\":true}"
+expect "owner CAN create a thing with a password" 200 "$RCODE" "$RBODY"
+req POST /collections/things/auth-with-password "" \
+  '{"identity":"ownerthing@test.local","password":"Password123!"}'
+expect "...and sign in with it (same flow, so the deny was the role)" 200 "$RCODE" "$RBODY"
 
 req PATCH "/collections/things/records/$THING" "$TG" '{"name":"Renamed By Dashboard"}'
 expect "dashboard cannot edit a thing" "403|400|404" "$RCODE" "$RBODY"
@@ -1179,6 +1231,14 @@ expect "dashboard cannot create a thing through the route" "403|400" "$RCODE" "$
 
 req POST "/org/things" "$TB" '{"name":"Member Route Thing","code":"member-route-1"}'
 expect "member CAN create a thing through the route (no identity)" 200 "$RCODE" "$RBODY"
+# Only owner/admin is handed the generated password; see section 11 for why.
+if [ -z "$(j "$RBODY" password)" ] && [ -n "$(j "$RBODY" id)" ]; then
+  ok "...but is not handed the thing's password"
+else
+  no "the route returned a thing password to a member, or no thing at all: $RBODY"
+fi
+req POST "/org/things" "$TA" '{"name":"Owner Route Thing","code":"owner-route-1"}'
+expect "owner CAN create a thing through the route and get its password" 200 "$RCODE" "$RBODY"
 RT_EMAIL=$(j "$RBODY" email)
 RT_PASS=$(j "$RBODY" password)
 

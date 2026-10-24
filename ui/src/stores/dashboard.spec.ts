@@ -206,3 +206,31 @@ describe('dashboard import safety', () => {
     expect(store.localDashboards).toHaveLength(0)
   })
 })
+
+// A KV dashboard lives in the bucket of the organization being left. Keeping it
+// active across a switch drew one tenant's layout over the other's bus.
+describe('leaveRemoteDashboard', () => {
+  it('drops an active KV dashboard for a local one', () => {
+    const store = freshStore()
+    const local = seedDashboard(store, 'Local')
+    store.remoteKeys = ['org-a-dash']
+    store.setActiveDashboard({ ...seedDashboard(store, 'Remote'), storage: 'kv', kvKey: 'org-a-dash' })
+
+    store.leaveRemoteDashboard()
+
+    expect(store.activeDashboard?.id).toBe(local.id)
+    expect(store.activeDashboard?.storage).not.toBe('kv')
+    expect(store.remoteKeys).toEqual([])
+  })
+
+  it('leaves an active local dashboard alone', () => {
+    const store = freshStore()
+    seedDashboard(store, 'First')
+    const second = seedDashboard(store, 'Second')
+    store.setActiveDashboard(second)
+
+    store.leaveRemoteDashboard()
+
+    expect(store.activeDashboard?.id).toBe(second.id)
+  })
+})

@@ -21,6 +21,8 @@ nats:
   account_collection_name: "nats_accounts"
   user_collection_name: "nats_users"
   role_collection_name: "nats_roles"
+  export_collection_name: "nats_account_exports"
+  import_collection_name: "nats_account_imports"
   operator_name: "stone-age.io"
   server_url: "nats://localhost:4222"
   # WebSocket listeners the CONSOLE (a browser) should dial. Distinct from
@@ -70,6 +72,12 @@ nats:
   # deployment and edit the hub's config to match, by hand.
   leaf_url: ""
   jetstream_domain: "hub"
+
+  # The stream each MANAGED organization exports to the operator org, which
+  # imports it as helpdesk.{org code}.> (prefix taken from this value) so
+  # provenance is in the subject. Must end in ".>" -- the server refuses to
+  # start otherwise.
+  managed_export_subject: "helpdesk.>"
 
   log_to_console: false
   # Fair-use ceilings stamped into every new organization's signed account JWT,

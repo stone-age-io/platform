@@ -9,6 +9,8 @@ import FloorPlanPositionDrawer from '@/components/map/FloorPlanPositionDrawer.vu
 const props = defineProps<{
   location: Location
   things: Thing[]
+  // Positioning writes things.floorplan_position, which needs manageInventory.
+  canEdit: boolean
 }>()
 
 const emit = defineEmits<{
@@ -160,6 +162,7 @@ watch(() => props.location?.floorplan, () => void loadMap())
     <!-- Overlay control (top-right), matching the map-viz pattern -->
     <div class="absolute top-[10px] right-[10px] z-[400] flex flex-col gap-2">
       <button
+        v-if="canEdit"
         class="btn btn-sm shadow-sm gap-1"
         :class="(showPositionDrawer || positionMode) ? 'btn-primary' : 'bg-base-100 border-base-300 hover:bg-base-200'"
         @click="togglePositionDrawer"

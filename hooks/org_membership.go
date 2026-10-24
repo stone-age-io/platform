@@ -18,11 +18,12 @@ type OrgMembershipOptions struct {
 // RegisterOrgMembership gives a new organization's owner the membership row that
 // says so, and points them at it.
 //
-// The membership is not decoration. `organizations.owner` is a relation the rules
-// consult directly in a few places, but every write branch on the inventory
-// collections resolves authority through `memberships.role` -- so an owner
-// without a membership row can be read out of the schema and still cannot write
-// anything in their own tenant. The two have to be created together.
+// The membership is not decoration: it is the ONLY thing that grants authority.
+// No API rule consults `organizations.owner`. The memberships and invites rules
+// used to, and that made the field a standing grant that outlived the owner
+// membership -- an owner an admin removed or demoted kept invite and membership
+// powers, and could re-add themselves. So an owner without a membership row
+// can do nothing in their own tenant, and the two have to be created together.
 //
 // ABSORBED FROM pb-tenancy, WITH ONE FIX. This was
 // `tenancy.autoCreateOwnerMembership`, and its handler was
@@ -52,6 +53,27 @@ func RegisterOrgMembership(app *pocketbase.PocketBase, opts OrgMembershipOptions
 		}
 		return e.Next()
 	})
+
+	// An operator reassigning the owner (admin/OrganizationFormView) gets the new
+	// owner the membership that makes the field mean something. Membership only:
+	// unlike a create, a reassignment does not move anyone's console context.
+	//
+	// The REQUEST hook, so it fires only when the owner is changed through the API,
+	// never on an unrelated save -- a level-triggered version would quietly re-add
+	// an owner whom an admin had removed, the next time an operator touched the
+	// organization. Only a request loads the row fresh, which is what makes
+	// Original() the pre-edit owner here (see hooks/CLAUDE.md). The previous
+	// owner keeps whatever membership they had; an admin removes it if wanted.
+	app.OnRecordUpdateRequest(opts.OrgCollection).BindFunc(func(e *core.RecordRequestEvent) error {
+		was := e.Record.Original().GetString("owner")
+		if err := e.Next(); err != nil {
+			return err
+		}
+		if e.Record.GetString("owner") == was {
+			return nil
+		}
+		return ensureOwnerMembership(e.App, e.Record, opts)
+	})
 }
 
 func ensureOwnerMembershipAndContext(app core.App, org *core.Record, opts OrgMembershipOptions) error {
@@ -64,26 +86,8 @@ func ensureOwnerMembershipAndContext(app core.App, org *core.Record, opts OrgMem
 		return nil
 	}
 
-	existing, _ := app.FindFirstRecordByFilter(
-		opts.MembershipCollection,
-		"user = {:user} && organization = {:org}",
-		dbx.Params{"user": ownerID, "org": org.Id},
-	)
-
-	if existing == nil {
-		collection, err := app.FindCollectionByNameOrId(opts.MembershipCollection)
-		if err != nil {
-			return fmt.Errorf("find %s: %w", opts.MembershipCollection, err)
-		}
-
-		membership := core.NewRecord(collection)
-		membership.Set("user", ownerID)
-		membership.Set("organization", org.Id)
-		membership.Set("role", "owner")
-
-		if err := app.Save(membership); err != nil {
-			return fmt.Errorf("create owner membership: %w", err)
-		}
+	if err := ensureOwnerMembership(app, org, opts); err != nil {
+		return err
 	}
 
 	// Point the owner at the organization they now own.
@@ -114,5 +118,38 @@ func ensureOwnerMembershipAndContext(app core.App, org *core.Record, opts OrgMem
 			"organization", org.Id, "owner", ownerID, "error", err)
 	}
 
+	return nil
+}
+
+// ensureOwnerMembership makes the organization's owner hold an owner membership
+// in it: created if missing, promoted if they were already a lesser member.
+func ensureOwnerMembership(app core.App, org *core.Record, opts OrgMembershipOptions) error {
+	ownerID := org.GetString("owner")
+	if ownerID == "" {
+		return nil
+	}
+
+	membership, _ := app.FindFirstRecordByFilter(
+		opts.MembershipCollection,
+		"user = {:user} && organization = {:org}",
+		dbx.Params{"user": ownerID, "org": org.Id},
+	)
+
+	if membership == nil {
+		collection, err := app.FindCollectionByNameOrId(opts.MembershipCollection)
+		if err != nil {
+			return fmt.Errorf("find %s: %w", opts.MembershipCollection, err)
+		}
+		membership = core.NewRecord(collection)
+		membership.Set("user", ownerID)
+		membership.Set("organization", org.Id)
+	} else if membership.GetString("role") == "owner" {
+		return nil
+	}
+
+	membership.Set("role", "owner")
+	if err := app.Save(membership); err != nil {
+		return fmt.Errorf("save owner membership: %w", err)
+	}
 	return nil
 }
