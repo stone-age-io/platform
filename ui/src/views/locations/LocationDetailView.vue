@@ -157,7 +157,10 @@ async function loadData(id: string) {
     if (location.value?.floorplan) activeTab.value = 'floorplan'
     else if (location.value?.coordinates) activeTab.value = 'coordinates'
 
-    // 2. Load Lists (Paginated)
+    // 2. Load Lists (Paginated). Page one: the view is reused when you move
+    // from one location to another, and the old page may not exist here.
+    subLocPage.value = 1
+    thingPage.value = 1
     await Promise.all([
       refreshSubLocs(),
       refreshThings(),

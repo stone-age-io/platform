@@ -138,11 +138,12 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 
 			if !user.GetBool("is_operator") {
 				user.Set("is_operator", true)
+				// Fatal, not a warning: the summary below prints is_operator = true,
+				// and the API has no other way to grant it.
 				if err := app.Save(user); err != nil {
-					log.Printf("⚠️ Failed to set operator flag: %v", err)
-				} else {
-					log.Printf("✅ User '%s' set as operator", email)
+					log.Fatalf("❌ Failed to set operator flag: %v", err)
 				}
+				log.Printf("✅ User '%s' set as operator", email)
 			}
 
 			orgCol, err := app.FindCollectionByNameOrId(orgColName)
