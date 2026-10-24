@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=275         # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=310         # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -2006,6 +2006,127 @@ req POST "/org/things" "$TP" "{\"name\":\"Path Thing\",\"code\":\"adr4-thing\",\
 req GET "/collections/things/records?filter=location.path~'%2Fadr4-root%2F'" "$TP"
 [ "$(j "$RBODY" totalItems)" = "1" ] && ok "one filter finds a thing two levels under an ancestor" \
   || no "location.path filter returned '$(j "$RBODY" totalItems)' things, expected 1: $(head -c 200 <<<"$RBODY")"
+
+echo ""
+echo "=== 26. invite edits and deletes, and the NATS export/import records ==="
+# Two rule sets nothing above exercised. Invites were proven for create only, and
+# their update and delete rules walk organization.memberships_via_organization,
+# a different path from the create rule. Exports and imports are copied into the
+# account JWT pb-nats signs, so a write there changes what another account may
+# read.
+#
+# SPLIT is the probe that matters most: admin in OtherOrg, dashboard here. The
+# export and import rules test "a membership in this org" and "an owner or admin
+# role" as two ?= terms, which is only safe while PocketBase applies both to the
+# SAME membership row. If that ever stops being true, SPLIT passes as an admin
+# here. dashboard alone cannot catch it, because all of its memberships agree.
+SPLIT=$(mkuser split@test.local)
+req POST /collections/memberships/records "$SU" \
+  "{\"user\":\"$SPLIT\",\"organization\":\"$ORG\",\"role\":\"dashboard\"}"
+[ -z "$(j "$RBODY" id)" ] && die "split dashboard membership failed: $RBODY"
+req POST /collections/memberships/records "$SU" \
+  "{\"user\":\"$SPLIT\",\"organization\":\"$ORG2\",\"role\":\"admin\"}"
+[ -z "$(j "$RBODY" id)" ] && die "split admin membership failed: $RBODY"
+req PATCH "/collections/users/records/$SPLIT" "$SU" "{\"current_organization\":\"$ORG\"}"
+TS=$(login split@test.local)
+[ -z "$TS" ] && die "split login failed: $RBODY"
+req PATCH "/collections/users/records/$EVE" "$SU" "{\"current_organization\":\"$ORG2\"}"
+TE=$(login eve@test.local)
+[ -z "$TE" ] && die "eve login failed: $RBODY"
+
+req POST /collections/invites/records "$TA" \
+  "{\"email\":\"gap@test.local\",\"organization\":\"$ORG\",\"role\":\"member\"}"
+INV=$(j "$RBODY" id)
+[ -z "$INV" ] && die "invite create failed: $RBODY"
+req GET "/collections/invites/records/$INV" "$TG"
+expect "dashboard cannot read an invitation" 404 "$RCODE" "$RBODY"
+req GET "/collections/invites/records/$INV" "$TADM"
+expect "admin CAN read it" 200 "$RCODE" "$RBODY"
+req PATCH "/collections/invites/records/$INV" "$TG" '{"role":"admin"}'
+expect "dashboard cannot change an invitation's role" "403|400|404" "$RCODE" "$RBODY"
+req PATCH "/collections/invites/records/$INV" "$TS" '{"role":"admin"}'
+expect "an admin of another org cannot change it" "403|400|404" "$RCODE" "$RBODY"
+req PATCH "/collections/invites/records/$INV" "$TE" '{"role":"admin"}'
+expect "another org's owner cannot change it" "403|400|404" "$RCODE" "$RBODY"
+req PATCH "/collections/invites/records/$INV" "$TADM" '{"role":"admin"}'
+expect "admin CAN change it (same request, so the denials were authz)" 200 "$RCODE" "$RBODY"
+req PATCH "/collections/invites/records/$INV" "$TA" '{"role":"owner"}'
+expect "an invitation cannot offer owner" 400 "$RCODE" "$RBODY"
+req PATCH "/collections/invites/records/$INV" "$TA" "{\"organization\":\"$ORG2\"}"
+expect "owner cannot move an invitation to another org" "403|400|404" "$RCODE" "$RBODY"
+req PATCH "/collections/invites/records/$INV" "$TA" '{"role":"viewer"}'
+expect "owner CAN edit the same invitation" 200 "$RCODE" "$RBODY"
+req DELETE "/collections/invites/records/$INV" "$TG"
+expect "dashboard cannot revoke an invitation" "403|400|404" "$RCODE" "$RBODY"
+req DELETE "/collections/invites/records/$INV" "$TS"
+expect "an admin of another org cannot revoke it" "403|400|404" "$RCODE" "$RBODY"
+req DELETE "/collections/invites/records/$INV" "$TADM"
+expect "admin CAN revoke it" "200|204" "$RCODE" "$RBODY"
+
+export_payload() { # <name> <org> <account id>
+  echo "{\"name\":\"$1\",\"subject\":\"gap.$1.>\",\"type\":\"stream\",\"account_id\":\"$3\",\"organization\":\"$2\"}"
+}
+req POST /collections/nats_account_exports/records "$TG" "$(export_payload dash-exp "$ORG" "$ACCT")"
+expect "dashboard cannot create an export" "403|400|404" "$RCODE" "$RBODY"
+req POST /collections/nats_account_exports/records "$TS" "$(export_payload split-exp "$ORG" "$ACCT")"
+expect "an admin of another org cannot create one here" "403|400|404" "$RCODE" "$RBODY"
+req POST /collections/nats_account_exports/records "$TA" "$(export_payload xacct-exp "$ORG" "$OTHER_ACCT")"
+expect "owner cannot attach an export to another tenant's account" "403|400|404" "$RCODE" "$RBODY"
+req POST /collections/nats_account_exports/records "$TA" "$(export_payload owner-exp "$ORG" "$ACCT")"
+expect "owner CAN create an export (same payload)" 200 "$RCODE" "$RBODY"
+EXP=$(j "$RBODY" id)
+[ -z "$EXP" ] && die "export create failed: $RBODY"
+req GET "/collections/nats_account_exports/records/$EXP" "$TG"
+expect "dashboard cannot read an export" 404 "$RCODE" "$RBODY"
+req GET "/collections/nats_account_exports/records/$EXP" "$TE"
+expect "another org's owner cannot read it" 404 "$RCODE" "$RBODY"
+req GET "/collections/nats_account_exports/records/$EXP" "$TADM"
+expect "admin CAN read it" 200 "$RCODE" "$RBODY"
+req PATCH "/collections/nats_account_exports/records/$EXP" "$TS" '{"description":"edited"}'
+expect "an admin of another org cannot edit it" "403|400|404" "$RCODE" "$RBODY"
+req PATCH "/collections/nats_account_exports/records/$EXP" "$TA" "{\"organization\":\"$ORG2\"}"
+expect "owner cannot move an export to another org" "403|400|404" "$RCODE" "$RBODY"
+req PATCH "/collections/nats_account_exports/records/$EXP" "$TADM" '{"description":"edited"}'
+expect "admin CAN edit it (same request as the other org's admin)" 200 "$RCODE" "$RBODY"
+req DELETE "/collections/nats_account_exports/records/$EXP" "$TE"
+expect "another org's owner cannot delete it" "403|400|404" "$RCODE" "$RBODY"
+req DELETE "/collections/nats_account_exports/records/$EXP" "$TG"
+expect "dashboard cannot delete it" "403|400|404" "$RCODE" "$RBODY"
+req DELETE "/collections/nats_account_exports/records/$EXP" "$TADM"
+expect "admin CAN delete it" "200|204" "$RCODE" "$RBODY"
+
+req GET "/collections/nats_accounts/records/$OTHER_ACCT" "$SU"
+OTHER_PUB=$(j "$RBODY" public_key)
+[ -z "$OTHER_PUB" ] && die "OtherOrg's account has no public key: $RBODY"
+import_payload() { # <name>
+  echo "{\"name\":\"$1\",\"subject\":\"gap.>\",\"account\":\"$OTHER_PUB\",\"type\":\"stream\",\"account_id\":\"$ACCT\",\"organization\":\"$ORG\"}"
+}
+req POST /collections/nats_account_imports/records "$TG" "$(import_payload dash-imp)"
+expect "dashboard cannot create an import" "403|400|404" "$RCODE" "$RBODY"
+req POST /collections/nats_account_imports/records "$TS" "$(import_payload split-imp)"
+expect "an admin of another org cannot create one here" "403|400|404" "$RCODE" "$RBODY"
+req POST /collections/nats_account_imports/records "$TA" "$(import_payload owner-imp)"
+expect "owner CAN create an import (same payload)" 200 "$RCODE" "$RBODY"
+IMP=$(j "$RBODY" id)
+[ -z "$IMP" ] && die "import create failed: $RBODY"
+req GET "/collections/nats_account_imports/records/$IMP" "$TG"
+expect "dashboard cannot read an import" 404 "$RCODE" "$RBODY"
+req GET "/collections/nats_account_imports/records/$IMP" "$TADM"
+expect "admin CAN read it" 200 "$RCODE" "$RBODY"
+req PATCH "/collections/nats_account_imports/records/$IMP" "$TA" "{\"organization\":\"$ORG2\"}"
+expect "owner cannot move an import to another org" "403|400|404" "$RCODE" "$RBODY"
+req PATCH "/collections/nats_account_imports/records/$IMP" "$TA" '{"description":"edited"}'
+expect "owner CAN edit it" 200 "$RCODE" "$RBODY"
+req DELETE "/collections/nats_account_imports/records/$IMP" "$TG"
+expect "dashboard cannot delete an import" "403|400|404" "$RCODE" "$RBODY"
+req DELETE "/collections/nats_account_imports/records/$IMP" "$TA"
+expect "owner CAN delete it" "200|204" "$RCODE" "$RBODY"
+
+# The other half of SPLIT: the same user, now in the org it administers. Without
+# this, every SPLIT denial above could be a user who can do nothing anywhere.
+req PATCH "/collections/users/records/$SPLIT" "$SU" "{\"current_organization\":\"$ORG2\"}"
+req POST /collections/nats_account_exports/records "$TS" "$(export_payload split-home "$ORG2" "$OTHER_ACCT")"
+expect "SPLIT CAN create an export in the org it administers" 200 "$RCODE" "$RBODY"
 
 # ----------------------------------------------------------------------- result
 
