@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=310         # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=315         # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -2127,6 +2127,39 @@ expect "owner CAN delete it" "200|204" "$RCODE" "$RBODY"
 req PATCH "/collections/users/records/$SPLIT" "$SU" "{\"current_organization\":\"$ORG2\"}"
 req POST /collections/nats_account_exports/records "$TS" "$(export_payload split-home "$ORG2" "$OTHER_ACCT")"
 expect "SPLIT CAN create an export in the org it administers" 200 "$RCODE" "$RBODY"
+
+echo ""
+echo "=== 27. org_stats: counts for operators, and nothing for anyone else ==="
+# A view's rule replaces the rules of the tables it reads. org_stats exists so
+# an operator can see how big a tenant is without a read branch on things,
+# locations or memberships; the old organization page counted through those
+# rules and showed 0 for every org but the reader's own. The operator here holds
+# no membership anywhere, which is exactly the reader that page got wrong.
+req GET "/collections/org_stats/records/$ORG" "$TO"
+expect "operator CAN read an organization's counts" 200 "$RCODE" "$RBODY"
+STATS="$RBODY"
+req GET "/collections/things/records?perPage=1&filter=(organization='$ORG')" "$SU"
+WANT_THINGS=$(jn "$RBODY" 'o.totalItems')
+req GET "/collections/locations/records?perPage=1&filter=(organization='$ORG')" "$SU"
+WANT_LOCS=$(jn "$RBODY" 'o.totalItems')
+req GET "/collections/memberships/records?perPage=1&filter=(organization='$ORG')" "$SU"
+WANT_MEMBERS=$(jn "$RBODY" 'o.totalItems')
+GOT="$(jn "$STATS" 'o.things'):$(jn "$STATS" 'o.locations'):$(jn "$STATS" 'o.members')"
+if [ "$GOT" = "$WANT_THINGS:$WANT_LOCS:$WANT_MEMBERS" ] && [ "$WANT_THINGS" -gt 0 ]; then
+  ok "...and they are that organization's, not the reader's (things:locations:members $GOT)"
+else
+  no "org_stats counts $GOT, the organization holds $WANT_THINGS:$WANT_LOCS:$WANT_MEMBERS"
+fi
+req GET "/collections/org_stats/records/$ORG" "$TA"
+expect "the org's own owner cannot read it (same record, so the allow was the operator flag)" 404 "$RCODE" "$RBODY"
+req GET "/collections/org_stats/records/$ORG" "$TG"
+expect "dashboard cannot read it" 404 "$RCODE" "$RBODY"
+req GET "/collections/org_stats/records" "$TA"
+if [ "$RCODE" = "200" ] && [ "$(jn "$RBODY" 'o.items.length')" = "0" ]; then
+  ok "an owner listing org_stats gets no rows"
+else
+  no "an owner listing org_stats got HTTP $RCODE: $(head -c 200 <<<"$RBODY")"
+fi
 
 # ----------------------------------------------------------------------- result
 

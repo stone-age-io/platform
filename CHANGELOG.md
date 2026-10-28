@@ -17,6 +17,21 @@ and this file starts where the versioned releases do.
   `audit.retention.max_age`, `readiness.interval` and `readiness.timeout` take
   Go durations. A value like `30d` (days are not a unit) used to be ignored in
   silence, which for `max_age` meant retention by age was off. Write `720h`.
+- **Run `migrate up`** (the container does it on start). It adds the
+  `org_stats` view; no data changes.
+
+### Added
+
+- **The organization page shows the tenant's size and its identity
+  boundaries.** An Inventory card counts things (and how many are active),
+  locations and members, and an Identity card shows the organization's NATS
+  account and its Nebula CA, with an expiry warning inside 90 days and the
+  rotation state when one is in flight. Both are on the operator-only
+  organization page.
+- **`org_stats`**, a view collection with one row per organization carrying
+  those four counts and nothing else, readable by platform operators only.
+  Operators still have no read access to tenant inventory itself; see
+  `AUTHORIZATION.md`.
 
 ### Fixed
 
@@ -35,6 +50,9 @@ and this file starts where the versioned releases do.
 - `scripts/test-authz.sh` covers invitation edits and deletes and the NATS
   export and import records, including a user who is admin in one organization
   and dashboard in another (310 checks, from 275).
+- `scripts/test-authz.sh` reads `org_stats` as an operator with no
+  membership and denies the organization's owner and the dashboard role
+  (315 checks).
 
 ## [0.14.0] - 2026-10-24
 

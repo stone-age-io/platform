@@ -39,6 +39,17 @@ export interface Organization extends BaseRecord {
   managed?: boolean // exports its service events into the operator hub account
 }
 
+// org_stats: a view collection, one row per organization keyed by its id, with
+// counts only. Operator-read. Not a BaseRecord: a view row has no created or
+// updated. See migrations/schema_update_org_stats.go.
+export interface OrgStats {
+  id: string // the organization's id
+  things: number
+  things_active: number
+  locations: number
+  members: number
+}
+
 // Membership
 export interface Membership extends BaseRecord {
   user: string // User ID

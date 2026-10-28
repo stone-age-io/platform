@@ -7,7 +7,9 @@ import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import { formatDate } from '@/utils/format'
 import { apiErrorMessage } from '@/utils/apiError'
-import type { Organization, User, NatsAccount } from '@/types/pocketbase'
+import { expiryState, expiryLabel, CA_EXPIRY_WARNING_DAYS } from '@/utils/expiry'
+import { caRotationState } from '@/utils/nebula'
+import type { Organization, User, NatsAccount, NebulaCA, OrgStats } from '@/types/pocketbase'
 import { useConfirm } from '@/composables/useConfirm'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import DangerZone from '@/components/common/DangerZone.vue'
@@ -71,6 +73,20 @@ const limitsForm = ref({
   max_jetstream_memory_storage: -1,
 })
 
+// The tenant's Nebula CA. Operators read every organization's (nebula_ca has an
+// is_operator read branch); private_key is a hidden field, so it never arrives.
+// Summarised here rather than linked: /nebula/ca shows the CA of the READER's
+// current organization, so a link from another tenant's page would land on the
+// wrong CA.
+const nebulaCa = ref<NebulaCA | null>(null)
+const caExpiry = computed(() => expiryState(nebulaCa.value?.expires_at, CA_EXPIRY_WARNING_DAYS))
+const caExpiryText = computed(() => expiryLabel(nebulaCa.value?.expires_at, CA_EXPIRY_WARNING_DAYS))
+const caRotation = computed(() => caRotationState(nebulaCa.value))
+
+// Counts from the org_stats view. Null until loaded, and left null if the read
+// fails, so the card says nothing rather than stating a 0 it does not know.
+const stats = ref<OrgStats | null>(null)
+
 const isOperator = computed(() => authStore.isOperator)
 
 const id = route.params.id as string
@@ -90,34 +106,23 @@ async function loadData() {
       expand: 'owner',
     })
 
-    // NO MEMBER/THING COUNTS HERE, and the reason is worth keeping written down
-    // because the code that used to do it carried a comment asserting the
-    // opposite: "Operator bypasses rules, so we must manually filter by org id."
+    // COUNTS COME FROM org_stats, NEVER FROM THE TENANT COLLECTIONS.
     //
-    // An operator does not bypass anything. `is_operator` is a field on `users`,
-    // not superuser, and of the thirteen tenant collections only `audit_logs`
-    // carries an is_operator read branch -- `things` and `memberships` have
-    // none, deliberately (an operator reads org metadata, users and
-    // infrastructure, not tenant inventory). So the two counts were scoped by
-    // the reader's OWN current_organization, not by the organization on screen:
-    // Things read 0 for every org but the one you happen to be switched into,
-    // and Members read 0, or 1 where the operator held a membership themselves.
+    // This page used to count with getList on `things` and `memberships`,
+    // under a comment claiming an operator bypasses rules. It does not:
+    // `is_operator` is a field on `users`, not superuser, and `things`,
+    // `locations` and `memberships` have no operator read branch, deliberately
+    // (an operator reads org metadata and infrastructure, not tenant
+    // inventory). A list rule is applied as an extra WHERE, so those calls
+    // returned 200 with totalItems 0 for every organization but the reader's
+    // own: "0 Things" about a tenant with hundreds, with no error anywhere.
     //
-    // The failure had no symptom. A list rule is applied as an extra WHERE, so
-    // both calls returned 200 with totalItems 0 -- the page stated "0 Things"
-    // about a tenant with hundreds of devices, in the same typeface it states
-    // everything else.
-    //
-    // Restoring these needs the number to come from somewhere the reader can
-    // actually see: either an is_operator read branch on both collections (an
-    // authorization change, with the authz suite bumped to match) or an
-    // operator-gated route returning named aggregates with the app's own
-    // privileges, the shape GET /api/me/leaf-config uses to hand over facts
-    // without granting the collection. Not a filter on the client.
-
-    // Load NATS Account if operator
+    // org_stats is a view whose operator-only rule exposes counts and nothing
+    // else (migrations/schema_update_org_stats.go; test-authz.sh section 27
+    // reads it as an operator with no membership). Do not "simplify" this back
+    // to a getList on the tenant collections.
     if (isOperator.value) {
-      await loadNatsAccount()
+      await Promise.all([loadNatsAccount(), loadNebulaCa(), loadStats()])
     }
   } catch (err: any) {
     toast.error('Failed to load organization')
@@ -138,6 +143,27 @@ async function loadNatsAccount() {
   } catch (err) {
     console.error('Failed to load NATS account:', err)
     toast.error('Failed to load NATS account')
+  }
+}
+
+async function loadNebulaCa() {
+  try {
+    const result = await pb.collection('nebula_ca').getList<NebulaCA>(1, 1, {
+      filter: pb.filter('organization = {:id}', { id }),
+    })
+    nebulaCa.value = result.items[0] ?? null
+  } catch (err) {
+    console.error('Failed to load Nebula CA:', err)
+    toast.error('Failed to load Nebula CA')
+  }
+}
+
+async function loadStats() {
+  try {
+    stats.value = await pb.collection('org_stats').getOne<OrgStats>(id)
+  } catch (err) {
+    // Leave stats null: the card is hidden rather than showing zeros.
+    console.error('Failed to load organization counts:', err)
   }
 }
 
@@ -290,6 +316,117 @@ onMounted(() => loadData())
                 <dd>{{ formatDate(org.created) }}</dd>
               </div>
             </dl>
+          </BaseCard>
+        </div>
+
+        <!--
+          Inventory counts, from the org_stats view (see loadData). "Locations",
+          never "sites": a location can be a single room, and the site is a
+          pricing unit with no record of its own, so a location count is not a
+          site count and must not be labelled as one.
+        -->
+        <div v-if="isOperator && stats">
+          <BaseCard title="Inventory">
+            <dl class="space-y-4">
+              <div>
+                <dt class="text-sm font-medium opacity-70">Things</dt>
+                <dd class="text-2xl font-semibold">
+                  {{ stats.things.toLocaleString() }}
+                  <span
+                    v-if="stats.things_active !== stats.things"
+                    class="text-sm font-normal opacity-70"
+                  >
+                    {{ stats.things_active.toLocaleString() }} active
+                  </span>
+                </dd>
+              </div>
+              <div>
+                <dt class="text-sm font-medium opacity-70">Locations</dt>
+                <dd class="text-2xl font-semibold">{{ stats.locations.toLocaleString() }}</dd>
+              </div>
+              <div>
+                <dt class="text-sm font-medium opacity-70">Members</dt>
+                <dd class="text-2xl font-semibold">{{ stats.members.toLocaleString() }}</dd>
+              </div>
+            </dl>
+          </BaseCard>
+        </div>
+
+        <!--
+          Identity: the two per-tenant boundaries, side by side. Each
+          organization holds its own NATS account and its own Nebula CA, and one
+          tenant's CA cannot sign a certificate another tenant trusts. This is
+          the page an operator checks those from, so it shows them.
+        -->
+        <div v-if="isOperator" class="md:col-span-3">
+          <BaseCard title="Identity">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div>
+                <h3 class="text-sm font-semibold uppercase tracking-wide opacity-70 mb-3">NATS account</h3>
+                <dl v-if="natsAccount" class="space-y-3">
+                  <div>
+                    <dt class="text-sm font-medium opacity-70">Name</dt>
+                    <dd class="flex items-center gap-2">
+                      {{ natsAccount.name }}
+                      <StatusBadge :active="natsAccount.active !== false" />
+                    </dd>
+                  </div>
+                  <div v-if="natsAccount.public_key">
+                    <dt class="text-sm font-medium opacity-70">Public key</dt>
+                    <dd class="font-mono text-xs break-all">{{ natsAccount.public_key }}</dd>
+                  </div>
+                </dl>
+                <p v-else class="text-sm opacity-70">No NATS account. See the limits card below.</p>
+              </div>
+
+              <div>
+                <h3 class="text-sm font-semibold uppercase tracking-wide opacity-70 mb-3">Nebula certificate authority</h3>
+                <dl v-if="nebulaCa" class="space-y-3">
+                  <div>
+                    <dt class="text-sm font-medium opacity-70">Name</dt>
+                    <dd class="flex items-center gap-2 flex-wrap">
+                      {{ nebulaCa.name }}
+                      <span
+                        v-if="caExpiryText"
+                        class="badge"
+                        :class="caExpiry === 'expired' ? 'badge-error' : 'badge-warning'"
+                      >
+                        {{ caExpiryText }}
+                      </span>
+                      <span v-if="caRotation === 'prepared'" class="badge badge-info">Rotation prepared</span>
+                      <span v-else-if="caRotation === 'rotated'" class="badge badge-info">Rotation committed</span>
+                    </dd>
+                  </div>
+                  <div class="flex gap-8">
+                    <div>
+                      <dt class="text-sm font-medium opacity-70">Curve</dt>
+                      <dd class="font-mono text-sm">{{ nebulaCa.curve || 'P256' }}</dd>
+                    </div>
+                    <div v-if="nebulaCa.expires_at">
+                      <dt class="text-sm font-medium opacity-70">Expires</dt>
+                      <dd class="text-sm">{{ formatDate(nebulaCa.expires_at) }}</dd>
+                    </div>
+                  </div>
+                </dl>
+                <!--
+                  Same reasoning as the missing-account message below: CA
+                  provisioning runs in the organization's save hook and returns
+                  its error, so a missing CA is a failed save, not a pending one,
+                  and saving the organization again retries it. Except System:
+                  the hook skips it (hooks/org_provisioning.go) and bootstrap
+                  provisions its CA instead, create-if-missing, so the retry is
+                  re-running bootstrap.
+                -->
+                <p v-else-if="org.is_system_org" class="text-sm opacity-70">
+                  No Nebula CA found. The System organization's CA is provisioned by
+                  bootstrap, so re-running bootstrap retries it.
+                </p>
+                <p v-else class="text-sm opacity-70">
+                  No Nebula CA found. Provisioning runs when the organization is saved,
+                  so saving it again retries.
+                </p>
+              </div>
+            </div>
           </BaseCard>
         </div>
 

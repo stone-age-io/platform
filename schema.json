@@ -4593,5 +4593,87 @@
     "indexes": [
       "CREATE INDEX `idx_activity_org_created` ON `activity` (`organization`, `created`)"
     ]
+  },
+  {
+    "id": "pbc_3666581439",
+    "listRule": "// Platform operators only. The view returns counts and nothing else, and its\n// rule replaces the rules of the tables it reads, so it must stay operator-only\n// and must never gain a column naming a record. See AUTHORIZATION.md.\n@request.auth.is_operator = true",
+    "viewRule": "// Platform operators only. The view returns counts and nothing else, and its\n// rule replaces the rules of the tables it reads, so it must stay operator-only\n// and must never gain a column naming a record. See AUTHORIZATION.md.\n@request.auth.is_operator = true",
+    "createRule": null,
+    "updateRule": null,
+    "deleteRule": null,
+    "name": "org_stats",
+    "type": "view",
+    "fields": [
+      {
+        "autogeneratePattern": "",
+        "help": "",
+        "hidden": false,
+        "id": "text3208210256",
+        "max": 0,
+        "min": 0,
+        "name": "id",
+        "pattern": "^[a-z0-9]+$",
+        "presentable": false,
+        "primaryKey": true,
+        "required": true,
+        "system": true,
+        "type": "text"
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "number1877234109",
+        "max": null,
+        "min": null,
+        "name": "things",
+        "onlyInt": true,
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number"
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "number2320263417",
+        "max": null,
+        "min": null,
+        "name": "things_active",
+        "onlyInt": true,
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number"
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "number400968378",
+        "max": null,
+        "min": null,
+        "name": "locations",
+        "onlyInt": true,
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number"
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "number1168167679",
+        "max": null,
+        "min": null,
+        "name": "members",
+        "onlyInt": true,
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number"
+      }
+    ],
+    "indexes": [],
+    "system": false,
+    "viewQuery": "SELECT\n  o.id AS id,\n  CAST((SELECT COUNT(*) FROM things t WHERE t.organization = o.id) AS INTEGER) AS things,\n  CAST((SELECT COUNT(*) FROM things t WHERE t.organization = o.id AND t.active = TRUE) AS INTEGER) AS things_active,\n  CAST((SELECT COUNT(*) FROM locations l WHERE l.organization = o.id) AS INTEGER) AS locations,\n  CAST((SELECT COUNT(*) FROM memberships m WHERE m.organization = o.id) AS INTEGER) AS members\nFROM organizations o"
   }
 ]

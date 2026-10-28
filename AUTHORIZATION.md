@@ -162,6 +162,17 @@ Rules to follow when touching authorization:
 
   **The review question this yields:** not *"is this field hidden"* but
   **"does anything copy this record somewhere the row rules do not reach."**
+- **A view collection is a copy, and its rule replaces the rules of every table
+  it reads.** `org_stats` is the only one: per-organization counts of things,
+  active things, locations and members, operator-read, so the organization page
+  can say how big a tenant is without operators gaining a read branch on tenant
+  inventory. That holds only while every column is an aggregate. A name, code
+  or id of a counted record added to the query would be readable by every
+  operator with no row rule behind it, which is why
+  `migrations/org_stats_test.go` pins the exact column list and
+  `scripts/test-authz.sh` section 27 reads it as an operator with no
+  membership. A new view gets the same review: what does each column reveal,
+  and to whom does the view's own rule show it.
 - **At-rest encryption covers minting keys, not issued credentials, and that is
   deliberate.** `encryption_key` protects the operator seed, account seeds and
   signing keys, and the Nebula CA key. It does NOT protect `creds_file` or
