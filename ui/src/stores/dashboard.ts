@@ -84,16 +84,19 @@ export const useDashboardStore = defineStore('dashboard', () => {
   function clearStorageError() { storageError.value = null }
 
   // Lock Management
+  // Locking is whether you are editing right now, not a change to the layout,
+  // so it does not mark a shared dashboard dirty. It used to: unlocking to look
+  // around put "Save" up with nothing changed, and saving then pushed your lock
+  // state to everyone. A local dashboard still keeps it on this device; a
+  // shared one carries it with the next real save.
   function toggleLock() {
-    if (!activeDashboard.value) return
-    activeDashboard.value.isLocked = !activeDashboard.value.isLocked
-    markAsModified()
+    setLocked(!isLocked.value)
   }
 
   function setLocked(locked: boolean) {
     if (!activeDashboard.value) return
     activeDashboard.value.isLocked = locked
-    markAsModified()
+    if (activeDashboard.value.storage === 'local') saveToStorage()
   }
 
   // Variable Management

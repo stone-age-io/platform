@@ -60,6 +60,13 @@ const configWidgetId = ref<string | null>(null)
 const fullScreenWidgetId = ref<string | null>(null)
 
 const hasVariables = computed(() => (dashboardStore.activeDashboard?.variables?.length || 0) > 0)
+const isShared = computed(() => dashboardStore.activeDashboard?.storage === 'kv')
+
+// The ⋮ menu is daisyUI's focus dropdown, which stays open until focus leaves it.
+function fromMenu(action: () => void) {
+  ;(document.activeElement as HTMLElement | null)?.blur()
+  action()
+}
 
 // --- Kiosk Mode (disabled for the dashboard role) ---
 const isKioskMode = computed(() => !isRestrictedMode.value && uiStore.kioskMode)
@@ -293,15 +300,23 @@ watch(() => dashboardStore.currentVariableValues, () => {
           </button>
           <div class="dashboard-info">
             <h1 class="dashboard-name">{{ dashboardStore.activeDashboard?.name || 'No Dashboard Selected' }}</h1>
-            <button v-if="dashboardStore.remoteChanged" class="badge badge-warning gap-1 cursor-pointer" @click="handleReloadRemote">Update ↻</button>
-            <button v-else-if="dashboardStore.isDirty" class="badge badge-warning gap-1 cursor-pointer" @click="handleSave">Save ●</button>
-            <span v-else-if="dashboardStore.activeDashboard?.storage === 'kv'" class="badge badge-info gap-1">Shared</span>
+            <!-- Status only. On a phone it moves into the ⋮ menu, so the name keeps the room. -->
+            <span v-if="isShared && !dashboardStore.remoteChanged && !dashboardStore.isDirty" class="badge badge-info gap-1 hidden sm:inline-flex">Shared</span>
           </div>
         </div>
         
+        <!--
+          On a phone (below sm) the toolbar keeps one button per thing done most
+          in each state -- Save or Update when there is one, + and the lock while
+          editing -- and everything else goes in the ⋮ menu. Above sm it is all
+          inline, as it always was.
+        -->
         <div class="toolbar-right">
+          <button v-if="dashboardStore.remoteChanged" class="btn btn-sm btn-warning" title="A newer version of this shared dashboard was saved" @click="handleReloadRemote">Update</button>
+          <button v-else-if="dashboardStore.isDirty" class="btn btn-sm btn-outline" title="Save Dashboard (S)" @click="handleSave">Save</button>
+
           <button 
-            class="btn btn-sm btn-square btn-ghost" 
+            class="btn btn-sm btn-square btn-ghost hidden sm:flex" 
             @click="handleRefreshDashboard"
             title="Refresh Dashboard Data (R)"
             aria-label="Refresh dashboard data"
@@ -322,10 +337,21 @@ watch(() => dashboardStore.currentVariableValues, () => {
               <option :value="20">20 Cols</option>
             </select>
           </div>
-          <button v-if="hasVariables || !dashboardStore.isLocked" class="btn btn-sm btn-square" :class="showVariableBar ? 'btn-active' : 'btn-ghost'" :aria-label="showVariableBar ? 'Hide dashboard variables' : 'Show dashboard variables'" :aria-pressed="showVariableBar" @click="showVariableBar = !showVariableBar"><span class="font-mono font-bold">{ }</span></button>
+          <button v-if="hasVariables || !dashboardStore.isLocked" class="btn btn-sm btn-square hidden sm:flex" :class="showVariableBar ? 'btn-active' : 'btn-ghost'" :aria-label="showVariableBar ? 'Hide dashboard variables' : 'Show dashboard variables'" :aria-pressed="showVariableBar" @click="showVariableBar = !showVariableBar"><span class="font-mono font-bold">{ }</span></button>
           <button class="btn btn-sm btn-square btn-ghost" :aria-label="dashboardStore.isLocked ? 'Unlock dashboard layout' : 'Lock dashboard layout'" :title="dashboardStore.isLocked ? 'Unlock layout (U)' : 'Lock layout (L)'" @click="dashboardStore.toggleLock()"><DashboardIcon :name="dashboardStore.isLocked ? 'lock' : 'unlock'" /></button>
-          <button v-if="!dashboardStore.isLocked" class="btn btn-sm btn-primary" @click="showAddWidget = true">+ <span class="hidden sm:inline ml-1">Widget</span></button>
+          <button v-if="!dashboardStore.isLocked" class="btn btn-sm btn-primary" aria-label="Add widget" @click="showAddWidget = true">+ <span class="hidden sm:inline ml-1">Widget</span></button>
           <button v-if="!isRestrictedMode" class="btn btn-sm btn-square btn-ghost hidden sm:flex" aria-label="Open debug panel" title="Debug panel" @click="showDebugPanel = true"><DashboardIcon name="debug" /></button>
+
+          <!-- Phone overflow. daisyUI's focus dropdown: it closes on blur, so each item blurs. -->
+          <div class="dropdown dropdown-end sm:hidden">
+            <div tabindex="0" role="button" class="btn btn-sm btn-square btn-ghost" aria-label="More dashboard actions"><DashboardIcon name="more" /></div>
+            <ul tabindex="0" class="dropdown-content menu menu-sm z-[50] mt-2 w-52 rounded-box border border-base-300 bg-base-100 p-1 shadow-lg">
+              <li><button :disabled="!natsStore.isConnected" @click="fromMenu(handleRefreshDashboard)"><DashboardIcon name="refresh" />Refresh data</button></li>
+              <li v-if="hasVariables || !dashboardStore.isLocked"><button @click="fromMenu(() => { showVariableBar = !showVariableBar })"><span class="w-4 text-center font-mono text-xs font-bold">{ }</span>{{ showVariableBar ? 'Hide variables' : 'Variables' }}</button></li>
+              <li v-if="!isRestrictedMode"><button @click="fromMenu(() => { showDebugPanel = true })"><DashboardIcon name="debug" />Debug panel</button></li>
+              <li v-if="isShared" class="menu-title !px-3 !py-1.5 font-normal">Shared dashboard</li>
+            </ul>
+          </div>
         </div>
       </div>
       

@@ -5,7 +5,7 @@
 
   They were emoji (🔄 🔒 🐞 ⛶ 📋 ⚙️), which every OS draws differently and
   in its own colours, so the buttons never matched the theme or each other.
-  This is the eight the dashboard uses, not an icon set: add a name when a
+  This is the nine the dashboard uses, not an icon set: add a name when a
   button needs one, and reach for a library only if this stops being short.
 -->
 <template>
@@ -55,6 +55,11 @@
       <line x1="9" y1="8" x2="15" y2="8" />
       <line x1="17" y1="16" x2="23" y2="16" />
     </template>
+    <template v-else-if="name === 'more'">
+      <circle cx="12" cy="5" r="1" />
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="12" cy="19" r="1" />
+    </template>
     <template v-else-if="name === 'close'">
       <line x1="18" y1="6" x2="6" y2="18" />
       <line x1="6" y1="6" x2="18" y2="18" />
@@ -64,7 +69,7 @@
 
 <script setup lang="ts">
 withDefaults(defineProps<{
-  name: 'refresh' | 'lock' | 'unlock' | 'debug' | 'expand' | 'duplicate' | 'configure' | 'close'
+  name: 'refresh' | 'lock' | 'unlock' | 'debug' | 'expand' | 'duplicate' | 'configure' | 'more' | 'close'
   size?: number
 }>(), {
   size: 16,

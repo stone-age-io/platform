@@ -287,3 +287,25 @@ describe('which dashboard opens on load', () => {
     expect(reload(storage).activeDashboard?.id).toBe('a')
   })
 })
+
+describe('locking', () => {
+  it('does not mark a shared dashboard as unsaved', () => {
+    const store = freshStore()
+    store.setActiveDashboard({ ...store.createDashboard('Shared one')!, storage: 'kv', kvKey: 'shared-one' })
+    store.toggleLock()
+    expect(store.isLocked).toBe(true)
+    expect(store.isDirty).toBe(false)
+  })
+
+  it('still keeps the lock of a local dashboard on this device', () => {
+    const storage = stubLocalStorage()
+    const store = freshStore()
+    ;(globalThis as any).localStorage.getItem = (k: string) => storage.get(k) ?? null
+    ;(globalThis as any).localStorage.setItem = (k: string, v: string) => void storage.set(k, v)
+    const d = store.createDashboard('Local one')!
+    store.setActiveDashboard(d)
+    store.toggleLock()
+    const saved = JSON.parse(storage.get('nats_dashboards')!).dashboards.find((x: any) => x.id === d.id)
+    expect(saved.isLocked).toBe(true)
+  })
+})
