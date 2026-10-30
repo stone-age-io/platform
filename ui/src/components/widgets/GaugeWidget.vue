@@ -1,7 +1,14 @@
 <template>
   <div class="gauge-widget">
     <WidgetStateOverlay
-      v-if="!hasData"
+      v-if="!rangeValid"
+      state="error"
+      message="Set a max above the min"
+      :compact="layoutMode === 'card'"
+    />
+
+    <WidgetStateOverlay
+      v-else-if="!hasData"
       state="empty"
       :icon="Gauge"
       message="Waiting for data..."
@@ -48,7 +55,7 @@
         fill="none"
         :stroke="zone.color"
         :stroke-width="strokeWidth"
-        stroke-linecap="round"
+        stroke-linecap="butt"
         class="zone-arc"
       />
       
@@ -89,13 +96,13 @@
       >
         {{ cfg.unit }}
       </text>
+
+      <!-- Range, under each end of the arc. It was an HTML row below the
+           SVG spread to 80% of the width, which lined up with neither end. -->
+      <text :x="arcStart.x" :y="arcStart.y + 26" text-anchor="middle" class="gauge-range">{{ cfg.min }}</text>
+      <text :x="arcEnd.x" :y="arcEnd.y + 26" text-anchor="middle" class="gauge-range">{{ cfg.max }}</text>
     </svg>
     
-    <!-- Min/Max labels -->
-    <div v-if="hasData && !isBar" class="gauge-labels">
-      <span class="label-min">{{ cfg.min }}</span>
-      <span class="label-max">{{ cfg.max }}</span>
-    </div>
 
   </div>
 </template>
@@ -137,6 +144,12 @@ const latestValue = computed<number | null>(() => {
   return Number.isFinite(n) ? n : null
 })
 
+// Every fraction below divides by max - min. Equal, or the wrong way round,
+// gave NaN and an arc that silently was not there; the form refuses it now,
+// but a dashboard can be imported from a file.
+const range = computed(() => cfg.value.max - cfg.value.min)
+const rangeValid = computed(() => Number.isFinite(range.value) && range.value > 0)
+
 const clampedValue = computed(() => {
   if (latestValue.value === null) return cfg.value.min
   return Math.max(cfg.value.min, Math.min(cfg.value.max, latestValue.value))
@@ -144,7 +157,7 @@ const clampedValue = computed(() => {
 
 const displayValue = computed(() => {
   if (latestValue.value === null) return '—'
-  return latestValue.value.toFixed(getDecimalPlaces(latestValue.value))
+  return latestValue.value.toFixed(cfg.value.decimals ?? getDecimalPlaces(latestValue.value))
 })
 
 function getDecimalPlaces(value: number): number {
@@ -153,10 +166,7 @@ function getDecimalPlaces(value: number): number {
   return 2
 }
 
-const valuePercent = computed(() => {
-  const range = cfg.value.max - cfg.value.min
-  return (clampedValue.value - cfg.value.min) / range
-})
+const valuePercent = computed(() => (clampedValue.value - cfg.value.min) / range.value)
 
 function polarToCartesian(centerX: number, centerY: number, radius: number, angleInDegrees: number) {
   const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0
@@ -172,6 +182,9 @@ function describeArc(centerX: number, centerY: number, radius: number, startAngl
   const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1"
   return ["M", start.x, start.y, "A", radius, radius, 0, largeArcFlag, 0, end.x, end.y].join(" ")
 }
+
+const arcStart = polarToCartesian(center, center, radius, -135)
+const arcEnd = polarToCartesian(center, center, radius, 135)
 
 const backgroundPath = computed(() => describeArc(center, center, radius, -135, 135))
 const fullGaugePath = computed(() => describeArc(center, center, radius, -135, 135))
@@ -194,8 +207,7 @@ const valueColor = computed(() => {
 // from this.
 const zoneSpans = computed(() => {
   if (!cfg.value.zones) return []
-  const range = cfg.value.max - cfg.value.min
-  const frac = (v: number) => Math.max(0, Math.min(1, (v - cfg.value.min) / range))
+  const frac = (v: number) => Math.max(0, Math.min(1, (v - cfg.value.min) / range.value))
   return cfg.value.zones.map(zone => ({ color: zone.color, start: frac(zone.min), end: frac(zone.max) }))
 })
 
@@ -227,8 +239,10 @@ const zonePaths = computed(() =>
 }
 
 .background-arc { transition: stroke 0.3s; }
+/* Square ends: round ones made neighbouring zones overlap in a blob where
+   they meet. The track behind them keeps its round ends. */
 .zone-arc { opacity: 0.3; transition: opacity 0.3s; }
-.value-arc { transition: stroke-dasharray 0.5s ease-out, stroke-dashoffset 0.5s ease-out, stroke 0.3s ease; filter: drop-shadow(0 0 4px currentColor); }
+.value-arc { transition: stroke-dasharray 0.5s ease-out, stroke-dashoffset 0.5s ease-out, stroke 0.3s ease; }
 
 .gauge-value {
   font-size: 44px;
@@ -242,14 +256,10 @@ const zonePaths = computed(() =>
   font-weight: 500;
 }
 
-.gauge-labels {
-  display: flex;
-  justify-content: space-between;
-  width: 80%;
-  max-width: 180px;
-  font-size: 12px;
-  color: var(--muted);
+.gauge-range {
+  font-size: 14px;
   font-family: var(--mono);
+  fill: var(--muted);
 }
 
 .bar-gauge {
@@ -309,7 +319,7 @@ const zonePaths = computed(() =>
 
 /* Hide labels on small width */
 @container (width < 140px) {
-  .gauge-labels { display: none; }
+  .gauge-range { display: none; }
   .gauge-unit { display: none; }
 }
 </style>

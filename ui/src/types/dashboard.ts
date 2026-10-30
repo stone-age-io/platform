@@ -198,6 +198,7 @@ export interface GaugeWidgetConfig {
   min: number
   max: number
   unit?: string
+  decimals?: number          // absent = picked from the value's size, as the stat card does
   zones?: {
     min: number
     max: number

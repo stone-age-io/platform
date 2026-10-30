@@ -315,7 +315,15 @@ const typeHandlers: WidgetTypeHandlers = {
       state.gaugeMin = widget.gaugeConfig?.min ?? 0
       state.gaugeMax = widget.gaugeConfig?.max ?? 100
       state.gaugeUnit = widget.gaugeConfig?.unit || ''
+      state.gaugeDecimals = widget.gaugeConfig?.decimals != null ? String(widget.gaugeConfig.decimals) : ''
       state.gaugeZones = widget.gaugeConfig?.zones ? [...widget.gaugeConfig.zones] : []
+    },
+    validate(form, errors) {
+      if (!Number.isFinite(form.gaugeMin) || !Number.isFinite(form.gaugeMax) || form.gaugeMax <= form.gaugeMin) {
+        errors.gaugeRange = 'Max must be a number above min'
+      }
+      const d = String(form.gaugeDecimals).trim()
+      if (d && !/^[0-6]$/.test(d)) errors.gaugeDecimals = 'A whole number from 0 to 6, or blank for automatic'
     },
     buildUpdates(form) {
       return {
@@ -324,6 +332,7 @@ const typeHandlers: WidgetTypeHandlers = {
           min: form.gaugeMin,
           max: form.gaugeMax,
           unit: form.gaugeUnit.trim() || undefined,
+          decimals: String(form.gaugeDecimals).trim() ? Number(String(form.gaugeDecimals).trim()) : undefined,
           zones: [...form.gaugeZones],
         },
       }

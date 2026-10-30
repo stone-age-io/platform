@@ -39,7 +39,8 @@
 
       <!-- Footer Info (Last Updated) -->
       <div class="status-footer">
-        <span v-if="isStale" class="stale-warning"><TriangleAlert :size="12" aria-hidden="true" /> Stale</span>
+        <!-- Icon only: the main label already reads as the stale label. -->
+        <span v-if="isStale" class="stale-warning"><TriangleAlert :size="12" aria-label="Stale" /></span>
         <span class="time-ago">{{ timeAgo }}</span>
       </div>
     </template>

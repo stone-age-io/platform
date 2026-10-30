@@ -32,6 +32,7 @@
           />
         </div>
       </div>
+      <div v-if="errors.gaugeRange" class="error-text">{{ errors.gaugeRange }}</div>
     </div>
 
     <div class="form-group">
@@ -42,6 +43,19 @@
         class="form-input"
         placeholder="%, °C, RPM"
       />
+    </div>
+
+    <div class="form-group">
+      <label>Decimal places (optional)</label>
+      <input
+        v-model="form.gaugeDecimals"
+        type="text"
+        inputmode="numeric"
+        class="form-input"
+        :class="{ 'has-error': errors.gaugeDecimals }"
+        placeholder="Automatic"
+      />
+      <div v-if="errors.gaugeDecimals" class="error-text">{{ errors.gaugeDecimals }}</div>
     </div>
 
     <div class="form-group">

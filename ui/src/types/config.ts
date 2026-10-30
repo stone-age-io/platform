@@ -69,6 +69,7 @@ export interface WidgetFormState {
   gaugeMin: number
   gaugeMax: number
   gaugeUnit: string
+  gaugeDecimals: string       // '' = automatic
   gaugeZones: Array<{ min: number; max: number; color: string }>
   
   // Map Widget
@@ -198,6 +199,7 @@ export function createEmptyFormState(): WidgetFormState {
     gaugeMin: 0,
     gaugeMax: 100,
     gaugeUnit: '',
+    gaugeDecimals: '',
     gaugeZones: [],
     mapCenterLat: 39.8283,
     mapCenterLon: -98.5795,
