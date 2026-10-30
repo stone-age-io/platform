@@ -60,20 +60,30 @@ func TestGenerateCodeShape(t *testing.T) {
 	}
 }
 
-// Random means neighbours differ. Two thousand draws colliding would mean the
-// source is not random at all, which is the failure that turns a mistyped code
-// back into somebody else's record.
+// Random means neighbours differ. A source that is not random at all repeats
+// constantly, which is the failure that turns a mistyped code back into
+// somebody else's record.
+//
+// But one repeat is not that failure. There are 14,490² ≈ 2.1e8 codes, so by
+// the birthday bound 2,000 honest draws repeat once about 1% of the time
+// (2000² / 2N), and failing on the first repeat made CI flaky. Three or more
+// repeats has odds of about 1 in 7 million from a working source, and a broken
+// one (constant, or a short cycle) produces hundreds.
 func TestGenerateCodeIsNotRepetitive(t *testing.T) {
 	seen := map[string]bool{}
+	repeats := 0
 	for range 2000 {
 		code, err := GenerateCode("")
 		if err != nil {
 			t.Fatal(err)
 		}
 		if seen[code] {
-			t.Fatalf("GenerateCode repeated %q within 2000 draws", code)
+			repeats++
 		}
 		seen[code] = true
+	}
+	if repeats > 2 {
+		t.Fatalf("GenerateCode repeated %d codes within 2000 draws", repeats)
 	}
 }
 
