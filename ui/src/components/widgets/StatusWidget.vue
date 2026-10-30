@@ -14,7 +14,7 @@
               :style="{ backgroundColor: currentState.color, boxShadow: `0 0 8px ${currentState.color}60` }"
             ></div>
             <div class="card-status-label" :style="{ color: currentState.color }">
-              <span v-if="isStale" class="stale-icon">⚠️</span>
+              <TriangleAlert v-if="isStale" class="stale-icon" :size="14" aria-label="Stale" />
               {{ currentState.label }}
             </div>
           </div>
@@ -30,10 +30,7 @@
       <div 
         class="status-indicator"
         :class="{ 'is-blinking': currentState.blink }"
-        :style="{ 
-          backgroundColor: currentState.color,
-          boxShadow: `0 0 20px ${currentState.color}40`
-        }"
+        :style="{ color: currentState.color }"
       >
         <div class="status-content">
           <span class="status-label">{{ currentState.label }}</span>
@@ -42,7 +39,7 @@
 
       <!-- Footer Info (Last Updated) -->
       <div class="status-footer">
-        <span v-if="isStale" class="stale-warning">⚠️ Stale</span>
+        <span v-if="isStale" class="stale-warning"><TriangleAlert :size="12" aria-hidden="true" /> Stale</span>
         <span class="time-ago">{{ timeAgo }}</span>
       </div>
     </template>
@@ -50,6 +47,7 @@
 </template>
 
 <script setup lang="ts">
+import { TriangleAlert } from '@lucide/vue'
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useWidgetDataStore } from '@/stores/widgetData'
 import { useDashboardStore } from '@/stores/dashboard'
@@ -193,6 +191,12 @@ onUnmounted(() => {
 }
 
 /* --- STANDARD LAYOUT --- */
+/* A tint of the state colour with the label in that colour, not a solid
+   block of it. Solid red and green tiles out-shouted every reading on the
+   dashboard; a tint still reads across a room. The tint is a ::before at low
+   opacity because the colour can be a CSS variable, which neither
+   `${color}40` (the old glow, silently invalid for var(...)) nor color-mix
+   (see assets/dashboard-compat.css) can take reliably. */
 .status-indicator {
   width: 100%;
   flex: 1;
@@ -200,9 +204,20 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   border-radius: 8px;
-  transition: all 0.3s ease;
+  border: 1px solid currentColor;
+  position: relative;
+  transition: color 0.3s ease;
   min-height: 60px;
   max-height: 120px;
+}
+
+.status-indicator::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: currentColor;
+  opacity: 0.15;
 }
 
 .status-indicator.is-blinking,
@@ -217,9 +232,8 @@ onUnmounted(() => {
 }
 
 .status-content {
+  position: relative;
   text-align: center;
-  color: white; 
-  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
   padding: 0 8px;
   overflow: hidden;
 }
@@ -244,6 +258,9 @@ onUnmounted(() => {
 }
 
 .stale-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: var(--color-warning);
   font-weight: 600;
 }

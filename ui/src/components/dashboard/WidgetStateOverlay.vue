@@ -6,7 +6,7 @@
     </template>
 
     <template v-else-if="state === 'error'">
-      <div class="state-icon">⚠️</div>
+      <TriangleAlert class="state-icon" :size="28" :stroke-width="1.5" aria-hidden="true" />
       <div v-if="!compact" class="state-message">{{ message || 'Error' }}</div>
       <button
         v-if="$attrs.onRetry"
@@ -16,17 +16,22 @@
     </template>
 
     <template v-else-if="state === 'empty'">
-      <div class="state-icon">{{ icon || '∅' }}</div>
+      <component :is="icon ?? Inbox" class="state-icon" :size="28" :stroke-width="1.5" aria-hidden="true" />
       <div v-if="message && !compact" class="state-message">{{ message }}</div>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
+import type { Component } from 'vue'
+import { Inbox, TriangleAlert } from '@lucide/vue'
+
+// icon: a lucide component, drawn muted in the theme's colour. It was an
+// emoji string, which every OS drew differently and in its own colours.
 defineProps<{
   state: 'loading' | 'error' | 'empty'
   message?: string
-  icon?: string
+  icon?: Component
   compact?: boolean
 }>()
 
@@ -53,8 +58,8 @@ defineOptions({ inheritAttrs: false })
 .widget-state.empty { color: var(--muted, oklch(var(--bc) / 0.4)); }
 
 .state-icon {
-  font-size: 28px;
-  line-height: 1;
+  flex-shrink: 0;
+  opacity: 0.7;
 }
 
 .state-message {

@@ -2,7 +2,7 @@
   <div class="marker-editor" :class="{ 'is-expanded': isExpanded }">
     <!-- Marker Header (collapsible) -->
     <div class="marker-header" @click="isExpanded = !isExpanded">
-      <span class="marker-icon">📍</span>
+      <MapPin class="marker-icon" :size="18" aria-hidden="true" />
       <span class="marker-label">{{ marker.label || 'Unnamed Marker' }}</span>
       <span class="marker-coords">
         <template v-if="isDynamic">Dynamic</template>
@@ -92,7 +92,7 @@
           class="btn-use-center"
           @click="$emit('use-center')"
         >
-          📍 Use Map Center
+          <MapPin class="inline align-[-2px]" :size="14" aria-hidden="true" /> Use Map Center
         </button>
 
         <!-- DYNAMIC MODE INPUTS -->
@@ -181,7 +181,7 @@
         
         <!-- Limit warning -->
         <div v-if="isAtLimit" class="limit-warning">
-          ⚠️ Maximum {{ MAX_ITEMS_PER_MARKER }} items per marker
+          <TriangleAlert class="inline align-[-2px]" :size="14" aria-hidden="true" /> Maximum {{ MAX_ITEMS_PER_MARKER }} items per marker
         </div>
         
         <div v-else class="add-item-row">
@@ -195,6 +195,7 @@
 </template>
 
 <script setup lang="ts">
+import { MapPin, TriangleAlert } from '@lucide/vue'
 import { ref, computed } from 'vue'
 import MarkerItemEditor from './MarkerItemEditor.vue'
 import { createDefaultItem, MAP_LIMITS } from '@/types/dashboard'

@@ -36,7 +36,7 @@
         <!-- ... (Body content remains the same) ... -->
         <template v-if="activeTab === 'local'">
           <div v-if="dashboards.length === 0" class="empty-state">
-            <div class="empty-icon">📊</div>
+            <LayoutDashboard class="empty-icon" :size="48" :stroke-width="1.25" aria-hidden="true" />
             <div class="empty-text">No local dashboards</div>
           </div>
           
@@ -58,12 +58,12 @@
 
         <template v-if="activeTab === 'shared'">
           <div v-if="!natsStore.isConnected" class="empty-state">
-            <div class="empty-icon">🔌</div>
+            <Plug class="empty-icon" :size="48" :stroke-width="1.25" aria-hidden="true" />
             <div class="empty-text">Connect to NATS to view shared dashboards</div>
           </div>
           
           <div v-else-if="remoteKeys.length === 0" class="empty-state">
-            <div class="empty-icon">☁️</div>
+            <Cloud class="empty-icon" :size="48" :stroke-width="1.25" aria-hidden="true" />
             <div class="empty-text">No shared dashboards found</div>
             <div class="empty-subtext">Bucket: {{ dashboardStore.kvBucketName }}</div>
           </div>
@@ -109,7 +109,7 @@
               class="btn-action"
               @click="showImport = true"
             >
-              <span class="btn-icon">📥</span>
+              <FileUp class="btn-icon" :size="16" aria-hidden="true" />
               <span class="btn-text">Import</span>
             </button>
             
@@ -118,7 +118,7 @@
               :disabled="dashboards.length === 0"
               @click="exportAllDashboards"
             >
-              <span class="btn-icon">💾</span>
+              <FileDown class="btn-icon" :size="16" aria-hidden="true" />
               <span class="btn-text">Export All</span>
             </button>
           </template>
@@ -129,7 +129,7 @@
               @click="dashboardStore.refreshRemoteKeys()"
               :disabled="!natsStore.isConnected"
             >
-              <span class="btn-icon">🔄</span>
+              <RefreshCw class="btn-icon" :size="16" aria-hidden="true" />
               <span class="btn-text">Refresh</span>
             </button>
           </template>
@@ -295,7 +295,7 @@
                 ✓ Imported {{ importResults.success }} dashboard{{ importResults.success !== 1 ? 's' : '' }}
               </div>
               <div v-if="importResults.skipped > 0" class="result-warning">
-                ⚠️ Skipped {{ importResults.skipped }} dashboard{{ importResults.skipped !== 1 ? 's' : '' }}
+                <TriangleAlert class="inline align-[-2px]" :size="14" aria-hidden="true" /> Skipped {{ importResults.skipped }} dashboard{{ importResults.skipped !== 1 ? 's' : '' }}
               </div>
               <div v-if="importResults.errors.length > 0" class="result-errors">
                 <div class="error-title">Errors:</div>
@@ -326,6 +326,7 @@
 </template>
 
 <script setup lang="ts">
+import { Cloud, FileDown, FileUp, LayoutDashboard, Plug, RefreshCw, TriangleAlert } from '@lucide/vue'
 import { ref, computed, watch, nextTick, onMounted } from 'vue'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useNatsStore } from '@/stores/nats'

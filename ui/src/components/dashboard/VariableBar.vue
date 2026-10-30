@@ -45,10 +45,10 @@
          Adding or editing a variable changes the dashboard, so it waits for
          an unlock like every other edit. -->
     <div class="bar-actions">
-      <button v-if="hasVariables && !dashboardStore.isLocked" class="action-btn" @click="$emit('edit')" title="Edit Variables">
-        ✎
+      <button v-if="hasVariables && !dashboardStore.isLocked" class="action-btn" @click="$emit('edit')" title="Edit Variables" aria-label="Edit variables">
+        <Pencil :size="14" aria-hidden="true" />
       </button>
-      <button class="action-btn" @click="$emit('close')" title="Close">
+      <button class="action-btn" @click="$emit('close')" title="Close" aria-label="Close variables">
         ✕
       </button>
     </div>
@@ -56,6 +56,7 @@
 </template>
 
 <script setup lang="ts">
+import { Pencil } from '@lucide/vue'
 import { computed } from 'vue'
 import { useDashboardStore } from '@/stores/dashboard'
 

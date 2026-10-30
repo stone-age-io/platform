@@ -9,7 +9,8 @@
         @click="toggleEditMode"
         :title="isEditing ? 'Save & Preview' : 'Edit Markdown'"
       >
-        {{ isEditing ? '✓ Done' : '✎ Edit' }}
+        <component :is="isEditing ? Check : Pencil" :size="12" aria-hidden="true" />
+        {{ isEditing ? 'Done' : 'Edit' }}
       </button>
     </div>
 
@@ -33,6 +34,7 @@
 </template>
 
 <script setup lang="ts">
+import { Check, Pencil } from '@lucide/vue'
 import { computed, ref, watch } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'

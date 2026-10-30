@@ -11,6 +11,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@lucide/vue": "^1.57.0",
     "@maplibre/maplibre-gl-leaflet": "^0.1.4",
     "@nats-io/jetstream": "^3.3.1",
     "@nats-io/kv": "^3.3.1",

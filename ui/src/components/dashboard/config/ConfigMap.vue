@@ -3,7 +3,7 @@
     <!-- Map View Settings -->
     <div class="config-section">
       <div class="section-header">
-        <span class="section-icon">🗺️</span>
+        <MapIcon class="section-icon" :size="18" aria-hidden="true" />
         <span class="section-title">Map View</span>
       </div>
 
@@ -51,7 +51,7 @@
     <!-- Map Options -->
     <div class="config-section">
       <div class="section-header">
-        <span class="section-icon">⚙️</span>
+        <Settings class="section-icon" :size="18" aria-hidden="true" />
         <span class="section-title">Map Options</span>
       </div>
 
@@ -75,7 +75,7 @@
     <!-- Dynamic Markers Section -->
     <div class="config-section">
       <div class="section-header">
-        <span class="section-icon">🔄</span>
+        <RefreshCw class="section-icon" :size="18" aria-hidden="true" />
         <span class="section-title">Dynamic Markers</span>
       </div>
 
@@ -208,13 +208,13 @@
     <!-- Static Markers Section -->
     <div class="config-section">
       <div class="section-header">
-        <span class="section-icon">📍</span>
+        <MapPin class="section-icon" :size="18" aria-hidden="true" />
         <span class="section-title">Static Markers</span>
         <span class="section-count">{{ form.mapMarkers.length }}/{{ MAX_MARKERS }}</span>
       </div>
 
       <div v-if="form.mapMarkers.length === 0" class="empty-markers">
-        <div class="empty-icon">📍</div>
+        <MapPin class="empty-icon" :size="32" :stroke-width="1.5" aria-hidden="true" />
         <div class="empty-text">No static markers configured</div>
         <div class="empty-hint">Add a marker to place interactive points on the map</div>
       </div>
@@ -233,7 +233,7 @@
 
       <!-- Marker limit warning -->
       <div v-if="isAtMarkerLimit" class="limit-warning">
-        ⚠️ Maximum {{ MAX_MARKERS }} markers per map widget
+        <TriangleAlert class="inline align-[-2px]" :size="14" aria-hidden="true" /> Maximum {{ MAX_MARKERS }} markers per map widget
       </div>
 
       <button
@@ -249,7 +249,7 @@
     <!-- Tips -->
     <div class="tips-section">
       <div class="tip">
-        <span class="tip-icon">💡</span>
+        <Lightbulb class="tip-icon" :size="14" aria-hidden="true" />
         <span class="tip-text">
           Find coordinates using
           <a href="https://www.google.com/maps" target="_blank" rel="noopener">Google Maps</a>
@@ -257,14 +257,14 @@
         </span>
       </div>
       <div class="tip">
-        <span class="tip-icon">🔄</span>
+        <RefreshCw class="tip-icon" :size="14" aria-hidden="true" />
         <span class="tip-text">
           <strong>Dynamic markers</strong> auto-generate from a NATS KV bucket.
           Each key becomes a marker with lat/lon extracted via JSONPath.
         </span>
       </div>
       <div class="tip">
-        <span class="tip-icon">📊</span>
+        <ChartColumn class="tip-icon" :size="14" aria-hidden="true" />
         <span class="tip-text">
           <strong>Limits:</strong> {{ MAX_MARKERS }} static markers per map,
           {{ MAX_ITEMS_PER_MARKER }} items per marker, {{ MAX_DYNAMIC_MARKERS }} dynamic markers.
@@ -275,6 +275,7 @@
 </template>
 
 <script setup lang="ts">
+import { ChartColumn, Lightbulb, Map as MapIcon, MapPin, RefreshCw, Settings, TriangleAlert } from '@lucide/vue'
 import { computed } from 'vue'
 import MarkerEditor from './MarkerEditor.vue'
 import { createDefaultMarker, MAP_LIMITS } from '@/types/dashboard'

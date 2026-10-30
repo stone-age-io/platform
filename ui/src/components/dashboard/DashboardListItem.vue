@@ -8,8 +8,8 @@
     <div class="item-content">
       <!-- Icon -->
       <div class="item-icon">
-        <span v-if="isStartup" title="Startup Dashboard">🏠</span>
-        <span v-else>📊</span>
+        <House v-if="isStartup" :size="18" aria-label="Startup dashboard" />
+        <LayoutDashboard v-else :size="18" aria-hidden="true" />
       </div>
       
       <!-- Info -->
@@ -34,7 +34,7 @@
         <!-- Dropdown menu -->
         <div v-if="showMenu" class="action-menu">
           <button class="menu-item" @click="handleSetStartup">
-            <span class="menu-icon">🏠</span>
+            <House class="menu-icon" :size="16" aria-hidden="true" />
             <span class="menu-text">Set as Startup</span>
           </button>
           
@@ -44,27 +44,27 @@
             class="menu-item" 
             @click="handleShare"
           >
-            <span class="menu-icon">☁️</span>
+            <CloudUpload class="menu-icon" :size="16" aria-hidden="true" />
             <span class="menu-text">Share to KV</span>
           </button>
           
           <div class="menu-divider"></div>
           
           <button class="menu-item" @click="handleRename">
-            <span class="menu-icon">✏️</span>
+            <Pencil class="menu-icon" :size="16" aria-hidden="true" />
             <span class="menu-text">Rename</span>
           </button>
           <button class="menu-item" @click="handleDuplicate">
-            <span class="menu-icon">📋</span>
+            <Copy class="menu-icon" :size="16" aria-hidden="true" />
             <span class="menu-text">Duplicate</span>
           </button>
           <button class="menu-item" @click="handleExport">
-            <span class="menu-icon">💾</span>
+            <FileDown class="menu-icon" :size="16" aria-hidden="true" />
             <span class="menu-text">Export</span>
           </button>
           <div class="menu-divider"></div>
           <button class="menu-item danger" @click="handleDelete">
-            <span class="menu-icon">🗑️</span>
+            <Trash2 class="menu-icon" :size="16" aria-hidden="true" />
             <span class="menu-text">Delete</span>
           </button>
         </div>
@@ -74,6 +74,7 @@
 </template>
 
 <script setup lang="ts">
+import { CloudUpload, Copy, FileDown, House, LayoutDashboard, Pencil, Trash2 } from '@lucide/vue'
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import type { Dashboard } from '@/types/dashboard'
 import { useDashboardStore } from '@/stores/dashboard'

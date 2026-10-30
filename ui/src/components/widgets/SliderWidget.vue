@@ -179,7 +179,7 @@ const sliderStyle = computed(() => ({
 
 const statusClass = computed(() => {
   if (publishStatus.value?.includes('✓')) return 'status-success'
-  if (publishStatus.value?.includes('⚠️')) return 'status-error'
+  if (publishStatus.value?.includes('✕')) return 'status-error'
   return ''
 })
 
@@ -266,7 +266,7 @@ async function publishValue(val: number) {
       payloadStr = JSON.stringify(JSON.parse(payloadStr))
     } catch (e) {
       error.value = "Invalid JSON Template"
-      publishStatus.value = '⚠️ Error'
+      publishStatus.value = '✕ Error'
       return
     }
   }
@@ -287,7 +287,7 @@ async function publishValue(val: number) {
   } catch (err: any) {
     console.error('[Slider] Publish Error:', err)
     error.value = err.message
-    publishStatus.value = '⚠️ Failed'
+    publishStatus.value = '✕ Failed'
   }
 }
 

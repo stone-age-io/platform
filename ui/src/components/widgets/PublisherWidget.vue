@@ -15,8 +15,8 @@
 
         <!-- History Dropdown -->
         <div class="history-dropdown" v-if="history.length > 0">
-          <button class="history-btn" @click="showHistory = !showHistory" title="Recent Messages">
-            🕒
+          <button class="history-btn" @click="showHistory = !showHistory" title="Recent Messages" aria-label="Recent messages">
+            <History :size="16" aria-hidden="true" />
           </button>
           <div v-if="showHistory" class="history-menu">
             <div class="history-title">Recent Messages</div>
@@ -91,6 +91,7 @@
 </template>
 
 <script setup lang="ts">
+import { History } from '@lucide/vue'
 import { ref, computed, onMounted, watch } from 'vue'
 import { useNatsStore } from '@/stores/nats'
 import { useDashboardStore } from '@/stores/dashboard'

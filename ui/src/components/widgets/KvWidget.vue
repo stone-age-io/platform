@@ -82,7 +82,7 @@
     <WidgetStateOverlay
       v-else
       state="empty"
-      icon="🗄️"
+      :icon="Database"
       message="Key not found"
       :compact="layoutMode === 'card'"
     />
@@ -90,6 +90,7 @@
 </template>
 
 <script setup lang="ts">
+import { Database } from '@lucide/vue'
 import { ref, computed, watch } from 'vue'
 import { useNatsStore } from '@/stores/nats'
 import { useDashboardStore } from '@/stores/dashboard'

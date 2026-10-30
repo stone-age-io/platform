@@ -3,10 +3,6 @@
     <!-- Card Layout -->
     <template v-if="layoutMode === 'card'">
       <div class="card-content">
-        <div class="card-icon">
-          <span>📊</span> 
-        </div>
-        
         <div class="card-info">
           <div class="card-title">{{ config.title }}</div>
           <div class="card-value" :style="valueStyle">
@@ -129,19 +125,6 @@ const valueStyle = computed(() => {
   align-items: center;
   gap: 12px;
   width: 100%;
-}
-
-.card-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: rgba(0,0,0,0.05);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  color: var(--muted);
-  flex-shrink: 0;
 }
 
 .card-info {

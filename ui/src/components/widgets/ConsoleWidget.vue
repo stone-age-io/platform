@@ -8,11 +8,12 @@
           :class="{ 'is-paused': isPaused }"
           @click="togglePause"
           :title="isPaused ? 'Resume scrolling' : 'Pause scrolling'"
+          :aria-label="isPaused ? 'Resume scrolling' : 'Pause scrolling'"
         >
-          {{ isPaused ? '▶' : '⏸' }}
+          <component :is="isPaused ? Play : Pause" :size="14" aria-hidden="true" />
         </button>
-        <button class="tool-btn" @click="clear" title="Clear console">
-          🚫
+        <button class="tool-btn" @click="clear" title="Clear console" aria-label="Clear console">
+          <Eraser :size="14" aria-hidden="true" />
         </button>
       </div>
       
@@ -45,7 +46,7 @@
       <WidgetStateOverlay
         v-if="displayMessages.length === 0"
         state="empty"
-        icon="📡"
+        :icon="RadioTower"
         :message="filterText ? 'No matching messages' : 'Waiting for messages...'"
         :compact="layoutMode === 'card'"
       />
@@ -103,6 +104,7 @@
 </template>
 
 <script setup lang="ts">
+import { Eraser, Pause, Play, RadioTower } from '@lucide/vue'
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useWidgetDataStore } from '@/stores/widgetData'
 import JsonViewer from '@/components/common/JsonViewer.vue'

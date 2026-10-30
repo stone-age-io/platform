@@ -20,7 +20,7 @@
     <WidgetStateOverlay
       v-else-if="!cfg.kvBucket"
       state="empty"
-      icon="📋"
+      :icon="Table"
       message="Configure bucket & key pattern"
       :compact="layoutMode === 'card'"
     />
@@ -122,6 +122,7 @@
 </template>
 
 <script setup lang="ts">
+import { Table } from '@lucide/vue'
 import { ref, computed, onUnmounted } from 'vue'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useNatsKvWatcher, type KvRow } from '@/composables/useNatsKvWatcher'

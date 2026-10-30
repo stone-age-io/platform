@@ -12,7 +12,7 @@
           
           <!-- Subtle distinction: A tiny 'power' icon next to state -->
           <div class="card-state-row">
-            <span class="card-state-icon">⏻</span>
+            <Power class="card-state-icon" :size="12" aria-hidden="true" />
             <span class="card-state">{{ currentStateLabel }}</span>
           </div>
         </div>
@@ -36,7 +36,7 @@
         >
           <!-- Big Icon for desktop -->
           <div class="icon-wrapper">
-            <span class="icon">{{ state === 'on' ? '💡' : '🌑' }}</span>
+            <component :is="state === 'on' ? Lightbulb : LightbulbOff" class="icon" :size="24" aria-hidden="true" />
           </div>
           <!-- Label below -->
           <div class="label">{{ currentStateLabel }}</div>
@@ -51,6 +51,7 @@
 </template>
 
 <script setup lang="ts">
+import { Lightbulb, LightbulbOff, Power } from '@lucide/vue'
 import { computed, inject } from 'vue'
 import { useSwitchState } from '@/composables/useSwitchState'
 import { useDashboardStore } from '@/stores/dashboard'
@@ -172,8 +173,8 @@ function toggle() {
 }
 
 .card-state-icon {
-  font-size: 10px;
-  margin-top: 1px;
+  flex-shrink: 0;
+  color: var(--muted);
 }
 
 .card-state {
@@ -238,8 +239,16 @@ function toggle() {
   background: var(--color-warning-bg);
 }
 
+/* The bulb is a line icon now, so the state is its colour: lit in the
+   warning (amber) colour, muted when off. The 💡/🌑 emoji carried their own. */
+.icon {
+  color: var(--muted);
+  transition: color 0.2s;
+}
+
 .switch-btn.state-on .icon {
-  filter: drop-shadow(0 0 8px var(--color-warning));
+  color: var(--color-warning);
+  filter: drop-shadow(0 0 6px var(--color-warning));
 }
 
 .switch-btn:disabled {

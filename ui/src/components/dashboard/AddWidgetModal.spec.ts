@@ -51,7 +51,7 @@ describe('AddWidgetModal', () => {
   it('shows an icon and a description for each, so the grid is readable', () => {
     open()
     for (const btn of buttons()) {
-      expect(btn.querySelector('.widget-type-icon')?.textContent?.trim()).toBeTruthy()
+      expect(btn.querySelector('svg.widget-type-icon')).not.toBeNull()
       expect(btn.querySelector('.widget-type-desc')?.textContent?.trim()).toBeTruthy()
     }
   })

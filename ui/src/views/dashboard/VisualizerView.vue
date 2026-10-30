@@ -20,7 +20,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import DebugPanel from '@/components/common/DebugPanel.vue'
 import VariableBar from '@/components/dashboard/VariableBar.vue'
 import VariableEditorModal from '@/components/dashboard/VariableEditorModal.vue'
-import DashboardIcon from '@/components/dashboard/DashboardIcon.vue'
+import { Braces, Bug, EllipsisVertical, LayoutDashboard, Lock, LockOpen, RefreshCw, X } from '@lucide/vue'
 import type { WidgetType } from '@/types/dashboard'
 
 // The `dashboard` role is offered every widget type. Each one reads from NATS
@@ -322,7 +322,7 @@ watch(() => dashboardStore.currentVariableValues, () => {
             aria-label="Refresh dashboard data"
             :disabled="!natsStore.isConnected"
           >
-            <DashboardIcon name="refresh" />
+            <RefreshCw :size="16" aria-hidden="true" />
           </button>
 
           <div v-if="!isRestrictedMode && !dashboardStore.isLocked" class="hidden md:block">
@@ -337,18 +337,18 @@ watch(() => dashboardStore.currentVariableValues, () => {
               <option :value="20">20 Cols</option>
             </select>
           </div>
-          <button v-if="hasVariables || !dashboardStore.isLocked" class="btn btn-sm btn-square hidden sm:flex" :class="showVariableBar ? 'btn-active' : 'btn-ghost'" :aria-label="showVariableBar ? 'Hide dashboard variables' : 'Show dashboard variables'" :aria-pressed="showVariableBar" :title="showVariableBar ? 'Hide variables (V)' : 'Variables (V)'" @click="showVariableBar = !showVariableBar"><DashboardIcon name="variables" /></button>
-          <button class="btn btn-sm btn-square btn-ghost" :aria-label="dashboardStore.isLocked ? 'Unlock dashboard layout' : 'Lock dashboard layout'" :title="dashboardStore.isLocked ? 'Unlock layout (U)' : 'Lock layout (L)'" @click="dashboardStore.toggleLock()"><DashboardIcon :name="dashboardStore.isLocked ? 'lock' : 'unlock'" /></button>
+          <button v-if="hasVariables || !dashboardStore.isLocked" class="btn btn-sm btn-square hidden sm:flex" :class="showVariableBar ? 'btn-active' : 'btn-ghost'" :aria-label="showVariableBar ? 'Hide dashboard variables' : 'Show dashboard variables'" :aria-pressed="showVariableBar" :title="showVariableBar ? 'Hide variables (V)' : 'Variables (V)'" @click="showVariableBar = !showVariableBar"><Braces :size="16" aria-hidden="true" /></button>
+          <button class="btn btn-sm btn-square btn-ghost" :aria-label="dashboardStore.isLocked ? 'Unlock dashboard layout' : 'Lock dashboard layout'" :title="dashboardStore.isLocked ? 'Unlock layout (U)' : 'Lock layout (L)'" @click="dashboardStore.toggleLock()"><component :is="dashboardStore.isLocked ? Lock : LockOpen" :size="16" aria-hidden="true" /></button>
           <button v-if="!dashboardStore.isLocked" class="btn btn-sm btn-primary" aria-label="Add widget" @click="showAddWidget = true">+ <span class="hidden sm:inline ml-1">Widget</span></button>
-          <button v-if="!isRestrictedMode" class="btn btn-sm btn-square btn-ghost hidden sm:flex" aria-label="Open debug panel" title="Debug panel" @click="showDebugPanel = true"><DashboardIcon name="debug" /></button>
+          <button v-if="!isRestrictedMode" class="btn btn-sm btn-square btn-ghost hidden sm:flex" aria-label="Open debug panel" title="Debug panel" @click="showDebugPanel = true"><Bug :size="16" aria-hidden="true" /></button>
 
           <!-- Phone overflow. daisyUI's focus dropdown: it closes on blur, so each item blurs. -->
           <div class="dropdown dropdown-end sm:hidden">
-            <div tabindex="0" role="button" class="btn btn-sm btn-square btn-ghost" aria-label="More dashboard actions"><DashboardIcon name="more" /></div>
+            <div tabindex="0" role="button" class="btn btn-sm btn-square btn-ghost" aria-label="More dashboard actions"><EllipsisVertical :size="16" aria-hidden="true" /></div>
             <ul tabindex="0" class="dropdown-content menu menu-sm z-[50] mt-2 w-52 rounded-box border border-base-300 bg-base-100 p-1 shadow-lg">
-              <li><button :disabled="!natsStore.isConnected" @click="fromMenu(handleRefreshDashboard)"><DashboardIcon name="refresh" />Refresh data</button></li>
-              <li v-if="hasVariables || !dashboardStore.isLocked"><button @click="fromMenu(() => { showVariableBar = !showVariableBar })"><DashboardIcon name="variables" />{{ showVariableBar ? 'Hide variables' : 'Variables' }}</button></li>
-              <li v-if="!isRestrictedMode"><button @click="fromMenu(() => { showDebugPanel = true })"><DashboardIcon name="debug" />Debug panel</button></li>
+              <li><button :disabled="!natsStore.isConnected" @click="fromMenu(handleRefreshDashboard)"><RefreshCw :size="16" aria-hidden="true" />Refresh data</button></li>
+              <li v-if="hasVariables || !dashboardStore.isLocked"><button @click="fromMenu(() => { showVariableBar = !showVariableBar })"><Braces :size="16" aria-hidden="true" />{{ showVariableBar ? 'Hide variables' : 'Variables' }}</button></li>
+              <li v-if="!isRestrictedMode"><button @click="fromMenu(() => { showDebugPanel = true })"><Bug :size="16" aria-hidden="true" />Debug panel</button></li>
               <li v-if="isShared" class="menu-title !px-3 !py-1.5 font-normal">Shared dashboard</li>
             </ul>
           </div>
@@ -368,7 +368,7 @@ watch(() => dashboardStore.currentVariableValues, () => {
       <div class="visualizer-content">
         <DashboardGrid v-if="dashboardStore.activeWidgets.length > 0" :widgets="dashboardStore.activeWidgets" :column-count="dashboardStore.activeDashboard?.columnCount" @delete-widget="handleDeleteWidget" @configure-widget="handleConfigureWidget" @duplicate-widget="handleDuplicateWidget" @fullscreen-widget="toggleFullScreen" />
         <div v-else class="h-full flex flex-col items-center justify-center text-base-content/50 p-8 text-center">
-          <span class="text-6xl mb-4 text-base-content/50">📊</span>
+          <LayoutDashboard class="mb-4" :size="56" :stroke-width="1.25" aria-hidden="true" />
           <h3 class="text-xl font-bold">Empty Dashboard</h3>
           <p class="mt-2 text-sm max-w-xs mx-auto">
             <template v-if="!dashboardStore.isLocked">Tap <strong>+</strong> to add your first widget.</template>
@@ -388,7 +388,7 @@ watch(() => dashboardStore.currentVariableValues, () => {
     <div v-if="fullScreenWidgetId && fullScreenWidget" class="fixed inset-0 z-[100] bg-base-100 flex flex-col">
       <div class="p-4 border-b border-base-300 flex justify-between items-center bg-base-200">
         <h2 class="font-bold text-lg">{{ fullScreenWidget.title }}</h2>
-        <button class="btn btn-sm btn-circle btn-ghost" aria-label="Exit full screen" @click="exitFullScreen"><DashboardIcon name="close" /></button>
+        <button class="btn btn-sm btn-circle btn-ghost" aria-label="Exit full screen" @click="exitFullScreen"><X :size="16" aria-hidden="true" /></button>
       </div>
       <div class="flex-1 p-6 overflow-hidden">
         <WidgetContainer :config="fullScreenWidget" :is-mobile="false" :is-fullscreen="true" @delete="handleDeleteWidget(fullScreenWidget.id)" @configure="handleConfigureWidget(fullScreenWidget.id)" @duplicate="handleDuplicateWidget(fullScreenWidget.id)" @fullscreen="exitFullScreen" />
@@ -565,6 +565,24 @@ watch(() => dashboardStore.currentVariableValues, () => {
   flex: 1;
   overflow: hidden;
   position: relative;
+}
+
+/* Touch screens: every toolbar button is 32px to look at and 44px to hit.
+   The extra 6px a side is an invisible ::after, so the toolbar keeps its
+   height and the buttons their look; 4px each way sideways meets the 8px gap
+   without two targets overlapping. Keyed on the pointer, not the width: a
+   tablet needs it as much as a phone, a narrow desktop window does not. */
+@media (pointer: coarse) {
+  .toolbar-left .sidebar-toggle-btn,
+  .toolbar-right .btn {
+    position: relative;
+  }
+  .toolbar-left .sidebar-toggle-btn::after,
+  .toolbar-right .btn::after {
+    content: '';
+    position: absolute;
+    inset: -6px -4px;
+  }
 }
 
 @media (max-width: 640px) {

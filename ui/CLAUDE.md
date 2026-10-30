@@ -28,6 +28,7 @@ every view here.
 - **date-fns** for date formatting
 - **jsonpath-plus** for JSON path extraction in widget data
 - **marked** for Markdown rendering
+- **@lucide/vue** for icons: import each one as a component (`import { Pencil } from '@lucide/vue'`), so only the icons used ship. Not emoji: those draw differently on every OS and ignore the theme. Plain text glyphs (✕ ✓ ↑ →) are fine. `lucide-vue-next` is the deprecated old name
 - **PocketBase JS SDK** for API client
 
 ### Two dependencies are deliberately held back

@@ -9,7 +9,7 @@
     }"
   >
     <div v-if="!config" class="widget-error">
-      <div class="error-icon">⚠️</div>
+      <TriangleAlert class="error-icon" :size="24" aria-hidden="true" />
       <div class="error-message">Configuration missing</div>
     </div>
     
@@ -22,19 +22,19 @@
       >
         <div class="widget-title" :title="config.title">{{ config.title }}</div>
 
-        <span v-if="age" class="widget-age" :title="`Last message: ${age}`">{{ mobileCompact ? age.replace(/ ago$/, '') : age }}</span>
+        <span v-if="age" class="widget-age" :title="`Last message: ${age}`">{{ dashboardStore.isLocked ? age.replace(/ ago$/, '') : age }}</span>
 
         <!-- Mobile expand button for data-dense widgets -->
-        <button v-if="mobileExpandable" class="icon-btn" title="Expand" :aria-label="`Expand ${config.title}`" @click="$emit('fullscreen')"><DashboardIcon name="expand" /></button>
+        <button v-if="mobileExpandable" class="icon-btn" title="Expand" :aria-label="`Expand ${config.title}`" @click="$emit('fullscreen')"><Maximize :size="16" aria-hidden="true" /></button>
 
         <template v-if="!mobileCompact">
           <div class="widget-actions">
-            <button class="icon-btn" title="Full Screen" :aria-label="`Full screen: ${config.title}`" @click="$emit('fullscreen')"><DashboardIcon name="expand" /></button>
+            <button class="icon-btn" title="Full Screen" :aria-label="`Full screen: ${config.title}`" @click="$emit('fullscreen')"><Maximize :size="16" aria-hidden="true" /></button>
 
             <template v-if="!dashboardStore.isLocked">
-              <button class="icon-btn" title="Duplicate" :aria-label="`Duplicate ${config.title}`" @click="$emit('duplicate')"><DashboardIcon name="duplicate" /></button>
-              <button class="icon-btn" title="Configure" :aria-label="`Configure ${config.title}`" @click="$emit('configure')"><DashboardIcon name="configure" /></button>
-              <button class="icon-btn danger" title="Delete" :aria-label="`Delete ${config.title}`" @click="handleDelete"><DashboardIcon name="close" /></button>
+              <button class="icon-btn" title="Duplicate" :aria-label="`Duplicate ${config.title}`" @click="$emit('duplicate')"><Copy :size="16" aria-hidden="true" /></button>
+              <button class="icon-btn" title="Configure" :aria-label="`Configure ${config.title}`" @click="$emit('configure')"><SlidersVertical :size="16" aria-hidden="true" /></button>
+              <button class="icon-btn danger" title="Delete" :aria-label="`Delete ${config.title}`" @click="handleDelete"><X :size="16" aria-hidden="true" /></button>
             </template>
           </div>
         </template>
@@ -42,7 +42,7 @@
       
       <div class="widget-body">
         <div v-if="error" class="widget-error">
-          <div class="error-icon">⚠️</div>
+          <TriangleAlert class="error-icon" :size="24" aria-hidden="true" />
           <div class="error-message">{{ error }}</div>
         </div>
         
@@ -67,7 +67,7 @@ import { useWidgetDataStore } from '@/stores/widgetData'
 import { useConfirm } from '@/composables/useConfirm'
 import { formatAge } from '@/utils/format'
 import { WIDGETS } from './widgets'
-import DashboardIcon from './DashboardIcon.vue'
+import { Copy, Maximize, SlidersVertical, TriangleAlert, X } from '@lucide/vue'
 import type { WidgetConfig } from '@/types/dashboard'
 
 const props = defineProps<{
@@ -203,10 +203,11 @@ onErrorCaptured((err) => {
   flex: 1;
 }
 
-/* Locked phone: the title sits inside the card as a label, not in a grey
-   strip. One card shape, a name and a value, is most of what makes a tile
-   dashboard read cleanly on a phone. */
-.widget-header.mobile-compact {
+/* Locked, at any width: the title sits inside the card as a label, not in a
+   grey strip. One card shape, a name and a value, is most of what makes a
+   tile dashboard read cleanly. The strip, and the uppercase, now mean one
+   thing: you are editing, and it is the handle you drag by. */
+.is-locked .widget-header {
   height: auto;
   min-height: 0;
   padding: 10px 12px 0;
@@ -214,11 +215,46 @@ onErrorCaptured((err) => {
   border-bottom: none;
 }
 
-.mobile-compact .widget-title {
+.is-locked .widget-title {
   font-size: 13px;
   font-weight: 500;
   text-transform: none;
   letter-spacing: 0;
+}
+
+/* Keep the label row short: the buttons may be taller than the text. */
+.is-locked .icon-btn {
+  margin-top: -6px;
+  margin-bottom: -6px;
+}
+
+/* With a mouse, a locked tile shows its one button (full screen) on hover
+   only, over the corner of the header rather than beside the title, so the
+   title gets the width while it is hidden. A touch screen has no hover, so
+   there it stays in the row and visible. */
+@media (hover: hover) {
+  .is-locked:not(.is-mobile) .widget-header {
+    position: relative;
+  }
+  .is-locked:not(.is-mobile) .widget-actions {
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    background: oklch(var(--b1));
+    border-radius: 6px;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .is-locked:not(.is-mobile):hover .widget-actions,
+  .is-locked:not(.is-mobile) .widget-actions:focus-within {
+    opacity: 1;
+  }
+  /* The button takes the age's corner while it shows, rather than sitting
+     on top of it. */
+  .is-locked:not(.is-mobile):hover .widget-age,
+  .is-locked:not(.is-mobile):has(.widget-actions:focus-within) .widget-age {
+    visibility: hidden;
+  }
 }
 
 /* A finger needs about 44px; 28px is a mouse-sized target. The button keeps
@@ -229,12 +265,22 @@ onErrorCaptured((err) => {
   margin: -8px -4px;
 }
 
+/* A fixed width, right-aligned, because the text changes length as it
+   counts ("9s ago", "10s ago", "1m ago") and everything after it in the
+   header moved with it. 7ch holds the longest common form, "59m ago"; a
+   locked tile shows the short form ("59m"), so 4ch there. */
 .widget-age {
   font-size: 11px;
   font-family: var(--mono, monospace);
   color: oklch(var(--bc) / 0.45);
   white-space: nowrap;
   flex-shrink: 0;
+  min-width: 7ch;
+  text-align: right;
+}
+
+.is-locked .widget-age {
+  min-width: 4ch;
 }
 
 .widget-actions {

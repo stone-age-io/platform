@@ -16,13 +16,13 @@
 
     <!-- No markers hint -->
     <div v-if="mapReady && totalMarkerCount === 0 && !dynamicLoading" class="no-markers-hint">
-      <span class="hint-icon">📍</span>
+      <MapPin class="hint-icon" :size="16" aria-hidden="true" />
       <span class="hint-text">No markers configured</span>
     </div>
 
     <!-- Dynamic markers loading -->
     <div v-if="mapReady && hasDynamic && dynamicLoading" class="no-markers-hint">
-      <span class="hint-icon">⏳</span>
+      <LoaderCircle class="hint-icon animate-spin" :size="16" aria-hidden="true" />
       <span class="hint-text">Loading dynamic markers...</span>
     </div>
 
@@ -41,9 +41,10 @@
         <button
           class="map-control-btn"
           :title="searchOpen ? 'Close search' : 'Search markers'"
+          :aria-label="searchOpen ? 'Close search' : 'Search markers'"
           @click="toggleSearch"
         >
-          {{ searchOpen ? '✕' : '🔍' }}
+          <component :is="searchOpen ? X : Search" :size="16" aria-hidden="true" />
         </button>
       </div>
 
@@ -86,6 +87,7 @@
 </template>
 
 <script setup lang="ts">
+import { LoaderCircle, MapPin, Search, X } from '@lucide/vue'
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useLeafletMap } from '@/composables/useLeafletMap'
 import { useNatsKvWatcher, type KvRow } from '@/composables/useNatsKvWatcher'

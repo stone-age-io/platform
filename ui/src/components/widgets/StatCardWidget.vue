@@ -3,7 +3,7 @@
     <WidgetStateOverlay
       v-if="!hasData"
       state="empty"
-      icon="📊"
+      :icon="ChartColumn"
       message="Waiting for data..."
       :compact="layoutMode === 'card'"
     />
@@ -38,6 +38,7 @@
 </template>
 
 <script setup lang="ts">
+import { ChartColumn } from '@lucide/vue'
 import { computed } from 'vue'
 import { useWidgetDataStore } from '@/stores/widgetData'
 import { useDesignTokens } from '@/composables/useDesignTokens'

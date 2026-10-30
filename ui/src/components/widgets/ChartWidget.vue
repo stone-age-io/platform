@@ -17,7 +17,7 @@
     <WidgetStateOverlay
       v-else
       state="empty"
-      icon="📈"
+      :icon="ChartLine"
       message="Waiting for data..."
       :compact="layoutMode === 'card'"
     />
@@ -25,6 +25,7 @@
 </template>
 
 <script setup lang="ts">
+import { ChartLine } from '@lucide/vue'
 import { computed, ref, watch, onUnmounted } from 'vue'
 import { use, graphic } from 'echarts/core'
 import { LineChart, BarChart, CustomChart } from 'echarts/charts'

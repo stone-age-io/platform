@@ -10,7 +10,7 @@
         :title="folderName"
       >
         <span class="folder-chevron">{{ openFolders[folderName] ? '▼' : '▶' }}</span>
-        <span class="folder-icon">📁</span>
+        <component :is="openFolders[folderName] ? FolderOpen : Folder" class="folder-icon" :size="18" aria-hidden="true" />
         <span class="folder-name truncate">{{ folderName }}</span>
       </div>
       
@@ -37,8 +37,8 @@
         :title="item.name"
       >
         <span class="item-icon">
-          <span v-if="isStartup(item.key)" title="Startup Dashboard">🏠</span>
-          <span v-else>📊</span>
+          <House v-if="isStartup(item.key)" :size="18" aria-label="Startup dashboard" />
+          <LayoutDashboard v-else :size="18" aria-hidden="true" />
         </span>
         
         <!-- flex-1 + min-width: 0 allows the name to truncate without pushing actions off-screen -->
@@ -57,25 +57,25 @@
           
           <div v-if="activeMenuId === item.key" class="action-menu">
             <button class="menu-item" @click="handleSetStartup(item.key)">
-              <span class="menu-icon">🏠</span>
+              <House class="menu-icon" :size="16" aria-hidden="true" />
               <span class="menu-text">Set as Startup</span>
             </button>
             
             <div class="menu-divider"></div>
             
             <button class="menu-item" @click="handleDuplicate(item.key)">
-              <span class="menu-icon">📋</span>
+              <Copy class="menu-icon" :size="16" aria-hidden="true" />
               <span class="menu-text">Duplicate</span>
             </button>
             <button class="menu-item" @click="handleExport(item.key)">
-              <span class="menu-icon">💾</span>
+              <FileDown class="menu-icon" :size="16" aria-hidden="true" />
               <span class="menu-text">Export</span>
             </button>
             
             <div class="menu-divider"></div>
             
             <button class="menu-item danger" @click="handleDelete(item.key)">
-              <span class="menu-icon">🗑️</span>
+              <Trash2 class="menu-icon" :size="16" aria-hidden="true" />
               <span class="menu-text">Delete</span>
             </button>
           </div>
@@ -86,6 +86,7 @@
 </template>
 
 <script setup lang="ts">
+import { Copy, FileDown, Folder, FolderOpen, House, LayoutDashboard, Trash2 } from '@lucide/vue'
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { useDashboardStore } from '@/stores/dashboard'
 

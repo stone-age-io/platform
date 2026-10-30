@@ -3,7 +3,7 @@
   <div class="streamtable-widget" :class="{ 'card-layout': layoutMode === 'card' }">
     <!-- Not Configured -->
     <div v-if="!hasSubjects" class="empty-state">
-      <div class="empty-icon">📡</div>
+      <RadioTower class="empty-icon" :size="28" :stroke-width="1.5" aria-hidden="true" />
       <div v-if="layoutMode !== 'card'">Configure one or more subjects</div>
     </div>
 
@@ -15,11 +15,12 @@
           class="tool-btn"
           :class="{ 'is-paused': isPaused }"
           :title="isPaused ? 'Resume' : 'Pause'"
+          :aria-label="isPaused ? 'Resume' : 'Pause'"
           @click="togglePause"
         >
-          {{ isPaused ? '▶' : '⏸' }}
+          <component :is="isPaused ? Play : Pause" :size="14" aria-hidden="true" />
         </button>
-        <button class="tool-btn" title="Clear" @click="clear">🚫</button>
+        <button class="tool-btn" title="Clear" aria-label="Clear" @click="clear"><Eraser :size="14" aria-hidden="true" /></button>
         <input
           v-model="searchQuery"
           type="text"
@@ -111,6 +112,7 @@
 </template>
 
 <script setup lang="ts">
+import { Eraser, Pause, Play, RadioTower } from '@lucide/vue'
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useWidgetDataStore } from '@/stores/widgetData'
 import { formatColumnValue } from '@/utils/format'

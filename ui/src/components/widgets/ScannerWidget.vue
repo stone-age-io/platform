@@ -4,7 +4,7 @@
     <!-- Idle State -->
     <div v-if="state === 'idle'" class="scanner-idle">
       <div class="idle-scan" @click="startScan">
-        <div class="idle-icon">📷</div>
+        <ScanQrCode class="idle-icon" :size="48" :stroke-width="1.5" aria-hidden="true" />
         <div class="idle-label">Tap to Scan</div>
       </div>
       <div v-if="cfg.allowManualEntry ?? true" class="manual-entry">
@@ -136,6 +136,7 @@
 </template>
 
 <script setup lang="ts">
+import { ScanQrCode } from '@lucide/vue'
 import { ref, computed, onUnmounted, nextTick } from 'vue'
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
 import { Kvm } from '@nats-io/kv'

@@ -2,7 +2,7 @@
   <div class="item-editor">
     <div class="item-header">
       <span class="item-badge" :class="item.type">
-        {{ getItemIcon(item.type) }}
+        <component :is="getItemIcon(item.type)" :size="16" aria-hidden="true" />
       </span>
       <span class="item-label">{{ item.label || 'Unnamed Item' }}</span>
       <button 
@@ -346,6 +346,8 @@
 </template>
 
 <script setup lang="ts">
+import type { Component } from 'vue'
+import { CircleHelp, Database, Send, ToggleRight, Type } from '@lucide/vue'
 import { computed } from 'vue'
 import type { MapMarkerItem, MapItemSwitchConfig, MapItemTextConfig, MapItemKvConfig, MapItemType } from '@/types/dashboard'
 import { createDefaultItem } from '@/types/dashboard'
@@ -360,13 +362,13 @@ const emit = defineEmits<{
   'update:item': [item: MapMarkerItem]
 }>()
 
-function getItemIcon(type: MapItemType) {
+function getItemIcon(type: MapItemType): Component {
   switch (type) {
-    case 'publish': return '📤'
-    case 'switch': return '🔄'
-    case 'text': return '📝'
-    case 'kv': return '🗄️'
-    default: return '?'
+    case 'publish': return Send
+    case 'switch': return ToggleRight
+    case 'text': return Type
+    case 'kv': return Database
+    default: return CircleHelp
   }
 }
 

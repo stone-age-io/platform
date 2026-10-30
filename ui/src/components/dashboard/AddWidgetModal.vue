@@ -17,7 +17,7 @@
                 class="widget-type-btn"
                 @click="selectType(w.type)"
               >
-                <div class="widget-type-icon">{{ w.icon }}</div>
+                <component :is="w.icon" class="widget-type-icon" :size="28" :stroke-width="1.5" aria-hidden="true" />
                 <div class="widget-type-name">{{ w.label }}</div>
                 <div class="widget-type-desc">{{ w.description }}</div>
               </button>
@@ -175,7 +175,8 @@ function selectType(type: WidgetType) {
 }
 
 .widget-type-icon {
-  font-size: 32px;
+  margin: 0 auto;
+  color: oklch(var(--p));
 }
 
 .widget-type-name {

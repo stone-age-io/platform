@@ -28,6 +28,11 @@
 // order, grouped by `category` in WIDGET_CATEGORIES order.
 
 import { defineAsyncComponent, type Component } from 'vue'
+import {
+  ChartColumn, ChartLine, CircleDot, Database, FileText, Gauge,
+  Map as MapIcon, MousePointerClick, RadioTower, ScanQrCode, Send,
+  SlidersHorizontal, Table, Terminal, ToggleRight, Type,
+} from '@lucide/vue'
 import type { WidgetType } from '@/types/dashboard'
 
 // Light widgets, imported eagerly — they are small and a dashboard usually has
@@ -84,7 +89,8 @@ export interface WidgetDefinition {
 
   // --- Add Widget palette ---
   label: string
-  icon: string
+  /** A lucide icon. The same one is the widget's empty-state icon where it has one. */
+  icon: Component
   description: string
   category: WidgetCategory
 
@@ -128,56 +134,56 @@ export const WIDGETS: Record<WidgetType, WidgetDefinition> = {
   // --- Data Display ---
   text: {
     component: TextWidget, config: ConfigText,
-    label: 'Text', icon: '📝', description: 'Display latest value', category: 'Data Display',
+    label: 'Text', icon: Type, description: 'Display latest value', category: 'Data Display',
     mobileTitled: false, mobileExpandable: false,
     mobileWidth: 'half', mobileHeight: 'auto',
     standardDataSource: true, multiSubject: false,
   },
   stat: {
     component: StatCardWidget, config: ConfigStat,
-    label: 'Stat Card', icon: '📊', description: 'KPI with trend', category: 'Data Display',
+    label: 'Stat Card', icon: ChartColumn, description: 'KPI with trend', category: 'Data Display',
     mobileTitled: true, mobileExpandable: false,
     mobileWidth: 'half', mobileHeight: 'tile',
     standardDataSource: true, multiSubject: false,
   },
   gauge: {
     component: GaugeWidget, config: ConfigGauge,
-    label: 'Gauge', icon: '⏲️', description: 'Circular meter', category: 'Data Display',
+    label: 'Gauge', icon: Gauge, description: 'Circular meter', category: 'Data Display',
     mobileTitled: true, mobileExpandable: false,
     mobileWidth: 'half', mobileHeight: 'tile',
     standardDataSource: true, multiSubject: false,
   },
   status: {
     component: StatusWidget, config: ConfigStatus,
-    label: 'Status', icon: '🚦', description: 'State mapping & watchdog', category: 'Data Display',
+    label: 'Status', icon: CircleDot, description: 'State mapping & watchdog', category: 'Data Display',
     mobileTitled: false, mobileExpandable: false,
     mobileWidth: 'half', mobileHeight: 'auto',
     standardDataSource: false, multiSubject: false,
   },
   chart: {
     component: ChartWidget, config: ConfigChart,
-    label: 'Chart', icon: '📈', description: 'Line chart over time', category: 'Data Display',
+    label: 'Chart', icon: ChartLine, description: 'Line chart over time', category: 'Data Display',
     mobileTitled: true, mobileExpandable: false,
     mobileWidth: 'full', mobileHeight: 'tall',
     standardDataSource: true, multiSubject: true,
   },
   kv: {
     component: KvWidget, config: ConfigKv,
-    label: 'KV Value', icon: '🗄️', description: 'Single KV entry', category: 'Data Display',
+    label: 'KV Value', icon: Database, description: 'Single KV entry', category: 'Data Display',
     mobileTitled: false, mobileExpandable: false,
     mobileWidth: 'half', mobileHeight: 'auto',
     standardDataSource: false, multiSubject: false,
   },
   kvtable: {
     component: KvTableWidget, config: ConfigKvTable,
-    label: 'KV Table', icon: '📋', description: 'Live KV bucket table', category: 'Data Display',
+    label: 'KV Table', icon: Table, description: 'Live KV bucket table', category: 'Data Display',
     mobileTitled: true, mobileExpandable: true,
     mobileWidth: 'full', mobileHeight: 'data',
     standardDataSource: false, multiSubject: false,
   },
   streamtable: {
     component: StreamTableWidget, config: ConfigStreamTable,
-    label: 'Stream Table', icon: '📡', description: 'Live message stream as a table', category: 'Data Display',
+    label: 'Stream Table', icon: RadioTower, description: 'Live message stream as a table', category: 'Data Display',
     mobileTitled: true, mobileExpandable: true,
     mobileWidth: 'full', mobileHeight: 'data',
     standardDataSource: true, multiSubject: true,
@@ -186,28 +192,28 @@ export const WIDGETS: Record<WidgetType, WidgetDefinition> = {
   // --- Controls ---
   button: {
     component: ButtonWidget, config: ConfigButton,
-    label: 'Button', icon: '📤', description: 'Publish messages', category: 'Controls',
+    label: 'Button', icon: MousePointerClick, description: 'Publish messages', category: 'Controls',
     mobileTitled: false, mobileExpandable: false,
     mobileWidth: 'half', mobileHeight: 'auto',
     standardDataSource: false, multiSubject: false,
   },
   switch: {
     component: SwitchWidget, config: ConfigSwitch,
-    label: 'Switch', icon: '🔄', description: 'Toggle control', category: 'Controls',
+    label: 'Switch', icon: ToggleRight, description: 'Toggle control', category: 'Controls',
     mobileTitled: false, mobileExpandable: false,
     mobileWidth: 'half', mobileHeight: 'auto',
     standardDataSource: false, multiSubject: false,
   },
   slider: {
     component: SliderWidget, config: ConfigSlider,
-    label: 'Slider', icon: '🎚️', description: 'Range control', category: 'Controls',
+    label: 'Slider', icon: SlidersHorizontal, description: 'Range control', category: 'Controls',
     mobileTitled: false, mobileExpandable: false,
     mobileWidth: 'full', mobileHeight: 'auto',
     standardDataSource: false, multiSubject: false,
   },
   publisher: {
     component: PublisherWidget, config: ConfigPublisher,
-    label: 'Publisher', icon: '📨', description: 'Send ad-hoc messages', category: 'Controls',
+    label: 'Publisher', icon: Send, description: 'Send ad-hoc messages', category: 'Controls',
     mobileTitled: false, mobileExpandable: false,
     mobileWidth: 'full', mobileHeight: 'tall',
     standardDataSource: false, multiSubject: false,
@@ -216,21 +222,21 @@ export const WIDGETS: Record<WidgetType, WidgetDefinition> = {
   // --- Layout ---
   markdown: {
     component: MarkdownWidget, config: ConfigMarkdown,
-    label: 'Markdown', icon: '📝', description: 'Static text & images', category: 'Layout',
+    label: 'Markdown', icon: FileText, description: 'Static text & images', category: 'Layout',
     mobileTitled: true, mobileExpandable: true,
     mobileWidth: 'full', mobileHeight: 'tall',
     standardDataSource: false, multiSubject: false,
   },
   map: {
     component: MapWidget, config: ConfigMap,
-    label: 'Map', icon: '🗺️', description: 'Geographic location', category: 'Layout',
+    label: 'Map', icon: MapIcon, description: 'Geographic location', category: 'Layout',
     mobileTitled: true, mobileExpandable: true,
     mobileWidth: 'full', mobileHeight: 'data',
     standardDataSource: false, multiSubject: false,
   },
   console: {
     component: ConsoleWidget, config: ConfigConsole,
-    label: 'Console', icon: '📟', description: 'Live log stream', category: 'Layout',
+    label: 'Console', icon: Terminal, description: 'Live log stream', category: 'Layout',
     mobileTitled: true, mobileExpandable: true,
     mobileWidth: 'full', mobileHeight: 'tall',
     standardDataSource: true, multiSubject: true,
@@ -239,7 +245,7 @@ export const WIDGETS: Record<WidgetType, WidgetDefinition> = {
   // --- Tools ---
   scanner: {
     component: ScannerWidget, config: ConfigScanner,
-    label: 'Scanner', icon: '📷', description: 'QR code lookup', category: 'Tools',
+    label: 'Scanner', icon: ScanQrCode, description: 'QR code lookup', category: 'Tools',
     mobileTitled: true, mobileExpandable: true,
     mobileWidth: 'full', mobileHeight: 'data',
     standardDataSource: false, multiSubject: false,

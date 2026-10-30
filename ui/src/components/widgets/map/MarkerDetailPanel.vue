@@ -3,7 +3,7 @@
     <!-- Header -->
     <div class="panel-header">
       <div class="header-content">
-        <span class="marker-icon">📍</span>
+        <MapPin class="marker-icon" :size="20" aria-hidden="true" />
         <h3 class="marker-label">{{ marker.label }}</h3>
       </div>
       <button class="close-btn" @click="$emit('close')" title="Close panel">
@@ -14,7 +14,7 @@
     <!-- Items -->
     <div class="panel-body">
       <div v-if="marker.items.length === 0" class="empty-items">
-        <span class="empty-icon">📭</span>
+        <Inbox class="empty-icon" :size="32" :stroke-width="1.5" aria-hidden="true" />
         <span class="empty-text">No items configured</span>
       </div>
       
@@ -74,6 +74,7 @@
 </template>
 
 <script setup lang="ts">
+import { Inbox, MapPin } from '@lucide/vue'
 import { ref } from 'vue'
 import MarkerItemPublish from './MarkerItemPublish.vue'
 import MarkerItemSwitch from './MarkerItemSwitch.vue'
