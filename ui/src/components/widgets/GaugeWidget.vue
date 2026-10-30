@@ -36,7 +36,7 @@
     </div>
 
     <!-- SVG Gauge -->
-    <svg v-else :viewBox="`0 0 ${size} ${size}`" class="gauge-svg">
+    <svg v-else :viewBox="`0 0 ${size} ${viewHeight}`" class="gauge-svg">
       <!-- Background track -->
       <path
         :d="backgroundPath"
@@ -80,6 +80,7 @@
         dominant-baseline="middle"
         class="gauge-value"
         :fill="valueColor"
+        :style="{ fontSize: `${valueFontSize}px` }"
       >
         {{ displayValue }}
       </text>
@@ -97,10 +98,11 @@
         {{ cfg.unit }}
       </text>
 
-      <!-- Range, under each end of the arc. It was an HTML row below the
-           SVG spread to 80% of the width, which lined up with neither end. -->
-      <text :x="arcStart.x" :y="arcStart.y + 26" text-anchor="middle" class="gauge-range">{{ cfg.min }}</text>
-      <text :x="arcEnd.x" :y="arcEnd.y + 26" text-anchor="middle" class="gauge-range">{{ cfg.max }}</text>
+      <!-- Range, in the gap between the two ends of the arc, inside the dial.
+           Below the ends it needed a strip of its own, and in a short tile the
+           whole dial shrank to make room, taking the labels down to ~9px. -->
+      <text :x="arcStart.x + 16" :y="arcStart.y + 12" text-anchor="start" class="gauge-range">{{ cfg.min }}</text>
+      <text :x="arcEnd.x - 16" :y="arcEnd.y + 12" text-anchor="end" class="gauge-range">{{ cfg.max }}</text>
     </svg>
     
 
@@ -127,6 +129,10 @@ const size = 200
 const center = size / 2
 const strokeWidth = 20
 const radius = (size / 2) - (strokeWidth / 2) - 5
+// The dial ends at about y = 172 (the arc's rounded ends). Cropping the view
+// there, instead of a 200 x 200 square, is what lets a short tile draw it
+// larger: height is what limits it on a phone.
+const viewHeight = 176
 
 const cfg = computed(() => props.config.gaugeConfig)
 const isBar = computed(() => cfg.value.style === 'bar')
@@ -159,6 +165,11 @@ const displayValue = computed(() => {
   if (latestValue.value === null) return '—'
   return latestValue.value.toFixed(cfg.value.decimals ?? getDecimalPlaces(latestValue.value))
 })
+
+// Shrinks a long value to fit inside the arc, rather than running into it:
+// at 44 units, six monospace characters ("-18.63") are wider than the dial's
+// open middle. 0.6 is a monospace character's width per unit of font size.
+const valueFontSize = computed(() => Math.min(44, Math.floor(130 / (displayValue.value.length * 0.6))))
 
 function getDecimalPlaces(value: number): number {
   if (Math.abs(value) >= 100) return 0
@@ -245,7 +256,6 @@ const zonePaths = computed(() =>
 .value-arc { transition: stroke-dasharray 0.5s ease-out, stroke-dashoffset 0.5s ease-out, stroke 0.3s ease; }
 
 .gauge-value {
-  font-size: 44px;
   font-weight: 700;
   font-family: var(--mono);
   transition: fill 0.3s ease;
@@ -257,7 +267,7 @@ const zonePaths = computed(() =>
 }
 
 .gauge-range {
-  font-size: 14px;
+  font-size: 18px;
   font-family: var(--mono);
   fill: var(--muted);
 }
