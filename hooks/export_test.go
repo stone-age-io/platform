@@ -50,3 +50,21 @@ var (
 func RequireMembership(re *core.RequestEvent, membershipCollection string, roles []string) (string, string, error) {
 	return requireMembership(re, membershipCollection, roles)
 }
+
+// Inventory events. The sweep and the platform-events identity both run from
+// OnServe, which no test reaches, so they are exposed to be called directly.
+var (
+	InventoryFields     = inventoryFields
+	InventorySubject    = inventorySubject
+	InventoryImportName = inventoryImportName
+)
+
+func InventoryExportName(orgID string) string { return inventoryExportName(orgID) }
+
+func SweepInventoryExports(app core.App, opts InventoryEventsOptions) {
+	sweepInventoryExports(app, opts)
+}
+
+func EnsurePlatformEventsUser(app core.App, opts InventoryEventsOptions) (string, error) {
+	return ensurePlatformEventsUser(app, opts)
+}

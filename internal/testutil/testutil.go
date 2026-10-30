@@ -196,6 +196,22 @@ func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
 		ImportCollection:  natsOpts.ImportCollectionName,
 		ExportSubject:     "helpdesk.>", // main.go's default for nats.managed_export_subject
 	})
+	// Off, as main.go's default leaves it, so no test that does not ask for
+	// inventory events finds an export/import pair it did not expect. A test
+	// that wants them binds a second, enabled registration on the app this
+	// returns (hooks/inventory_events_test.go).
+	hooks.RegisterInventoryEvents(app, hooks.InventoryEventsOptions{
+		Enabled:            false,
+		OrgCollection:      orgCollection,
+		AccountCollection:  natsOpts.AccountCollectionName,
+		UserCollection:     natsOpts.UserCollectionName,
+		RoleCollection:     natsOpts.RoleCollectionName,
+		ExportCollection:   natsOpts.ExportCollectionName,
+		ImportCollection:   natsOpts.ImportCollectionName,
+		ThingCollection:    "things",
+		LocationCollection: "locations",
+		LocalSubject:       "stone-age.>",
+	})
 
 	// Absorbed from pb-tenancy, and bound in the position the library's own
 	// bootstrap-registered hook effectively occupied. RegisterOrgMembership is

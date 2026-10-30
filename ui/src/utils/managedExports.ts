@@ -35,10 +35,31 @@ export const MANAGED_EXPORT_NAME = 'helpdesk-events'
  */
 const MANAGED_IMPORT_RE = new RegExp(`^${MANAGED_EXPORT_NAME}-[a-z0-9]{15}$`)
 
+/**
+ * The inventory-events pair (hooks/inventory_exports.go): the export sits on
+ * the operator account as `inventory-<organization id>`, the import on each
+ * organization's own account as `inventory-events`. Mirrors
+ * `inventoryExportName` and `inventoryImportName` -- KEEP THEM IN STEP. Same
+ * id-shaped match as the helpdesk import, so a hand-made `inventory-eu` stays
+ * editable.
+ */
+export const INVENTORY_IMPORT_NAME = 'inventory-events'
+const INVENTORY_EXPORT_RE = /^inventory-[a-z0-9]{15}$/
+
+/** Which mechanism provisions a record, so the banner can say how to remove it. */
+export type ManagedSource = 'managed' | 'inventory'
+
+export function managedSource(name: string | undefined | null): ManagedSource | null {
+  if (!name) return null
+  if (name === MANAGED_EXPORT_NAME || MANAGED_IMPORT_RE.test(name)) return 'managed'
+  if (name === INVENTORY_IMPORT_NAME || INVENTORY_EXPORT_RE.test(name)) return 'inventory'
+  return null
+}
+
 export function isManagedExport(name: string | undefined | null): boolean {
-  return name === MANAGED_EXPORT_NAME
+  return name === MANAGED_EXPORT_NAME || (!!name && INVENTORY_EXPORT_RE.test(name))
 }
 
 export function isManagedImport(name: string | undefined | null): boolean {
-  return !!name && MANAGED_IMPORT_RE.test(name)
+  return !!name && (MANAGED_IMPORT_RE.test(name) || name === INVENTORY_IMPORT_NAME)
 }

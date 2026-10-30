@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=315         # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=320         # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -154,7 +154,13 @@ echo "=== initialising a throwaway database in $WORK ==="
 
 # A leaf URL, because /api/me/leaf-config refuses to serve without one. Nothing
 # dials it here; check 12 only needs the route to answer.
+#
+# Inventory events on, so section 28 can check the export/import pair they
+# provision. No NATS server is running, so every publish fails and is logged to
+# server.log -- which is also the proof that a failed publish never fails the
+# write, since every Thing and Location check above still passes.
 STONE_AGE_NATS_LEAF_URL="nats-leaf://127.0.0.1:7422" \
+STONE_AGE_NATS_INVENTORY_EVENTS_ENABLED=true \
   "$BIN" serve --http "127.0.0.1:$PORT" --dir "$WORK/pb_data" >"$WORK/server.log" 2>&1 &
 SRV_PID=$!
 
@@ -2160,6 +2166,40 @@ if [ "$RCODE" = "200" ] && [ "$(jn "$RBODY" 'o.items.length')" = "0" ]; then
 else
   no "an owner listing org_stats got HTTP $RCODE: $(head -c 200 <<<"$RBODY")"
 fi
+
+echo ""
+echo "=== 28. the inventory-events pair is scoped to the org it serves ==="
+# plans/inventory-events.md. Every org gets an import of its own events on its
+# own account, and the provider account gets one export per org. The import
+# carries the tenant's organization so its owner can see where the
+# stone-age.inventory.> subjects come from; the export carries the operator's,
+# because it sits on the operator's account and names the tenant's code. No
+# fixture above has an operator org, so make one and re-save TestOrg, which is
+# how a missing pair is provisioned.
+# Its own owner: an org's owner gets a membership in it, and alice holding one in
+# the provider org would make her reads here say nothing about tenant scoping.
+PROV_OWNER=$(mkuser provider@test.local)
+req POST /collections/organizations/records "$SU" \
+  "{\"name\":\"Provider\",\"owner\":\"$PROV_OWNER\",\"active\":true,\"is_operator_org\":true}"
+PROVIDER=$(j "$RBODY" id)
+[ -z "$PROVIDER" ] && die "operator org create failed: $RBODY"
+req PATCH "/collections/organizations/records/$ORG" "$SU" '{"description":"inventory events"}'
+req GET "/collections/nats_account_imports/records?filter=(name='inventory-events'%26%26organization='$ORG')" "$SU"
+INV_IMP=$(jn "$RBODY" 'o.items[0].id')
+req GET "/collections/nats_account_exports/records?filter=(name='inventory-$ORG')" "$SU"
+INV_EXP=$(jn "$RBODY" 'o.items[0].id')
+{ [ -z "$INV_IMP" ] || [ -z "$INV_EXP" ]; } && die "inventory pair not provisioned (import=$INV_IMP export=$INV_EXP); see $WORK/server.log"
+
+req GET "/collections/nats_account_imports/records/$INV_IMP" "$TA"
+expect "owner CAN read the org's inventory import" 200 "$RCODE" "$RBODY"
+req GET "/collections/nats_account_imports/records/$INV_IMP" "$TG"
+expect "dashboard cannot read it (same record)" 404 "$RCODE" "$RBODY"
+req GET "/collections/nats_account_imports/records/$INV_IMP" "$TE"
+expect "another org's owner cannot read it" 404 "$RCODE" "$RBODY"
+req GET "/collections/nats_account_exports/records/$INV_EXP" "$TA"
+expect "the tenant's owner cannot read the provider-side export" 404 "$RCODE" "$RBODY"
+req GET "/collections/nats_account_exports/records/$INV_EXP" "$SU"
+expect "...which exists (superuser reads it)" 200 "$RCODE" "$RBODY"
 
 # ----------------------------------------------------------------------- result
 

@@ -341,6 +341,7 @@ One line each. The `CLAUDE.md` in each file's directory says more.
 - `hooks/codes.go` / `hooks/location_path.go` - generated codes (ADR 0003) and `locations.path` (ADR 0004)
 - `hooks/nebula_routes.go` - Nebula CA rotation and the `/32` certificate audit
 - `hooks/activity.go` - the tenant activity feed
+- `hooks/inventory_events.go` / `hooks/inventory_exports.go` - Thing and Location changes on the bus as `stone-age.inventory.>`, off by default (`plans/inventory-events.md`)
 - `hooks/schema_fields.go` - the fields that exist only after `schema.json` is imported
 - `hooks/client_config_routes.go` - `GET /api/client-config` (the NATS URLs a browser dials)
 - `internal/health/`, `internal/metrics/`, `hooks/{observability,readiness,metrics,cert_expiry}.go` - readiness and metrics

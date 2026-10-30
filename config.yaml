@@ -79,6 +79,16 @@ nats:
   # start otherwise.
   managed_export_subject: "helpdesk.>"
 
+  # Inventory events (plans/inventory-events.md): every Thing and Location
+  # create, update and delete is published in the operator account and mapped
+  # into each organization's own account as
+  # {inventory_local_subject prefix}.inventory.<thing|location>.<action>.
+  # Turning it on or off takes effect on restart, which wires or removes every
+  # organization's export/import pair. The local subject must end in ".>" and
+  # must not start with the same token as managed_export_subject.
+  inventory_events_enabled: false
+  inventory_local_subject: "stone-age.>"
+
   log_to_console: false
   # Fair-use ceilings stamped into every new organization's signed account JWT,
   # which is the only place a tenant cannot edit them. Applied at PROVISIONING

@@ -139,6 +139,12 @@ func setDefaults() {
 	// Subject subtree exported from every managed org's account into the
 	// operator hub account (import remaps it to "<prefix>.{orgCode}.>").
 	viper.SetDefault("nats.managed_export_subject", "helpdesk.>")
+	// Inventory events on the bus (plans/inventory-events.md). Off until a
+	// provider wants them. The local subject is what each organization's own
+	// account sees, and is configurable because a white-labelled deployment may
+	// not want "stone-age." in its tenants' subjects.
+	viper.SetDefault("nats.inventory_events_enabled", false)
+	viper.SetDefault("nats.inventory_local_subject", "stone-age.>")
 
 	// Nebula
 	viper.SetDefault("nebula.ca_collection_name", "nebula_ca")
@@ -453,6 +459,38 @@ func main() {
 		ExportCollection:  natsOptions.ExportCollectionName,
 		ImportCollection:  natsOptions.ImportCollectionName,
 		ExportSubject:     managedExportSubject,
+	})
+
+	// Inventory events: the Control Plane publishes Thing and Location changes
+	// in the operator account, and a per-org export/import pair maps them into
+	// each organization's account. After provisioning, which creates the
+	// account the pair is wired to. See hooks/inventory_events.go.
+	inventoryLocalSubject := viper.GetString("nats.inventory_local_subject")
+	if !strings.HasSuffix(inventoryLocalSubject, ".>") {
+		log.Fatalf("❌ nats.inventory_local_subject must end in '.>' (got %q)", inventoryLocalSubject)
+	}
+	// The provider account carries both subtrees: the managed import lands on
+	// helpdesk.<code>.> and inventory events are published under
+	// <prefix>.<code>.>. Sharing a first token would let one overlap the other
+	// (helpdesk.x.<code> beside helpdesk.<code>), exporting managed orgs'
+	// helpdesk traffic to whichever tenant's code lined up.
+	firstToken := func(s string) string { return strings.SplitN(s, ".", 2)[0] }
+	if firstToken(inventoryLocalSubject) == firstToken(managedExportSubject) {
+		log.Fatalf("❌ nats.inventory_local_subject (%q) and nats.managed_export_subject (%q) must start with different tokens",
+			inventoryLocalSubject, managedExportSubject)
+	}
+	hooks.RegisterInventoryEvents(app, hooks.InventoryEventsOptions{
+		Enabled:            viper.GetBool("nats.inventory_events_enabled"),
+		OrgCollection:      orgCollection,
+		AccountCollection:  natsOptions.AccountCollectionName,
+		UserCollection:     natsOptions.UserCollectionName,
+		RoleCollection:     natsOptions.RoleCollectionName,
+		ExportCollection:   natsOptions.ExportCollectionName,
+		ImportCollection:   natsOptions.ImportCollectionName,
+		ThingCollection:    "things",
+		LocationCollection: "locations",
+		LocalSubject:       inventoryLocalSubject,
+		ServerURL:          viper.GetString("nats.server_url"),
 	})
 
 	// Owner membership, and the invitation lifecycle. Absorbed from pb-tenancy;
