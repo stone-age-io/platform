@@ -11,7 +11,7 @@ const uiStore = useUIStore()
     lg:hidden: Hides on desktop
     sticky top-0 z-30: Keeps header fixed while scrolling
   -->
-  <header class="navbar bg-base-100 border-b border-base-300 min-h-[4rem] lg:hidden sticky top-0 z-30">
+  <header class="navbar bg-base-100 border-b border-base-300 min-h-[3rem] py-0 lg:hidden sticky top-0 z-30">
     
     <!-- Left: Sidebar Toggle -->
     <div class="flex-none">

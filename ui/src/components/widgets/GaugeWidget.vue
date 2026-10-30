@@ -60,7 +60,7 @@
       <!-- Center value text -->
       <text
         :x="center"
-        :y="center - 5"
+        :y="center - 8"
         text-anchor="middle"
         dominant-baseline="middle"
         class="gauge-value"
@@ -73,7 +73,7 @@
       <text
         v-if="cfg.unit"
         :x="center"
-        :y="center + 18"
+        :y="center + 28"
         text-anchor="middle"
         dominant-baseline="middle"
         class="gauge-unit"
@@ -224,7 +224,7 @@ const zonePaths = computed(() =>
 .value-arc { transition: stroke-dasharray 0.5s ease-out, stroke-dashoffset 0.5s ease-out, stroke 0.3s ease; filter: drop-shadow(0 0 4px currentColor); }
 
 .gauge-value {
-  font-size: 36px;
+  font-size: 44px;
   font-weight: 700;
   font-family: var(--mono);
   transition: fill 0.3s ease;
@@ -238,9 +238,9 @@ const zonePaths = computed(() =>
 .gauge-labels {
   display: flex;
   justify-content: space-between;
-  width: 100%;
+  width: 80%;
   max-width: 180px;
-  font-size: 18px;
+  font-size: 12px;
   color: var(--muted);
   font-family: var(--mono);
 }

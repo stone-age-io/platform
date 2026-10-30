@@ -102,8 +102,13 @@ export interface WidgetDefinition {
    * and DashboardGrid checks it there rather than here.
    */
   mobileWidth: 'full' | 'half'
-  /** Minimum height on a phone: 'tall' for charts and dials, 'data' for tables and maps. */
-  mobileHeight: 'auto' | 'tall' | 'data'
+  /**
+   * Minimum height on a phone. A widget body is a size container, so it has
+   * no height of its own to grow into: this IS its height.
+   * 'auto' 80px (a status line), 'tile' 150px (one number), 'tall' 300px (a
+   * chart or a log), 'data' 400px (tables and maps).
+   */
+  mobileHeight: 'auto' | 'tile' | 'tall' | 'data'
 
   // --- Configure modal ---
   /**
@@ -132,14 +137,14 @@ export const WIDGETS: Record<WidgetType, WidgetDefinition> = {
     component: StatCardWidget, config: ConfigStat,
     label: 'Stat Card', icon: '📊', description: 'KPI with trend', category: 'Data Display',
     mobileTitled: true, mobileExpandable: false,
-    mobileWidth: 'full', mobileHeight: 'tall',
+    mobileWidth: 'half', mobileHeight: 'tile',
     standardDataSource: true, multiSubject: false,
   },
   gauge: {
     component: GaugeWidget, config: ConfigGauge,
     label: 'Gauge', icon: '⏲️', description: 'Circular meter', category: 'Data Display',
     mobileTitled: true, mobileExpandable: false,
-    mobileWidth: 'full', mobileHeight: 'tall',
+    mobileWidth: 'half', mobileHeight: 'tile',
     standardDataSource: true, multiSubject: false,
   },
   status: {
@@ -226,7 +231,7 @@ export const WIDGETS: Record<WidgetType, WidgetDefinition> = {
   console: {
     component: ConsoleWidget, config: ConfigConsole,
     label: 'Console', icon: '📟', description: 'Live log stream', category: 'Layout',
-    mobileTitled: false, mobileExpandable: false,
+    mobileTitled: true, mobileExpandable: true,
     mobileWidth: 'full', mobileHeight: 'tall',
     standardDataSource: true, multiSubject: true,
   },

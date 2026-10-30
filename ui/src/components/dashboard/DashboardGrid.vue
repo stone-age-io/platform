@@ -10,11 +10,7 @@
         v-for="widget in sortedWidgets" 
         :key="widget.id"
         class="mobile-widget-wrapper"
-        :class="{
-          'span-full': shouldSpanFullMobile(widget.id),
-          'is-tall': isTallWidget(widget),
-          'is-data-tall': isDataTallWidget(widget)
-        }"
+        :class="[mobileHeightClass(widget), { 'span-full': shouldSpanFullMobile(widget.id) }]"
       >
         <WidgetContainer
           :config="widget"
@@ -131,13 +127,9 @@ function isIntrinsicallyFullWidth(widget: WidgetConfig): boolean {
   return WIDGETS[widget.type]?.mobileWidth === 'full'
 }
 
-function isTallWidget(widget: WidgetConfig): boolean {
-  if (widget.type === 'kv' && widget.h > 2) return true
-  return WIDGETS[widget.type]?.mobileHeight === 'tall'
-}
-
-function isDataTallWidget(widget: WidgetConfig): boolean {
-  return WIDGETS[widget.type]?.mobileHeight === 'data'
+function mobileHeightClass(widget: WidgetConfig): string {
+  if (widget.type === 'kv' && widget.h > 2) return 'h-tall'
+  return `h-${WIDGETS[widget.type]?.mobileHeight ?? 'auto'}`
 }
 
 const mobileWidgetLayout = computed(() => {
@@ -281,11 +273,16 @@ onUnmounted(() => {
   grid-column: span 2;
 }
 
-.mobile-widget-wrapper.is-tall {
-  min-height: 250px;
+/* Heights per WidgetDefinition.mobileHeight; 'auto' is the 80px above. */
+.mobile-widget-wrapper.h-tile {
+  min-height: 150px;
 }
 
-.mobile-widget-wrapper.is-data-tall {
+.mobile-widget-wrapper.h-tall {
+  min-height: 300px;
+}
+
+.mobile-widget-wrapper.h-data {
   min-height: 400px;
 }
 

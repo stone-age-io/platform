@@ -179,19 +179,26 @@ function xyOption() {
   }
 
   const cfg = props.config.chartConfig
+  // On a phone a one-line scrolling legend hides most series behind a "1/2"
+  // pager. There it goes under the plot and wraps, with room kept for two
+  // entries a row: a guess, but a fixed one, rather than measuring text.
+  const card = props.layoutMode === 'card'
+  const legendRows = card && multi ? Math.ceil(seriesList.value.length / 2) : 0
   return {
     animation: false,
     grid: {
       left: 50,
       right: 20,
-      top: multi ? 36 : 30,
-      bottom: 40,
+      top: multi && !card ? 36 : 30,
+      bottom: 40 + legendRows * 20,
     },
     // The palette requires a legend once colour is what tells series apart
     // (see CHART_SERIES in useDesignTokens). One series needs none.
-    legend: multi
-      ? { top: 0, type: 'scroll', textStyle: { color: styling.muted, fontSize: 11 } }
-      : undefined,
+    legend: !multi
+      ? undefined
+      : card
+        ? { bottom: 0, type: 'plain', itemGap: 8, textStyle: { color: styling.muted, fontSize: 11 } }
+        : { top: 0, type: 'scroll', textStyle: { color: styling.muted, fontSize: 11 } },
     tooltip: {
       trigger: 'axis',
       confine: true,

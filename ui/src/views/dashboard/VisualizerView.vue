@@ -384,8 +384,10 @@ watch(() => dashboardStore.currentVariableValues, () => {
 .visualizer-view {
   display: flex;
   flex-direction: column;
-  /* Mobile: Keep header subtraction */
-  height: calc(100vh - 4rem); 
+  /* Mobile: subtract AppHeader (3rem). dvh, where supported, is the height
+     left after a phone's own URL bar; plain vh hides the last tile under it. */
+  height: calc(100vh - 3rem);
+  height: calc(100dvh - 3rem);
   margin: -1rem; 
   width: calc(100% + 2rem);
   overflow: hidden;
@@ -401,6 +403,7 @@ watch(() => dashboardStore.currentVariableValues, () => {
     width: calc(100% + 3rem);
     /* Desktop: Use full viewport height since AppHeader is hidden */
     height: 100vh;
+    height: 100dvh;
   }
 }
 
@@ -540,7 +543,7 @@ watch(() => dashboardStore.currentVariableValues, () => {
 }
 
 @media (max-width: 640px) {
-  .visualizer-toolbar { padding: 0.5rem; }
+  .visualizer-toolbar { padding: 0.25rem 0.5rem; }
   .dashboard-name { font-size: 0.9rem; max-width: 120px; }
   .dashboard-info { gap: 0.25rem; margin-left: 0.25rem; }
 }

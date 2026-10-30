@@ -202,13 +202,30 @@ onErrorCaptured((err) => {
   flex: 1;
 }
 
+/* Locked phone: the title sits inside the card as a label, not in a grey
+   strip. One card shape, a name and a value, is most of what makes a tile
+   dashboard read cleanly on a phone. */
 .widget-header.mobile-compact {
-  height: 28px;
-  padding: 2px 10px;
+  height: auto;
+  min-height: 0;
+  padding: 10px 12px 0;
+  background: transparent;
+  border-bottom: none;
 }
 
 .mobile-compact .widget-title {
-  font-size: 11px;
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* A finger needs about 44px; 28px is a mouse-sized target. The button keeps
+   its look and only its hit area grows, so a compact header stays short. */
+.is-mobile .icon-btn {
+  min-width: 44px;
+  min-height: 44px;
+  margin: -8px -4px;
 }
 
 .widget-age {

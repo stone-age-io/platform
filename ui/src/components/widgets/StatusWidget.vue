@@ -276,9 +276,14 @@ onUnmounted(() => {
   font-size: 14px;
   font-weight: 600;
   color: var(--text);
-  white-space: nowrap;
+  line-height: 1.25;
+  /* Two lines, then an ellipsis: a half-width tile cut "Springfield
+     gateway" down to "SPRINGFIELD GATI". */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
