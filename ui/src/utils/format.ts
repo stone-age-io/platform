@@ -87,6 +87,20 @@ export function formatColumnValue(value: any, columnFormat: string, formatOption
 }
 
 /**
+ * How long ago something happened, as short as a widget header can afford:
+ * "now", "12s ago", "4m ago", "3h ago", "2d ago". A negative age (a device
+ * clock running ahead of this one) reads as "now" rather than "in 3s".
+ */
+export function formatAge(ms: number): string {
+  const s = Math.floor(ms / 1000)
+  if (s < 1) return 'now'
+  if (s < 60) return `${s}s ago`
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+  return `${Math.floor(s / 86400)}d ago`
+}
+
+/**
  * Truncate string with ellipsis
  */
 export function truncate(str: string, length: number): string {

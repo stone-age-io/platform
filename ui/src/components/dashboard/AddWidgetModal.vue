@@ -34,17 +34,9 @@ import { computed } from 'vue'
 import { WIDGETS, WIDGET_CATEGORIES, type WidgetDefinition } from './widgets'
 import type { WidgetType } from '@/types/dashboard'
 
-interface Props {
+defineProps<{
   modelValue: boolean
-  allowedTypes?: WidgetType[]
-}
-
-const props = defineProps<Props>()
-
-function isAllowed(type: WidgetType): boolean {
-  if (!props.allowedTypes) return true
-  return props.allowedTypes.includes(type)
-}
+}>()
 
 // This palette was sixteen hand-written <button> blocks, which made it the
 // seventh place a new widget had to be added — and the one whose omission is
@@ -52,18 +44,14 @@ function isAllowed(type: WidgetType): boolean {
 //
 // Order comes from the declaration order of WIDGETS (object key order), not
 // from WIDGET_TYPES, which is sorted for its own reasons.
-//
-// A category with nothing allowed in it is now dropped. It used to render its
-// label over an empty row, because the buttons were hidden individually with
-// v-show rather than filtered out.
 const categories = computed(() => {
   const all = Object.entries(WIDGETS) as [WidgetType, WidgetDefinition][]
   return WIDGET_CATEGORIES.map(name => ({
     name,
     widgets: all
-      .filter(([type, w]) => w.category === name && isAllowed(type))
+      .filter(([, w]) => w.category === name)
       .map(([type, w]) => ({ type, ...w })),
-  })).filter(c => c.widgets.length > 0)
+  }))
 })
 
 const emit = defineEmits<{

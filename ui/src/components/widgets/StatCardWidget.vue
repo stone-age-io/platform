@@ -24,11 +24,6 @@
         />
       </svg>
     </div>
-    
-    <!-- No data state -->
-    <div v-if="!hasData" class="no-data">
-      <div class="no-data-icon">📊</div>
-    </div>
   </div>
 </template>
 
@@ -53,7 +48,6 @@ const trendWindow = computed(() => cfg.value.trendWindow ?? 10)
 const thresholds = computed(() => cfg.value.thresholds || [])
 
 const buffer = computed(() => dataStore.getBuffer(props.config.id))
-const hasData = computed(() => buffer.value.length > 0)
 
 const latestValue = computed(() => {
   if (buffer.value.length === 0) return null
@@ -91,21 +85,23 @@ const trendText = computed(() => {
   return `${Math.abs(trend.value.percent).toFixed(1)}%`
 })
 
+// Green for up is right for throughput and wrong for a freezer, so the card
+// asks which way is good rather than assuming.
 const trendClass = computed(() => {
-  if (!trend.value) return ''
-  if (trend.value.isPositive) return 'trend-positive'
-  if (trend.value.isNegative) return 'trend-negative'
-  return 'trend-neutral'
+  if (!trend.value || trend.value.isNeutral) return 'trend-neutral'
+  const good = trend.value.isPositive !== (cfg.value.trendUpIsBad ?? false)
+  return good ? 'trend-good' : 'trend-bad'
 })
 
 const displayValue = computed(() => {
   if (latestValue.value == null) return '—'  // == : undefined too (a JSONPath that matched nothing)
   const value = latestValue.value
-  const format = cfg.value.format
-  const unit = cfg.value.unit || ''
-  if (format) return format.replace('{value}', String(value))
-  if (typeof value === 'number') return `${value.toFixed(getDecimalPlaces(value))}${unit}`
-  return `${value}${unit}`
+  const text = typeof value === 'number'
+    ? value.toFixed(cfg.value.decimals ?? getDecimalPlaces(value))
+    : String(value)
+  // A format is the whole display, unit included; the help text says so.
+  if (cfg.value.format) return cfg.value.format.replace('{value}', text)
+  return `${text}${cfg.value.unit || ''}`
 })
 
 function getDecimalPlaces(value: number): number {
@@ -168,8 +164,8 @@ const sparklinePoints = computed(() => {
   font-weight: 600;
 }
 
-.trend-positive { color: var(--color-success); }
-.trend-negative { color: var(--color-error); }
+.trend-good { color: var(--color-success); }
+.trend-bad { color: var(--color-error); }
 .trend-neutral { color: var(--muted); }
 
 .trend-arrow {
@@ -194,16 +190,4 @@ const sparklinePoints = computed(() => {
   .sparkline { display: none; }
 }
 
-.no-data {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: var(--muted);
-}
-
-.no-data-icon {
-  font-size: 32px;
-  opacity: 0.5;
-}
 </style>

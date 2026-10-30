@@ -148,9 +148,9 @@ widget gallery, and how to add a widget. This file is the reference behind it.
 
 `components/dashboard/widgets.ts` holds `WIDGETS`, a
 `Record<WidgetType, WidgetDefinition>`: the renderer, the config panel, the Add
-Widget palette entry (label, icon, description, category), the two locked-mobile
-behaviours, and whether the shared data-source panel applies. Adding a widget is
-that entry plus the component.
+Widget palette entry (label, icon, description, category), how it sits on a
+phone (title, expand button, width, height), and whether the shared data-source
+panel applies. Adding a widget is that entry plus the component.
 
 It replaced six places in three directories, **two of which failed in silence** —
 `MOBILE_TITLED_TYPES` and `MOBILE_EXPANDABLE_TYPES`, hardcoded `Set`s of type

@@ -9,7 +9,8 @@
         placeholder="{value}°C"
       />
       <div class="help-text">
-        Use {value} as placeholder. Example: "{value}°C" or "$%{value}"
+        Use {value} as placeholder. Example: "{value}°C" or "$%{value}".
+        A format replaces the unit below, so put the unit inside it.
       </div>
     </div>
 
@@ -21,6 +22,19 @@
         class="form-input"
         placeholder="°C, MB, req/s"
       />
+    </div>
+
+    <div class="form-group">
+      <label>Decimal places (optional)</label>
+      <input
+        v-model="form.statDecimals"
+        type="text"
+        inputmode="numeric"
+        class="form-input"
+        :class="{ 'has-error': errors.statDecimals }"
+        placeholder="Automatic"
+      />
+      <div v-if="errors.statDecimals" class="error-text">{{ errors.statDecimals }}</div>
     </div>
 
     <div class="form-group">
@@ -43,6 +57,13 @@
       <div class="help-text">
         Compare current value to N messages ago
       </div>
+    </div>
+
+    <div v-if="form.statShowTrend" class="form-group">
+      <label class="checkbox-label">
+        <input type="checkbox" v-model="form.statTrendUpIsBad" />
+        <span>Rising is bad (show an increase in red)</span>
+      </label>
     </div>
 
     <div class="form-group">

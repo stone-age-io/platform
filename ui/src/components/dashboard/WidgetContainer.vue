@@ -22,14 +22,12 @@
       >
         <div class="widget-title" :title="config.title">{{ config.title }}</div>
 
+        <span v-if="age" class="widget-age" :title="`Last message: ${age}`">{{ age }}</span>
+
         <!-- Mobile expand button for data-dense widgets -->
         <button v-if="mobileExpandable" class="icon-btn" title="Expand" @click="$emit('fullscreen')">⛶</button>
 
         <template v-if="!mobileCompact">
-          <div v-if="!natsStore.isConnected" class="offline-indicator" title="Disconnected from NATS">
-            ⚠️
-          </div>
-
           <div class="widget-actions">
             <button class="icon-btn" title="Full Screen" @click="$emit('fullscreen')">⛶</button>
 
@@ -61,10 +59,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onErrorCaptured } from 'vue'
+import { computed, ref, watch, onErrorCaptured } from 'vue'
+import { useNow } from '@vueuse/core'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useNatsStore } from '@/stores/nats'
+import { useWidgetDataStore } from '@/stores/widgetData'
 import { useConfirm } from '@/composables/useConfirm'
+import { formatAge } from '@/utils/format'
 import { WIDGETS } from './widgets'
 import type { WidgetConfig } from '@/types/dashboard'
 
@@ -83,6 +84,7 @@ const emit = defineEmits<{
 
 const dashboardStore = useDashboardStore()
 const natsStore = useNatsStore()
+const dataStore = useWidgetDataStore()
 const { confirm } = useConfirm()
 const error = ref<string | null>(null)
 
@@ -121,6 +123,24 @@ async function handleDelete() {
   }
 }
 
+// How old the newest message is, for the widgets fed by the shared message
+// buffer. Deliberately just a label: no threshold, no colour, no setting. A
+// sensor that reports hourly and one that reports every second need different
+// answers to "stale", and the person reading the screen already knows which is
+// which. Widgets that read KV or draw their own source (Status has its own
+// watchdog) show nothing here.
+const now = useNow({ interval: 1000 })
+const age = computed(() => {
+  if (!props.config || !widget.value?.standardDataSource) return null
+  const buf = dataStore.getBuffer(props.config.id)
+  if (buf.length === 0) return null
+  return formatAge(now.value.getTime() - buf[buf.length - 1].timestamp)
+})
+
+// A widget that threw stays on the error card until its config changes, so
+// fixing the config in the modal brings it back without a page reload.
+watch(() => props.config, () => { error.value = null }, { deep: true })
+
 onErrorCaptured((err) => {
   console.error(`Widget error (${props.config?.id}):`, err)
   error.value = err.message || 'Widget error'
@@ -141,7 +161,9 @@ onErrorCaptured((err) => {
   transition: all 0.2s ease;
 }
 
-.widget-container:hover {
+/* Only while editing: on a locked or wall-mounted dashboard nothing is clickable
+   to lift. */
+.widget-container:not(.is-locked):hover {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
@@ -150,27 +172,10 @@ onErrorCaptured((err) => {
   background: oklch(var(--b1));
 }
 
-.widget-container.is-offline {
-  border-color: oklch(var(--er)); /* Error color */
-}
-
+/* Disconnected: the banner above the grid says why, once. Each widget only
+   dims, rather than sixteen red borders saying the same thing. */
 .widget-container.is-offline .widget-body {
-  opacity: 0.7;
-  filter: grayscale(0.8);
-}
-
-.offline-indicator {
-  font-size: 14px;
-  margin-right: 4px;
-  animation: pulse 2s infinite;
-  cursor: help;
-  user-select: none;
-}
-
-@keyframes pulse {
-  0% { opacity: 0.5; }
-  50% { opacity: 1; }
-  100% { opacity: 0.5; }
+  opacity: 0.6;
 }
 
 .widget-header {
@@ -178,17 +183,17 @@ onErrorCaptured((err) => {
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  background: oklch(var(--b3)); /* Base-200 */
-  border-bottom: 1px solid oklch(var(--b3));
+  background: oklch(var(--b2) / 0.5);
+  border-bottom: 1px solid oklch(var(--b2));
   flex-shrink: 0;
   gap: 8px;
   height: 40px;
 }
 
 .widget-title {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
-  color: oklch(var(--bc));
+  color: oklch(var(--bc) / 0.7);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   white-space: nowrap;
@@ -204,6 +209,14 @@ onErrorCaptured((err) => {
 
 .mobile-compact .widget-title {
   font-size: 11px;
+}
+
+.widget-age {
+  font-size: 11px;
+  font-family: var(--mono, monospace);
+  color: oklch(var(--bc) / 0.45);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .widget-actions {

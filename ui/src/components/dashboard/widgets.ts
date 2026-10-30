@@ -96,6 +96,14 @@ export interface WidgetDefinition {
   mobileTitled: boolean
   /** Offer a full-screen button there too — for widgets too dense to read inline. */
   mobileExpandable: boolean
+  /**
+   * On a locked phone dashboard: 'full' takes the whole row, 'half' pairs with
+   * a neighbour. A KV Value sized past 2x2 on the desktop is the one exception,
+   * and DashboardGrid checks it there rather than here.
+   */
+  mobileWidth: 'full' | 'half'
+  /** Minimum height on a phone: 'tall' for charts and dials, 'data' for tables and maps. */
+  mobileHeight: 'auto' | 'tall' | 'data'
 
   // --- Configure modal ---
   /**
@@ -117,48 +125,56 @@ export const WIDGETS: Record<WidgetType, WidgetDefinition> = {
     component: TextWidget, config: ConfigText,
     label: 'Text', icon: '📝', description: 'Display latest value', category: 'Data Display',
     mobileTitled: false, mobileExpandable: false,
+    mobileWidth: 'half', mobileHeight: 'auto',
     standardDataSource: true, multiSubject: false,
   },
   stat: {
     component: StatCardWidget, config: ConfigStat,
     label: 'Stat Card', icon: '📊', description: 'KPI with trend', category: 'Data Display',
     mobileTitled: true, mobileExpandable: false,
+    mobileWidth: 'full', mobileHeight: 'tall',
     standardDataSource: true, multiSubject: false,
   },
   gauge: {
     component: GaugeWidget, config: ConfigGauge,
     label: 'Gauge', icon: '⏲️', description: 'Circular meter', category: 'Data Display',
     mobileTitled: true, mobileExpandable: false,
+    mobileWidth: 'full', mobileHeight: 'tall',
     standardDataSource: true, multiSubject: false,
   },
   status: {
     component: StatusWidget, config: ConfigStatus,
     label: 'Status', icon: '🚦', description: 'State mapping & watchdog', category: 'Data Display',
     mobileTitled: false, mobileExpandable: false,
+    mobileWidth: 'half', mobileHeight: 'auto',
     standardDataSource: false, multiSubject: false,
   },
   chart: {
     component: ChartWidget, config: ConfigChart,
     label: 'Chart', icon: '📈', description: 'Line chart over time', category: 'Data Display',
     mobileTitled: true, mobileExpandable: false,
+    mobileWidth: 'full', mobileHeight: 'tall',
     standardDataSource: true, multiSubject: true,
   },
   kv: {
     component: KvWidget, config: ConfigKv,
     label: 'KV Value', icon: '🗄️', description: 'Single KV entry', category: 'Data Display',
     mobileTitled: false, mobileExpandable: false,
+    mobileWidth: 'half', mobileHeight: 'auto',
     standardDataSource: false, multiSubject: false,
   },
   kvtable: {
     component: KvTableWidget, config: ConfigKvTable,
     label: 'KV Table', icon: '📋', description: 'Live KV bucket table', category: 'Data Display',
     mobileTitled: true, mobileExpandable: true,
+    mobileWidth: 'full', mobileHeight: 'data',
     standardDataSource: false, multiSubject: false,
   },
   streamtable: {
     component: StreamTableWidget, config: ConfigStreamTable,
     label: 'Stream Table', icon: '📡', description: 'Live message stream as a table', category: 'Data Display',
     mobileTitled: true, mobileExpandable: true,
+    mobileWidth: 'full', mobileHeight: 'data',
     standardDataSource: true, multiSubject: true,
   },
 
@@ -167,24 +183,28 @@ export const WIDGETS: Record<WidgetType, WidgetDefinition> = {
     component: ButtonWidget, config: ConfigButton,
     label: 'Button', icon: '📤', description: 'Publish messages', category: 'Controls',
     mobileTitled: false, mobileExpandable: false,
+    mobileWidth: 'half', mobileHeight: 'auto',
     standardDataSource: false, multiSubject: false,
   },
   switch: {
     component: SwitchWidget, config: ConfigSwitch,
     label: 'Switch', icon: '🔄', description: 'Toggle control', category: 'Controls',
     mobileTitled: false, mobileExpandable: false,
+    mobileWidth: 'half', mobileHeight: 'auto',
     standardDataSource: false, multiSubject: false,
   },
   slider: {
     component: SliderWidget, config: ConfigSlider,
     label: 'Slider', icon: '🎚️', description: 'Range control', category: 'Controls',
     mobileTitled: false, mobileExpandable: false,
+    mobileWidth: 'full', mobileHeight: 'auto',
     standardDataSource: false, multiSubject: false,
   },
   publisher: {
     component: PublisherWidget, config: ConfigPublisher,
     label: 'Publisher', icon: '📨', description: 'Send ad-hoc messages', category: 'Controls',
     mobileTitled: false, mobileExpandable: false,
+    mobileWidth: 'full', mobileHeight: 'tall',
     standardDataSource: false, multiSubject: false,
   },
 
@@ -193,18 +213,21 @@ export const WIDGETS: Record<WidgetType, WidgetDefinition> = {
     component: MarkdownWidget, config: ConfigMarkdown,
     label: 'Markdown', icon: '📝', description: 'Static text & images', category: 'Layout',
     mobileTitled: true, mobileExpandable: true,
+    mobileWidth: 'full', mobileHeight: 'tall',
     standardDataSource: false, multiSubject: false,
   },
   map: {
     component: MapWidget, config: ConfigMap,
     label: 'Map', icon: '🗺️', description: 'Geographic location', category: 'Layout',
     mobileTitled: true, mobileExpandable: true,
+    mobileWidth: 'full', mobileHeight: 'data',
     standardDataSource: false, multiSubject: false,
   },
   console: {
     component: ConsoleWidget, config: ConfigConsole,
     label: 'Console', icon: '📟', description: 'Live log stream', category: 'Layout',
     mobileTitled: false, mobileExpandable: false,
+    mobileWidth: 'full', mobileHeight: 'tall',
     standardDataSource: true, multiSubject: true,
   },
 
@@ -213,6 +236,7 @@ export const WIDGETS: Record<WidgetType, WidgetDefinition> = {
     component: ScannerWidget, config: ConfigScanner,
     label: 'Scanner', icon: '📷', description: 'QR code lookup', category: 'Tools',
     mobileTitled: true, mobileExpandable: true,
+    mobileWidth: 'full', mobileHeight: 'data',
     standardDataSource: false, multiSubject: false,
   },
 }

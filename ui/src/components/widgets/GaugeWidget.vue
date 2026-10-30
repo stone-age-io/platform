@@ -1,7 +1,27 @@
 <template>
   <div class="gauge-widget">
+    <!-- Bar: the same range, zones and colour as the arc, laid flat -->
+    <div v-if="isBar" class="bar-gauge">
+      <div class="bar-value" :style="{ color: valueColor }">
+        {{ displayValue }}<span v-if="cfg.unit" class="bar-unit">{{ cfg.unit }}</span>
+      </div>
+      <div class="bar-track">
+        <div
+          v-for="(zone, index) in zoneSpans"
+          :key="index"
+          class="bar-zone"
+          :style="{ left: `${zone.start * 100}%`, width: `${(zone.end - zone.start) * 100}%`, background: zone.color }"
+        />
+        <div v-if="hasData" class="bar-fill" :style="{ width: `${valuePercent * 100}%`, background: valueColor }" />
+      </div>
+      <div class="bar-labels">
+        <span>{{ cfg.min }}</span>
+        <span>{{ cfg.max }}</span>
+      </div>
+    </div>
+
     <!-- SVG Gauge -->
-    <svg :viewBox="`0 0 ${size} ${size}`" class="gauge-svg">
+    <svg v-else :viewBox="`0 0 ${size} ${size}`" class="gauge-svg">
       <!-- Background track -->
       <path
         :d="backgroundPath"
@@ -64,7 +84,7 @@
     </svg>
     
     <!-- Min/Max labels -->
-    <div class="gauge-labels">
+    <div v-if="!isBar" class="gauge-labels">
       <span class="label-min">{{ cfg.min }}</span>
       <span class="label-max">{{ cfg.max }}</span>
     </div>
@@ -95,6 +115,7 @@ const strokeWidth = 20
 const radius = (size / 2) - (strokeWidth / 2) - 5
 
 const cfg = computed(() => props.config.gaugeConfig)
+const isBar = computed(() => cfg.value.style === 'bar')
 const buffer = computed(() => dataStore.getBuffer(props.config.id))
 const hasData = computed(() => buffer.value.length > 0)
 
@@ -150,7 +171,8 @@ const fullGaugePath = computed(() => describeArc(center, center, radius, -135, 1
 const fullArcLength = computed(() => radius * (270 * Math.PI) / 180)
 const valueArcLength = computed(() => `${fullArcLength.value * valuePercent.value} ${fullArcLength.value * 10}`)
 const valueDashOffset = computed(() => -fullArcLength.value * (1 - valuePercent.value))
-const backgroundColor = computed(() => 'rgba(255, 255, 255, 0.1)')
+// Was white at 10%, which vanished on the light theme.
+const backgroundColor = computed(() => 'oklch(var(--bc) / 0.1)')
 
 const valueColor = computed(() => {
   if (!cfg.value.zones || cfg.value.zones.length === 0) return chartColors.value.color1
@@ -161,15 +183,21 @@ const valueColor = computed(() => {
   return chartColors.value.color1
 })
 
-const zonePaths = computed(() => {
+// Each zone as a fraction of the range, 0..1. The arc and the bar both draw
+// from this.
+const zoneSpans = computed(() => {
   if (!cfg.value.zones) return []
   const range = cfg.value.max - cfg.value.min
-  return cfg.value.zones.map(zone => {
-    const start = -135 + (270 * ((zone.min - cfg.value.min) / range))
-    const end = -135 + (270 * ((zone.max - cfg.value.min) / range))
-    return { color: zone.color, path: describeArc(center, center, radius, start, end) }
-  })
+  const frac = (v: number) => Math.max(0, Math.min(1, (v - cfg.value.min) / range))
+  return cfg.value.zones.map(zone => ({ color: zone.color, start: frac(zone.min), end: frac(zone.max) }))
 })
+
+const zonePaths = computed(() =>
+  zoneSpans.value.map(zone => ({
+    color: zone.color,
+    path: describeArc(center, center, radius, -135 + 270 * zone.start, -135 + 270 * zone.end),
+  }))
+)
 </script>
 
 <style scoped>
@@ -213,6 +241,61 @@ const zonePaths = computed(() => {
   width: 100%;
   max-width: 180px;
   font-size: 18px;
+  color: var(--muted);
+  font-family: var(--mono);
+}
+
+.bar-gauge {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 8px;
+}
+
+.bar-value {
+  font-size: clamp(20px, 18cqw, 40px);
+  font-weight: 700;
+  font-family: var(--mono);
+  line-height: 1;
+  transition: color 0.3s ease;
+}
+
+.bar-unit {
+  font-size: 0.5em;
+  font-weight: 500;
+  color: var(--muted);
+  margin-left: 4px;
+}
+
+.bar-track {
+  position: relative;
+  height: clamp(10px, 12cqh, 24px);
+  border-radius: 999px;
+  background: oklch(var(--bc) / 0.1);
+  overflow: hidden;
+}
+
+.bar-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  opacity: 0.3;
+}
+
+.bar-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: 999px;
+  transition: width 0.5s ease-out, background 0.3s ease;
+}
+
+.bar-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
   color: var(--muted);
   font-family: var(--mono);
 }

@@ -34,6 +34,7 @@ import {
   TooltipComponent,
   GridComponent,
   LegendComponent,
+  MarkLineComponent,
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
@@ -56,6 +57,7 @@ use([
   TooltipComponent,
   GridComponent,
   LegendComponent,
+  MarkLineComponent,
   CanvasRenderer,
 ])
 
@@ -160,6 +162,23 @@ function xyOption() {
     }
   })
 
+  // Threshold lines ride on the first series; ECharts has no axis-level
+  // marker. A rule whose value is not a number has no height to draw at.
+  const lines = (props.config.chartConfig?.thresholds ?? [])
+    .filter(r => String(r.value).trim() !== '' && Number.isFinite(Number(r.value)))
+    .map(r => {
+      const color = ruleColors.value.get(r.id) ?? styling.muted
+      return {
+        yAxis: Number(r.value),
+        lineStyle: { color, type: 'dashed', width: 1 },
+        label: { formatter: r.label?.trim() || `${r.operator} ${r.value}`, color, position: 'insideEndTop', fontSize: 11 },
+      }
+    })
+  if (lines.length && series.length) {
+    Object.assign(series[0], { markLine: { silent: true, symbol: 'none', data: lines } })
+  }
+
+  const cfg = props.config.chartConfig
   return {
     animation: false,
     grid: {
@@ -192,6 +211,8 @@ function xyOption() {
     },
     yAxis: {
       type: 'value',
+      min: cfg?.yMin,
+      max: cfg?.yMax,
       axisLine: { lineStyle: { color: styling.axis } },
       axisLabel: { color: styling.muted, fontSize: 11 },
       splitLine: { lineStyle: { color: styling.grid } },

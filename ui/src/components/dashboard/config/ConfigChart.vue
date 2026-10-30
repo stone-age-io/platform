@@ -68,6 +68,30 @@
       </div>
     </div>
 
+    <template v-else>
+      <div class="form-group">
+        <label>Threshold Lines</label>
+        <ThresholdEditor v-model="form.chartThresholds" show-label />
+        <div class="help-text">
+          Each rule draws a dashed line at its value, in its colour, with its
+          label (or the rule itself). The operator does not matter here.
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Y-Axis Range (optional)</label>
+        <div class="field-row">
+          <input v-model="form.chartYMin" type="text" inputmode="decimal" class="form-input" placeholder="Min: auto" />
+          <input v-model="form.chartYMax" type="text" inputmode="decimal" class="form-input" placeholder="Max: auto" />
+        </div>
+        <div v-if="errors.chartYRange" class="error-text">{{ errors.chartYRange }}</div>
+        <div v-else class="help-text">
+          Blank fits the data. Fix the range when a threshold line sits outside it,
+          or to stop the axis jumping as values move.
+        </div>
+      </div>
+    </template>
+
     <div class="form-group">
       <label>Time Window (optional)</label>
       <input

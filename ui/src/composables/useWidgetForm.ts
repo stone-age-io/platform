@@ -63,6 +63,12 @@ export interface UseWidgetFormOptions {
 // ============================================================================
 
 /** Extract subject/subjects from widget config — different widgets store it in different places */
+/** A blank form field is undefined; anything else not a number is NaN, for validate to catch. */
+function optionalNumber(text: string): number | undefined {
+  const t = String(text).trim()
+  return t ? Number(t) : undefined
+}
+
 function hydrateSubject(widget: WidgetConfig, state: WidgetFormState): void {
   if (widget.type === 'button') {
     state.subject = widget.buttonConfig?.publishSubject || ''
@@ -197,6 +203,8 @@ const typeHandlers: WidgetTypeHandlers = {
       state.chartType = cfg?.chartType === 'bar' || cfg?.chartType === 'timeline' ? cfg.chartType : 'line'
       state.chartThresholds = cfg?.thresholds ? cfg.thresholds.map(r => ({ ...r })) : []
       state.chartWindow = cfg?.window || ''
+      state.chartYMin = cfg?.yMin != null ? String(cfg.yMin) : ''
+      state.chartYMax = cfg?.yMax != null ? String(cfg.yMax) : ''
       // A chart saved before multi-series read one value through the widget's
       // own jsonPath. Carry that path into a one-entry list here, so saving the
       // form IS the migration and there is no stored data to rewrite.
@@ -233,6 +241,14 @@ const typeHandlers: WidgetTypeHandlers = {
       if (window && parseDurationMs(window) === null) {
         errors.chartWindow = 'Use a duration like 30s, 10m, 1h or 1h30m'
       }
+      const yMin = optionalNumber(form.chartYMin)
+      const yMax = optionalNumber(form.chartYMax)
+      if (Number.isNaN(yMin) || Number.isNaN(yMax)) {
+        errors.chartYRange = 'Y-axis ends must be numbers, or blank to fit the data'
+      } else if (yMin !== undefined && yMax !== undefined && yMin >= yMax) {
+        errors.chartYRange = 'Y-axis min must be below max'
+      }
+
       // The chart hides the data source's own Time Window input, so a replay by
       // time needs this one or it would silently use a value nobody can see.
       if (!window && form.useJetStream && form.deliverPolicy === 'by_start_time') {
@@ -250,6 +266,8 @@ const typeHandlers: WidgetTypeHandlers = {
             subject: s.subject?.trim() || undefined,
           })),
           window: form.chartWindow.trim() || undefined,
+          yMin: optionalNumber(form.chartYMin),
+          yMax: optionalNumber(form.chartYMax),
           thresholds: form.chartThresholds.length ? form.chartThresholds.map(r => ({ ...r, label: r.label?.trim() || undefined })) : undefined,
         },
         // Each series reads the whole payload; a widget-level path would hand
@@ -264,17 +282,26 @@ const typeHandlers: WidgetTypeHandlers = {
     hydrate(widget, state) {
       state.statFormat = widget.statConfig?.format || ''
       state.statUnit = widget.statConfig?.unit || ''
+      state.statDecimals = widget.statConfig?.decimals != null ? String(widget.statConfig.decimals) : ''
       state.statShowTrend = widget.statConfig?.showTrend ?? true
       state.statTrendWindow = widget.statConfig?.trendWindow || 10
+      state.statTrendUpIsBad = widget.statConfig?.trendUpIsBad ?? false
       state.thresholds = widget.statConfig?.thresholds ? [...widget.statConfig.thresholds] : []
     },
+    validate(form, errors) {
+      const d = String(form.statDecimals).trim()
+      if (d && !/^[0-6]$/.test(d)) errors.statDecimals = 'A whole number from 0 to 6, or blank for automatic'
+    },
     buildUpdates(form) {
+      const d = String(form.statDecimals).trim()
       return {
         statConfig: {
           format: form.statFormat.trim() || undefined,
           unit: form.statUnit.trim() || undefined,
+          decimals: d ? Number(d) : undefined,
           showTrend: form.statShowTrend,
           trendWindow: form.statTrendWindow,
+          trendUpIsBad: form.statTrendUpIsBad || undefined,
           thresholds: [...form.thresholds],
         },
       }
@@ -284,6 +311,7 @@ const typeHandlers: WidgetTypeHandlers = {
   // --- gauge ---
   gauge: {
     hydrate(widget, state) {
+      state.gaugeStyle = widget.gaugeConfig?.style === 'bar' ? 'bar' : 'arc'
       state.gaugeMin = widget.gaugeConfig?.min ?? 0
       state.gaugeMax = widget.gaugeConfig?.max ?? 100
       state.gaugeUnit = widget.gaugeConfig?.unit || ''
@@ -292,6 +320,7 @@ const typeHandlers: WidgetTypeHandlers = {
     buildUpdates(form) {
       return {
         gaugeConfig: {
+          style: form.gaugeStyle === 'bar' ? 'bar' : undefined,
           min: form.gaugeMin,
           max: form.gaugeMax,
           unit: form.gaugeUnit.trim() || undefined,

@@ -1,6 +1,14 @@
 <template>
   <div class="config-gauge">
     <div class="form-group">
+      <label>Style</label>
+      <select v-model="form.gaugeStyle" class="form-input">
+        <option value="arc">Arc</option>
+        <option value="bar">Bar (level)</option>
+      </select>
+    </div>
+
+    <div class="form-group">
       <label>Gauge Range</label>
       <div class="range-inputs">
         <div class="range-input-group">

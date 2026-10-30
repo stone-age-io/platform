@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import AddWidgetModal from './AddWidgetModal.vue'
 import { WIDGETS, WIDGET_CATEGORIES } from './widgets'
-import { WIDGET_TYPES, type WidgetType } from '@/types/dashboard'
+import { WIDGET_TYPES } from '@/types/dashboard'
 
 // The palette used to be sixteen hand-written <button> blocks; it is now a loop
 // over WIDGETS. Most of what that object says is compile-checked —
@@ -54,16 +54,6 @@ describe('AddWidgetModal', () => {
       expect(btn.querySelector('.widget-type-icon')?.textContent?.trim()).toBeTruthy()
       expect(btn.querySelector('.widget-type-desc')?.textContent?.trim()).toBeTruthy()
     }
-  })
-
-  it('honours allowedTypes, and drops a category left empty by it', () => {
-    const allowed: WidgetType[] = ['gauge', 'chart']
-    open({ allowedTypes: allowed })
-
-    expect(names().sort()).toEqual(allowed.map(t => WIDGETS[t].label).sort())
-    // Both are Data Display, so the other three headings are gone rather than
-    // standing over an empty row — which is what v-show on each button did.
-    expect(categoryLabels()).toEqual(['Data Display'])
   })
 
   it('emits the type that was clicked, and closes', async () => {

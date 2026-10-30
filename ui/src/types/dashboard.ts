@@ -114,9 +114,14 @@ export interface ChartWidgetConfig {
   // Duration string ("30m"). Empty = keep the last N messages (the buffer size).
   // When set it is ALSO the JetStream replay window, so the two cannot disagree.
   window?: string
-  // Timeline only: first match wins, giving a segment its colour and label.
-  // A value no rule matches keeps a colour hashed from the value itself.
+  // Timeline: first match wins, giving a segment its colour and label. A value
+  // no rule matches keeps a colour hashed from the value itself.
+  // Line and bar: each rule with a numeric value is drawn as a dashed line at
+  // that value. The operator is not used there; a line has no direction.
   thresholds?: ThresholdRule[]
+  // Line and bar: fixed y-axis ends. Absent = fitted to the data.
+  yMin?: number
+  yMax?: number
   echartOptions?: any
 }
 
@@ -177,14 +182,19 @@ export interface SliderWidgetConfig {
 }
 
 export interface StatCardWidgetConfig {
-  format?: string
+  format?: string            // "{value}°C"; when set, `unit` is not appended
   unit?: string
+  decimals?: number          // absent = picked from the value's size
   showTrend?: boolean
   trendWindow?: number
+  trendUpIsBad?: boolean     // a rising freezer temperature is red, not green
   thresholds?: ThresholdRule[]
 }
 
 export interface GaugeWidgetConfig {
+  // 'bar' is a horizontal level (a tank, a battery) over the same range,
+  // zones and unit. Absent = the arc every gauge saved before it draws.
+  style?: 'arc' | 'bar'
   min: number
   max: number
   unit?: string

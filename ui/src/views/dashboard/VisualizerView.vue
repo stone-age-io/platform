@@ -22,12 +22,11 @@ import VariableBar from '@/components/dashboard/VariableBar.vue'
 import VariableEditorModal from '@/components/dashboard/VariableEditorModal.vue'
 import type { WidgetType } from '@/types/dashboard'
 
-// Widget types offered to the `dashboard` role. Everything here either reads a
-// bucket or publishes on a subject the caller's own NATS credential already
-// permits -- nothing that edits PocketBase inventory or infrastructure.
-const DASHBOARD_ROLE_WIDGET_TYPES: WidgetType[] = [
-  'button', 'switch', 'slider', 'publisher', 'kv', 'kvtable', 'text', 'status', 'stat', 'scanner'
-]
+// The `dashboard` role is offered every widget type. Each one reads from NATS
+// or publishes on it with the caller's own credential, which is the real limit
+// on what the role can do, and none edits PocketBase inventory. It used to get
+// a list that left out chart, gauge, console, stream table, map and markdown,
+// though those only read.
 
 const authStore = useAuthStore()
 const natsStore = useNatsStore()
@@ -35,7 +34,7 @@ const dashboardStore = useDashboardStore()
 const uiStore = useUIStore()
 const toast = useToast()
 
-// Restricted mode: fewer widget types, no kiosk/debug/shortcuts/grid selector.
+// Restricted mode: no kiosk/debug/shortcuts/grid selector.
 // Keyed on the ROLE, not on the path -- '/' is the only Visualizer route now, and
 // a path check would have to be kept in step with the router by hand.
 const isRestrictedMode = computed(() => authStore.isDashboardUser)
@@ -334,6 +333,12 @@ watch(() => dashboardStore.currentVariableValues, () => {
         <VariableBar @edit="showVariableModal = true" @close="showVariableBar = false" />
       </div>
       
+      <!-- One notice for the whole screen, kiosk included: a wall display that
+           silently stopped updating is the failure this exists for. -->
+      <div v-if="!natsStore.isConnected" class="px-4 py-1.5 text-sm border-b border-warning/40 bg-warning/15" role="status">
+        {{ natsStore.status === 'disconnected' ? 'Disconnected from NATS' : 'Connecting to NATS…' }}: values are not updating
+      </div>
+
       <div class="visualizer-content">
         <DashboardGrid v-if="dashboardStore.activeWidgets.length > 0" :widgets="dashboardStore.activeWidgets" :column-count="dashboardStore.activeDashboard?.columnCount" @delete-widget="handleDeleteWidget" @configure-widget="handleConfigureWidget" @duplicate-widget="handleDuplicateWidget" @fullscreen-widget="toggleFullScreen" />
         <div v-else class="h-full flex flex-col items-center justify-center text-base-content/50 p-8 text-center">
@@ -348,7 +353,7 @@ watch(() => dashboardStore.currentVariableValues, () => {
     </div>
     
     <!-- Modals ... (Unchanged) -->
-    <AddWidgetModal v-model="showAddWidget" :allowed-types="isRestrictedMode ? DASHBOARD_ROLE_WIDGET_TYPES : undefined" @select="handleCreateWidget" />
+    <AddWidgetModal v-model="showAddWidget" @select="handleCreateWidget" />
     <ConfigureWidgetModal v-model="showConfigWidget" :widget-id="configWidgetId" @saved="handleWidgetConfigSaved" />
     <KeyboardShortcutsModal v-model="showShortcutsModal" :shortcuts="shortcuts" />
     <VariableEditorModal v-model="showVariableModal" />

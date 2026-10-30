@@ -32,6 +32,8 @@ export interface WidgetFormState {
   chartSeries: ChartSeries[]
   chartWindow: string
   chartThresholds: ThresholdRule[]
+  chartYMin: string           // '' = fitted to the data
+  chartYMax: string
 
   // Switch Widget
   switchMode: 'kv' | 'core'
@@ -57,10 +59,13 @@ export interface WidgetFormState {
   // Stat Widget
   statFormat: string
   statUnit: string
+  statDecimals: string        // '' = automatic
   statShowTrend: boolean
   statTrendWindow: number
+  statTrendUpIsBad: boolean
   
   // Gauge Widget
+  gaugeStyle: 'arc' | 'bar'
   gaugeMin: number
   gaugeMax: number
   gaugeUnit: string
@@ -164,6 +169,8 @@ export function createEmptyFormState(): WidgetFormState {
     chartSeries: [],
     chartWindow: '',
     chartThresholds: [],
+    chartYMin: '',
+    chartYMax: '',
     switchMode: 'kv',
     switchDefaultState: 'off',
     switchStateSubject: '',
@@ -183,8 +190,11 @@ export function createEmptyFormState(): WidgetFormState {
     sliderConfirm: false,
     statFormat: '',
     statUnit: '',
+    statDecimals: '',
     statShowTrend: true,
     statTrendWindow: 10,
+    statTrendUpIsBad: false,
+    gaugeStyle: 'arc',
     gaugeMin: 0,
     gaugeMax: 100,
     gaugeUnit: '',

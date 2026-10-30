@@ -25,12 +25,6 @@
           @fullscreen="handleWidgetFullscreen(widget.id)"
         />
       </div>
-      
-      <div v-if="widgets.length === 0" class="empty-state mobile">
-        <div class="empty-icon">📊</div>
-        <div class="empty-message">No widgets</div>
-        <div class="empty-hint">Switch to desktop to add widgets</div>
-      </div>
     </div>
 
     <!-- DESKTOP LAYOUT -->
@@ -70,15 +64,6 @@
       </GridItem>
     </GridLayout>
     
-    <div v-if="!isMobile && widgets.length === 0" class="empty-state">
-      <div class="empty-icon">📊</div>
-      <div class="empty-message">No widgets yet</div>
-      <div class="empty-hint">
-        <template v-if="!dashboardStore.isLocked">Click "Add Widget" to get started</template>
-        <template v-else>Dashboard is locked</template>
-      </div>
-    </div>
-    
   </div>
 </template>
 
@@ -86,6 +71,7 @@
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { GridLayout, GridItem } from 'grid-layout-plus'
 import WidgetContainer from './WidgetContainer.vue'
+import { WIDGETS } from './widgets'
 import { useDashboardStore } from '@/stores/dashboard'
 import type { WidgetConfig } from '@/types/dashboard'
 
@@ -137,22 +123,21 @@ const sortedWidgets = computed(() => {
   })
 })
 
+// Phone sizing comes from the registry (./widgets.ts). The one exception is a
+// KV Value: it is a small tile or a big JSON panel depending on how it was
+// sized on the desktop, which no per-type flag can say.
 function isIntrinsicallyFullWidth(widget: WidgetConfig): boolean {
-  if (['map', 'chart', 'console', 'publisher', 'markdown', 'kvtable', 'scanner'].includes(widget.type)) return true
   if (widget.type === 'kv' && (widget.w > 2 || widget.h > 2)) return true
-  if (['slider', 'gauge', 'stat'].includes(widget.type)) return true
-  return false
+  return WIDGETS[widget.type]?.mobileWidth === 'full'
 }
 
 function isTallWidget(widget: WidgetConfig): boolean {
-  if (['chart', 'console', 'publisher', 'markdown'].includes(widget.type)) return true
-  if (['gauge', 'stat'].includes(widget.type)) return true
   if (widget.type === 'kv' && widget.h > 2) return true
-  return false
+  return WIDGETS[widget.type]?.mobileHeight === 'tall'
 }
 
 function isDataTallWidget(widget: WidgetConfig): boolean {
-  return ['kvtable', 'map', 'scanner'].includes(widget.type)
+  return WIDGETS[widget.type]?.mobileHeight === 'data'
 }
 
 const mobileWidgetLayout = computed(() => {
@@ -338,43 +323,6 @@ onUnmounted(() => {
 
 :deep(.vue-resizable-handle:hover) {
   opacity: 1 !important;
-}
-
-.empty-state {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  text-align: center;
-  color: var(--muted);
-  pointer-events: none;
-  z-index: 0;
-}
-
-.empty-state.mobile {
-  position: relative;
-  top: auto;
-  left: auto;
-  transform: none;
-  grid-column: span 2;
-  padding: 40px 0;
-}
-
-.empty-icon {
-  font-size: 64px;
-  margin-bottom: 16px;
-  opacity: 0.5;
-}
-
-.empty-message {
-  font-size: 20px;
-  font-weight: 600;
-  margin-bottom: 8px;
-  color: var(--text);
-}
-
-.empty-hint {
-  font-size: 14px;
 }
 
 @media (max-width: 480px) {

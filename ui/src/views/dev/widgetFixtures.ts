@@ -131,6 +131,11 @@ export function buildFixtures(): Record<WidgetType, DevFixture> {
             { label: 'Supply', path: '$.supply' },
             { label: 'Return', path: '$.return' },
           ],
+          thresholds: [
+            { id: 'th_high', operator: '>', value: '25', color: 'var(--color-error)', label: 'High return' },
+          ],
+          yMin: 5,
+          yMax: 30,
         },
       },
       series(120, 15_000, (i, n) => {
