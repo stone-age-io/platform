@@ -254,8 +254,6 @@ function adjustColorOpacity(hex: string, opacity: number) {
   text-overflow: ellipsis;
   width: 100%;
   margin-bottom: 2px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
 .card-label {

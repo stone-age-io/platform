@@ -1,6 +1,7 @@
 <!-- ui/src/components/layout/AppSidebar.vue -->
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { Building2, History, LayoutDashboard, LogOut, MapPin, Moon, Network, Package, RadioTower, ScrollText, Settings, Sun, Tags, Unplug, Users } from '@lucide/vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useMediaQuery } from '@vueuse/core'
 import { useAuthStore } from '@/stores/auth'
@@ -59,7 +60,7 @@ const menuItems = computed(() => {
   // Dashboard users: the Visualizer is their whole world.
   if (authStore.isDashboardUser) {
     return [
-      { label: 'Dashboard', icon: '📊', path: '/' },
+      { label: 'Dashboard', icon: LayoutDashboard, path: '/' },
     ]
   }
 
@@ -69,28 +70,28 @@ const menuItems = computed(() => {
   const can = authStore.can
 
   const items: any[] = [
-    { label: 'Dashboard', icon: '📊', path: '/' },
+    { label: 'Dashboard', icon: LayoutDashboard, path: '/' },
   ]
 
   // viewInventory, not manageInventory: a viewer navigates these screens and
   // finds every write control gated off inside them.
   if (can.viewInventory) {
     items.push(
-      { label: 'Things', icon: '📦', path: '/things' },
-      { label: 'Locations', icon: '📍', path: '/locations' },
+      { label: 'Things', icon: Package, path: '/things' },
+      { label: 'Locations', icon: MapPin, path: '/locations' },
     )
   }
 
   // Beside the inventory it describes, and gated on its own capability so the
   // line says what it means. Every role that reaches Things and Locations also
   // reaches this.
-  if (can.viewActivity) items.push({ label: 'Activity', icon: '🧭', path: '/activity' })
+  if (can.viewActivity) items.push({ label: 'Activity', icon: History, path: '/activity' })
 
   if (can.manageInfrastructure) {
     items.push(
       {
         label: 'NATS',
-        icon: '📡',
+        icon: RadioTower,
         path: '/nats',
         children: [
           { label: 'Account', path: '/nats/account' },
@@ -107,7 +108,7 @@ const menuItems = computed(() => {
       },
       {
         label: 'Nebula',
-        icon: '🌐',
+        icon: Network,
         path: '/nebula',
         children: [
           { label: 'Certificate Authority', path: '/nebula/ca' },
@@ -121,7 +122,7 @@ const menuItems = computed(() => {
   if (can.manageDefinitions) {
     items.push({
       label: 'Types',
-      icon: '🏷️',
+      icon: Tags,
       path: '/types',
       children: [
         { label: 'Thing Types', path: '/things/types' },
@@ -134,7 +135,7 @@ const menuItems = computed(() => {
   if (can.manageMembers) {
     items.push({
       label: 'Team',
-      icon: '👥',
+      icon: Users,
       path: '/organization',
       children: [
         { label: 'Members', path: '/organization/members' },
@@ -146,7 +147,7 @@ const menuItems = computed(() => {
   if (authStore.canManageOrganizations) {
     items.push({
       label: 'Organizations',
-      icon: '🏢',
+      icon: Building2,
       path: '/organizations'
     })
   }
@@ -155,7 +156,7 @@ const menuItems = computed(() => {
   if (authStore.isOperator) {
     items.push({
       label: 'Audit Logs',
-      icon: '📋',
+      icon: ScrollText,
       path: '/audit'
     })
   }
@@ -455,7 +456,7 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
                 :data-tip="item.label"
               ></div>
 
-              <span class="text-lg text-base-content/80 w-6 text-center">{{ item.icon }}</span>
+              <span class="w-6 flex justify-center text-base-content/80"><component :is="item.icon" :size="20" :stroke-width="1.75" /></span>
               <span v-show="!effectiveCompact" class="font-medium truncate">{{ item.label }}</span>
             </summary>
 
@@ -488,7 +489,7 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
               :data-tip="item.label"
             ></div>
 
-            <span class="text-lg text-base-content/80 w-6 text-center">{{ item.icon }}</span>
+            <span class="w-6 flex justify-center text-base-content/80"><component :is="item.icon" :size="20" :stroke-width="1.75" /></span>
             <span v-show="!effectiveCompact" class="font-medium truncate">{{ item.label }}</span>
           </router-link>
         </li>
@@ -559,18 +560,19 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
           >
             <li>
               <router-link to="/settings" @click="closeUserDropdown">
-                ⚙️ Settings
+                <Settings :size="16" /> Settings
               </router-link>
             </li>
             <li>
               <a @click="uiStore.toggleTheme">
-                {{ uiStore.theme === 'dark' ? '☀️ Light Mode' : '🌙 Dark Mode' }}
+                <component :is="uiStore.theme === 'dark' ? Sun : Moon" :size="16" />
+                {{ uiStore.theme === 'dark' ? 'Light Mode' : 'Dark Mode' }}
               </a>
             </li>
             <div class="divider my-1"></div>
             <li>
               <a @click="handleLogout" class="text-error hover:bg-error/10">
-                🚪 Log out
+                <LogOut :size="16" /> Log out
               </a>
             </li>
           </ul>
@@ -587,7 +589,7 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
           <!-- Header -->
           <div class="flex justify-between items-center mb-4">
             <h3 class="font-bold text-lg flex items-center gap-2">
-              <span class="text-2xl">📡</span> NATS Connection
+              <RadioTower :size="22" /> NATS Connection
             </h3>
             <button @click="showNatsModal = false" class="btn btn-sm btn-circle btn-ghost" aria-label="Close">✕</button>
           </div>
@@ -669,7 +671,7 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
 
           <!-- Disconnected State -->
           <div v-else-if="natsStore.status === 'disconnected'" class="text-center py-8">
-            <span class="text-4xl text-base-content/40">🔌</span>
+            <Unplug :size="40" :stroke-width="1.5" class="mx-auto text-base-content/40" />
             <p class="text-sm opacity-60 mt-2">
               {{ authStore.currentMembership?.nats_user
                 ? 'Click Connect to establish a connection.'

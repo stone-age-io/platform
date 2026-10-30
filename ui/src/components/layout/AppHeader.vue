@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Moon, Sun } from '@lucide/vue'
 import { useUIStore } from '@/stores/ui'
 import BrandLogo from '@/components/common/BrandLogo.vue'
 
@@ -38,8 +39,8 @@ const uiStore = useUIStore()
         :aria-label="uiStore.theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'"
         @click="uiStore.toggleTheme"
       >
-        <span v-if="uiStore.theme === 'dark'" class="text-xl">☀️</span>
-        <span v-else class="text-xl">🌙</span>
+        <Sun v-if="uiStore.theme === 'dark'" :size="20" />
+        <Moon v-else :size="20" />
       </button>
     </div>
 

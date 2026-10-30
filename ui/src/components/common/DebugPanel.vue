@@ -3,7 +3,7 @@
     <div v-if="modelValue" class="debug-overlay" @click.self="close">
       <div class="debug-panel">
         <div class="panel-header">
-          <h3>🔧 Debug Panel</h3>
+          <h3><Bug :size="18" /> Debug Panel</h3>
           <button class="close-btn" @click="close">✕</button>
         </div>
         
@@ -157,9 +157,9 @@
           <section class="debug-section">
             <h4>Actions</h4>
             <div class="action-buttons">
-              <button class="btn-action" @click="refreshStats">🔄 Refresh Stats</button>
-              <button class="btn-action warning" @click="clearBuffers">🗑️ Clear Buffers</button>
-              <button class="btn-action" @click="copyDebugInfo">📋 Copy Debug Info</button>
+              <button class="btn-action" @click="refreshStats"><RefreshCw :size="14" /> Refresh Stats</button>
+              <button class="btn-action warning" @click="clearBuffers"><Trash2 :size="14" /> Clear Buffers</button>
+              <button class="btn-action" @click="copyDebugInfo"><ClipboardCopy :size="14" /> Copy Debug Info</button>
             </div>
           </section>
         </div>
@@ -170,6 +170,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { Bug, ClipboardCopy, RefreshCw, Trash2 } from '@lucide/vue'
 import { useNatsStore } from '@/stores/nats'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useWidgetDataStore } from '@/stores/widgetData'
@@ -338,6 +339,9 @@ function formatTime(ts: number): string {
 .panel-header h3 {
   margin: 0;
   font-size: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .close-btn {
@@ -520,6 +524,9 @@ function formatTime(ts: number): string {
 }
 
 .btn-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 8px 12px;
   border: 1px solid var(--border);
   border-radius: 4px;

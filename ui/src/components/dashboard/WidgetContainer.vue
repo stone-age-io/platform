@@ -156,10 +156,12 @@ onErrorCaptured((err) => {
   flex-direction: column;
   background: oklch(var(--b1)); /* Base-100 */
   border: 1px solid oklch(var(--b3)); /* Base-300 */
-  border-radius: 0.75rem; /* rounded-xl */
+  border-radius: var(--rounded-box, 0.75rem); /* the theme's card radius */
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  transition: all 0.2s ease;
+  /* Not `all`: that also eased the size and position the grid sets while a
+     tile is dragged or resized, so it trailed the pointer. */
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 /* Only while editing: on a locked or wall-mounted dashboard nothing is clickable

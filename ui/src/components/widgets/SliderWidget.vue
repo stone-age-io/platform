@@ -378,8 +378,6 @@ watch([() => props.config.sliderConfig, () => dashboardStore.currentVariableValu
   font-size: 13px;
   font-weight: 600;
   color: var(--text);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

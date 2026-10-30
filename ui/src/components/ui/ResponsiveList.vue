@@ -2,6 +2,7 @@
 <script setup lang="ts" generic="T extends { id: string }">
 
 import { computed } from 'vue'
+import { Inbox } from '@lucide/vue'
 
 import { NULL_DISPLAY } from '@/utils/tableColumns'
 
@@ -432,10 +433,10 @@ function handleClick(item: T) {
     </div>
     
     <!-- EMPTY & LOADING STATES -->
-    <div v-if="items.length === 0 && !loading" class="text-center py-12 bg-base-200/30 rounded-xl border-2 border-dashed border-base-300">
+    <div v-if="items.length === 0 && !loading" class="text-center py-12 bg-base-200/30 rounded-box border-2 border-dashed border-base-300">
       <slot name="empty">
         <div class="flex flex-col items-center gap-2 opacity-40">
-          <span class="text-4xl">📭</span>
+          <Inbox :size="36" :stroke-width="1.5" />
           <span class="text-sm font-bold uppercase tracking-widest">No items found</span>
         </div>
       </slot>

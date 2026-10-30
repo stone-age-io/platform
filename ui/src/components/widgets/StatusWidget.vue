@@ -49,12 +49,14 @@
 
 <script setup lang="ts">
 import { TriangleAlert } from '@lucide/vue'
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { computed, watch } from 'vue'
+import { useNow } from '@vueuse/core'
 import { useWidgetDataStore } from '@/stores/widgetData'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useKvKey } from '@/composables/useKvKey'
 import { resolveTemplate } from '@/utils/variables'
 import { extractJsonPath } from '@/utils/jsonPath'
+import { formatAge } from '@/utils/format'
 import type { WidgetConfigOf } from '@/types/dashboard'
 
 const props = withDefaults(defineProps<{
@@ -77,15 +79,14 @@ const isKvMode = computed(() => props.config.dataSource.type === 'kv')
 const buffer = computed(() => dataStore.getBuffer(props.config.id))
 const latestMsg = computed(() => buffer.value[buffer.value.length - 1])
 
-// State
-const now = ref(Date.now())
-let timer: number | null = null
+// The same one-second clock as the age in every other tile's corner.
+const now = useNow({ interval: 1000 })
 
 // Computed State Logic
 const isStale = computed(() => {
   if (!cfg.value.showStale) return false
   if (!latestMsg.value) return true // No data = stale
-  return (now.value - latestMsg.value.timestamp) > staleThreshold.value
+  return (now.value.getTime() - latestMsg.value.timestamp) > staleThreshold.value
 })
 
 const displayValue = computed(() => {
@@ -134,9 +135,8 @@ const currentState = computed(() => {
 
 const timeAgo = computed(() => {
   if (!latestMsg.value) return 'No data'
-  const seconds = Math.floor((now.value - latestMsg.value.timestamp) / 1000)
-  if (seconds < 60) return `${seconds}s` // Shortened for mobile card space
-  return `${Math.floor(seconds / 60)}m`
+  // The short form a locked tile shows: it ran "90m" where the others say "1h".
+  return formatAge(now.value.getTime() - latestMsg.value.timestamp).replace(/ ago$/, '')
 })
 
 // --- KV Logic ---
@@ -164,17 +164,6 @@ watch(kvKey.entry, (e) => {
     subject: 'KV',
     timestamp: e.updated.getTime(),
   }])
-})
-
-// Lifecycle
-onMounted(() => {
-  timer = window.setInterval(() => {
-    now.value = Date.now()
-  }, 1000)
-})
-
-onUnmounted(() => {
-  if (timer) clearInterval(timer)
 })
 </script>
 
@@ -302,8 +291,6 @@ onUnmounted(() => {
   -webkit-box-orient: vertical;
   overflow: hidden;
   overflow-wrap: anywhere;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
 .card-status-row {

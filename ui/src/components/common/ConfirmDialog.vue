@@ -26,7 +26,7 @@
         <div class="confirm-header">
           <!-- Decorative: the variant is already conveyed by the title and the
                message, so announcing an emoji would just add noise. -->
-          <div class="confirm-icon" aria-hidden="true">{{ icon }}</div>
+          <component :is="icon" class="confirm-icon" :size="28" aria-hidden="true" />
           <h3 :id="titleId" class="confirm-title">{{ title }}</h3>
         </div>
 
@@ -84,6 +84,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue'
+import { Info, TriangleAlert, Zap } from '@lucide/vue'
 
 interface Props {
   modelValue: boolean
@@ -124,10 +125,9 @@ const emit = defineEmits<{
 
 const icon = computed(() => {
   switch (props.variant) {
-    case 'danger': return '⚠️'
-    case 'warning': return '⚡'
-    case 'info': return 'ℹ️'
-    default: return '⚠️'
+    case 'warning': return Zap
+    case 'info': return Info
+    default: return TriangleAlert
   }
 })
 
@@ -306,9 +306,13 @@ function cancel() {
 }
 
 .confirm-icon {
-  font-size: 32px;
-  line-height: 1;
+  flex-shrink: 0;
 }
+
+/* The emoji brought their own colour; the icon takes the variant's. */
+.variant-danger .confirm-icon { color: oklch(var(--er)); }
+.variant-warning .confirm-icon { color: oklch(var(--wa)); }
+.variant-info .confirm-icon { color: oklch(var(--in)); }
 
 .confirm-title {
   margin: 0;

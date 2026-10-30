@@ -6,7 +6,7 @@
       <div class="nd-modal response-modal" :class="status">
         <div class="modal-header">
           <div class="header-content">
-            <span class="status-icon">{{ statusIcon }}</span>
+            <component :is="statusIcon" class="status-icon" :size="20" />
             <h3>{{ title }}</h3>
           </div>
           <button class="close-btn" @click="close">✕</button>
@@ -16,7 +16,7 @@
           <div class="meta-row">
             <span class="meta-tag" :class="status">{{ status.toUpperCase() }}</span>
             <span v-if="latency !== undefined" class="meta-latency">
-              ⏱ {{ latency }}ms
+              <Timer :size="12" /> {{ latency }}ms
             </span>
           </div>
           
@@ -40,6 +40,7 @@
 
 <script setup lang="ts">
 import { computed, ref, nextTick, watch } from 'vue'
+import { Check, Timer, TriangleAlert } from '@lucide/vue'
 import JsonViewer from './JsonViewer.vue'
 
 const props = defineProps<{
@@ -57,7 +58,7 @@ const emit = defineEmits<{
 const closeBtn = ref<HTMLButtonElement | null>(null)
 const copyLabel = ref('Copy')
 
-const statusIcon = computed(() => props.status === 'success' ? '✓' : '⚠️')
+const statusIcon = computed(() => props.status === 'success' ? Check : TriangleAlert)
 
 const formattedData = computed(() => {
   try {
@@ -174,7 +175,7 @@ watch(() => props.modelValue, (isOpen) => {
   gap: 12px;
 }
 
-.status-icon { font-size: 20px; }
+.status-icon { flex-shrink: 0; }
 .nd-modal.success .status-icon { color: var(--color-success); }
 .nd-modal.error .status-icon { color: var(--color-error); }
 
@@ -221,6 +222,9 @@ watch(() => props.modelValue, (isOpen) => {
 .meta-tag.error { background: var(--color-error-bg); color: var(--color-error); }
 
 .meta-latency {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 12px;
   color: var(--muted);
   font-family: var(--mono);
