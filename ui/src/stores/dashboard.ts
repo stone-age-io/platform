@@ -171,9 +171,17 @@ export const useDashboardStore = defineStore('dashboard', () => {
 
         let dashboardToLoad: Dashboard | undefined
 
-        // On initial app load: use startupDashboard
-        // On navigation back: use lastSelectedDashboard to restore previous state
-        const targetDashboard = isInitialLoad ? startupDashboard.value : lastSelectedDashboard.value
+        // On initial app load: the pinned startup dashboard, else the one open
+        // last time. A phone home-screen icon or a wall screen should reopen
+        // where it was; falling through to the first local dashboard also
+        // overwrote lastSelected, so a shared one was never reopened at all.
+        // On navigation back: lastSelectedDashboard, to restore previous state.
+        const targetDashboard = isInitialLoad
+          ? (startupDashboard.value ?? lastSelectedDashboard.value)
+          : lastSelectedDashboard.value
+        // A shared target is opened by the NATS-connect watcher at the bottom
+        // of this store, which reads lastSelected. Point it at the pin.
+        if (isInitialLoad && targetDashboard) lastSelectedDashboard.value = targetDashboard
 
         if (targetDashboard?.storage === 'local') {
           dashboardToLoad = localDashboards.value.find(d => d.id === targetDashboard.id)
@@ -182,8 +190,11 @@ export const useDashboardStore = defineStore('dashboard', () => {
           // Don't load a local dashboard if user was viewing a remote one
         }
 
-        // Fallback to activeDashboardId or first dashboard if target not found
-        if (!dashboardToLoad && !targetDashboard?.storage) {
+        // Fall back to activeDashboardId or the first dashboard unless the
+        // watcher is about to open a shared one. A target that no longer
+        // exists, or a shared one with sharing off, used to leave nothing open.
+        const awaitingShared = targetDashboard?.storage === 'kv' && enableSharedDashboards.value
+        if (!dashboardToLoad && !awaitingShared) {
           if (parsed.activeDashboardId) {
             dashboardToLoad = localDashboards.value.find(d => d.id === parsed.activeDashboardId)
           }

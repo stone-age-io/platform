@@ -1,7 +1,15 @@
 <template>
   <div class="gauge-widget">
+    <WidgetStateOverlay
+      v-if="!hasData"
+      state="empty"
+      icon="⏲️"
+      message="Waiting for data..."
+      :compact="layoutMode === 'card'"
+    />
+
     <!-- Bar: the same range, zones and colour as the arc, laid flat -->
-    <div v-if="isBar" class="bar-gauge">
+    <div v-else-if="isBar" class="bar-gauge">
       <div class="bar-value" :style="{ color: valueColor }">
         {{ displayValue }}<span v-if="cfg.unit" class="bar-unit">{{ cfg.unit }}</span>
       </div>
@@ -84,15 +92,11 @@
     </svg>
     
     <!-- Min/Max labels -->
-    <div v-if="!isBar" class="gauge-labels">
+    <div v-if="hasData && !isBar" class="gauge-labels">
       <span class="label-min">{{ cfg.min }}</span>
       <span class="label-max">{{ cfg.max }}</span>
     </div>
-    
-    <!-- No data state -->
-    <div v-if="!hasData" class="no-data-overlay">
-      <div class="no-data-icon">📊</div>
-    </div>
+
   </div>
 </template>
 
@@ -100,10 +104,12 @@
 import { computed } from 'vue'
 import { useWidgetDataStore } from '@/stores/widgetData'
 import { useDesignTokens } from '@/composables/useDesignTokens'
+import WidgetStateOverlay from '@/components/dashboard/WidgetStateOverlay.vue'
 import type { WidgetConfigOf } from '@/types/dashboard'
 
 const props = defineProps<{
   config: WidgetConfigOf<'gauge'>
+  layoutMode?: 'standard' | 'card'
 }>()
 
 const dataStore = useWidgetDataStore()
@@ -304,23 +310,5 @@ const zonePaths = computed(() =>
 @container (width < 140px) {
   .gauge-labels { display: none; }
   .gauge-unit { display: none; }
-}
-
-.no-data-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--widget-bg);
-  color: var(--muted);
-}
-
-.no-data-icon {
-  font-size: 32px;
-  opacity: 0.5;
 }
 </style>

@@ -20,7 +20,6 @@
         
         <!-- Case A: Simple Value (Row Layout) -->
         <div v-if="isSingleValue" class="card-content">
-          <div class="card-icon">🗄️</div>
           <div class="card-info">
             <div class="card-title">{{ config.title }}</div>
             <div class="card-value" :style="{ color: valueColor }">
@@ -32,7 +31,6 @@
         <!-- Case B: Complex/JSON Value (Stacked Layout) -->
         <div v-else class="card-content-stacked">
           <div class="card-header-row">
-            <div class="card-icon small">🗄️</div>
             <div class="card-title">{{ config.title }}</div>
           </div>
           <div class="card-json-body">
@@ -259,25 +257,6 @@ const valueColor = computed(() => {
   text-align: right;
 }
 
-.card-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: rgba(0,0,0,0.05);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  color: var(--muted);
-  flex-shrink: 0;
-}
-
-.card-icon.small {
-  width: 24px;
-  height: 24px;
-  font-size: 14px;
-}
-
 .card-info {
   flex: 1;
   display: flex;
@@ -286,10 +265,12 @@ const valueColor = computed(() => {
   overflow: hidden;
 }
 
+/* Same label and number as a stat tile beside it: a KV value is a reading
+   too, and was the one phone tile that looked like a list row. */
 .card-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
-  color: var(--text);
+  color: oklch(var(--bc) / 0.7);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -297,9 +278,10 @@ const valueColor = computed(() => {
 }
 
 .card-value {
-  font-size: 16px;
-  font-weight: 600;
-  font-family: var(--font);
+  font-size: 24px;
+  font-weight: 700;
+  font-family: var(--mono);
+  line-height: 1.1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

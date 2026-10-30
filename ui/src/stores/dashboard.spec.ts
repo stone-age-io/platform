@@ -234,3 +234,56 @@ describe('leaveRemoteDashboard', () => {
     expect(store.activeDashboard?.id).toBe(second.id)
   })
 })
+
+describe('which dashboard opens on load', () => {
+  // A fresh pinia is a fresh app load: loadFromStorage's first call is the
+  // initial one.
+  function reload(storage: Map<string, string>) {
+    setActivePinia(createPinia())
+    ;(globalThis as any).localStorage.getItem = (k: string) => storage.get(k) ?? null
+    const store = useDashboardStore()
+    store.loadFromStorage()
+    return store
+  }
+
+  function saved(local: { id: string; name: string }[], settings: Record<string, unknown>) {
+    const storage = stubLocalStorage()
+    storage.set('nats_dashboards', JSON.stringify({ dashboards: local.map(d => ({ ...d, widgets: [] })) }))
+    storage.set('nats_dashboard_settings', JSON.stringify(settings))
+    return storage
+  }
+
+  it('reopens the local dashboard that was open last', () => {
+    const storage = saved([{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }], {
+      lastSelectedDashboard: { id: 'b', storage: 'local' },
+    })
+    expect(reload(storage).activeDashboard?.id).toBe('b')
+  })
+
+  it('leaves a shared last dashboard for the NATS watcher, rather than opening a local one over it', () => {
+    const storage = saved([{ id: 'a', name: 'A' }], {
+      lastSelectedDashboard: { id: 'northwind', storage: 'kv' },
+    })
+    const store = reload(storage)
+    // The bug: the first local dashboard opened and overwrote lastSelected,
+    // so the watcher found nothing shared to load.
+    expect(store.activeDashboard).toBeNull()
+    expect(JSON.parse(storage.get('nats_dashboard_settings')!).lastSelectedDashboard)
+      .toEqual({ id: 'northwind', storage: 'kv' })
+  })
+
+  it('falls back to the first dashboard when the last one was deleted', () => {
+    const storage = saved([{ id: 'a', name: 'A' }], {
+      lastSelectedDashboard: { id: 'gone', storage: 'local' },
+    })
+    expect(reload(storage).activeDashboard?.id).toBe('a')
+  })
+
+  it('lets a pinned startup dashboard win over the last one', () => {
+    const storage = saved([{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }], {
+      startupDashboard: { id: 'a', storage: 'local' },
+      lastSelectedDashboard: { id: 'b', storage: 'local' },
+    })
+    expect(reload(storage).activeDashboard?.id).toBe('a')
+  })
+})

@@ -22,19 +22,19 @@
       >
         <div class="widget-title" :title="config.title">{{ config.title }}</div>
 
-        <span v-if="age" class="widget-age" :title="`Last message: ${age}`">{{ age }}</span>
+        <span v-if="age" class="widget-age" :title="`Last message: ${age}`">{{ mobileCompact ? age.replace(/ ago$/, '') : age }}</span>
 
         <!-- Mobile expand button for data-dense widgets -->
-        <button v-if="mobileExpandable" class="icon-btn" title="Expand" @click="$emit('fullscreen')">⛶</button>
+        <button v-if="mobileExpandable" class="icon-btn" title="Expand" :aria-label="`Expand ${config.title}`" @click="$emit('fullscreen')"><DashboardIcon name="expand" /></button>
 
         <template v-if="!mobileCompact">
           <div class="widget-actions">
-            <button class="icon-btn" title="Full Screen" @click="$emit('fullscreen')">⛶</button>
+            <button class="icon-btn" title="Full Screen" :aria-label="`Full screen: ${config.title}`" @click="$emit('fullscreen')"><DashboardIcon name="expand" /></button>
 
             <template v-if="!dashboardStore.isLocked">
-              <button class="icon-btn" title="Duplicate" @click="$emit('duplicate')">📋</button>
-              <button class="icon-btn" title="Configure" @click="$emit('configure')">⚙️</button>
-              <button class="icon-btn danger" title="Delete" @click="handleDelete">✕</button>
+              <button class="icon-btn" title="Duplicate" :aria-label="`Duplicate ${config.title}`" @click="$emit('duplicate')"><DashboardIcon name="duplicate" /></button>
+              <button class="icon-btn" title="Configure" :aria-label="`Configure ${config.title}`" @click="$emit('configure')"><DashboardIcon name="configure" /></button>
+              <button class="icon-btn danger" title="Delete" :aria-label="`Delete ${config.title}`" @click="handleDelete"><DashboardIcon name="close" /></button>
             </template>
           </div>
         </template>
@@ -67,6 +67,7 @@ import { useWidgetDataStore } from '@/stores/widgetData'
 import { useConfirm } from '@/composables/useConfirm'
 import { formatAge } from '@/utils/format'
 import { WIDGETS } from './widgets'
+import DashboardIcon from './DashboardIcon.vue'
 import type { WidgetConfig } from '@/types/dashboard'
 
 const props = defineProps<{

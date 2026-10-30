@@ -1,5 +1,14 @@
 <template>
   <div class="stat-card-widget">
+    <WidgetStateOverlay
+      v-if="!hasData"
+      state="empty"
+      icon="📊"
+      message="Waiting for data..."
+      :compact="layoutMode === 'card'"
+    />
+
+    <template v-else>
     <!-- Main value -->
     <div class="stat-value" :style="{ color: valueColor }">
       {{ displayValue }}
@@ -24,6 +33,7 @@
         />
       </svg>
     </div>
+    </template>
   </div>
 </template>
 
@@ -32,10 +42,12 @@ import { computed } from 'vue'
 import { useWidgetDataStore } from '@/stores/widgetData'
 import { useDesignTokens } from '@/composables/useDesignTokens'
 import { useThresholds } from '@/composables/useThresholds'
+import WidgetStateOverlay from '@/components/dashboard/WidgetStateOverlay.vue'
 import type { WidgetConfigOf } from '@/types/dashboard'
 
 const props = defineProps<{
   config: WidgetConfigOf<'stat'>
+  layoutMode?: 'standard' | 'card'
 }>()
 
 const dataStore = useWidgetDataStore()
@@ -48,6 +60,7 @@ const trendWindow = computed(() => cfg.value.trendWindow ?? 10)
 const thresholds = computed(() => cfg.value.thresholds || [])
 
 const buffer = computed(() => dataStore.getBuffer(props.config.id))
+const hasData = computed(() => buffer.value.length > 0)
 
 const latestValue = computed(() => {
   if (buffer.value.length === 0) return null

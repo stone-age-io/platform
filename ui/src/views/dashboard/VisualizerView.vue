@@ -20,6 +20,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import DebugPanel from '@/components/common/DebugPanel.vue'
 import VariableBar from '@/components/dashboard/VariableBar.vue'
 import VariableEditorModal from '@/components/dashboard/VariableEditorModal.vue'
+import DashboardIcon from '@/components/dashboard/DashboardIcon.vue'
 import type { WidgetType } from '@/types/dashboard'
 
 // The `dashboard` role is offered every widget type. Each one reads from NATS
@@ -299,7 +300,6 @@ watch(() => dashboardStore.currentVariableValues, () => {
         </div>
         
         <div class="toolbar-right">
-          <!-- Refresh Button (NEW) -->
           <button 
             class="btn btn-sm btn-square btn-ghost" 
             @click="handleRefreshDashboard"
@@ -307,7 +307,7 @@ watch(() => dashboardStore.currentVariableValues, () => {
             aria-label="Refresh dashboard data"
             :disabled="!natsStore.isConnected"
           >
-            🔄
+            <DashboardIcon name="refresh" />
           </button>
 
           <div v-if="!isRestrictedMode && !dashboardStore.isLocked" class="hidden md:block">
@@ -323,9 +323,9 @@ watch(() => dashboardStore.currentVariableValues, () => {
             </select>
           </div>
           <button v-if="hasVariables || !dashboardStore.isLocked" class="btn btn-sm btn-square" :class="showVariableBar ? 'btn-active' : 'btn-ghost'" :aria-label="showVariableBar ? 'Hide dashboard variables' : 'Show dashboard variables'" :aria-pressed="showVariableBar" @click="showVariableBar = !showVariableBar"><span class="font-mono font-bold">{ }</span></button>
-          <button class="btn btn-sm btn-square btn-ghost" :aria-label="dashboardStore.isLocked ? 'Unlock dashboard layout' : 'Lock dashboard layout'" @click="dashboardStore.toggleLock()">{{ dashboardStore.isLocked ? '🔒' : '🔓' }}</button>
+          <button class="btn btn-sm btn-square btn-ghost" :aria-label="dashboardStore.isLocked ? 'Unlock dashboard layout' : 'Lock dashboard layout'" :title="dashboardStore.isLocked ? 'Unlock layout (U)' : 'Lock layout (L)'" @click="dashboardStore.toggleLock()"><DashboardIcon :name="dashboardStore.isLocked ? 'lock' : 'unlock'" /></button>
           <button v-if="!dashboardStore.isLocked" class="btn btn-sm btn-primary" @click="showAddWidget = true">+ <span class="hidden sm:inline ml-1">Widget</span></button>
-          <button v-if="!isRestrictedMode" class="btn btn-sm btn-square btn-ghost hidden sm:flex" aria-label="Open debug panel" @click="showDebugPanel = true">🐞</button>
+          <button v-if="!isRestrictedMode" class="btn btn-sm btn-square btn-ghost hidden sm:flex" aria-label="Open debug panel" title="Debug panel" @click="showDebugPanel = true"><DashboardIcon name="debug" /></button>
         </div>
       </div>
       
@@ -362,7 +362,7 @@ watch(() => dashboardStore.currentVariableValues, () => {
     <div v-if="fullScreenWidgetId && fullScreenWidget" class="fixed inset-0 z-[100] bg-base-100 flex flex-col">
       <div class="p-4 border-b border-base-300 flex justify-between items-center bg-base-200">
         <h2 class="font-bold text-lg">{{ fullScreenWidget.title }}</h2>
-        <button class="btn btn-sm btn-circle btn-ghost" aria-label="Exit full screen" @click="exitFullScreen">✕</button>
+        <button class="btn btn-sm btn-circle btn-ghost" aria-label="Exit full screen" @click="exitFullScreen"><DashboardIcon name="close" /></button>
       </div>
       <div class="flex-1 p-6 overflow-hidden">
         <WidgetContainer :config="fullScreenWidget" :is-mobile="false" :is-fullscreen="true" @delete="handleDeleteWidget(fullScreenWidget.id)" @configure="handleConfigureWidget(fullScreenWidget.id)" @duplicate="handleDuplicateWidget(fullScreenWidget.id)" @fullscreen="exitFullScreen" />
