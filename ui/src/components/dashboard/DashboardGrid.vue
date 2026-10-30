@@ -85,7 +85,12 @@ const emit = defineEmits<{
 
 const dashboardStore = useDashboardStore()
 const containerRef = ref<HTMLElement | null>(null)
-const isMobile = ref(false)
+// Start from the window, not false. False rendered the desktop grid first on a
+// phone, so every widget mounted, unmounted and mounted again once
+// onMounted measured the container: two sets of subscriptions, and a map
+// created and destroyed mid-load. onMounted still refines it from the
+// container's own width.
+const isMobile = ref(window.innerWidth < 768)
 
 const breakpoints = { lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }
 
@@ -248,17 +253,20 @@ onUnmounted(() => {
 
 .mobile-layout {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0, ...): a bare 1fr will not shrink below its content, so one wide
+     value pushed both columns past the edge of the screen. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   padding-bottom: 40px;
   transition: all 0.3s ease;
 }
 
 .mobile-layout.is-editing {
-  grid-template-columns: 1fr; 
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .mobile-widget-wrapper {
+  min-width: 0;
   height: auto;
   min-height: 80px; 
   display: flex;

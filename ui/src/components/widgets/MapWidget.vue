@@ -129,7 +129,7 @@ const mapContainerId = computed(() => {
 const mapReady = ref(false)
 const selectedMarkerId = ref<string | null>(null)
 const selectedMarkerType = ref<'static' | 'dynamic' | null>(null)
-const isMobile = ref(false)
+const isMobile = ref(window.innerWidth < 768)
 
 const markers = computed(() => props.config.mapConfig?.markers || [])
 const mapCenter = computed(() => props.config.mapConfig?.center || { lat: 39.8283, lon: -98.5795 })
@@ -359,14 +359,17 @@ watch(searchQuery, () => {
   if (!inStatic && !inDynamic) closePanel()
 })
 
-// Reinitialize map when center/zoom/clustering changes
-watch([mapCenter, mapZoom, enableClustering], () => {
+// Reinitialize map when center/zoom/clustering changes. Compared by value: a
+// deep watch fired whenever the config object was replaced (a shared
+// dashboard's KV revision arriving, say), tearing the map down mid-load for
+// nothing.
+watch(() => JSON.stringify([mapCenter.value, mapZoom.value, enableClustering.value]), () => {
   cleanup()
   mapReady.value = false
   selectedMarkerId.value = null
   selectedMarkerType.value = null
   initializeMap()
-}, { deep: true })
+})
 
 // --- Click handlers ---
 

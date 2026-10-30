@@ -148,11 +148,18 @@ const sparklinePoints = computed(() => {
 }
 
 .stat-value {
-  font-size: clamp(24px, 25cqw, 64px);
+  /* Sized so about eight monospace characters ("-18.8°C") fit the width, and
+     capped by height for a short, wide card. Anything longer is cut with an
+     ellipsis rather than pushing the tile wider than its column. */
+  font-size: clamp(18px, min(18cqw, 45cqh), 64px);
   font-weight: 700;
   font-family: var(--mono);
   line-height: 1;
   text-align: center;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   transition: color 0.3s ease;
 }
 
