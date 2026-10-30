@@ -1,5 +1,6 @@
 <!-- ui/src/views/things/ThingDetailView.vue -->
 <script setup lang="ts">
+import { Ban, DownloadIcon, Lock, MapPin, Network, RadioTower, RefreshCw, Shield } from '@lucide/vue'
 import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
@@ -413,7 +414,7 @@ onMounted(() => {
                   <dt class="text-sm font-medium text-base-content/70">Location</dt>
                   <dd class="mt-1">
                     <router-link v-if="thing.expand?.location" :to="`/locations/${thing.location}`" class="link link-primary hover:no-underline flex items-center gap-1">
-                      📍 {{ thing.expand.location.name }}
+                      <MapPin :size="14" class="inline-block shrink-0" /> {{ thing.expand.location.name }}
                     </router-link>
                     <span v-else class="text-sm text-base-content/40">No location assigned</span>
                   </dd>
@@ -502,7 +503,7 @@ onMounted(() => {
                    offers none of them. -->
               <div v-if="thing.expand?.nats_user && credentialsLive" class="connectivity-actions credential-actions flex gap-2 w-full sm:w-auto">
                 <button @click="downloadNatsCreds" class="btn btn-sm btn-outline" title="Download .creds file">
-                  <span>📥</span>
+                  <DownloadIcon :size="16" class="inline-block shrink-0" />
                   <span>.creds</span>
                 </button>
                 <!-- Plain outline: regenerate invalidates nothing, so the
@@ -514,7 +515,7 @@ onMounted(() => {
                   title="Issue a fresh .creds file for the same key"
                   :disabled="regenerating || revoking"
                 >
-                  <span>🔄</span>
+                  <RefreshCw :size="16" class="inline-block shrink-0" />
                   <span>Regenerate</span>
                 </button>
                 <button
@@ -523,7 +524,7 @@ onMounted(() => {
                   title="Reject the current credentials and issue replacements"
                   :disabled="regenerating || revoking"
                 >
-                  <span>⛔</span>
+                  <Ban :size="16" class="inline-block shrink-0" />
                   <span>Revoke</span>
                 </button>
               </div>
@@ -561,10 +562,10 @@ onMounted(() => {
                   :to="`/nats/roles/${thing.expand.nats_user.role_id}`"
                   class="link link-primary text-sm font-mono"
                 >
-                  🎭 {{ thing.expand.nats_user.expand.role_id.name }}
+                  <Shield :size="14" class="inline-block shrink-0" /> {{ thing.expand.nats_user.expand.role_id.name }}
                 </router-link>
                 <span v-else-if="thing.expand.nats_user.expand?.role_id" class="font-mono text-sm">
-                  🎭 {{ thing.expand.nats_user.expand.role_id.name }}
+                  <Shield :size="14" class="inline-block shrink-0" /> {{ thing.expand.nats_user.expand.role_id.name }}
                 </span>
                 <span v-else class="font-mono text-sm text-base-content/60">—</span>
               </div>
@@ -590,12 +591,12 @@ onMounted(() => {
                  readable, so "linked" and "not linked" stay distinguishable
                  without it — saying "No NATS user linked" here was simply false. -->
             <div v-else-if="thing.nats_user" class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">
-              <span class="text-2xl block mb-2">🔒</span>
+              <Lock :size="28" :stroke-width="1.5" class="mx-auto text-base-content/30 mb-2" />
               <p class="text-sm">NATS identity linked</p>
               <p class="text-xs text-base-content/70 mt-1">Details require an administrator</p>
             </div>
             <div v-else class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">
-              <span class="text-2xl block mb-2">📡</span>
+              <RadioTower :size="28" :stroke-width="1.5" class="mx-auto text-base-content/30 mb-2" />
               <p class="text-sm">No NATS user linked</p>
               <!-- A way forward for the reader who can attach one, rather than
                    a dead end. Attaching is the edit form's job (its NATS card
@@ -616,7 +617,7 @@ onMounted(() => {
               <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Nebula</span>
               <div v-if="thing.expand?.nebula_host" class="connectivity-actions flex gap-2">
                 <button @click="downloadNebulaConfig" class="btn btn-sm btn-outline" title="Download Nebula config">
-                  <span>📥</span>
+                  <DownloadIcon :size="16" class="inline-block shrink-0" />
                   <span>Config</span>
                 </button>
               </div>
@@ -635,12 +636,12 @@ onMounted(() => {
             </div>
             <!-- Same three states as NATS above. -->
             <div v-else-if="thing.nebula_host" class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">
-              <span class="text-2xl block mb-2">🔒</span>
+              <Lock :size="28" :stroke-width="1.5" class="mx-auto text-base-content/30 mb-2" />
               <p class="text-sm">Nebula host linked</p>
               <p class="text-xs text-base-content/70 mt-1">Details require an administrator</p>
             </div>
             <div v-else class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">
-              <span class="text-2xl block mb-2">🌐</span>
+              <Network :size="28" :stroke-width="1.5" class="mx-auto text-base-content/30 mb-2" />
               <p class="text-sm">No Nebula host linked</p>
               <router-link
                 v-if="authStore.can.manageInfrastructure"

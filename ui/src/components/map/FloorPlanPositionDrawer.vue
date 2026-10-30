@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Wrench } from '@lucide/vue'
 import type { Thing } from '@/types/pocketbase'
 
 defineProps<{
@@ -24,7 +25,7 @@ const emit = defineEmits<{
     <!-- Header -->
     <div class="flex items-center justify-between p-4 border-b border-base-300 bg-base-200/30 shrink-0">
       <div class="flex items-center gap-3 min-w-0">
-        <span class="text-lg shrink-0">🛠️</span>
+        <Wrench :size="18" class="inline-block shrink-0" />
         <h3 class="font-bold text-sm truncate">Position Things</h3>
       </div>
       <button class="btn btn-sm btn-circle btn-ghost shrink-0" aria-label="Close" @click="emit('close')">✕</button>

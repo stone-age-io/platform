@@ -456,7 +456,7 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
                 :data-tip="item.label"
               ></div>
 
-              <span class="w-6 flex justify-center text-base-content/80"><component :is="item.icon" :size="20" :stroke-width="1.75" /></span>
+              <span class="w-6 flex justify-center opacity-80"><component :is="item.icon" :size="20" :stroke-width="1.75" /></span>
               <span v-show="!effectiveCompact" class="font-medium truncate">{{ item.label }}</span>
             </summary>
 
@@ -489,7 +489,7 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
               :data-tip="item.label"
             ></div>
 
-            <span class="w-6 flex justify-center text-base-content/80"><component :is="item.icon" :size="20" :stroke-width="1.75" /></span>
+            <span class="w-6 flex justify-center opacity-80"><component :is="item.icon" :size="20" :stroke-width="1.75" /></span>
             <span v-show="!effectiveCompact" class="font-medium truncate">{{ item.label }}</span>
           </router-link>
         </li>

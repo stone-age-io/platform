@@ -4,7 +4,7 @@
       <div class="debug-panel">
         <div class="panel-header">
           <h3><Bug :size="18" /> Debug Panel</h3>
-          <button class="close-btn" @click="close">✕</button>
+          <button class="btn btn-sm btn-circle btn-ghost" aria-label="Close" @click="close">✕</button>
         </div>
         
         <div class="panel-body">
@@ -157,9 +157,9 @@
           <section class="debug-section">
             <h4>Actions</h4>
             <div class="action-buttons">
-              <button class="btn-action" @click="refreshStats"><RefreshCw :size="14" /> Refresh Stats</button>
-              <button class="btn-action warning" @click="clearBuffers"><Trash2 :size="14" /> Clear Buffers</button>
-              <button class="btn-action" @click="copyDebugInfo"><ClipboardCopy :size="14" /> Copy Debug Info</button>
+              <button class="btn btn-sm" @click="refreshStats"><RefreshCw :size="14" /> Refresh Stats</button>
+              <button class="btn btn-sm" @click="copyDebugInfo"><ClipboardCopy :size="14" /> Copy Debug Info</button>
+              <button class="btn btn-sm btn-ghost text-warning" @click="clearBuffers"><Trash2 :size="14" /> Clear Buffers</button>
             </div>
           </section>
         </div>
@@ -344,16 +344,6 @@ function formatTime(ts: number): string {
   gap: 8px;
 }
 
-.close-btn {
-  background: none;
-  border: none;
-  color: var(--muted);
-  font-size: 20px;
-  cursor: pointer;
-}
-
-.close-btn:hover { color: var(--text); }
-
 .panel-body {
   padding: 16px 20px;
   overflow-y: auto;
@@ -521,29 +511,5 @@ function formatTime(ts: number): string {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-}
-
-.btn-action {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--input-bg);
-  color: var(--text);
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-action:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: var(--color-accent);
-}
-
-.btn-action.warning:hover {
-  border-color: var(--color-warning);
-  color: var(--color-warning);
 }
 </style>

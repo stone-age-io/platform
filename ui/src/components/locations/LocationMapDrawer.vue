@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Inbox, MapPin } from '@lucide/vue'
 import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { pb } from '@/utils/pb'
@@ -129,7 +130,7 @@ watch(
     <!-- Header (cluster / list mode) -->
     <div v-if="isList" class="flex items-center justify-between p-4 border-b border-base-300 bg-base-200/30 shrink-0">
       <div class="flex items-center gap-3 min-w-0">
-        <span class="text-lg shrink-0">📍</span>
+        <MapPin :size="18" class="inline-block shrink-0" />
         <div class="min-w-0">
           <h3 class="font-bold text-sm truncate">{{ locations.length }} sites</h3>
           <span class="text-xs text-base-content/60">in this cluster</span>
@@ -141,7 +142,7 @@ watch(
     <!-- Header (single / detail mode) -->
     <div v-else class="flex items-center justify-between p-4 border-b border-base-300 bg-base-200/30 shrink-0">
       <div class="flex items-center gap-3 min-w-0">
-        <span class="text-lg shrink-0">📍</span>
+        <MapPin :size="18" class="inline-block shrink-0" />
         <div class="min-w-0">
           <h3 class="font-bold text-sm truncate">{{ single.name || 'Unnamed' }}</h3>
           <span v-if="single.expand?.type" class="text-xs text-base-content/60">{{ single.expand.type.name }}</span>
@@ -214,7 +215,7 @@ watch(
           </button>
 
           <div v-if="descendants.length === 0" class="flex flex-col items-center gap-2 opacity-40 py-10">
-            <span class="text-3xl">📭</span>
+            <Inbox :size="32" :stroke-width="1.5" class="mx-auto text-base-content/30" />
             <span class="text-xs font-bold uppercase tracking-widest">No sub-locations</span>
           </div>
         </div>
@@ -241,7 +242,7 @@ watch(
                   v-if="t.location && t.location !== single.id && t.expand?.location"
                   class="text-[11px] text-base-content/60 truncate"
                 >
-                  📍 {{ (t.expand.location as Location).name }}
+                  <MapPin :size="14" class="inline-block shrink-0" /> {{ (t.expand.location as Location).name }}
                 </div>
                 <div class="flex items-center gap-2 mt-0.5">
                   <span v-if="t.expand?.type" class="badge badge-ghost badge-xs">{{ t.expand.type.name }}</span>
@@ -252,7 +253,7 @@ watch(
             </button>
 
             <div v-if="things.length === 0" class="flex flex-col items-center gap-2 opacity-40 py-10">
-              <span class="text-3xl">📭</span>
+              <Inbox :size="32" :stroke-width="1.5" class="mx-auto text-base-content/30" />
               <span class="text-xs font-bold uppercase tracking-widest">No things</span>
             </div>
           </template>

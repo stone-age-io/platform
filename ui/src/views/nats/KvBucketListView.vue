@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Database, RadioTower, SearchX } from '@lucide/vue'
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNatsStore } from '@/stores/nats'
@@ -115,7 +116,7 @@ watch(() => natsStore.isConnected, (connected) => {
     <!-- Not Connected -->
     <BaseCard v-if="!natsStore.isConnected">
       <div class="text-center py-12">
-        <span class="text-6xl">📡</span>
+        <RadioTower :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
         <h3 class="text-xl font-bold mt-4">Not connected to NATS</h3>
         <p class="text-base-content/70 mt-2">Connect to NATS to manage KV buckets.</p>
       </div>
@@ -150,7 +151,7 @@ watch(() => natsStore.isConnected, (connected) => {
       <!-- Empty -->
       <BaseCard v-else-if="buckets.length === 0">
         <div class="text-center py-12">
-          <span class="text-6xl">🗄️</span>
+          <Database :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
           <h3 class="text-xl font-bold mt-4">No KV buckets found</h3>
           <p class="text-base-content/70 mt-2">Create your first KV bucket to get started.</p>
           <router-link to="/nats/kv/new" class="btn btn-primary mt-4">Create Bucket</router-link>
@@ -160,7 +161,7 @@ watch(() => natsStore.isConnected, (connected) => {
       <!-- No Results -->
       <BaseCard v-else-if="filteredBuckets.length === 0">
         <div class="text-center py-12">
-          <span class="text-6xl">🔍</span>
+          <SearchX :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
           <h3 class="text-xl font-bold mt-4">No matching buckets</h3>
           <button @click="searchQuery = ''" class="btn btn-ghost mt-4">Clear Search</button>
         </div>

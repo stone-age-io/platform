@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { UserIcon } from '@lucide/vue'
 import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -145,7 +146,7 @@ async function handleAction() {
         <!-- STATE 1: ALREADY LOGGED IN -->
         <div v-if="authStore.isAuthenticated" class="text-center">
           <div class="alert alert-info shadow-sm mb-6 text-left text-sm">
-            <span class="mr-2">👤</span>
+            <UserIcon :size="16" class="inline-block shrink-0 mr-2" />
             <div>
               Logged in as <strong>{{ authStore.user?.email }}</strong>
             </div>

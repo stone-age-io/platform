@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { CopyIcon, Download, KeyRound } from '@lucide/vue'
 import { ref, onMounted, computed } from 'vue'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
@@ -123,7 +124,7 @@ onMounted(() => {
       from here whatever button we draw.
     -->
     <div v-else-if="!ca" class="text-center py-12">
-      <span class="text-6xl">🔐</span>
+      <KeyRound :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
       <h3 class="text-xl font-bold mt-4">No Nebula CA Found</h3>
       <p class="text-base-content/70 mt-2 max-w-md mx-auto">
         A Certificate Authority is created automatically with the organization, so a
@@ -161,14 +162,14 @@ onMounted(() => {
           </div>
           <div class="flex gap-2 w-full sm:w-auto">
             <button @click="downloadCert" class="btn btn-outline flex-1 sm:flex-initial">
-              <span class="text-lg">📥</span>
+              <Download :size="18" class="inline-block shrink-0" />
               ca.crt
             </button>
             <button
               @click="copyToClipboard(ca.certificate!, 'Certificate')"
               class="btn btn-outline flex-1 sm:flex-initial"
             >
-              📋 Copy
+              <CopyIcon :size="16" class="inline-block shrink-0" /> Copy
             </button>
           </div>
         </div>

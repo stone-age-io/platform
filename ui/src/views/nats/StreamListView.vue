@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Package, RadioTower, SearchX } from '@lucide/vue'
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNatsStore } from '@/stores/nats'
@@ -144,7 +145,7 @@ watch(() => natsStore.isConnected, (connected) => {
     <!-- Not Connected -->
     <BaseCard v-if="!natsStore.isConnected">
       <div class="text-center py-12">
-        <span class="text-6xl">📡</span>
+        <RadioTower :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
         <h3 class="text-xl font-bold mt-4">Not connected to NATS</h3>
         <p class="text-base-content/70 mt-2">Connect to NATS to manage JetStream streams.</p>
       </div>
@@ -201,7 +202,7 @@ watch(() => natsStore.isConnected, (connected) => {
       <!-- Empty State -->
       <BaseCard v-else-if="streams.length === 0">
         <div class="text-center py-12">
-          <span class="text-6xl">📦</span>
+          <Package :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
           <h3 class="text-xl font-bold mt-4">No streams found</h3>
           <p class="text-base-content/70 mt-2">Create your first JetStream stream to get started.</p>
           <router-link to="/nats/streams/new" class="btn btn-primary mt-4">Create Stream</router-link>
@@ -211,7 +212,7 @@ watch(() => natsStore.isConnected, (connected) => {
       <!-- No Search Results -->
       <BaseCard v-else-if="filteredStreams.length === 0">
         <div class="text-center py-12">
-          <span class="text-6xl">🔍</span>
+          <SearchX :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
           <h3 class="text-xl font-bold mt-4">No matching streams</h3>
           <button @click="searchQuery = ''" class="btn btn-ghost mt-4">Clear Search</button>
         </div>

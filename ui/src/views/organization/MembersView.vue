@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Mail, SearchX, Users } from '@lucide/vue'
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
@@ -132,7 +133,7 @@ onMounted(() => {
         to="/organization/invitations" 
         class="btn btn-primary w-full sm:w-auto"
       >
-        <span class="text-lg">✉️</span>
+        <Mail :size="18" class="inline-block shrink-0" />
         <span>Send Invitation</span>
       </router-link>
     </div>
@@ -165,7 +166,7 @@ onMounted(() => {
     <!-- Empty State -->
     <BaseCard v-else-if="members.length === 0 && !searchQuery">
       <div class="text-center py-12">
-        <span class="text-6xl">👥</span>
+        <Users :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
         <h3 class="text-xl font-bold mt-4">No members found</h3>
       </div>
     </BaseCard>
@@ -173,7 +174,7 @@ onMounted(() => {
     <!-- No Search Results -->
     <BaseCard v-else-if="members.length === 0">
       <div class="text-center py-12">
-        <span class="text-6xl">🔍</span>
+        <SearchX :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
         <h3 class="text-xl font-bold mt-4">No matching members</h3>
         <button @click="searchQuery = ''" class="btn btn-ghost mt-4">
           Clear Search

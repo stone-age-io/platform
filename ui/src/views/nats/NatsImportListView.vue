@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ArrowDownToLine, SearchX } from '@lucide/vue'
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
@@ -156,7 +157,7 @@ onMounted(() => {
     <!-- Empty State -->
     <BaseCard v-else-if="imports.length === 0 && !searchQuery">
       <div class="text-center py-12">
-        <span class="text-6xl">📥</span>
+        <ArrowDownToLine :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
         <h3 class="text-xl font-bold mt-4">No imports found</h3>
         <p class="text-base-content/70 mt-2">
           Create your first import to subscribe to subjects from other accounts
@@ -170,7 +171,7 @@ onMounted(() => {
     <!-- No Search Results -->
     <BaseCard v-else-if="imports.length === 0">
       <div class="text-center py-12">
-        <span class="text-6xl">🔍</span>
+        <SearchX :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
         <h3 class="text-xl font-bold mt-4">No matching imports</h3>
         <button @click="searchQuery = ''" class="btn btn-ghost mt-4">
           Clear Search

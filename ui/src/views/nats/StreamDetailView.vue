@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Inbox, Mail } from '@lucide/vue'
 import { ref, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useNatsStore } from '@/stores/nats'
@@ -328,7 +329,7 @@ useEscapeKey(() => !!selectedMessage.value, () => { selectedMessage.value = null
             </div>
 
             <div v-else-if="consumers.length === 0" class="text-center py-8">
-              <span class="text-4xl">📭</span>
+              <Inbox :size="40" :stroke-width="1.5" class="mx-auto text-base-content/30" />
               <p class="text-base-content/70 mt-2">No consumers</p>
             </div>
 
@@ -417,7 +418,7 @@ useEscapeKey(() => !!selectedMessage.value, () => { selectedMessage.value = null
 
         <!-- Opt-in: messages are fetched on demand so the initial page load stays snappy -->
         <div v-if="!messagesLoaded && !messagesLoading" class="text-center py-8">
-          <span class="text-4xl">📨</span>
+          <Mail :size="40" :stroke-width="1.5" class="mx-auto text-base-content/30" />
           <p class="text-base-content/70 mt-2 mb-4">Browse the most recent messages stored in this stream.</p>
           <div class="flex items-center justify-center gap-2">
             <select v-model.number="messageLimit" class="select select-bordered select-sm">
@@ -434,7 +435,7 @@ useEscapeKey(() => !!selectedMessage.value, () => { selectedMessage.value = null
         </div>
 
         <div v-else-if="messages.length === 0" class="text-center py-8">
-          <span class="text-4xl">📭</span>
+          <Inbox :size="40" :stroke-width="1.5" class="mx-auto text-base-content/30" />
           <p class="text-base-content/70 mt-2">No messages stored</p>
         </div>
 

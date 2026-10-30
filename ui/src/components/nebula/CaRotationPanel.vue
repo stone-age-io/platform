@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { AlarmClock, Hourglass, RotateCw } from '@lucide/vue'
 /**
  * CA rotation controls.
  *
@@ -142,7 +143,7 @@ async function applyRotation(step: RotationStep) {
   <BaseCard v-if="state === 'idle'" title="CA Rotation">
     <div class="space-y-3">
       <div v-if="expiringSoon" class="alert alert-warning items-start py-2">
-        <span class="text-lg">⏰</span>
+        <AlarmClock :size="18" class="inline-block shrink-0" />
         <span class="text-sm">
           This CA is close to expiry and cannot be renewed. Begin rotating now — the
           middle of the procedure has to outlast every host fetching its config.
@@ -183,7 +184,7 @@ async function applyRotation(step: RotationStep) {
       </ul>
 
       <div v-if="state === 'prepared'" class="alert alert-info items-start">
-        <span class="text-xl">⏳</span>
+        <Hourglass :size="20" class="inline-block shrink-0" />
         <div class="text-sm">
           <div class="font-bold">An incoming CA is prepared and trusted.</div>
           Nothing is signed by it yet and no fingerprint has moved, so this is still fully
@@ -192,7 +193,7 @@ async function applyRotation(step: RotationStep) {
       </div>
 
       <div v-else class="alert alert-warning items-start">
-        <span class="text-xl">🔁</span>
+        <RotateCw :size="20" class="inline-block shrink-0" />
         <div class="text-sm">
           <div class="font-bold">Issuance has moved to the new CA.</div>
           Active hosts have been re-signed and both CAs are still trusted, so the mesh is

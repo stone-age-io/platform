@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Wrench } from '@lucide/vue'
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useFloorPlan } from '@/composables/useFloorPlan'
 import { fileUrl } from '@/utils/fileToken'
@@ -168,7 +169,7 @@ watch(() => props.location?.floorplan, () => void loadMap())
         @click="togglePositionDrawer"
         title="Position things"
       >
-        🛠️ <span class="hidden sm:inline">Position</span>
+        <Wrench :size="16" class="inline-block shrink-0" /> <span class="hidden sm:inline">Position</span>
       </button>
     </div>
 

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ArrowDownToLine, ArrowUpFromLine, Ban, CircleCheck, Download, RadioTower, RefreshCw, Shield } from '@lucide/vue'
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
@@ -280,7 +281,7 @@ onMounted(() => {
                     :to="`/nats/account`"
                     class="link link-primary hover:no-underline"
                   >
-                    📡 {{ user.expand.account_id.name }}
+                    <RadioTower :size="14" class="inline-block shrink-0" /> {{ user.expand.account_id.name }}
                   </router-link>
                   <span v-else class="text-sm text-base-content/40">—</span>
                 </dd>
@@ -294,7 +295,7 @@ onMounted(() => {
                     :to="`/nats/roles/${user.role_id}`"
                     class="link link-primary hover:no-underline"
                   >
-                    🎭 {{ user.expand.role_id.name }}
+                    <Shield :size="14" class="inline-block shrink-0" /> {{ user.expand.role_id.name }}
                   </router-link>
                   <span v-else class="text-sm text-base-content/40">—</span>
                 </dd>
@@ -314,7 +315,7 @@ onMounted(() => {
             <!-- Publishing -->
             <div v-if="getSubjectArray(user.publish_permissions).length || getSubjectArray(user.publish_deny_permissions).length" class="mb-4">
               <h4 class="text-xs font-black uppercase opacity-50 tracking-widest mb-2 flex items-center gap-2">
-                <span>📤</span> Publishing
+                <ArrowUpFromLine :size="16" class="inline-block shrink-0" /> Publishing
               </h4>
               <div class="space-y-2">
                 <div v-if="getSubjectArray(user.publish_permissions).length">
@@ -335,7 +336,7 @@ onMounted(() => {
             <!-- Subscribing -->
             <div v-if="getSubjectArray(user.subscribe_permissions).length || getSubjectArray(user.subscribe_deny_permissions).length">
               <h4 class="text-xs font-black uppercase opacity-50 tracking-widest mb-2 flex items-center gap-2">
-                <span>📥</span> Subscribing
+                <ArrowDownToLine :size="16" class="inline-block shrink-0" /> Subscribing
               </h4>
               <div class="space-y-2">
                 <div v-if="getSubjectArray(user.subscribe_permissions).length">
@@ -369,7 +370,7 @@ onMounted(() => {
                       @click="downloadCredsFile"
                       class="btn btn-sm btn-outline"
                     >
-                      <span class="text-lg">📥</span>
+                      <Download :size="18" class="inline-block shrink-0" />
                       .creds
                     </button>
                     <button
@@ -377,7 +378,7 @@ onMounted(() => {
                       class="btn btn-sm btn-outline"
                       title="Issue a fresh .creds file"
                     >
-                      <span class="text-lg">🔄</span>
+                      <RefreshCw :size="18" class="inline-block shrink-0" />
                       Regenerate
                     </button>
                     <button
@@ -385,7 +386,7 @@ onMounted(() => {
                       class="btn btn-sm btn-outline btn-error"
                       title="Reject the current credentials and issue replacements"
                     >
-                      <span class="text-lg">⛔</span>
+                      <Ban :size="18" class="inline-block shrink-0" />
                       Revoke
                     </button>
                   </template>
@@ -398,7 +399,7 @@ onMounted(() => {
                     class="btn btn-sm btn-outline btn-success"
                     title="Re-enable this user and issue new credentials"
                   >
-                    <span class="text-lg">✅</span>
+                    <CircleCheck :size="18" class="inline-block shrink-0" />
                     Re-enable
                   </button>
                 </div>
@@ -430,7 +431,7 @@ onMounted(() => {
 
               <!-- Revoked / inactive notice -->
               <div v-if="!user.active" class="alert alert-warning py-2 text-sm">
-                <span class="text-lg">⛔</span>
+                <Ban :size="18" class="inline-block shrink-0" />
                 <span v-if="heldByDeactivatedThing && linkedThing">
                   This identity belongs to the deactivated Thing
                   <router-link :to="`/things/${linkedThing.id}`" class="link font-semibold">{{ linkedThing.code || linkedThing.name }}</router-link>,

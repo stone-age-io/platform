@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Info } from '@lucide/vue'
 import { ref, onMounted, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useUIStore } from '@/stores/ui'
@@ -327,7 +328,7 @@ onMounted(() => {
             <label class="label">
               <span class="label-text">Operational Identity</span>
               <div class="tooltip tooltip-left" data-tip="Select the NATS credentials to use for this specific organization context">
-                <span class="label-text-alt text-info cursor-help">ⓘ</span>
+                <Info :size="16" class="inline-block shrink-0 label-text-alt text-info cursor-help" />
               </div>
             </label>
             

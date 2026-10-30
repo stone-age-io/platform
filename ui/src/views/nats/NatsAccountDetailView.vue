@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { RadioTower, RefreshCw } from '@lucide/vue'
 import { ref, onMounted } from 'vue'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
@@ -162,7 +163,7 @@ onMounted(() => {
     
     <!-- Empty State / Provisioning -->
     <div v-else-if="!account" class="text-center py-12">
-      <span class="text-6xl">📡</span>
+      <RadioTower :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
       <h3 class="text-xl font-bold mt-4">No NATS Account Found</h3>
       <!--
         There used to be a "Provision NATS Account" button here that created the
@@ -298,7 +299,7 @@ onMounted(() => {
                     title="Emergency Key Rotation"
                     :disabled="rotating"
                   >
-                    <span class="text-lg">🔄</span>
+                    <RefreshCw :size="18" class="inline-block shrink-0" />
                     Rotate All
                   </button>
                 </div>

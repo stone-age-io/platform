@@ -2,6 +2,7 @@
 FILE: ui/src/views/locations/LocationDetailView.vue
 ================================================
 <script setup lang="ts">
+import { ImageIcon, MapIcon, MapPin, Navigation } from '@lucide/vue'
 import { ref, onMounted, computed, watch, nextTick, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
@@ -403,7 +404,7 @@ onUnmounted(() => cleanupMap())
                     <dt class="text-sm font-medium text-base-content/70">Parent</dt>
                     <dd class="mt-1">
                       <router-link v-if="location.expand?.parent" :to="`/locations/${location.parent}`" class="link link-primary hover:no-underline flex items-center gap-1">
-                        📍 {{ location.expand.parent.name }}
+                        <MapPin :size="14" class="inline-block shrink-0" /> {{ location.expand.parent.name }}
                       </router-link>
                       <span v-else class="text-sm text-base-content/40">Root location</span>
                     </dd>
@@ -460,13 +461,13 @@ onUnmounted(() => cleanupMap())
                   class="tab text-xs sm:text-sm"
                   :class="{ 'tab-active font-bold': activeTab === 'floorplan' }"
                   @click="activeTab = 'floorplan'"
-                >🖼️ Floor Plan</a>
+                ><ImageIcon :size="16" class="inline-block shrink-0" /> Floor Plan</a>
                 <a
                   role="tab"
                   class="tab text-xs sm:text-sm"
                   :class="{ 'tab-active font-bold': activeTab === 'coordinates' }"
                   @click="activeTab = 'coordinates'"
-                >📍 Geo Map</a>
+                ><MapPin :size="16" class="inline-block shrink-0" /> Geo Map</a>
               </div>
               <!-- The page's card-title, like every other card on it. This was a
                    10px uppercase label, the smallest of three heading sizes on
@@ -508,7 +509,7 @@ onUnmounted(() => cleanupMap())
                     class="btn btn-sm bg-base-100 border-base-300 shadow-sm hover:bg-base-200 gap-1"
                     title="Open in Google Maps"
                   >
-                    🧭 <span class="hidden sm:inline">Navigate</span>
+                    <Navigation :size="16" class="inline-block shrink-0" /> <span class="hidden sm:inline">Navigate</span>
                   </button>
                 </div>
               </div>
@@ -516,7 +517,7 @@ onUnmounted(() => cleanupMap())
 
             <!-- Empty state: neither floorplan nor coordinates -->
             <div v-if="!location.floorplan && !location.coordinates" class="flex-grow flex flex-col items-center justify-center p-8 text-center">
-              <span class="text-6xl mb-4 text-base-content/30">🗺️</span>
+              <MapIcon :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30 mb-4" />
               <h3 class="font-bold opacity-60">No Map or Floor Plan</h3>
               <p class="text-sm opacity-50 mb-4 max-w-sm">
                 {{ canEditMetadata

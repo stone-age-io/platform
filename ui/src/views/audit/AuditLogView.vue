@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { RefreshCw, ScrollText, SearchX } from '@lucide/vue'
 import { ref, computed, onMounted } from 'vue'
 import { usePagination } from '@/composables/usePagination'
 import { useServerSearch } from '@/composables/useServerSearch'
@@ -156,7 +157,7 @@ onMounted(() => {
       
       <!-- Refresh Button -->
       <button @click="loadLogs" class="btn btn-ghost btn-sm" title="Refresh Logs">
-        🔄 Refresh
+        <RefreshCw :size="16" class="inline-block shrink-0" /> Refresh
       </button>
     </div>
     
@@ -188,7 +189,7 @@ onMounted(() => {
     <!-- Empty State -->
     <BaseCard v-else-if="logs.length === 0 && !searchQuery">
       <div class="text-center py-12">
-        <span class="text-6xl">📋</span>
+        <ScrollText :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
         <h3 class="text-xl font-bold mt-4">No audit logs found</h3>
         <p class="text-base-content/70 mt-2">
           Activity will appear here when users interact with the system.
@@ -199,7 +200,7 @@ onMounted(() => {
     <!-- No Search Results -->
     <BaseCard v-else-if="logs.length === 0">
       <div class="text-center py-12">
-        <span class="text-6xl">🔍</span>
+        <SearchX :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
         <h3 class="text-xl font-bold mt-4">No matching logs</h3>
         <button @click="searchQuery = ''" class="btn btn-ghost mt-4">
           Clear Search

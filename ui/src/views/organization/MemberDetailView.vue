@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Crown, RadioTower, UserIcon } from '@lucide/vue'
 import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -223,12 +224,12 @@ onMounted(loadData)
           <BaseCard title="Role & Permissions">
             <div class="space-y-4">
               <div v-if="isOwner" class="alert bg-primary/10 border-primary/20 py-3 text-sm">
-                <span class="text-xl">👑</span>
+                <Crown :size="20" class="inline-block shrink-0" />
                 <span>This user is the <strong>Organization Owner</strong>. Roles are immutable for owners.</span>
               </div>
               
               <div v-else-if="isSelf" class="alert bg-info/10 border-info/20 py-3 text-sm">
-                <span class="text-xl">👤</span>
+                <UserIcon :size="20" class="inline-block shrink-0" />
                 <span>You are managing your own membership. Use the <strong>Settings</strong> page for personal changes.</span>
               </div>
 
@@ -305,7 +306,7 @@ onMounted(loadData)
               </div>
 
               <div v-else class="flex flex-col items-center justify-center py-10 border-2 border-dashed border-base-300 rounded-xl bg-base-200/30">
-                <span class="text-4xl mb-2 text-base-content/20">📡</span>
+                <RadioTower :size="40" :stroke-width="1.5" class="mx-auto text-base-content/30 mb-2" />
                 <span class="text-xs font-bold text-base-content/40 uppercase tracking-widest">Offline Mode</span>
                 <p class="text-[10px] text-base-content/40 mt-1">No operational identity assigned</p>
               </div>

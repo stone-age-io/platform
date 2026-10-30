@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { DownloadIcon, LighthouseIcon, NetworkIcon, RefreshCw, TriangleAlert } from '@lucide/vue'
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
@@ -169,7 +170,7 @@ onMounted(() => {
           <div class="flex items-center gap-3">
             <h1 class="text-3xl font-bold font-mono break-words">{{ host.hostname }}</h1>
             <span v-if="host.is_lighthouse" class="badge badge-primary badge-outline gap-1">
-              🚨 Lighthouse
+              <LighthouseIcon :size="16" class="inline-block shrink-0" /> Lighthouse
             </span>
             <span v-if="host.is_relay" class="badge badge-secondary badge-outline gap-1">
               ↪️ Relay
@@ -190,7 +191,7 @@ onMounted(() => {
         no traffic moves. Nothing else on this page looks wrong.
       -->
       <div v-if="certIsStale" class="alert alert-warning items-start">
-        <span class="text-xl">⚠️</span>
+        <TriangleAlert :size="20" class="inline-block shrink-0" />
         <div>
           <h3 class="font-bold">Certificate does not match this network</h3>
           <div class="text-sm mt-1">
@@ -228,7 +229,7 @@ onMounted(() => {
                     :to="`/nebula/networks/${host.network_id}`"
                     class="link link-primary hover:no-underline"
                   >
-                    🌐 {{ host.expand.network_id.name }}
+                    <NetworkIcon :size="14" class="inline-block shrink-0" /> {{ host.expand.network_id.name }}
                   </router-link>
                   <span v-else class="text-sm text-base-content/40">—</span>
                 </dd>
@@ -339,7 +340,7 @@ onMounted(() => {
                     @click="downloadFile(`${host.hostname}.yml`, host.config_yaml, 'text/yaml')"
                     class="btn btn-sm btn-outline"
                   >
-                    <span class="text-lg">📥</span>
+                    <DownloadIcon :size="18" class="inline-block shrink-0" />
                     Config
                   </button>
                   <!-- Not on an inactive host: see confirmRegenerate. -->
@@ -350,7 +351,7 @@ onMounted(() => {
                     title="Re-issue certificate"
                     :disabled="regenerating"
                   >
-                    <span class="text-lg">🔄</span>
+                    <RefreshCw :size="18" class="inline-block shrink-0" />
                     Re-issue
                   </button>
                 </div>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ListIcon, MapIcon, Package, SearchX, Tag } from '@lucide/vue'
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
@@ -196,14 +197,14 @@ onMounted(() => {
               :class="{ 'btn-active': viewMode === 'list' }"
               @click="viewMode = 'list'"
             >
-              📋
+              <ListIcon :size="16" class="inline-block shrink-0" />
             </button>
             <button
               class="join-item btn btn-sm px-3"
               :class="{ 'btn-active': viewMode === 'map' }"
               @click="viewMode = 'map'"
             >
-              🗺️
+              <MapIcon :size="16" class="inline-block shrink-0" />
             </button>
           </div>
         </div>
@@ -229,14 +230,14 @@ onMounted(() => {
             :class="{ 'btn-active': viewMode === 'list' }"
             @click="viewMode = 'list'"
           >
-            📋 List
+            <ListIcon :size="16" class="inline-block shrink-0" /> List
           </button>
           <button
             class="join-item btn"
             :class="{ 'btn-active': viewMode === 'map' }"
             @click="viewMode = 'map'"
           >
-            🗺️ Map
+            <MapIcon :size="16" class="inline-block shrink-0" /> Map
           </button>
         </div>
 
@@ -247,7 +248,7 @@ onMounted(() => {
           @click="openLabels"
         >
           <span v-if="loadingLabels" class="loading loading-spinner loading-xs"></span>
-          <span v-else>🏷️</span>
+          <Tag v-else :size="16" class="inline-block shrink-0" />
           <span>Labels ({{ totalItems }})</span>
         </button>
 
@@ -296,7 +297,7 @@ onMounted(() => {
          "create your first thing" to someone who has 400 of them is nonsense. -->
     <BaseCard v-else-if="things.length === 0 && !searchQuery">
       <div class="text-center py-12">
-        <span class="text-6xl">📦</span>
+        <Package :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
         <h3 class="text-xl font-bold mt-4">No things found</h3>
         <p class="text-base-content/70 mt-2">
           {{ canWrite ? 'Create your first thing to get started' : 'This organization has no things yet' }}
@@ -310,7 +311,7 @@ onMounted(() => {
     <!-- No Search Results -->
     <BaseCard v-else-if="things.length === 0">
       <div class="text-center py-12">
-        <span class="text-6xl">🔍</span>
+        <SearchX :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
         <h3 class="text-xl font-bold mt-4">No matching things</h3>
         <p class="text-base-content/70 mt-2">
           Try a different search term

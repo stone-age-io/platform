@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MapPin, Package } from '@lucide/vue'
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import type { Thing, Location } from '@/types/pocketbase'
@@ -43,7 +44,7 @@ function goToLocation(loc: Location) {
     <!-- Header (cluster / list mode) -->
     <div v-if="isList" class="flex items-center justify-between p-4 border-b border-base-300 bg-base-200/30 shrink-0">
       <div class="flex items-center gap-3 min-w-0">
-        <span class="text-lg shrink-0">📦</span>
+        <Package :size="18" class="inline-block shrink-0" />
         <div class="min-w-0">
           <h3 class="font-bold text-sm truncate">{{ things.length }} things</h3>
           <span v-if="sharedLocation" class="text-xs text-base-content/60 truncate block">
@@ -58,7 +59,7 @@ function goToLocation(loc: Location) {
     <!-- Header (single / detail mode) -->
     <div v-else class="flex items-center justify-between p-4 border-b border-base-300 bg-base-200/30 shrink-0">
       <div class="flex items-center gap-3 min-w-0">
-        <span class="text-lg shrink-0">📦</span>
+        <Package :size="18" class="inline-block shrink-0" />
         <div class="min-w-0">
           <h3 class="font-bold text-sm truncate">{{ single.name || 'Unnamed' }}</h3>
           <span v-if="single.expand?.type" class="text-xs text-base-content/60">{{ single.expand.type.name }}</span>
@@ -104,7 +105,7 @@ function goToLocation(loc: Location) {
           class="text-sm mt-1 link link-primary text-left"
           @click="goToLocation(single.expand.location as Location)"
         >
-          📍 {{ (single.expand.location as Location).name }}
+          <MapPin :size="14" class="inline-block shrink-0" /> {{ (single.expand.location as Location).name }}
         </button>
       </div>
     </div>

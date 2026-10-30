@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ListIcon, MapIcon, MapPin, SearchX, Tag } from '@lucide/vue'
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from '@/composables/useToast'
@@ -156,14 +157,14 @@ onMounted(() => {
               :class="{ 'btn-active': viewMode === 'list' }"
               @click="viewMode = 'list'"
             >
-              📋
+              <ListIcon :size="16" class="inline-block shrink-0" />
             </button>
             <button
               class="join-item btn btn-sm px-3"
               :class="{ 'btn-active': viewMode === 'map' }"
               @click="viewMode = 'map'"
             >
-              🗺️
+              <MapIcon :size="16" class="inline-block shrink-0" />
             </button>
           </div>
         </div>
@@ -190,14 +191,14 @@ onMounted(() => {
             :class="{ 'btn-active': viewMode === 'list' }"
             @click="viewMode = 'list'"
           >
-            📋 List
+            <ListIcon :size="16" class="inline-block shrink-0" /> List
           </button>
           <button
             class="join-item btn"
             :class="{ 'btn-active': viewMode === 'map' }"
             @click="viewMode = 'map'"
           >
-            🗺️ Map
+            <MapIcon :size="16" class="inline-block shrink-0" /> Map
           </button>
         </div>
 
@@ -206,7 +207,7 @@ onMounted(() => {
           class="btn btn-outline flex-1 sm:flex-initial"
           @click="showLabelModal = true"
         >
-          <span>🏷️</span>
+          <Tag :size="16" class="inline-block shrink-0" />
           <span>Labels ({{ filteredLocations.length }})</span>
         </button>
 
@@ -246,7 +247,7 @@ onMounted(() => {
         </div>
 
         <div v-else-if="allLocations.length === 0" class="text-center py-12">
-          <span class="text-6xl">📍</span>
+          <MapPin :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
           <h3 class="text-xl font-bold mt-4">No locations found</h3>
           <p class="text-base-content/70 mt-2">
             {{ canWrite ? 'Create your first root location to get started.' : 'This organization has no locations yet.' }}
@@ -254,7 +255,7 @@ onMounted(() => {
         </div>
 
         <div v-else-if="filteredLocations.length === 0" class="text-center py-12">
-          <span class="text-6xl">🔍</span>
+          <SearchX :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
           <h3 class="text-xl font-bold mt-4">No matching locations</h3>
           <button @click="searchQuery = ''" class="btn btn-ghost mt-4">Clear Search</button>
         </div>

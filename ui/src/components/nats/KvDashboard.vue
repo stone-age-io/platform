@@ -1,5 +1,6 @@
 <!-- ui/src/components/nats/KvDashboard.vue -->
 <script setup lang="ts">
+import { ArrowLeft, Database, TriangleAlert } from '@lucide/vue'
 import { ref, computed, onMounted, watch } from 'vue'
 import { useNatsKv, type KvEntry } from '@/composables/useNatsKv'
 import { useToast } from '@/composables/useToast'
@@ -611,7 +612,7 @@ function previewValue(val: any): string {
 
     <!-- Bucket Not Initialized -->
     <div v-else-if="!exists && !error" class="text-center py-12 px-4">
-      <div class="text-5xl mb-3">🧊</div>
+      <Database :size="40" :stroke-width="1.5" class="mx-auto text-base-content/30 mb-3" />
       <h3 class="font-bold text-lg">Bucket Not Initialized</h3>
       <p class="text-sm text-base-content/70 mt-2 mb-4">
         The <code class="font-mono text-xs">{{ effectiveBucket }}</code> bucket does not exist yet.
@@ -621,7 +622,7 @@ function previewValue(val: any): string {
 
     <!-- Error -->
     <div v-else-if="error" class="text-center py-12 px-4">
-      <div class="text-5xl mb-3">⚠️</div>
+      <TriangleAlert :size="40" :stroke-width="1.5" class="mx-auto text-warning mb-3" />
       <h3 class="font-bold text-lg">Failed to load bucket</h3>
       <p class="text-sm text-base-content/70 mt-2 mb-4">{{ error }}</p>
       <button @click="init()" class="btn btn-sm">Retry</button>
@@ -1046,7 +1047,7 @@ function previewValue(val: any): string {
 
             <!-- Desktop Empty State -->
             <div v-else class="hidden lg:flex h-full flex-col items-center justify-center text-center opacity-30 py-20">
-              <span class="text-4xl mb-2">👈</span>
+              <ArrowLeft :size="40" :stroke-width="1.5" class="mx-auto text-base-content/30 mb-2" />
               <p class="text-xs font-bold uppercase tracking-widest">Select a property<br>to view or edit</p>
             </div>
           </div>

@@ -1,5 +1,6 @@
 <!-- ui/src/components/common/MetadataCard.vue -->
 <script setup lang="ts">
+import { CopyIcon, Pencil, Plus } from '@lucide/vue'
 import { ref, computed } from 'vue'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
@@ -179,7 +180,7 @@ async function copyMetadata() {
             <!-- Icon only on mobile. Growing these to btn-sm for thumbs cost the
                  disclosure button 45px of the header row, and of the three labels
                  up here "Copy" is the one a 📋 already says. -->
-            📋<span class="hidden sm:inline">Copy</span>
+            <CopyIcon :size="16" class="inline-block shrink-0" /><span class="hidden sm:inline">Copy</span>
           </button>
 
           <button
@@ -188,7 +189,7 @@ async function copyMetadata() {
             :title="isEmpty ? 'Add metadata' : 'Edit metadata'"
             @click="startEdit"
           >
-            {{ isEmpty ? '＋ Add' : '✎ Edit' }}
+            <component :is="isEmpty ? Plus : Pencil" :size="14" /> {{ isEmpty ? 'Add' : 'Edit' }}
           </button>
 
           <template v-if="editing">

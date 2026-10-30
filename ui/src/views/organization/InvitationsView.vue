@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { CopyIcon, Eye, EyeOff, Mail, SearchX } from '@lucide/vue'
 import { ref, computed, onMounted } from 'vue'
 import { usePagination } from '@/composables/usePagination'
 import { useServerSearch } from '@/composables/useServerSearch'
@@ -297,7 +298,7 @@ onMounted(() => {
         @click="showInviteForm = !showInviteForm"
         class="btn btn-primary w-full sm:w-auto"
       >
-        <span class="text-lg">✉️</span>
+        <Mail :size="18" class="inline-block shrink-0" />
         <span>{{ showInviteForm ? 'Cancel' : 'Send Invitation' }}</span>
       </button>
     </div>
@@ -412,7 +413,7 @@ onMounted(() => {
     <!-- Empty State -->
     <BaseCard v-else-if="invitations.length === 0 && !searchQuery">
       <div class="text-center py-12">
-        <span class="text-6xl">✉️</span>
+        <Mail :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
         <h3 class="text-xl font-bold mt-4">No pending invitations</h3>
         <p class="text-base-content/70 mt-2">
           Send an invitation to add new members to your organization
@@ -429,7 +430,7 @@ onMounted(() => {
     <!-- No Search Results -->
     <BaseCard v-else-if="invitations.length === 0">
       <div class="text-center py-12">
-        <span class="text-6xl">🔍</span>
+        <SearchX :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
         <h3 class="text-xl font-bold mt-4">No matching invitations</h3>
         <button @click="searchQuery = ''" class="btn btn-ghost mt-4">
           Clear Search
@@ -483,14 +484,14 @@ onMounted(() => {
                 class="btn btn-ghost btn-xs join-item"
                 :title="visibleTokens[item.id] ? 'Hide' : 'Show'"
               >
-                {{ visibleTokens[item.id] ? '🙈' : '👁️' }}
+                <component :is="visibleTokens[item.id] ? EyeOff : Eye" :size="14" />
               </button>
               <button 
                 @click="copyToken(item.token)" 
                 class="btn btn-ghost btn-xs join-item"
                 title="Copy"
               >
-                📋
+                <CopyIcon :size="16" class="inline-block shrink-0" />
               </button>
             </div>
           </div>
@@ -503,10 +504,10 @@ onMounted(() => {
               {{ visibleTokens[item.id] ? item.token : '••••••••••••••••' }}
             </div>
             <button @click="toggleToken(item.id)" class="btn btn-ghost btn-xs">
-              {{ visibleTokens[item.id] ? '🙈' : '👁️' }}
+              <component :is="visibleTokens[item.id] ? EyeOff : Eye" :size="14" />
             </button>
             <button @click="copyToken(item.token)" class="btn btn-ghost btn-xs">
-              📋
+              <CopyIcon :size="16" class="inline-block shrink-0" />
             </button>
           </div>
         </template>

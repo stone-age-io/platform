@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MapIcon, MapPin, SearchX } from '@lucide/vue'
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { pb } from '@/utils/pb'
 import { useAuthStore } from '@/stores/auth'
@@ -266,7 +267,7 @@ onUnmounted(() => {
            counts; naming the folded records keeps the badge honest about what
            is on screen and what is behind it. -->
       <div class="badge badge-lg bg-base-100/90 backdrop-blur border-base-300 shadow-sm gap-2">
-        <span>📍</span>
+        <MapPin :size="16" class="inline-block shrink-0" />
         <template v-if="isSearching">
           <span class="font-bold">{{ markerLocations.length }}</span>
           <span class="text-xs text-base-content/70">of {{ mappedLocations.length }} matched</span>
@@ -303,7 +304,7 @@ onUnmounted(() => {
     <!-- Empty State: no mapped locations at all -->
     <div v-if="!loading && mappedLocations.length === 0" class="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
       <div class="bg-base-100 p-6 rounded-lg shadow-xl text-center border border-base-200 pointer-events-auto max-w-sm">
-        <span class="text-4xl">🗺️</span>
+        <MapIcon :size="40" :stroke-width="1.5" class="mx-auto text-base-content/30" />
         <h3 class="font-bold text-lg mt-2">No Mapped Locations</h3>
         <p class="text-sm text-base-content/70 mt-1">
           Add coordinates to your locations to view them on the map.
@@ -314,7 +315,7 @@ onUnmounted(() => {
     <!-- Empty State: search has no matches -->
     <div v-else-if="!loading && markerLocations.length === 0 && isSearching" class="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
       <div class="bg-base-100 p-6 rounded-lg shadow-xl text-center border border-base-200 pointer-events-auto max-w-sm">
-        <span class="text-4xl">🔍</span>
+        <SearchX :size="40" :stroke-width="1.5" class="mx-auto text-base-content/30" />
         <h3 class="font-bold text-lg mt-2">No matching locations</h3>
         <p class="text-sm text-base-content/70 mt-1">
           No mapped locations match your search.

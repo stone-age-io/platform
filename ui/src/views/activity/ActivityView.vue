@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { HistoryIcon, RefreshCw, SearchX } from '@lucide/vue'
 /**
  * The tenant activity feed: who changed what in the console, and when.
  *
@@ -203,7 +204,7 @@ onMounted(() => {
       </div>
 
       <button @click="loadEntries" class="btn btn-ghost btn-sm" title="Refresh activity">
-        🔄 Refresh
+        <RefreshCw :size="16" class="inline-block shrink-0" /> Refresh
       </button>
     </div>
 
@@ -252,7 +253,7 @@ onMounted(() => {
          result means "no match", not "nothing has happened here". -->
     <BaseCard v-else-if="entries.length === 0 && !searchQuery && !focusedResource">
       <div class="text-center py-12">
-        <span class="text-6xl">🧭</span>
+        <HistoryIcon :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
         <h3 class="text-xl font-bold mt-4">No activity yet</h3>
         <p class="text-base-content/70 mt-2">
           Changes to things, locations and their types will appear here.
@@ -263,7 +264,7 @@ onMounted(() => {
     <!-- No Search Results -->
     <BaseCard v-else-if="entries.length === 0">
       <div class="text-center py-12">
-        <span class="text-6xl">🔍</span>
+        <SearchX :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
         <h3 class="text-xl font-bold mt-4">No matching activity</h3>
         <p class="text-base-content/70 mt-2">
           Try a different search term

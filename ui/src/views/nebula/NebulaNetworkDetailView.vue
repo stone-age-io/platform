@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { KeyRound } from '@lucide/vue'
 import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
@@ -156,7 +157,7 @@ onMounted(() => {
                     :to="`/nebula/ca`"
                     class="link link-primary hover:no-underline flex items-center gap-1"
                   >
-                    🔐 {{ network.expand.ca_id.name }}
+                    <KeyRound :size="14" class="inline-block shrink-0" /> {{ network.expand.ca_id.name }}
                   </router-link>
                   <span v-else class="text-sm text-base-content/40">Unknown CA</span>
                 </dd>

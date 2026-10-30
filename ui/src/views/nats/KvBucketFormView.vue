@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { RadioTower } from '@lucide/vue'
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNatsStore } from '@/stores/nats'
@@ -58,7 +59,7 @@ async function handleSubmit() {
     <!-- Not Connected -->
     <BaseCard v-if="!natsStore.isConnected">
       <div class="text-center py-12">
-        <span class="text-6xl">📡</span>
+        <RadioTower :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
         <h3 class="text-xl font-bold mt-4">Not connected to NATS</h3>
       </div>
     </BaseCard>

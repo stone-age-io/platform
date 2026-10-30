@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ArrowDownToLine, ArrowUpFromLine } from '@lucide/vue'
 import { ref, computed, onMounted } from 'vue'
 import { format } from 'date-fns'
 import { useRouter, useRoute } from 'vue-router'
@@ -474,7 +475,7 @@ onMounted(() => {
             <div class="space-y-6">
               <div class="space-y-3">
                 <div class="flex items-center gap-2">
-                  <span class="text-sm">📤</span>
+                  <ArrowUpFromLine :size="14" class="inline-block shrink-0" />
                   <h4 class="text-xs font-black uppercase text-base-content/50 tracking-widest">Publishing</h4>
                 </div>
                 <div class="form-control">
@@ -491,7 +492,7 @@ onMounted(() => {
 
               <div class="space-y-3">
                 <div class="flex items-center gap-2">
-                  <span class="text-sm">📥</span>
+                  <ArrowDownToLine :size="14" class="inline-block shrink-0" />
                   <h4 class="text-xs font-black uppercase text-base-content/50 tracking-widest">Subscribing</h4>
                 </div>
                 <div class="form-control">
