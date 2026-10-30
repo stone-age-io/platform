@@ -337,7 +337,7 @@ watch(() => dashboardStore.currentVariableValues, () => {
               <option :value="20">20 Cols</option>
             </select>
           </div>
-          <button v-if="hasVariables || !dashboardStore.isLocked" class="btn btn-sm btn-square hidden sm:flex" :class="showVariableBar ? 'btn-active' : 'btn-ghost'" :aria-label="showVariableBar ? 'Hide dashboard variables' : 'Show dashboard variables'" :aria-pressed="showVariableBar" @click="showVariableBar = !showVariableBar"><span class="font-mono font-bold">{ }</span></button>
+          <button v-if="hasVariables || !dashboardStore.isLocked" class="btn btn-sm btn-square hidden sm:flex" :class="showVariableBar ? 'btn-active' : 'btn-ghost'" :aria-label="showVariableBar ? 'Hide dashboard variables' : 'Show dashboard variables'" :aria-pressed="showVariableBar" :title="showVariableBar ? 'Hide variables (V)' : 'Variables (V)'" @click="showVariableBar = !showVariableBar"><DashboardIcon name="variables" /></button>
           <button class="btn btn-sm btn-square btn-ghost" :aria-label="dashboardStore.isLocked ? 'Unlock dashboard layout' : 'Lock dashboard layout'" :title="dashboardStore.isLocked ? 'Unlock layout (U)' : 'Lock layout (L)'" @click="dashboardStore.toggleLock()"><DashboardIcon :name="dashboardStore.isLocked ? 'lock' : 'unlock'" /></button>
           <button v-if="!dashboardStore.isLocked" class="btn btn-sm btn-primary" aria-label="Add widget" @click="showAddWidget = true">+ <span class="hidden sm:inline ml-1">Widget</span></button>
           <button v-if="!isRestrictedMode" class="btn btn-sm btn-square btn-ghost hidden sm:flex" aria-label="Open debug panel" title="Debug panel" @click="showDebugPanel = true"><DashboardIcon name="debug" /></button>
@@ -347,7 +347,7 @@ watch(() => dashboardStore.currentVariableValues, () => {
             <div tabindex="0" role="button" class="btn btn-sm btn-square btn-ghost" aria-label="More dashboard actions"><DashboardIcon name="more" /></div>
             <ul tabindex="0" class="dropdown-content menu menu-sm z-[50] mt-2 w-52 rounded-box border border-base-300 bg-base-100 p-1 shadow-lg">
               <li><button :disabled="!natsStore.isConnected" @click="fromMenu(handleRefreshDashboard)"><DashboardIcon name="refresh" />Refresh data</button></li>
-              <li v-if="hasVariables || !dashboardStore.isLocked"><button @click="fromMenu(() => { showVariableBar = !showVariableBar })"><span class="w-4 text-center font-mono text-xs font-bold">{ }</span>{{ showVariableBar ? 'Hide variables' : 'Variables' }}</button></li>
+              <li v-if="hasVariables || !dashboardStore.isLocked"><button @click="fromMenu(() => { showVariableBar = !showVariableBar })"><DashboardIcon name="variables" />{{ showVariableBar ? 'Hide variables' : 'Variables' }}</button></li>
               <li v-if="!isRestrictedMode"><button @click="fromMenu(() => { showDebugPanel = true })"><DashboardIcon name="debug" />Debug panel</button></li>
               <li v-if="isShared" class="menu-title !px-3 !py-1.5 font-normal">Shared dashboard</li>
             </ul>
@@ -559,7 +559,6 @@ watch(() => dashboardStore.currentVariableValues, () => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 300px;
 }
 
 .visualizer-content {
@@ -570,7 +569,10 @@ watch(() => dashboardStore.currentVariableValues, () => {
 
 @media (max-width: 640px) {
   .visualizer-toolbar { padding: 0.25rem 0.5rem; }
-  .dashboard-name { font-size: 0.9rem; max-width: 120px; }
+  /* No width cap: .dashboard-info already gives the name whatever the
+     buttons leave, and a fixed 120px cut "Northwind Cold Chain" with
+     another 115px free. */
+  .dashboard-name { font-size: 0.9rem; }
   .dashboard-info { gap: 0.25rem; margin-left: 0.25rem; }
 }
 

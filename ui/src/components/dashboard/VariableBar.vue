@@ -36,14 +36,16 @@
     <!-- Case B: Empty State -->
     <div v-else class="empty-state">
       <span class="empty-text">No variables defined</span>
-      <button class="add-variable-btn" @click="$emit('edit')">
+      <button v-if="!dashboardStore.isLocked" class="add-variable-btn" @click="$emit('edit')">
         + Add Variable
       </button>
     </div>
     
-    <!-- Actions (Always visible) -->
+    <!-- Choosing a value is viewing, so it works locked; it is never saved.
+         Adding or editing a variable changes the dashboard, so it waits for
+         an unlock like every other edit. -->
     <div class="bar-actions">
-      <button v-if="hasVariables" class="action-btn" @click="$emit('edit')" title="Edit Variables">
+      <button v-if="hasVariables && !dashboardStore.isLocked" class="action-btn" @click="$emit('edit')" title="Edit Variables">
         ✎
       </button>
       <button class="action-btn" @click="$emit('close')" title="Close">
