@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { Boxes, RadioTower, RefreshCw, SearchX, ShieldOff, TriangleAlert } from '@lucide/vue'
 import { ref, computed, watch, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useNow } from '@vueuse/core'
 import { useNatsStore } from '@/stores/nats'
-import { discoverServices, DiscoveryDeniedError } from '@/utils/natsServices'
+import { discoverServices, groupServices, shortVersion, DiscoveryDeniedError } from '@/utils/natsServices'
 import { formatAge } from '@/utils/format'
 import { sortBy } from '@/utils/clientSort'
-import type { ServiceInstance } from '@/types/services'
+import type { ServiceGroup, ServiceInstance } from '@/types/services'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
@@ -15,10 +16,15 @@ import ListPager from '@/components/ui/ListPager.vue'
 // Asked, never stored: the list is whoever answered `$SRV.INFO` just now, the
 // same shape as the site-connectivity recipe. There is no "offline" row,
 // because a service that did not answer has left no record to show.
+//
+// One row per SERVICE, not per instance. Instances repeat their service's name
+// and description, and what tells them apart is their metadata, which only
+// lines up as columns among instances of one service: that is the detail page.
 
+const router = useRouter()
 const natsStore = useNatsStore()
 
-const services = ref<ServiceInstance[]>([])
+const instances = ref<ServiceInstance[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
 const denied = ref(false)
@@ -28,27 +34,31 @@ const sort = ref('name')
 
 const now = useNow({ interval: 1000 })
 const askedAge = computed(() => askedAt.value === null ? '' : formatAge(now.value.getTime() - askedAt.value))
-const serviceCount = computed(() => new Set(services.value.map(s => s.name)).size)
 
-const filteredServices = computed(() => {
+// `instanceCount` is a field so the column can sort on it.
+const groups = computed(() => groupServices(instances.value).map(g => ({ ...g, instanceCount: g.instances.length })))
+
+// A group matches when the service does or any one of its instances does, so
+// searching for a site code finds the services running there.
+const filteredGroups = computed(() => {
   const q = searchQuery.value.toLowerCase().trim()
-  if (!q) return services.value
-  return services.value.filter(s =>
-    [s.name, s.id, s.version, s.description, ...Object.values(s.metadata), ...s.endpoints.map(e => e.subject)]
-      .some(v => String(v).toLowerCase().includes(q))
+  if (!q) return groups.value
+  return groups.value.filter(g =>
+    [g.name, g.description, ...g.versions].some(v => v.toLowerCase().includes(q)) ||
+    g.instances.some(i => [i.id, ...Object.values(i.metadata)].some(v => String(v).toLowerCase().includes(q)))
   )
 })
 
 // Sorted before the slice, like the JetStream lists: discovery returns the
 // whole account (see utils/clientSort).
-const sortedServices = computed(() => sortBy(filteredServices.value, sort.value))
+const sortedGroups = computed(() => sortBy(filteredGroups.value, sort.value))
 
 const currentPage = ref(1)
 const itemsPerPage = 20
-const totalPages = computed(() => Math.max(1, Math.ceil(filteredServices.value.length / itemsPerPage)))
-const paginatedServices = computed(() => {
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredGroups.value.length / itemsPerPage)))
+const paginatedGroups = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage
-  return sortedServices.value.slice(start, start + itemsPerPage)
+  return sortedGroups.value.slice(start, start + itemsPerPage)
 })
 
 watch(searchQuery, () => { currentPage.value = 1 })
@@ -58,20 +68,13 @@ function onSort(next: string) {
   currentPage.value = 1
 }
 
-// Ascending `started` is longest-running first.
-const columns: Column<ServiceInstance>[] = [
+const columns: Column<ServiceGroup>[] = [
   { key: 'name', sortable: 'name', label: 'Service', mobileLabel: 'Service' },
-  { key: 'version', sortable: 'version', width: '7rem', label: 'Version', mobileLabel: 'Version' },
-  { key: 'endpoints', cardWide: true, label: 'Endpoints', mobileLabel: 'Endpoints' },
-  { key: 'started', sortable: 'started', width: '6rem', label: 'Up', mobileLabel: 'Up' },
+  { key: 'instanceCount', sortable: '-instanceCount', width: '7rem', label: 'Instances', mobileLabel: 'Instances' },
+  { key: 'versions', width: '11rem', label: 'Version', mobileLabel: 'Version' },
   { key: 'requests', sortable: '-requests', width: '7rem', label: 'Requests', mobileLabel: 'Reqs', format: (v: number | null) => v === null ? '—' : v.toLocaleString() },
   { key: 'errors', sortable: '-errors', width: '6rem', label: 'Errors', mobileLabel: 'Errors' },
 ]
-
-function uptime(started: string | null): string {
-  if (!started || askedAt.value === null) return '—'
-  return formatAge(askedAt.value - new Date(started).getTime()).replace(/ ago$/, '')
-}
 
 async function loadData() {
   if (!natsStore.isConnected || !natsStore.nc) {
@@ -82,7 +85,7 @@ async function loadData() {
   error.value = null
   denied.value = false
   try {
-    services.value = await discoverServices(natsStore.nc)
+    instances.value = await discoverServices(natsStore.nc)
     askedAt.value = Date.now()
   } catch (e: any) {
     if (e instanceof DiscoveryDeniedError) denied.value = true
@@ -90,6 +93,10 @@ async function loadData() {
   } finally {
     loading.value = false
   }
+}
+
+function handleRowClick(group: ServiceGroup) {
+  router.push(`/nats/services/${encodeURIComponent(group.name)}`)
 }
 
 onMounted(() => { loadData() })
@@ -124,7 +131,7 @@ watch(() => natsStore.isConnected, (connected) => {
 
     <template v-else>
       <!-- Loading State -->
-      <div v-if="loading && services.length === 0" class="flex justify-center p-12">
+      <div v-if="loading && instances.length === 0" class="flex justify-center p-12">
         <span class="loading loading-spinner loading-lg"></span>
       </div>
 
@@ -141,7 +148,7 @@ watch(() => natsStore.isConnected, (connected) => {
       </BaseCard>
 
       <!-- Error State -->
-      <BaseCard v-else-if="error && services.length === 0">
+      <BaseCard v-else-if="error && instances.length === 0">
         <div class="text-center py-12">
           <TriangleAlert :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
           <h3 class="text-xl font-bold mt-4">Discovery failed</h3>
@@ -151,7 +158,7 @@ watch(() => natsStore.isConnected, (connected) => {
       </BaseCard>
 
       <!-- Empty State: silence, which is not the same as down -->
-      <BaseCard v-else-if="services.length === 0">
+      <BaseCard v-else-if="instances.length === 0">
         <div class="text-center py-12">
           <Boxes :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
           <h3 class="text-xl font-bold mt-4">Nothing answered</h3>
@@ -169,17 +176,17 @@ watch(() => natsStore.isConnected, (connected) => {
           <input
             v-model="searchQuery"
             type="text"
-            placeholder="Search by name, id, version, metadata, or subject..."
+            placeholder="Search by service, version, instance id, or metadata..."
             class="input input-bordered w-full sm:flex-1"
           />
           <span class="text-sm text-base-content/60 whitespace-nowrap">
-            {{ services.length }} {{ services.length === 1 ? 'instance' : 'instances' }} of
-            {{ serviceCount }} {{ serviceCount === 1 ? 'service' : 'services' }} · asked {{ askedAge }}
+            {{ instances.length }} {{ instances.length === 1 ? 'instance' : 'instances' }} of
+            {{ groups.length }} {{ groups.length === 1 ? 'service' : 'services' }} · asked {{ askedAge }}
           </span>
         </div>
 
         <!-- No Search Results -->
-        <BaseCard v-if="filteredServices.length === 0">
+        <BaseCard v-if="filteredGroups.length === 0">
           <div class="text-center py-12">
             <SearchX :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
             <h3 class="text-xl font-bold mt-4">No matching services</h3>
@@ -190,20 +197,17 @@ watch(() => natsStore.isConnected, (connected) => {
         <!-- Service List -->
         <BaseCard v-else :no-padding="true">
           <ResponsiveList
-            :items="paginatedServices"
+            :items="paginatedGroups"
             :columns="columns"
             :loading="loading"
-            :clickable="false"
             :sort="sort"
             @update:sort="onSort"
+            @row-click="handleRowClick"
           >
             <template #cell-name="{ item }">
               <div class="min-w-0">
                 <div class="font-medium font-mono">{{ item.name }}</div>
                 <div v-if="item.description" :title="item.description" class="text-sm text-base-content/60 line-clamp-1">{{ item.description }}</div>
-                <div class="text-xs font-mono text-base-content/50 truncate" :title="item.id">
-                  {{ item.id }}<template v-for="(v, k) in item.metadata" :key="k"> · {{ k }}={{ v }}</template>
-                </div>
               </div>
             </template>
 
@@ -211,43 +215,35 @@ watch(() => natsStore.isConnected, (connected) => {
               <div>
                 <div class="font-semibold font-mono text-base">{{ item.name }}</div>
                 <div v-if="item.description" class="text-sm text-base-content/60 mt-1 line-clamp-2">{{ item.description }}</div>
-                <div class="text-xs font-mono text-base-content/50 mt-1 break-all">
-                  {{ item.id }}<template v-for="(v, k) in item.metadata" :key="k"> · {{ k }}={{ v }}</template>
-                </div>
               </div>
             </template>
 
-            <template #cell-endpoints="{ item }">
-              <div class="font-mono text-xs truncate" :title="item.endpoints.map(e => e.subject).join('\n')">
-                {{ item.endpoints.map(e => e.subject).join(', ') || '—' }}
-              </div>
+            <!-- One version, or how many: a mixed fleet is the thing worth seeing here. -->
+            <template #cell-versions="{ item }">
+              <span v-if="item.versions.length > 1" class="badge badge-sm badge-warning" :title="item.versions.join('\n')">
+                {{ item.versions.length }} versions
+              </span>
+              <span v-else class="font-mono text-xs whitespace-nowrap" :title="item.versions[0]">{{ shortVersion(item.versions[0]) || '—' }}</span>
             </template>
-
-            <template #card-endpoints="{ item }">
-              <div class="font-mono text-xs break-all">{{ item.endpoints.map(e => e.subject).join(', ') || '—' }}</div>
+            <template #card-versions="{ item }">
+              <span v-if="item.versions.length > 1" class="badge badge-sm badge-warning">{{ item.versions.length }} versions</span>
+              <span v-else class="font-mono text-xs">{{ shortVersion(item.versions[0]) || '—' }}</span>
             </template>
-
-            <template #cell-started="{ item }">{{ uptime(item.started) }}</template>
-            <template #card-started="{ item }">{{ uptime(item.started) }}</template>
 
             <template #cell-errors="{ item }">
-              <span :class="{ 'text-error font-medium': item.errors }" :title="item.lastError || undefined">
-                {{ item.errors === null ? '—' : item.errors.toLocaleString() }}
-              </span>
+              <span :class="{ 'text-error font-medium': item.errors }">{{ item.errors === null ? '—' : item.errors.toLocaleString() }}</span>
             </template>
             <template #card-errors="{ item }">
-              <span :class="{ 'text-error font-medium': item.errors }" :title="item.lastError || undefined">
-                {{ item.errors === null ? '—' : item.errors.toLocaleString() }}
-              </span>
+              <span :class="{ 'text-error font-medium': item.errors }">{{ item.errors === null ? '—' : item.errors.toLocaleString() }}</span>
             </template>
           </ResponsiveList>
 
           <ListPager
-            v-if="filteredServices.length > itemsPerPage"
+            v-if="filteredGroups.length > itemsPerPage"
             :page="currentPage"
             :total-pages="totalPages"
-            :shown="paginatedServices.length"
-            :total="filteredServices.length"
+            :shown="paginatedGroups.length"
+            :total="filteredGroups.length"
             noun="services"
             @prev="currentPage--"
             @next="currentPage++"

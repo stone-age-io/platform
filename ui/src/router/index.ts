@@ -115,6 +115,7 @@ const routes: RouteRecordRaw[] = [
 
       // Micro service discovery ($SRV), read-only
       { path: 'nats/services', name: 'NatsServices', component: () => import('@/views/nats/ServiceListView.vue'), meta: { title: 'Services', requiresCapability: 'manageMessaging' } },
+      { path: 'nats/services/:name', name: 'NatsServiceDetail', component: () => import('@/views/nats/ServiceDetailView.vue'), meta: { title: 'Service', requiresCapability: 'manageMessaging' } },
 
       // Nebula
       { path: 'nebula', redirect: '/nebula/ca' },

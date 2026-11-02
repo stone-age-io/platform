@@ -33,9 +33,14 @@ and this file starts where the versioned releases do.
   Operators still have no read access to tenant inventory itself; see
   `AUTHORIZATION.md`.
 - **NATS → Services lists the micro services answering in the account**, edge
-  agents (`stone-agent`) included: version, instance id, metadata, endpoint
-  subjects, uptime, and request and error counts. It asks `$SRV.INFO` and
-  `$SRV.STATS` when the page opens or on Refresh and stores nothing. The
+  agents (`stone-agent`) included. The list has one row per service, with its
+  instance count, version, and request and error totals, and flags a service
+  whose instances run more than one version. A service's page lists its
+  instances with their metadata keys (a site code, a location) as columns, marks
+  any instance off the most common version, and opens an instance to show each
+  endpoint's subject, requests, errors, average time and last error. Go
+  pseudo-versions are shortened to the base version and commit. It asks
+  `$SRV.INFO` and `$SRV.STATS` when a page opens or on Refresh and stores nothing. The
   console's NATS user needs publish on `$SRV.>`, and the page says so when it
   is refused. A service behind a leaf node answers only if the leaf's uplink
   credential allows `$SRV.>`, so an empty list is not proof that anything is
