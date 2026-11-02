@@ -113,6 +113,9 @@ const routes: RouteRecordRaw[] = [
       { path: 'nats/kv/new', name: 'KvBucketNew', component: () => import('@/views/nats/KvBucketFormView.vue'), meta: { title: 'New KV Bucket', requiresCapability: 'manageMessaging' } },
       { path: 'nats/kv/:name', name: 'KvBucketDetail', component: () => import('@/views/nats/KvBucketDetailView.vue'), meta: { title: 'KV Bucket', requiresCapability: 'manageMessaging' } },
 
+      // Micro service discovery ($SRV), read-only
+      { path: 'nats/services', name: 'NatsServices', component: () => import('@/views/nats/ServiceListView.vue'), meta: { title: 'Services', requiresCapability: 'manageMessaging' } },
+
       // Nebula
       { path: 'nebula', redirect: '/nebula/ca' },
       { path: 'nebula/ca', name: 'NebulaCADetail', component: () => import('@/views/nebula/NebulaCADetailView.vue'), meta: { title: 'Nebula CA', requiresCapability: 'manageInfrastructure' } },

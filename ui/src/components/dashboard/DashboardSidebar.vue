@@ -143,7 +143,7 @@
       <div v-if="showRename" class="sidebar-modal-overlay" @click.self="showRename = false">
         <div class="nd-modal">
           <div class="modal-header">
-            <h3>Rename Dashboard</h3>
+            <h3>{{ renameId ? 'Rename Dashboard' : 'New Dashboard' }}</h3>
             <button class="close-btn" @click="showRename = false">✕</button>
           </div>
           <div class="modal-body">
@@ -159,7 +159,7 @@
           </div>
           <div class="modal-actions">
             <button class="btn-secondary" @click="showRename = false">Cancel</button>
-            <button class="btn-primary" @click="saveRename">Rename</button>
+            <button class="btn-primary" @click="saveRename">{{ renameId ? 'Rename' : 'Create' }}</button>
           </div>
         </div>
       </div>
@@ -443,8 +443,9 @@ function selectRemoteDashboard(key: string) {
 
 function createNewDashboard() {
   if (activeTab.value === 'local') {
-    const name = prompt('Dashboard name:', 'New Dashboard')
-    if (name) dashboardStore.createDashboard(name)
+    // The rename modal with no id is the create modal: the browser's own
+    // prompt() looked like nothing else in the console.
+    openNameModal(null, 'New Dashboard')
   } else {
     shareForm.value = {
       id: '',
@@ -460,8 +461,12 @@ function createNewDashboard() {
 function startRename(id: string) {
   const dashboard = dashboards.value.find(d => d.id === id)
   if (!dashboard) return
+  openNameModal(id, dashboard.name)
+}
+
+function openNameModal(id: string | null, name: string) {
   renameId.value = id
-  renameName.value = dashboard.name
+  renameName.value = name
   showRename.value = true
   nextTick(() => {
     renameInput.value?.focus()
@@ -470,8 +475,9 @@ function startRename(id: string) {
 }
 
 function saveRename() {
-  if (!renameId.value || !renameName.value.trim()) return
-  dashboardStore.renameDashboard(renameId.value, renameName.value)
+  if (!renameName.value.trim()) return
+  if (renameId.value) dashboardStore.renameDashboard(renameId.value, renameName.value)
+  else dashboardStore.createDashboard(renameName.value.trim())
   showRename.value = false
   renameId.value = null
   renameName.value = ''

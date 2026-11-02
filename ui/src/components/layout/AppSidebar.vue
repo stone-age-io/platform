@@ -99,10 +99,12 @@ const menuItems = computed(() => {
           { label: 'Roles', path: '/nats/roles' },
           { label: 'Exports', path: '/nats/exports' },
           { label: 'Imports', path: '/nats/imports' },
-          // Streams and KV need a live NATS connection, not just the capability.
+          // Streams, KV and Services need a live NATS connection, not just the
+          // capability.
           ...(natsStore.isConnected && can.manageMessaging ? [
             { label: 'Streams', path: '/nats/streams' },
             { label: 'KV Buckets', path: '/nats/kv' },
+            { label: 'Services', path: '/nats/services' },
           ] : []),
         ]
       },

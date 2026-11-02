@@ -32,6 +32,20 @@ and this file starts where the versioned releases do.
   those four counts and nothing else, readable by platform operators only.
   Operators still have no read access to tenant inventory itself; see
   `AUTHORIZATION.md`.
+- **NATS → Services lists the micro services answering in the account**, edge
+  agents (`stone-agent`) included: version, instance id, metadata, endpoint
+  subjects, uptime, and request and error counts. It asks `$SRV.INFO` and
+  `$SRV.STATS` when the page opens or on Refresh and stores nothing. The
+  console's NATS user needs publish on `$SRV.>`, and the page says so when it
+  is refused. A service behind a leaf node answers only if the leaf's uplink
+  credential allows `$SRV.>`, so an empty list is not proof that anything is
+  down. Shown to owners and admins while the console is connected.
+
+### Security
+
+- **DOMPurify 3.4.17**, used by the Markdown widget. None of the three
+  advisories it fixes applies to the plain `sanitize()` call the widget makes.
+  `undici` (via `jsdom`) moves to 7.30.1; it is a test-only dependency.
 
 ### Fixed
 
@@ -44,6 +58,8 @@ and this file starts where the versioned releases do.
   on page one.
 - The debug panel reports a copy with a toast rather than `alert()`, and the
   service worker no longer logs on every load.
+- Naming a new local dashboard uses the console's own dialog rather than the
+  browser's `prompt()`, the last native dialog left in the console.
 
 ### Tests
 
