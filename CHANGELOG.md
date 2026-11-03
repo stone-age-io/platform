@@ -20,6 +20,15 @@ and this file starts where the versioned releases do.
 - **Run `migrate up`** (the container does it on start). It adds the
   `org_stats` view; no data changes.
 
+### Removed
+
+- **The collection-name settings.** `tenancy.*_collection`,
+  `nats.*_collection_name`, `nebula.*_collection_name` and
+  `audit.collection_name` are gone from `config.yaml`, and a config that still
+  sets them is ignored. The API rules in `schema.json` name each collection
+  directly, so a renamed collection only ever broke authorization. The names
+  are now constants that match `schema.json`.
+
 ### Added
 
 - **The organization page shows the tenant's size and its identity

@@ -163,7 +163,7 @@ func ensureOrgNatsAccount(app core.App, opts OrgProvisioningOptions, org *core.R
 	if err != nil {
 		// Previously an `if err == nil` with no else, so a renamed or missing
 		// collection skipped provisioning in silence.
-		return fmt.Errorf("NATS account collection %q not found (check nats.account_collection_name): %w",
+		return fmt.Errorf("NATS account collection %q not found: %w",
 			opts.NatsAccountCollection, err)
 	}
 
@@ -212,7 +212,7 @@ func ensureOrgNebulaCA(app core.App, opts OrgProvisioningOptions, org *core.Reco
 
 	col, err := app.FindCollectionByNameOrId(opts.NebulaCACollection)
 	if err != nil {
-		return fmt.Errorf("Nebula CA collection %q not found (check nebula.ca_collection_name): %w",
+		return fmt.Errorf("Nebula CA collection %q not found: %w",
 			opts.NebulaCACollection, err)
 	}
 

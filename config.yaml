@@ -9,20 +9,12 @@
 # default and left empty below. That is a deliberate choice, not an oversight.
 
 tenancy:
-  organizations_collection: "organizations"
-  memberships_collection: "memberships"
-  invites_collection: "invites"
   invite_expiry_days: 7
   # log_to_console is gone: the tenancy hooks are platform code now, and the one
   # thing that flag did was silence invitation-email failures. They go through the
   # application logger unconditionally.
 
 nats:
-  account_collection_name: "nats_accounts"
-  user_collection_name: "nats_users"
-  role_collection_name: "nats_roles"
-  export_collection_name: "nats_account_exports"
-  import_collection_name: "nats_account_imports"
   operator_name: "stone-age.io"
   server_url: "nats://localhost:4222"
   # WebSocket listeners the CONSOLE (a browser) should dial. Distinct from
@@ -134,9 +126,6 @@ nats:
   encryption_key: ""
 
 nebula:
-  ca_collection_name: "nebula_ca"
-  network_collection_name: "nebula_networks"
-  host_collection_name: "nebula_hosts"
   log_to_console: false
   # Default validity
   default_ca_validity_years: 10
@@ -148,7 +137,6 @@ nebula:
   encryption_key: ""
 
 audit:
-  collection_name: "audit_logs"
   log_to_console: false
   retention:
     max_age: ""              # Go duration string, e.g. "720h" for 30 days ("" = disabled)

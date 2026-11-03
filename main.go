@@ -87,15 +87,9 @@ func loadConfig() {
 // cap). Keep this list in sync with config.yaml.
 func setDefaults() {
 	// Tenancy
-	viper.SetDefault("tenancy.organizations_collection", "organizations")
-	viper.SetDefault("tenancy.memberships_collection", "memberships")
-	viper.SetDefault("tenancy.invites_collection", "invites")
 	viper.SetDefault("tenancy.invite_expiry_days", 7)
 
 	// NATS
-	viper.SetDefault("nats.account_collection_name", "nats_accounts")
-	viper.SetDefault("nats.user_collection_name", "nats_users")
-	viper.SetDefault("nats.role_collection_name", "nats_roles")
 	viper.SetDefault("nats.operator_name", "stone-age.io")
 	// 4222 is the NATS default and the port `nats export` writes into nats.conf.
 	// This default used to be 4422, which disagreed with the exported config,
@@ -125,8 +119,6 @@ func setDefaults() {
 	viper.SetDefault("nats.default_limits.max_payload", 1048576)
 	viper.SetDefault("nats.default_limits.max_jetstream_disk_storage", 5*1024*1024*1024)
 	viper.SetDefault("nats.default_limits.max_jetstream_memory_storage", 64*1024*1024)
-	viper.SetDefault("nats.export_collection_name", "nats_account_exports")
-	viper.SetDefault("nats.import_collection_name", "nats_account_imports")
 	// Run a NATS server inside this process instead of alongside it. Off by
 	// default: the normal topology is a separate nats-server. See --nats.
 	viper.SetDefault("nats.embedded", false)
@@ -147,16 +139,12 @@ func setDefaults() {
 	viper.SetDefault("nats.inventory_local_subject", "stone-age.>")
 
 	// Nebula
-	viper.SetDefault("nebula.ca_collection_name", "nebula_ca")
-	viper.SetDefault("nebula.network_collection_name", "nebula_networks")
-	viper.SetDefault("nebula.host_collection_name", "nebula_hosts")
 	viper.SetDefault("nebula.log_to_console", false)
 	viper.SetDefault("nebula.default_ca_validity_years", 10)
 	// Off by default, same rationale as nats.encryption_key above.
 	viper.SetDefault("nebula.encryption_key", "")
 
 	// Audit
-	viper.SetDefault("audit.collection_name", "audit_logs")
 	viper.SetDefault("audit.log_to_console", false)
 	viper.SetDefault("audit.retention.max_age", "")
 	viper.SetDefault("audit.retention.max_records", 0)
@@ -287,30 +275,30 @@ func main() {
 	// tenancy.log_to_console is gone with it. Mail failures now go through
 	// app.Logger() unconditionally, because the one thing that flag did here was
 	// silence them.
-	orgCollection := viper.GetString("tenancy.organizations_collection")
-	membershipCollection := viper.GetString("tenancy.memberships_collection")
-	inviteCollection := viper.GetString("tenancy.invites_collection")
+	//
+	// Collection names are constants, not config. schema.json names every
+	// collection literally in its API rules (@collection.memberships, nats_users,
+	// ...), so a renamed collection only ever broke authorization. The library
+	// collections (NATS, Nebula, audit) take their names from each library's
+	// DefaultOptions(), which match schema.json.
+	const (
+		orgCollection        = "organizations"
+		membershipCollection = "memberships"
+		inviteCollection     = "invites"
+	)
 	// Assigned unconditionally: setDefaults guarantees a sane value, so the old
 	// viper.IsSet guard only obscured whether the key could be missing.
 	inviteExpiryDays := viper.GetInt("tenancy.invite_expiry_days")
 
 	// --- NATS ---
 	natsOptions := pbnats.DefaultOptions()
-	natsOptions.AccountCollectionName = viper.GetString("nats.account_collection_name")
-	natsOptions.UserCollectionName = viper.GetString("nats.user_collection_name")
-	natsOptions.RoleCollectionName = viper.GetString("nats.role_collection_name")
 	natsOptions.OperatorName = viper.GetString("nats.operator_name")
 	natsOptions.NATSServerURL = viper.GetString("nats.server_url")
 	natsOptions.LogToConsole = viper.GetBool("nats.log_to_console")
-	natsOptions.ExportCollectionName = viper.GetString("nats.export_collection_name")
-	natsOptions.ImportCollectionName = viper.GetString("nats.import_collection_name")
 	natsOptions.EncryptionKey = viper.GetString("nats.encryption_key")
 
 	// --- Nebula ---
 	nebulaOptions := pbnebula.DefaultOptions()
-	nebulaOptions.CACollectionName = viper.GetString("nebula.ca_collection_name")
-	nebulaOptions.NetworkCollectionName = viper.GetString("nebula.network_collection_name")
-	nebulaOptions.HostCollectionName = viper.GetString("nebula.host_collection_name")
 	nebulaOptions.LogToConsole = viper.GetBool("nebula.log_to_console")
 	nebulaOptions.DefaultCAValidityYears = viper.GetInt("nebula.default_ca_validity_years")
 	nebulaOptions.EncryptionKey = viper.GetString("nebula.encryption_key")
@@ -323,7 +311,6 @@ func main() {
 
 	// --- Audit ---
 	auditOptions := pbaudit.DefaultOptions()
-	auditOptions.CollectionName = viper.GetString("audit.collection_name")
 	// Canonical key is audit.log_to_console, matching the tenancy/nats/nebula
 	// sections. The legacy audit.log_console spelling is still honoured so an
 	// existing config.yaml does not silently lose the setting.
