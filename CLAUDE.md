@@ -44,17 +44,17 @@ npm run dev
 - PocketBase Admin: http://localhost:8090/_/
 
 ### Bootstrap (Initial Setup)
-Four commands, in this order — the order is load-bearing:
 ```bash
-./stone-age superuser upsert admin@example.com 'password'   # PB superuser + NATS $SYS seed
-./stone-age migrate up                                      # import schema.json
-./stone-age bootstrap --email admin@example.com --org "System" --operator-org "816tech"
-./stone-age nats export --output ./nats-config/             # only for serve --nats
+./stone-age init --email admin@example.com --operator-org "816tech"   # password: prompt or STONE_AGE_BOOTSTRAP_PASSWORD
 ```
-The fourth is needed only by `serve --nats`, which reads the exported operator
-JWT and resolver config from disk — but it cannot run any earlier, because there
-is no operator in the database until `bootstrap` has run. `docker-entrypoint.sh`
-does all four in this order.
+`init` (`init.go`) runs four commands in their load-bearing order:
+`superuser upsert`, `migrate up`, `bootstrap`, `nats export`. The last three run
+as child processes of the same binary, with the root flags (`--dir`, `--config`)
+forwarded. It writes the NATS config where `--nats-config` points, and that
+`nats.conf` is its marker: once it exists, `init` does nothing.
+`docker-entrypoint.sh` calls it. The four commands still work by hand, in that
+order. `nats export` cannot run any earlier, because there is no operator in the
+database until `bootstrap` has run.
 `bootstrap` writes `is_operator` / `is_system_org` / `is_operator_org`, which only
 exist after the schema is imported. PocketBase silently drops writes to fields
 that don't exist, so running `bootstrap` first yields a platform with no operator;

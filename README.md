@@ -69,32 +69,32 @@ Needs Go 1.27+ and Node 20.19+ (or 22.12+, whichever your distribution has).
 ```bash
 cd ui && npm install && npm run build && cd ..
 go build -o stone-age .
-./stone-age superuser upsert admin@example.com 'change-me-8-chars-min'
-./stone-age migrate up
-./stone-age bootstrap --email admin@example.com --org "System" --operator-org "your-company"
-./stone-age nats export --output ./nats-config/
+./stone-age init --email admin@example.com --operator-org "your-company"
 ./stone-age serve --nats
 ```
 
 The first line builds the console into `pb_public/`; the second embeds it.
+`init` asks for a password (or reads `STONE_AGE_BOOTSTRAP_PASSWORD`) and runs the
+four first-run commands: `superuser upsert`, `migrate up`, `bootstrap` and
+`nats export`.
 
-**The order of the four seeding commands (`superuser upsert` through
-`nats export`) is load-bearing.** `bootstrap` writes `is_operator`,
-`is_system_org` and `is_operator_org`, which only exist after `schema.json` has
-been imported by `migrate up`. PocketBase silently discards a
+**Their order is load-bearing, which is why `init` exists.** `bootstrap` writes
+`is_operator`, `is_system_org` and `is_operator_org`, which only exist after
+`schema.json` has been imported by `migrate up`. PocketBase silently discards a
 write to a field that does not exist, so running `bootstrap` first would print
 success while leaving you with no platform operator at all. It now refuses to run
-in that state and says so. `superuser upsert` has to come first as well: it seeds
-the NATS operator and `$SYS` records the other two link up. `nats export` comes
-last, because there is no operator to export until `bootstrap` has run.
+in that state and says so. `nats export` comes last, because there is no operator
+to export until `bootstrap` has run. You can still run the four by hand, in that
+order.
 
-Everything except the last line is once per deployment. After the first run,
-`./stone-age serve --nats` is the whole thing.
+`init` is once per deployment: it does nothing once `./nats-config/nats.conf`
+exists, and a run that fails part-way can simply be repeated. After the first
+run, `./stone-age serve --nats` is the whole thing.
 
 Measured on a clean clone: about two minutes of machine time from `git clone` to
 a console serving with the bus up, of which roughly ninety seconds is `npm
-install` and the Vite build. The Go build is nine seconds and the four seeding
-commands are eleven.
+install` and the Vite build. The Go build is nine seconds and `init` about
+eleven.
 
 Granting operator status is deliberately impossible through the API. This command
 or the admin panel, nothing else.

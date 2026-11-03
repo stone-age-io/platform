@@ -84,7 +84,9 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 			if !strings.Contains(email, "@") {
 				log.Fatalf("❌ %q is not a valid email address", email)
 			}
-			if operatorOrgName == "" {
+			// Only when the flag was left out: an explicit --operator-org ""
+			// means skip, which is how `init` runs this with no terminal.
+			if operatorOrgName == "" && !cmd.Flags().Changed("operator-org") {
 				fmt.Print("Operator Organization (blank to skip): ")
 				fmt.Scanln(&operatorOrgName)
 			}

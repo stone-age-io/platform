@@ -757,6 +757,7 @@ func main() {
 
 	// Register Bootstrap Command
 	addBootstrapCommand(app, orgCollection, membershipCollection, natsOptions)
+	addInitCommand(app)
 
 	// `demo-seed`: three fictional tenants with the full contract, identity and
 	// edge surface. Registered AFTER every hook above, which is what makes the

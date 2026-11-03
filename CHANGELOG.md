@@ -31,6 +31,15 @@ and this file starts where the versioned releases do.
 
 ### Added
 
+- **`stone-age init`: first-run setup in one command.** It runs `superuser
+  upsert`, `migrate up`, `bootstrap` and `nats export` in the one order that
+  works, so a binary deployment is `init` then `serve --nats`. The password
+  comes from `STONE_AGE_BOOTSTRAP_PASSWORD` or a prompt, and never appears in a
+  process list. It writes the NATS config where `--nats-config` points and does
+  nothing once that file exists; a run that fails part-way can be repeated. The
+  container entrypoint now calls it instead of running the four commands
+  itself. `bootstrap --operator-org ""` now skips the operator organization
+  without prompting.
 - **The organization page shows the tenant's size and its identity
   boundaries.** An Inventory card counts things (and how many are active),
   locations and members, and an Identity card shows the organization's NATS
