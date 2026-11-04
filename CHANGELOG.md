@@ -11,6 +11,13 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-03
+
+`stone-age init` makes a binary deployment two commands, inventory changes can
+be published on the bus, and the console's dashboards are reworked for phones
+with one icon set throughout. One view-only migration; no data changes. The
+collection-name settings are gone from `config.yaml`.
+
 ### Upgrading
 
 - **A duration setting that does not parse now stops the server.**
@@ -50,6 +57,14 @@ and this file starts where the versioned releases do.
   those four counts and nothing else, readable by platform operators only.
   Operators still have no read access to tenant inventory itself; see
   `AUTHORIZATION.md`.
+- **Inventory events on the bus.** Every Thing and Location create, update and
+  delete is published as the record plus a `changed` list, and each
+  organization receives its own on `stone-age.inventory.<kind>.<action>`
+  through a per-organization export/import pair that the console shows
+  read-only. A location move republishes its subtree, since the paths change
+  with it. A failed publish never fails the write. Off by default: set
+  `nats.inventory_events_enabled: true`, and `nats.inventory_local_subject` to
+  move the tenant-side prefix.
 - **NATS → Services lists the micro services answering in the account**, edge
   agents (`stone-agent`) included. The list has one row per service, with its
   instance count, version, and request and error totals, and flags a service
@@ -63,6 +78,24 @@ and this file starts where the versioned releases do.
   is refused. A service behind a leaf node answers only if the leaf's uplink
   credential allows `$SRV.>`, so an empty list is not proof that anything is
   down. Shown to owners and admins while the console is connected.
+
+### Changed
+
+- **One icon set across the console.** Every emoji in the app shell, views
+  and dashboards is a lucide icon, so icons follow the theme and look the
+  same on every OS. Nav icons stay visible on the light theme's active item.
+- **Dashboards on a phone read as tiles.** Stat cards and gauges pair two to a
+  row, charts and the console get a full row, locked tiles carry their title
+  inside the card, and controls have 44px touch targets. A phone toolbar keeps
+  the name, Save and the lock, with the rest in an overflow menu that also
+  reaches the debug panel.
+- **The console reopens the dashboard you had open**, after a pinned startup
+  dashboard, shared dashboards included.
+- **Dashboard widgets:** a "12s ago" freshness label on every buffer-fed
+  widget, threshold lines and an optional fixed y-axis on line and bar charts,
+  a bar gauge, stat card decimal places and a "rising is bad" trend, and one
+  disconnect banner instead of a red border on every widget. The dashboard
+  role is offered every widget type.
 
 ### Security
 
@@ -83,6 +116,13 @@ and this file starts where the versioned releases do.
   service worker no longer logs on every load.
 - Naming a new local dashboard uses the console's own dialog rather than the
   browser's `prompt()`, the last native dialog left in the console.
+- On a phone, a wide stat value no longer pushes every tile past the edge of
+  the screen, and widgets mount once instead of twice.
+- Gauges: zones meet without overlapping, range labels are readable in a
+  phone tile, a long value fits the dial, and a min at or above the max says
+  so instead of drawing nothing.
+- Locking a shared dashboard no longer marks it as changed, and a locked
+  dashboard still lets you choose variable values.
 
 ### Tests
 
@@ -91,7 +131,10 @@ and this file starts where the versioned releases do.
   and dashboard in another (310 checks, from 275).
 - `scripts/test-authz.sh` reads `org_stats` as an operator with no
   membership and denies the organization's owner and the dashboard role
-  (315 checks).
+  (315 checks), and the scoping of the inventory events export/import pair
+  (320 checks).
+- The code repetition test no longer fails on one honest collision in 2,000
+  draws, about one CI run in a hundred.
 
 ## [0.14.0] - 2026-10-24
 
@@ -2965,7 +3008,8 @@ repository public. Each of these was reproduced before being fixed.
 - `scripts/test-authz.sh` grew from 135 to 147 checks, covering the membership
   lifecycle, the code uniqueness constraint, and the frozen leaf-node code.
 
-[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/stone-age-io/platform/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/stone-age-io/platform/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/stone-age-io/platform/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/stone-age-io/platform/compare/v0.12.0...v0.13.0
