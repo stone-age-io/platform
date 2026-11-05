@@ -1,8 +1,10 @@
 package hooks
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 
 	"github.com/pocketbase/dbx"
@@ -66,8 +68,12 @@ func RegisterManagedOrgExports(app *pocketbase.PocketBase, opts ManagedOrgExport
 }
 
 // field is one desired value on a managed export/import record. A slice rather
-// than a map so a reconcile logs its changed fields in a stable order.
-type field struct{ name, value string }
+// than a map so a reconcile logs its changed fields in a stable order. The value
+// is a string, a bool or a []string (a JSON list such as allowed_importers).
+type field struct {
+	name  string
+	value any
+}
 
 // reconcile applies desired values to rec and returns the names of the fields it
 // changed. It saves nothing: an empty result lets the caller skip the write, so
@@ -76,12 +82,39 @@ type field struct{ name, value string }
 func reconcile(rec *core.Record, desired []field) []string {
 	var changed []string
 	for _, f := range desired {
-		if rec.GetString(f.name) != f.value {
+		if rec.GetString(f.name) != storedForm(f.value) {
 			rec.Set(f.name, f.value)
 			changed = append(changed, f.name)
 		}
 	}
 	return changed
+}
+
+// storedForm is how a desired value reads back through Record.GetString: a bool
+// as "true"/"false", a JSON list as its compact JSON.
+func storedForm(v any) string {
+	switch v := v.(type) {
+	case string:
+		return v
+	case bool:
+		return strconv.FormatBool(v)
+	default:
+		b, _ := json.Marshal(v)
+		return string(b)
+	}
+}
+
+// privateTo is the desired state that makes an export private to one importer:
+// token_req, and the importer's account key in allowed_importers. pb-nats then
+// signs the activation token for that one account (pb-nats v0.3.3), and
+// nats-server refuses an import of the export from any other. Public exports let
+// any account import them, and an owner may create imports naming any account
+// key, so a public platform export was readable by every tenant.
+func privateTo(importerPublicKey string) []field {
+	return []field{
+		{"token_req", true},
+		{"allowed_importers", []string{importerPublicKey}},
+	}
 }
 
 // ensureManagedExports brings the export/import pair for a managed org to its
@@ -136,12 +169,16 @@ func ensureManagedExports(app core.App, opts ManagedOrgExportsOptions, org *core
 	// definition. Everything else is desired state — including `organization`,
 	// whose reconcile doubles as the backfill for records made before org
 	// stamping, which the tenant-scoped list rule needs or they stay invisible.
-	exportFields := []field{
+	hubKey := hubAccount.GetString("public_key")
+	if hubKey == "" {
+		return fmt.Errorf("operator NATS account has no public key yet")
+	}
+	exportFields := append([]field{
 		{"organization", org.Id},
 		{"subject", opts.ExportSubject},
 		{"type", "stream"},
 		{"description", "Service events exported to the operator hub account"},
-	}
+	}, privateTo(hubKey)...)
 
 	existingExport, _ := app.FindFirstRecordByFilter(exportCol.Id, "account_id = {:acct} && name = {:name}", dbx.Params{
 		"acct": account.Id,
@@ -151,9 +188,6 @@ func ensureManagedExports(app core.App, opts ManagedOrgExportsOptions, org *core
 		rec := core.NewRecord(exportCol)
 		rec.Set("account_id", account.Id)
 		rec.Set("name", managedExportName)
-		// Create-only: a policy flag on the export rather than a value derived
-		// from org state or config, so it cannot drift and is not reconciled.
-		rec.Set("token_req", false)
 		reconcile(rec, exportFields)
 		if err := app.Save(rec); err != nil {
 			return fmt.Errorf("create export: %w", err)

@@ -204,6 +204,14 @@ func TestInventoryEvents(t *testing.T) {
 		if exp.GetString("subject") != wantSubject {
 			t.Errorf("export subject = %q, want %q", exp.GetString("subject"), wantSubject)
 		}
+		// Private to the tenant's own account, so another tenant that names the
+		// hub key and this code in an import of its own gets nothing.
+		if !exp.GetBool("token_req") {
+			t.Error("the export is public: any tenant could import this tenant's inventory events")
+		}
+		if got, want := exp.GetString("allowed_importers"), `["`+accountOf(tenant).GetString("public_key")+`"]`; got != want {
+			t.Errorf("export allowed_importers = %s, want only the tenant's account %s", got, want)
+		}
 		if imp.GetString("organization") != tenant.Id {
 			t.Error("the import does not carry the tenant org, so the tenant cannot list it")
 		}

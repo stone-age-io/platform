@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=326         # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=328         # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -2229,6 +2229,41 @@ req GET "/collections/nats_account_exports/records/$INV_EXP" "$TA"
 expect "the tenant's owner cannot read the provider-side export" 404 "$RCODE" "$RBODY"
 req GET "/collections/nats_account_exports/records/$INV_EXP" "$SU"
 expect "...which exists (superuser reads it)" 200 "$RCODE" "$RBODY"
+
+# The export is private to this tenant's account. A public one let any tenant
+# import another tenant's events by naming the hub key and the victim's code, and
+# an owner may create an import naming any account key. pb-nats signs the token
+# for the accounts allowed_importers lists, and nats-server refuses the rest. A
+# record-level check of the policy; the server's own refusal is pinned in pb-nats.
+INV_PRIVATE=$(jn "$RBODY" 'o.token_req')
+INV_ALLOWED=$(jn "$RBODY" 'JSON.stringify(o.allowed_importers)')
+req GET "/collections/nats_account_imports/records/$INV_IMP" "$SU"
+ORG_ACCT=$(jn "$RBODY" 'o.account_id')
+req GET "/collections/nats_accounts/records/$ORG_ACCT" "$SU"
+ORG_KEY=$(jn "$RBODY" 'o.public_key')
+if [ "$INV_PRIVATE" = "true" ] && [ "$INV_ALLOWED" = "[\"$ORG_KEY\"]" ]; then
+  echo "  PASS  the inventory export is private to the tenant account alone"
+  PASS=$((PASS + 1))
+else
+  echo "  FAIL  the inventory export is not private to the tenant account: token_req=$INV_PRIVATE allowed_importers=$INV_ALLOWED, want true and [\"$ORG_KEY\"]"
+  FAIL=$((FAIL + 1))
+fi
+# ...and the tenant's own signed account JWT carries the activation token pb-nats
+# signed for that grant, or a private export would also cut off the one account
+# meant to receive it. Decoded from the JWT the resolver gets, not the record.
+ORG_JWT=$(jn "$RBODY" 'o.jwt')
+INV_TOKEN_SUB=$(node -e "
+const c=JSON.parse(Buffer.from(process.argv[1].split('.')[1],'base64url'));
+const i=(c.nats.imports||[]).find(i=>i.name==='inventory-events');
+if(!i||!i.token){console.log('');process.exit(0)}
+console.log(JSON.parse(Buffer.from(i.token.split('.')[1],'base64url')).sub);" "$ORG_JWT" 2>/dev/null)
+if [ -n "$ORG_KEY" ] && [ "$INV_TOKEN_SUB" = "$ORG_KEY" ]; then
+  echo "  PASS  the tenant account JWT carries an activation token for its own inventory import"
+  PASS=$((PASS + 1))
+else
+  echo "  FAIL  the tenant account JWT has no activation token for its inventory import (token subject '$INV_TOKEN_SUB', want '$ORG_KEY')"
+  FAIL=$((FAIL + 1))
+fi
 
 # ----------------------------------------------------------------------- result
 

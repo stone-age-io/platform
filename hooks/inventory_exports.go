@@ -136,14 +136,20 @@ func ensureInventoryExports(app core.App, opts InventoryEventsOptions, org *core
 	// The export sits on the provider account, so it carries the OPERATOR org:
 	// relation tenancy refuses a record whose organization differs from its
 	// account's.
-	if err := ensureNamedRecord(app, opts.ExportCollection, hubAccount.Id, inventoryExportName(org.Id),
-		map[string]any{"token_req": false},
-		[]field{
+	orgKey := account.GetString("public_key")
+	if orgKey == "" {
+		return fmt.Errorf("NATS account for organization has no public key yet")
+	}
+	// Private to this organization's own account. A public export here let any
+	// tenant import another tenant's inventory events by naming the hub key and
+	// the victim's code, both of which it can read.
+	if err := ensureNamedRecord(app, opts.ExportCollection, hubAccount.Id, inventoryExportName(org.Id), nil,
+		append([]field{
 			{"organization", operatorOrg.Id},
 			{"subject", subject},
 			{"type", "stream"},
 			{"description", fmt.Sprintf("Inventory events for organization '%s'", org.GetString("name"))},
-		}); err != nil {
+		}, privateTo(orgKey)...)); err != nil {
 		return fmt.Errorf("inventory export: %w", err)
 	}
 

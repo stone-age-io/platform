@@ -3981,6 +3981,28 @@
         "type": "text"
       },
       {
+        "help": "",
+        "hidden": false,
+        "id": "json4070302896",
+        "maxSize": 50000,
+        "name": "allowed_importers",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
+      },
+      {
+        "help": "",
+        "hidden": false,
+        "id": "json839254801",
+        "maxSize": 50000,
+        "name": "revocations",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
+      },
+      {
         "cascadeDelete": false,
         "collectionId": "pbc_2873630990",
         "hidden": false,

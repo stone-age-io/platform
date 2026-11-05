@@ -17,8 +17,23 @@ and this file starts where the versioned releases do.
   is refused while the organization's NATS account is still active, and while
   it still has Things, Locations or Nebula hosts. Suspend it (clear `active`),
   remove what is left, then delete.
+- **Run `migrate up`** (the container does it on start). It adds
+  `allowed_importers` and `revocations` to `nats_account_exports` and re-saves
+  every managed organization, which makes its helpdesk export private. Inventory
+  exports are made private by the sweep on the next start.
 
 ### Security
+
+- **A tenant could import another tenant's events.** The platform's own
+  exports were public: the per-organization inventory export on the provider
+  account, and each managed tenant's `helpdesk-events` export. Any account can
+  import a public export, and an owner may create an import that names any
+  account key. So a tenant that knew the hub key (shown on its own inventory
+  import) and another tenant's code (printed on labels) received that tenant's
+  thing and location records whenever inventory events were on. Both exports
+  are now private (`token_req`) to the one account each is meant for, listed in
+  the export's new `allowed_importers`. pb-nats v0.3.3 signs the activation
+  token for that account, and nats-server refuses the import from any other.
 
 - **A member could sign in as a Thing they created.** The record API let a
   member choose the new Thing's email, and PocketBase answers

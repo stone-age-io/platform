@@ -280,9 +280,19 @@ func TestTheBannerNamesTheFieldsThatActuallyRevert(t *testing.T) {
 		t.Error("import local_subject is empty, but reconcile sets it")
 	}
 
-	// The create-only half, which the banner deliberately does NOT claim
-	// reverts: token_req is set once on create and left alone thereafter.
-	if f.exported.GetBool("token_req") {
-		t.Error("export token_req is true; the hook sets it false on create as a policy flag")
+	// Private to the hub. A public export could be imported by any account
+	// that knew the tenant's account key; pb-nats signs the activation token for
+	// the one account allowed_importers lists, and nats-server refuses the rest.
+	if !f.exported.GetBool("token_req") {
+		t.Error("export token_req is false: any account could import the tenant's helpdesk events")
+	}
+	hubAccount, err := f.app.FindFirstRecordByFilter("nats_accounts",
+		"organization = {:org}", map[string]any{"org": f.hub.Id})
+	if err != nil {
+		t.Fatalf("hub NATS account: %v", err)
+	}
+	hubKey := hubAccount.GetString("public_key")
+	if got, want := f.exported.GetString("allowed_importers"), `["`+hubKey+`"]`; got != want {
+		t.Errorf("export allowed_importers = %s, want only the hub account %s", got, want)
 	}
 }
