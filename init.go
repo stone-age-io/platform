@@ -53,6 +53,12 @@ config is written where --nats-config points, so 'serve --nats' with the same
   stone-age serve --nats`,
 		Run: func(cmd *cobra.Command, args []string) {
 			natsConfig, _ := cmd.Flags().GetString("nats-config")
+			// `nats export` always writes <dir>/nats.conf. With any other file
+			// name the marker would never appear, and every start would run init
+			// again, resetting the superuser password and overwriting nats.conf.
+			if filepath.Base(natsConfig) != "nats.conf" {
+				log.Fatalf("❌ --nats-config must name a file called nats.conf (got %q): 'nats export' always writes that name", natsConfig)
+			}
 			if _, err := os.Stat(natsConfig); err == nil {
 				log.Printf("ℹ️ %s exists, so this deployment is already initialized. Nothing to do.", natsConfig)
 				return

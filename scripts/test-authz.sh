@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=320         # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=326         # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -684,6 +684,23 @@ expect "owner CAN create a thing with a password" 200 "$RCODE" "$RBODY"
 req POST /collections/things/auth-with-password "" \
   '{"identity":"ownerthing@test.local","password":"Password123!"}'
 expect "...and sign in with it (same flow, so the deny was the role)" 200 "$RCODE" "$RBODY"
+
+# A replaced password is only half of it: the member still chose the Thing's
+# email, and PocketBase serves request-password-reset on every auth collection
+# with password auth, which things must keep for the agent. The reset is
+# refused outright (hooks/thing_routes.go), so the mailbox a member names leads
+# nowhere. The users call is the same endpoint and body shape, so the deny is
+# the collection and not the request.
+req POST /collections/things/request-password-reset "" '{"email":"memberthing@test.local"}'
+expect "nobody can request a password reset for a thing" 403 "$RCODE" "$RBODY"
+req POST /collections/users/request-password-reset "" '{"email":"bob@test.local"}'
+expect "...while a user CAN (same endpoint, so the deny is the collection)" 204 "$RCODE" "$RBODY"
+# Changing an auth record email needs things.manageRule, which is owner/admin,
+# so a member cannot point an existing Thing at their own mailbox either.
+req PATCH "/collections/things/records/$MTHING" "$TB" '{"email":"bob-inbox@test.local"}'
+expect "a member cannot change a thing email" "403|400|404" "$RCODE" "$RBODY"
+req PATCH "/collections/things/records/$MTHING" "$TA" '{"email":"memberthing2@test.local"}'
+expect "...an owner CAN (same field, so the deny was the role)" 200 "$RCODE" "$RBODY"
 
 req PATCH "/collections/things/records/$THING" "$TG" '{"name":"Renamed By Dashboard"}'
 expect "dashboard cannot edit a thing" "403|400|404" "$RCODE" "$RBODY"
@@ -1611,8 +1628,20 @@ ORG3=$(j "$RBODY" id)
 sleep 2   # let its account/CA provisioning settle before deleting it
 req DELETE "/collections/organizations/records/$ORG3" "$TA"
 expect "an org owner cannot delete the organization record" "403|400|404" "$RCODE" "$RBODY"
+# And an operator only once it is suspended and empty (hooks/org_active_flag.go).
+# A delete blanks rather than cascades, so on a live tenant it left the NATS
+# account published with a blank organization and its Things still signing in.
 req DELETE "/collections/organizations/records/$ORG3" "$SU"
-expect "an operator CAN delete it (so the deny is a role check, not a broken rule)" "200|204" "$RCODE" "$RBODY"
+expect "an operator cannot delete an organization that is still active" "400|403" "$RCODE" "$RBODY"
+req PATCH "/collections/organizations/records/$ORG3" "$SU" '{"active":false}'
+req POST /collections/locations/records "$SU" \
+  "{\"name\":\"Doomed Site\",\"code\":\"DS1\",\"organization\":\"$ORG3\"}"
+DLOC=$(j "$RBODY" id)
+req DELETE "/collections/organizations/records/$ORG3" "$SU"
+expect "...nor a suspended one that still holds a location" "400|403" "$RCODE" "$RBODY"
+req DELETE "/collections/locations/records/$DLOC" "$SU"
+req DELETE "/collections/organizations/records/$ORG3" "$SU"
+expect "an operator CAN delete it once suspended and empty (so the deny is the state, not a broken rule)" "200|204" "$RCODE" "$RBODY"
 req PATCH "/collections/users/records/$ALICE" "$SU" "{\"current_organization\":\"$ORG\"}"
 
 echo ""

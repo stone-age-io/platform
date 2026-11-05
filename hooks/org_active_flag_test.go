@@ -219,3 +219,52 @@ func TestInfrastructureOrgsCannotBeDeactivated(t *testing.T) {
 		}
 	})
 }
+
+// A delete blanks the relations into an organization rather than removing them,
+// so on a live tenant it used to leave the NATS account published with a blank
+// organization. The guard asks for the two things that make a delete leave
+// nothing behind: suspended (the account withdrawn) and empty. Each refusal is
+// paired with the same delete succeeding once its reason is gone.
+func TestOrgDeleteNeedsItSuspendedAndEmpty(t *testing.T) {
+	app := testutil.SetupApp(t)
+
+	org, account := newOrgWithAccount(t, app, "doomed", "Doomed Tenant", nil)
+
+	if err := app.Delete(org); !errors.Is(err, hooks.ErrOrgNotDeletable) {
+		t.Fatalf("deleting an active organization: err = %v, want ErrOrgNotDeletable", err)
+	}
+
+	org.Set("active", false)
+	if err := app.Save(org); err != nil {
+		t.Fatalf("suspend the organization: %v", err)
+	}
+
+	locCol, err := app.FindCollectionByNameOrId("locations")
+	if err != nil {
+		t.Fatalf("locations collection: %v", err)
+	}
+	loc := core.NewRecord(locCol)
+	loc.Set("name", "Last Site")
+	loc.Set("organization", org.Id)
+	if err := app.Save(loc); err != nil {
+		t.Fatalf("create location: %v", err)
+	}
+
+	org, err = app.FindRecordById("organizations", org.Id)
+	if err != nil {
+		t.Fatalf("reload organization: %v", err)
+	}
+	if err := app.Delete(org); !errors.Is(err, hooks.ErrOrgNotDeletable) {
+		t.Fatalf("deleting a suspended organization that holds a location: err = %v, want ErrOrgNotDeletable", err)
+	}
+
+	if err := app.Delete(loc); err != nil {
+		t.Fatalf("delete location: %v", err)
+	}
+	if err := app.Delete(org); err != nil {
+		t.Fatalf("deleting a suspended, empty organization should succeed: %v", err)
+	}
+	if accountActive(t, app, account.Id) {
+		t.Error("the deleted organization's NATS account is active again: pb-nats would publish a tenant nobody owns")
+	}
+}

@@ -103,8 +103,9 @@ func RegisterLeafConfigRoutes(app *pocketbase.PocketBase, opts LeafConfigRoutesO
 				return re.NotFoundError("nats_account not found", nil)
 			}
 			// Defense in depth: the relation is server-provisioned, but never
-			// serve an account from outside the caller's own organization.
-			if account.GetString("organization") != thing.GetString("organization") {
+			// serve an account from outside the caller's own organization. A blank one
+			// is no organization, and blank equals blank, so it is refused first.
+			if thing.GetString("organization") == "" || account.GetString("organization") != thing.GetString("organization") {
 				return re.NotFoundError("nats_account not found", nil)
 			}
 			accountJWT := account.GetString("jwt")
@@ -181,8 +182,9 @@ func callerAccount(re *core.RequestEvent, opts LeafConfigRoutesOptions) (natsUse
 		return nil, nil, re.NotFoundError("nats_account not found", nil)
 	}
 	// Defense in depth: the relation is server-provisioned, but never
-	// serve an account from outside the caller's own organization.
-	if account.GetString("organization") != thing.GetString("organization") {
+	// serve an account from outside the caller's own organization. A blank one
+	// is no organization, and blank equals blank, so it is refused first.
+	if thing.GetString("organization") == "" || account.GetString("organization") != thing.GetString("organization") {
 		return nil, nil, re.NotFoundError("nats_account not found", nil)
 	}
 	if account.GetString("jwt") == "" || account.GetString("public_key") == "" {

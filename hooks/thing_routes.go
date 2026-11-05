@@ -109,6 +109,17 @@ func RegisterThingRoutes(app *pocketbase.PocketBase, opts ThingRoutesOptions) {
 		return e.Next()
 	})
 
+	// The other half of the same line: a Thing's password is never reset by
+	// email. PocketBase serves /api/collections/things/request-password-reset to
+	// anyone, because things must keep password auth for the agent, and a member
+	// may write a Thing's email on create and on update. So without this a member
+	// could point any Thing at their own mailbox, reset its password, and sign in
+	// as it. A Thing never uses its email for anything; owners and admins set its
+	// password (things.manageRule).
+	app.OnRecordRequestPasswordResetRequest(opts.ThingCollection).BindFunc(func(e *core.RecordRequestPasswordResetRequestEvent) error {
+		return e.ForbiddenError("Things do not use password reset. An owner or admin sets a Thing's password.", nil)
+	})
+
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
 		se.Router.POST("/api/org/things", func(re *core.RequestEvent) error {
 			var body createThingRequest

@@ -457,6 +457,12 @@ func TestInventoryEvents(t *testing.T) {
 		if exportOf() == nil {
 			t.Fatal("the new org got no export")
 		}
+		// A delete needs the organization suspended first (hooks/org_active_flag.go).
+		suspended := reload("organizations", doomed.Id)
+		suspended.Set("active", false)
+		if err := app.Save(suspended); err != nil {
+			t.Fatal(err)
+		}
 		if err := app.Delete(reload("organizations", doomed.Id)); err != nil {
 			t.Fatal(err)
 		}

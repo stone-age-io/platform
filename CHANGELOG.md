@@ -11,6 +11,43 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+### Upgrading
+
+- **Deleting an organization now needs it suspended and empty.** The delete
+  is refused while the organization's NATS account is still active, and while
+  it still has Things, Locations or Nebula hosts. Suspend it (clear `active`),
+  remove what is left, then delete.
+
+### Security
+
+- **A member could sign in as a Thing they created.** The record API let a
+  member choose the new Thing's email, and PocketBase answers
+  `request-password-reset` on every auth collection with password sign-in. A
+  reset sent to the member's own mailbox gave them the Thing's password, and
+  with it the credential of any identity an admin later attached. Password
+  reset is now refused for Things. Owners and admins set a Thing's password
+  directly, as before.
+- **Deleting an organization could leave its tenant on the bus.** A delete
+  blanks the organization on the records that pointed at it rather than
+  removing them, so a delete of a live tenant left its NATS account published
+  and its Things signing in, and `GET /api/me/leaf-config` compared a blank
+  organization with a blank one and served the account. The delete now needs
+  the organization suspended and empty (above), and the leaf-config checks
+  refuse a blank organization.
+
+### Fixed
+
+- `init` refuses a `--nats-config` whose file is not named `nats.conf`.
+  `nats export` always writes that name, so any other one was never found,
+  and every start ran `init` again, resetting the superuser password.
+
+### Tests
+
+- `scripts/test-authz.sh` refuses a Thing password reset while a user one
+  succeeds, refuses a member changing a Thing's email, and refuses an
+  organization delete while active and while it holds a location (326
+  checks, from 320).
+
 ## [0.15.0] - 2026-11-03
 
 `stone-age init` makes a binary deployment two commands, inventory changes can

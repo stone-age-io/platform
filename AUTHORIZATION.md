@@ -365,6 +365,14 @@ Rules to follow when touching authorization:
   admin only, and a request hook replaces the password a member sends to the
   record API, which no rule can refuse because PocketBase requires one to
   create an auth record. The same line `things.manageRule` draws for setting
-  one.
+  one. **And a Thing's password is never reset by email.** The replaced
+  password left the member holding the other half: they chose the Thing's
+  email on create, and PocketBase serves `request-password-reset` on every
+  auth collection with password auth, which `things` keeps for the agent. So
+  a member could reset the password to their own mailbox and sign in as the
+  Thing anyway. `hooks/thing_routes.go` refuses the reset for `things`
+  outright. Changing an existing Thing's email needs `manageRule`, so the
+  create was the only way in. Any new auth collection that members can
+  create records in needs the same question asked of every email flow.
 - **Run `./scripts/test-authz.sh` after any rule change** and add a check. Pair
   every "cannot" with a "can" on the same record, or a blanket deny passes.

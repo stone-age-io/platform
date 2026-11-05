@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
 )
@@ -173,6 +174,60 @@ func RegisterOrgActiveFlag(app *pocketbase.PocketBase, opts OrgActiveFlagOptions
 		}
 		return mirrorErr
 	})
+
+	// Deleting an organization needs it suspended and empty first.
+	//
+	// A delete blanks the relations into the organization rather than removing
+	// the rows (the tenancy sentinel note in AUTHORIZATION.md). So a delete on a
+	// live tenant left its NATS account active with a blank organization, which
+	// pb-nats kept publishing, and its Things kept signing in. And with
+	// inventory in it the delete usually failed part-way: PocketBase blanks one
+	// collection at a time, and relation tenancy refuses a location whose type
+	// or parent still holds the organization.
+	//
+	// So the rule is the two things that make a delete leave nothing behind.
+	// Suspended, because that is what withdraws the account, and the account
+	// stays withdrawn once blanked. Checked on the account itself, not the flag,
+	// so a mirror that failed cannot pass for one that worked. Empty of things,
+	// locations and Nebula hosts, because suspension does not touch Nebula and
+	// a host certificate keeps working until it expires.
+	//
+	// Returning before e.Next() is the point here: the delete must not proceed.
+	app.OnRecordDelete(opts.OrgCollection).BindFunc(func(e *core.RecordEvent) error {
+		if err := deletableOrg(e.App, opts, e.Record); err != nil {
+			return err
+		}
+		return e.Next()
+	})
+}
+
+// ErrOrgNotDeletable is returned when an organization delete is refused.
+var ErrOrgNotDeletable = errors.New("organization cannot be deleted yet")
+
+func deletableOrg(app core.App, opts OrgActiveFlagOptions, org *core.Record) error {
+	name := org.GetString("name")
+	if org.GetBool("is_operator_org") || org.GetBool("is_system_org") {
+		return fmt.Errorf("%w: %q backs the platform itself", ErrOrgNotDeletable, name)
+	}
+	if opts.NatsAccountCollection != "" {
+		account, err := findOrgOwned(app, opts.NatsAccountCollection, org.Id)
+		if err != nil {
+			return fmt.Errorf("look up the NATS account for organization %q: %w", name, err)
+		}
+		if account != nil && account.GetBool("active") {
+			return fmt.Errorf("%w: suspend %q first (clear active), which withdraws its NATS account", ErrOrgNotDeletable, name)
+		}
+	}
+	for _, col := range []string{thingsCollection, locationsCollection, "nebula_hosts"} {
+		n, err := app.CountRecords(col, dbx.HashExp{"organization": org.Id})
+		if err != nil {
+			return fmt.Errorf("count %s in organization %q: %w", col, name, err)
+		}
+		if n > 0 {
+			return fmt.Errorf("%w: %q still has %d %s; delete or move them first", ErrOrgNotDeletable, name, n, col)
+		}
+	}
+	return nil
 }
 
 // mirrorOrgActive brings the organization's NATS account into line with the
