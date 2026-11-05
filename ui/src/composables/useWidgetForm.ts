@@ -572,6 +572,37 @@ const typeHandlers: WidgetTypeHandlers = {
     },
   },
 
+  // --- floorplan ---
+  floorplan: {
+    hydrate(widget, state) {
+      const c = widget.floorplanConfig
+      if (!c) return
+      state.floorplanLocationId = c.locationId || ''
+      state.floorplanShowUnbound = c.showUnbound ?? true
+      // Deep-copied like mapMarkers: the editors below mutate bindings in
+      // place, and the live widget must not change under a cancelled edit.
+      state.floorplanBindings = JSON.parse(JSON.stringify(c.bindings || []))
+    },
+    validate(form, errors) {
+      if (!form.floorplanLocationId) {
+        errors.floorplanLocationId = 'Choose a location'
+      }
+    },
+    buildUpdates(form) {
+      return {
+        floorplanConfig: {
+          locationId: form.floorplanLocationId,
+          showUnbound: form.floorplanShowUnbound,
+          // A binding with no thing type addresses nothing and would only
+          // ever render as a binding that silently matches no marker.
+          bindings: JSON.parse(
+            JSON.stringify(form.floorplanBindings.filter(b => !!b.thingTypeId))
+          ),
+        },
+      }
+    },
+  },
+
   // --- publisher ---
   publisher: {
     hydrate(widget, state) {

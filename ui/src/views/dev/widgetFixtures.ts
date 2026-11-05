@@ -205,7 +205,7 @@ export function buildFixtures(): Record<WidgetType, DevFixture> {
       },
     }),
 
-    map: make('map', 'Static markers with items. The basemap needs network; the markers draw regardless.', {
+    map: make('map', 'Static markers with items, including the setpoint and level rows. The basemap needs network; the markers draw regardless.', {
       title: 'Sites',
       mapConfig: {
         center: { lat: 39.0997, lon: -94.5786 },
@@ -229,9 +229,92 @@ export function buildFixtures(): Record<WidgetType, DevFixture> {
                 actionType: 'publish',
                 timeout: 1000,
               },
+              // A setpoint and a level, the two rows added in phase 2. Both
+              // read NATS directly, so without a connection they render
+              // their own empty state rather than a mocked value.
+              {
+                id: 'i2',
+                type: 'slider',
+                label: 'Setpoint',
+                sliderConfig: {
+                  mode: 'kv',
+                  kvBucket: 'twin_desired',
+                  kvKey: 'thing.AHU-1.setpoint',
+                  min: 15,
+                  max: 28,
+                  step: 0.5,
+                  defaultValue: 21,
+                  unit: 'C',
+                },
+              },
+              {
+                id: 'i3',
+                type: 'gauge',
+                label: 'Tank level',
+                gaugeConfig: {
+                  mode: 'kv',
+                  kvBucket: 'twin',
+                  kvKey: 'thing.TANK-1.level',
+                  min: 0,
+                  max: 100,
+                  unit: '%',
+                  zones: [
+                    { min: 0, max: 20, color: 'var(--color-error)' },
+                    { min: 20, max: 80, color: 'var(--color-success)' },
+                    { min: 80, max: 100, color: 'var(--color-warning)' },
+                  ],
+                },
+              },
             ],
           },
           { id: 'm2', label: 'Warehouse', lat: 39.1431, lon: -94.5203, items: [] },
+        ],
+      },
+    }),
+
+    floorplan: make('floorplan', 'Needs a location with an uploaded plan and a PocketBase session; shows its no-location state here.', {
+      title: 'North Riser',
+      floorplanConfig: {
+        // Deliberately empty. Pointing it at an id would render as "Location
+        // not found" in every organization but the one it was written in,
+        // which reads as a broken widget rather than an unconfigured one.
+        locationId: '',
+        showUnbound: true,
+        bindings: [
+          {
+            id: 'fpb_doors',
+            thingTypeId: 'demo_door_controller',
+            stateSource: { mode: 'subject', subjectSuffix: 'state', jsonPath: '$.state' },
+            mappings: [
+              { id: 'm1', value: 'secure', color: 'var(--color-success)', label: 'Secure', blink: false },
+              { id: 'm2', value: 'forced', color: 'var(--color-error)', label: 'Forced', blink: true },
+            ],
+            defaultColor: 'var(--color-info)',
+            showStale: true,
+            stalenessThreshold: 60000,
+            items: [
+              {
+                id: 'i1',
+                type: 'text',
+                label: 'State',
+                textConfig: { subject: '{thing_type_code}.{thing}.state', jsonPath: '$.state' },
+              },
+              {
+                id: 'i2',
+                type: 'gauge',
+                label: 'Battery',
+                gaugeConfig: {
+                  mode: 'kv',
+                  kvBucket: 'twin',
+                  kvKey: 'thing.{thing}.battery',
+                  min: 0,
+                  max: 100,
+                  unit: '%',
+                  zones: [{ min: 0, max: 20, color: 'var(--color-error)' }],
+                },
+              },
+            ],
+          },
         ],
       },
     }),

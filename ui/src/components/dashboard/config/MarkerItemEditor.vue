@@ -23,6 +23,8 @@
           <option value="switch">Switch (Toggle)</option>
           <option value="text">Text (Display)</option>
           <option value="kv">KV (Display)</option>
+          <option value="slider">Slider (Setpoint)</option>
+          <option value="gauge">Gauge (Level)</option>
         </select>
       </div>
       
@@ -341,16 +343,262 @@
           />
         </div>
       </template>
+      <!-- Slider Item Fields -->
+      <template v-if="item.type === 'slider'">
+        <div class="form-row">
+          <label>Mode</label>
+          <select
+            :value="sliderConfig.mode"
+            @change="updateSliderField('mode', ($event.target as HTMLSelectElement).value)"
+            class="form-input"
+          >
+            <option value="kv">KV (Stateful)</option>
+            <option value="core">CORE (Pub/Sub)</option>
+          </select>
+        </div>
+
+        <template v-if="sliderConfig.mode === 'kv'">
+        <div class="form-row">
+          <label>KV Bucket</label>
+          <input
+            :value="sliderConfig.kvBucket"
+            @input="updateSliderField('kvBucket', ($event.target as HTMLInputElement).value)"
+            type="text"
+            class="form-input"
+            placeholder="twin_desired"
+          />
+        </div>
+        <div class="form-row">
+          <label>KV Key</label>
+          <input
+            :value="sliderConfig.kvKey"
+            @input="updateSliderField('kvKey', ($event.target as HTMLInputElement).value)"
+            type="text"
+            class="form-input"
+            placeholder="thing.{thing}.setpoint"
+          />
+        </div>
+        </template>
+
+        <template v-else>
+        <div class="form-row">
+          <label>Publish Subject</label>
+          <input
+            :value="sliderConfig.publishSubject"
+            @input="updateSliderField('publishSubject', ($event.target as HTMLInputElement).value)"
+            type="text"
+            class="form-input"
+            placeholder="cmd.{thing}.setpoint"
+          />
+        </div>
+        <div class="form-row">
+          <label>State Subject</label>
+          <input
+            :value="sliderConfig.stateSubject"
+            @input="updateSliderField('stateSubject', ($event.target as HTMLInputElement).value)"
+            type="text"
+            class="form-input"
+            placeholder="Defaults to the publish subject"
+          />
+        </div>
+        </template>
+
+        <div class="num-grid">
+          <div class="num-col">
+            <label>Min</label>
+            <input
+              :value="sliderConfig.min"
+              @input="updateSliderField('min', Number(($event.target as HTMLInputElement).value))"
+              type="number"
+              class="form-input"
+            />
+          </div>
+          <div class="num-col">
+            <label>Max</label>
+            <input
+              :value="sliderConfig.max"
+              @input="updateSliderField('max', Number(($event.target as HTMLInputElement).value))"
+              type="number"
+              class="form-input"
+            />
+          </div>
+          <div class="num-col">
+            <label>Step</label>
+            <input
+              :value="sliderConfig.step"
+              @input="updateSliderField('step', Number(($event.target as HTMLInputElement).value))"
+              type="number"
+              step="any"
+              class="form-input"
+            />
+          </div>
+          <div class="num-col">
+            <label>Default</label>
+            <input
+              :value="sliderConfig.defaultValue"
+              @input="updateSliderField('defaultValue', Number(($event.target as HTMLInputElement).value))"
+              type="number"
+              step="any"
+              class="form-input"
+            />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <label>Unit</label>
+          <input
+            :value="sliderConfig.unit"
+            @input="updateSliderField('unit', ($event.target as HTMLInputElement).value)"
+            type="text"
+            class="form-input"
+            placeholder="C"
+          />
+        </div>
+        <div class="form-row">
+          <label>Value Template (optional)</label>
+          <input
+            :value="sliderConfig.valueTemplate"
+            @input="updateSliderField('valueTemplate', ($event.target as HTMLInputElement).value)"
+            type="text"
+            class="form-input"
+            placeholder="{{value}}"
+          />
+          <div class="help-text">Empty publishes the bare number. <code v-pre>{{value}}</code> is replaced.</div>
+        </div>
+        <div class="form-row">
+          <label>JSONPath (optional)</label>
+          <input
+            :value="sliderConfig.jsonPath"
+            @input="updateSliderField('jsonPath', ($event.target as HTMLInputElement).value)"
+            type="text"
+            class="form-input"
+            placeholder="$.setpoint"
+          />
+        </div>
+
+        <div class="form-row">
+          <label class="checkbox-label">
+            <input
+              type="checkbox"
+              :checked="!!sliderConfig.confirmOnChange"
+              @change="updateSliderField('confirmOnChange', ($event.target as HTMLInputElement).checked)"
+            />
+            <span>Ask before writing</span>
+          </label>
+        </div>
+      </template>
+
+      <!-- Gauge Item Fields -->
+      <template v-if="item.type === 'gauge'">
+        <div class="form-row">
+          <label>Mode</label>
+          <select
+            :value="gaugeConfig.mode"
+            @change="updateGaugeField('mode', ($event.target as HTMLSelectElement).value)"
+            class="form-input"
+          >
+            <option value="kv">KV (Stateful)</option>
+            <option value="core">CORE (Pub/Sub)</option>
+          </select>
+        </div>
+
+        <template v-if="gaugeConfig.mode === 'kv'">
+        <div class="form-row">
+          <label>KV Bucket</label>
+          <input
+            :value="gaugeConfig.kvBucket"
+            @input="updateGaugeField('kvBucket', ($event.target as HTMLInputElement).value)"
+            type="text"
+            class="form-input"
+            placeholder="twin"
+          />
+        </div>
+        <div class="form-row">
+          <label>KV Key</label>
+          <input
+            :value="gaugeConfig.kvKey"
+            @input="updateGaugeField('kvKey', ($event.target as HTMLInputElement).value)"
+            type="text"
+            class="form-input"
+            placeholder="thing.{thing}.level"
+          />
+        </div>
+        </template>
+
+        <template v-else>
+        <div class="form-row">
+          <label>Subject</label>
+          <input
+            :value="gaugeConfig.subject"
+            @input="updateGaugeField('subject', ($event.target as HTMLInputElement).value)"
+            type="text"
+            class="form-input"
+            placeholder="sensor.{thing}.level"
+          />
+        </div>
+        </template>
+
+        <div class="num-grid">
+          <div class="num-col">
+            <label>Min</label>
+            <input
+              :value="gaugeConfig.min"
+              @input="updateGaugeField('min', Number(($event.target as HTMLInputElement).value))"
+              type="number"
+              class="form-input"
+            />
+          </div>
+          <div class="num-col">
+            <label>Max</label>
+            <input
+              :value="gaugeConfig.max"
+              @input="updateGaugeField('max', Number(($event.target as HTMLInputElement).value))"
+              type="number"
+              class="form-input"
+            />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <label>Unit</label>
+          <input
+            :value="gaugeConfig.unit"
+            @input="updateGaugeField('unit', ($event.target as HTMLInputElement).value)"
+            type="text"
+            class="form-input"
+            placeholder="%"
+          />
+        </div>
+        <div class="form-row">
+          <label>JSONPath (optional)</label>
+          <input
+            :value="gaugeConfig.jsonPath"
+            @input="updateGaugeField('jsonPath', ($event.target as HTMLInputElement).value)"
+            type="text"
+            class="form-input"
+            placeholder="$.level"
+          />
+        </div>
+
+        <div class="form-row">
+          <label>Zones</label>
+          <GaugeZoneEditor
+            :model-value="gaugeConfig.zones || []"
+            @update:model-value="updateGaugeField('zones', $event)"
+          />
+        </div>
+      </template>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import type { Component } from 'vue'
-import { CircleHelp, Database, Send, ToggleRight, Type } from '@lucide/vue'
+import { CircleHelp, Database, Gauge, Send, SlidersHorizontal, ToggleRight, Type } from '@lucide/vue'
 import { computed } from 'vue'
-import type { MapMarkerItem, MapItemSwitchConfig, MapItemTextConfig, MapItemKvConfig, MapItemType } from '@/types/dashboard'
+import type { MapMarkerItem, MapItemSwitchConfig, MapItemTextConfig, MapItemKvConfig, MapItemSliderConfig, MapItemGaugeConfig, MapItemType } from '@/types/dashboard'
 import { createDefaultItem } from '@/types/dashboard'
+import GaugeZoneEditor from '@/components/dashboard/GaugeZoneEditor.vue'
 
 const props = defineProps<{
   item: MapMarkerItem
@@ -368,6 +616,8 @@ function getItemIcon(type: MapItemType): Component {
     case 'switch': return ToggleRight
     case 'text': return Type
     case 'kv': return Database
+    case 'slider': return SlidersHorizontal
+    case 'gauge': return Gauge
     default: return CircleHelp
   }
 }
@@ -401,6 +651,15 @@ const kvConfig = computed<MapItemKvConfig>(() => {
     jsonPath: ''
   }
 })
+
+// The fallbacks mirror createDefaultItem, so an item whose config object is
+// missing -- which is any row arriving from a dashboard exported before these
+// types existed -- edits as a blank one rather than throwing on a read.
+const sliderConfig = computed<MapItemSliderConfig>(() =>
+  props.item.sliderConfig || { mode: 'kv', min: 0, max: 100, step: 1, defaultValue: 0 })
+
+const gaugeConfig = computed<MapItemGaugeConfig>(() =>
+  props.item.gaugeConfig || { mode: 'kv', min: 0, max: 100 })
 
 const switchLabels = computed(() => {
   return switchConfig.value.labels || { on: 'ON', off: 'OFF' }
@@ -446,6 +705,14 @@ function updateTextField(field: keyof MapItemTextConfig, value: any) {
 function updateKvField(field: keyof MapItemKvConfig, value: any) {
   const newKvConfig = { ...kvConfig.value, [field]: value }
   emitUpdate({ kvConfig: newKvConfig })
+}
+
+function updateSliderField(field: keyof MapItemSliderConfig, value: any) {
+  emitUpdate({ sliderConfig: { ...sliderConfig.value, [field]: value } })
+}
+
+function updateGaugeField(field: keyof MapItemGaugeConfig, value: any) {
+  emitUpdate({ gaugeConfig: { ...gaugeConfig.value, [field]: value } })
 }
 
 function updateSwitchLabel(which: 'on' | 'off', value: string) {
@@ -518,6 +785,27 @@ function handleTypeChange(event: Event) {
 .item-badge.switch { color: var(--color-warning); }
 .item-badge.publish { color: var(--color-info); }
 .item-badge.text { color: var(--color-success); }
+.item-badge.slider { color: var(--color-primary); }
+.item-badge.gauge { color: var(--color-info); }
+
+.num-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.num-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.num-col label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+}
 .item-badge.kv { color: var(--color-secondary); }
 
 .item-label {

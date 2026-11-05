@@ -19,6 +19,11 @@ const SRC = join(__dirname, '..')
 const SINK = /\.(bindTooltip|bindPopup|setTooltipContent|setPopupContent)\s*\(\s*([^,)\r\n]*)/g
 const ALLOWED_ARG = /^(textElement\(|popup$)/
 
+// Not global: these are tested against whole files repeatedly, and a /g
+// regex carries lastIndex between calls.
+const DIV_ICON = /L\.divIcon\s*\(/
+const STRING_HTML = /\bhtml\s*:\s*[`'"]/
+
 function sourceFiles(dir: string): string[] {
   const out: string[] = []
   for (const name of readdirSync(dir)) {
@@ -50,8 +55,30 @@ describe('Leaflet content sinks', () => {
     expect(offenders, 'pass textElement(...) or a built element; see useLeafletMap.ts').toEqual([])
   })
 
+  // divIcon html is the same sink. It is called in exactly ONE file, which
+  // passes an ELEMENT rather than a string -- Leaflet 1.9 has
+  // `if (options.html instanceof Element) { ...appendChild }` and only falls
+  // back to innerHTML for a string. Allowing that one audited file is the
+  // same shape as allowing `textElement(` above rather than a hole in the
+  // rule: every other file is still refused outright, and a STRING html is
+  // refused everywhere, that file included.
+  const ICON_HELPER = join('utils', 'leafletIcon.ts')
+
   it('does not accept an html: option (divIcon and friends are the same sink)', () => {
-    const offenders = sourceFiles(SRC).filter(f => /L\.divIcon\s*\(|\bhtml\s*:\s*[`'"]/.test(readFileSync(f, 'utf8')))
-    expect(offenders.map(f => relative(SRC, f))).toEqual([])
+    const files = sourceFiles(SRC)
+
+    const divIconCallers = files
+      .filter(f => DIV_ICON.test(readFileSync(f, 'utf8')))
+      .map(f => relative(SRC, f))
+    expect(divIconCallers).toEqual([ICON_HELPER])
+
+    // The helper has to still BE the thing it is allowed for.
+    expect(readFileSync(join(SRC, ICON_HELPER), 'utf8'))
+      .toMatch(/html: el as unknown as string/)
+
+    const stringHtml = files
+      .filter(f => STRING_HTML.test(readFileSync(f, 'utf8')))
+      .map(f => relative(SRC, f))
+    expect(stringHtml, 'build an element and pass it to elementIcon()').toEqual([])
   })
 })

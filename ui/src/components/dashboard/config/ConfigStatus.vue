@@ -31,69 +31,7 @@
     <!-- Mappings Section -->
     <div class="config-section">
       <div class="section-title">State Mappings</div>
-      <div class="help-text mb-2">
-        Define how values map to colors. First match wins.
-        <br><strong>Tip:</strong> Use <code>*</code> as value to match ANY message (e.g. for heartbeats).
-      </div>
-      
-      <div class="mappings-list">
-        <div v-for="(map, index) in form.statusMappings" :key="map.id" class="mapping-row">
-          <div class="row-header">
-            <span class="row-index">#{{ index + 1 }}</span>
-            <button class="btn-icon danger" @click="removeMapping(index)">✕</button>
-          </div>
-          
-          <div class="row-inputs">
-            <div class="input-group">
-              <label>If Value ==</label>
-              <input 
-                v-model="map.value" 
-                type="text" 
-                class="form-input" 
-                placeholder="on (or *)"
-              />
-            </div>
-            
-            <div class="input-group">
-              <label>Color</label>
-              <select 
-                v-model="map.color" 
-                class="form-input color-select"
-                :style="{ color: map.color }"
-              >
-                <option value="var(--color-success)" style="color: var(--color-success)">Success (Green)</option>
-                <option value="var(--color-warning)" style="color: var(--color-warning)">Warning (Yellow)</option>
-                <option value="var(--color-error)" style="color: var(--color-error)">Error (Red)</option>
-                <option value="var(--color-info)" style="color: var(--color-info)">Info (Blue)</option>
-                <option value="var(--color-primary)" style="color: var(--color-primary)">Primary</option>
-                <option value="var(--color-secondary)" style="color: var(--color-secondary)">Secondary</option>
-                <option value="var(--muted)" style="color: var(--muted)">Muted (Grey)</option>
-              </select>
-            </div>
-            
-            <div class="input-group">
-              <label>Label (Optional)</label>
-              <input 
-                v-model="map.label" 
-                type="text" 
-                class="form-input" 
-                placeholder="Running"
-              />
-            </div>
-            
-            <div class="input-group checkbox">
-              <label class="checkbox-label">
-                <input type="checkbox" v-model="map.blink" />
-                <span>Pulse</span>
-              </label>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <button class="btn-add" @click="addMapping">
-        + Add Mapping
-      </button>
+      <StatusMappingEditor :mappings="form.statusMappings" />
     </div>
 
     <!-- Default State -->
@@ -183,25 +121,14 @@
 import type { WidgetFormState } from '@/types/config'
 import ConfigDataSource from './ConfigDataSource.vue'
 import ConfigKvSource from './ConfigKvSource.vue'
+import StatusMappingEditor from './StatusMappingEditor.vue'
 
-const props = defineProps<{
+defineProps<{
   form: WidgetFormState
   errors: Record<string, string>
 }>()
 
-function addMapping() {
-  props.form.statusMappings.push({
-    id: Date.now().toString(),
-    value: '',
-    color: 'var(--color-success)',
-    label: '',
-    blink: false
-  })
-}
 
-function removeMapping(index: number) {
-  props.form.statusMappings.splice(index, 1)
-}
 </script>
 
 <style scoped>

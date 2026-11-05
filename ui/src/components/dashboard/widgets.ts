@@ -30,7 +30,7 @@
 import { defineAsyncComponent, type Component } from 'vue'
 import {
   ChartColumn, ChartLine, CircleDot, Database, FileText, Gauge,
-  Map as MapIcon, MousePointerClick, RadioTower, ScanQrCode, Send,
+  LayoutPanelTop, Map as MapIcon, MousePointerClick, RadioTower, ScanQrCode, Send,
   SlidersHorizontal, Table, Terminal, ToggleRight, Type,
 } from '@lucide/vue'
 import type { WidgetType } from '@/types/dashboard'
@@ -48,6 +48,7 @@ import StatusWidget from '@/components/widgets/StatusWidget.vue'
 const ChartWidget = defineAsyncComponent(() => import('@/components/widgets/ChartWidget.vue'))
 const GaugeWidget = defineAsyncComponent(() => import('@/components/widgets/GaugeWidget.vue'))
 const MapWidget = defineAsyncComponent(() => import('@/components/widgets/MapWidget.vue'))
+const FloorPlanWidget = defineAsyncComponent(() => import('@/components/widgets/FloorPlanWidget.vue'))
 const KvWidget = defineAsyncComponent(() => import('@/components/widgets/KvWidget.vue'))
 const ConsoleWidget = defineAsyncComponent(() => import('@/components/widgets/ConsoleWidget.vue'))
 const PublisherWidget = defineAsyncComponent(() => import('@/components/widgets/PublisherWidget.vue'))
@@ -69,6 +70,7 @@ const ConfigKv = defineAsyncComponent(() => import('@/components/dashboard/confi
 const ConfigSwitch = defineAsyncComponent(() => import('@/components/dashboard/config/ConfigSwitch.vue'))
 const ConfigSlider = defineAsyncComponent(() => import('@/components/dashboard/config/ConfigSlider.vue'))
 const ConfigMap = defineAsyncComponent(() => import('@/components/dashboard/config/ConfigMap.vue'))
+const ConfigFloorPlan = defineAsyncComponent(() => import('@/components/dashboard/config/ConfigFloorPlan.vue'))
 const ConfigConsole = defineAsyncComponent(() => import('@/components/dashboard/config/ConfigConsole.vue'))
 const ConfigPublisher = defineAsyncComponent(() => import('@/components/dashboard/config/ConfigPublisher.vue'))
 const ConfigStatus = defineAsyncComponent(() => import('@/components/dashboard/config/ConfigStatus.vue'))
@@ -232,6 +234,15 @@ export const WIDGETS: Record<WidgetType, WidgetDefinition> = {
     label: 'Map', icon: MapIcon, description: 'Geographic location', category: 'Layout',
     mobileTitled: true, mobileExpandable: true,
     mobileWidth: 'full', mobileHeight: 'data',
+    standardDataSource: false, multiSubject: false,
+  },
+  floorplan: {
+    component: FloorPlanWidget, config: ConfigFloorPlan,
+    label: 'Floor Plan', icon: LayoutPanelTop, description: "A location's plan, live", category: 'Layout',
+    mobileTitled: true, mobileExpandable: true,
+    mobileWidth: 'full', mobileHeight: 'data',
+    // It subscribes per BINDING rather than per widget, so the shared
+    // subject/JSONPath panel would configure a source nothing reads.
     standardDataSource: false, multiSubject: false,
   },
   console: {

@@ -1,5 +1,5 @@
 // ui/src/types/config.ts
-import type { ThresholdRule, MapMarker, StatusMapping, TableColumn, DynamicMarkerPopupField, ScannerRule, ChartType, ChartSeries } from './dashboard'
+import type { ThresholdRule, MapMarker, StatusMapping, TableColumn, DynamicMarkerPopupField, ScannerRule, ChartType, ChartSeries, FloorPlanTypeBinding } from './dashboard'
 
 export interface WidgetFormState {
   // Common
@@ -86,6 +86,13 @@ export interface WidgetFormState {
   mapDynamicPopupFields: DynamicMarkerPopupField[]
   mapEnableClustering: boolean
   mapFitBoundsOnLoad: boolean
+
+  // Floor Plan Widget
+  // No positions here, deliberately: the markers are the things placed on
+  // the location's own plan, and that is where a position is edited.
+  floorplanLocationId: string
+  floorplanBindings: FloorPlanTypeBinding[]
+  floorplanShowUnbound: boolean
   
   // Console Widget
   consoleFontSize: number
@@ -214,6 +221,9 @@ export function createEmptyFormState(): WidgetFormState {
     mapDynamicPopupFields: [],
     mapEnableClustering: false,
     mapFitBoundsOnLoad: false,
+    floorplanLocationId: '',
+    floorplanBindings: [],
+    floorplanShowUnbound: true,
     consoleFontSize: 12,
     consoleShowTimestamp: true,
     publisherDefaultSubject: '',

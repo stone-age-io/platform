@@ -112,6 +112,13 @@
 <script setup lang="ts">
 import { Gauge } from '@lucide/vue'
 import { computed } from 'vue'
+import {
+  formatValue,
+  rangeIsValid,
+  valueFraction,
+  zoneColor,
+  zoneSpans as gaugeZoneSpans,
+} from '@/utils/gaugeScale'
 import { useWidgetDataStore } from '@/stores/widgetData'
 import { useDesignTokens } from '@/composables/useDesignTokens'
 import WidgetStateOverlay from '@/components/dashboard/WidgetStateOverlay.vue'
@@ -153,31 +160,21 @@ const latestValue = computed<number | null>(() => {
 // Every fraction below divides by max - min. Equal, or the wrong way round,
 // gave NaN and an arc that silently was not there; the form refuses it now,
 // but a dashboard can be imported from a file.
-const range = computed(() => cfg.value.max - cfg.value.min)
-const rangeValid = computed(() => Number.isFinite(range.value) && range.value > 0)
-
-const clampedValue = computed(() => {
-  if (latestValue.value === null) return cfg.value.min
-  return Math.max(cfg.value.min, Math.min(cfg.value.max, latestValue.value))
-})
-
-const displayValue = computed(() => {
-  if (latestValue.value === null) return '—'
-  return latestValue.value.toFixed(cfg.value.decimals ?? getDecimalPlaces(latestValue.value))
-})
+// The arithmetic lives in utils/gaugeScale.ts so the marker panel row draws
+// from the same rules -- a bar in a 280px panel and this arc must not
+// disagree about which band a value is in. It is also the only half of a
+// gauge that any test can reach.
+const gaugeRange = computed(() => ({ min: cfg.value.min, max: cfg.value.max }))
+const rangeValid = computed(() => rangeIsValid(gaugeRange.value))
+const displayValue = computed(() => formatValue(latestValue.value, cfg.value.decimals))
 
 // Shrinks a long value to fit inside the arc, rather than running into it:
 // at 44 units, six monospace characters ("-18.63") are wider than the dial's
 // open middle. 0.6 is a monospace character's width per unit of font size.
 const valueFontSize = computed(() => Math.min(44, Math.floor(130 / (displayValue.value.length * 0.6))))
 
-function getDecimalPlaces(value: number): number {
-  if (Math.abs(value) >= 100) return 0
-  if (Math.abs(value) >= 10) return 1
-  return 2
-}
 
-const valuePercent = computed(() => (clampedValue.value - cfg.value.min) / range.value)
+const valuePercent = computed(() => valueFraction(latestValue.value, gaugeRange.value))
 
 function polarToCartesian(centerX: number, centerY: number, radius: number, angleInDegrees: number) {
   const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0
@@ -205,22 +202,12 @@ const valueDashOffset = computed(() => -fullArcLength.value * (1 - valuePercent.
 // Was white at 10%, which vanished on the light theme.
 const backgroundColor = computed(() => 'oklch(var(--bc) / 0.1)')
 
-const valueColor = computed(() => {
-  if (!cfg.value.zones || cfg.value.zones.length === 0) return chartColors.value.color1
-  const value = clampedValue.value
-  for (const zone of cfg.value.zones) {
-    if (value >= zone.min && value <= zone.max) return zone.color
-  }
-  return chartColors.value.color1
-})
+const valueColor = computed(() =>
+  zoneColor(latestValue.value, cfg.value.zones, gaugeRange.value, chartColors.value.color1))
 
 // Each zone as a fraction of the range, 0..1. The arc and the bar both draw
 // from this.
-const zoneSpans = computed(() => {
-  if (!cfg.value.zones) return []
-  const frac = (v: number) => Math.max(0, Math.min(1, (v - cfg.value.min) / range.value))
-  return cfg.value.zones.map(zone => ({ color: zone.color, start: frac(zone.min), end: frac(zone.max) }))
-})
+const zoneSpans = computed(() => gaugeZoneSpans(cfg.value.zones, gaugeRange.value))
 
 const zonePaths = computed(() =>
   zoneSpans.value.map(zone => ({

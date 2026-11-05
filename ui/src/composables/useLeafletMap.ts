@@ -26,6 +26,7 @@ import type { KvRow } from '@/composables/useNatsKvWatcher'
 import { JSONPath } from 'jsonpath-plus'
 import { resolveTemplate } from '@/utils/variables'
 import { fixLeafletIcons } from '@/utils/leafletIcons'
+import { textElement } from '@/utils/leafletText'
 import type { BufferedMessage } from '@/stores/widgetData'
 
 /**
@@ -79,26 +80,16 @@ const TILE_ATTRIBUTION = '&copy; <a href="https://openfreemap.org">OpenFreeMap</
 const DEFAULT_CENTER = { lat: 39.8283, lon: -98.5795 }
 const DEFAULT_ZOOM = 4
 
-// Leaflet assigns a STRING tooltip or popup straight to innerHTML
-// (DivOverlay._updateContent), and every label here is data somebody else
-// wrote: a location name any member can set, a KV value a device can set, a
-// marker label that arrives in an imported dashboard. So nothing in this file
-// hands Leaflet a string -- a label goes in as a span set with textContent,
-// and a popup is an element the caller built the same way. There is
-// deliberately no `popupHtml` any more; it was the same sink with a friendlier
-// name.
+// Nothing in this file hands Leaflet a string: a label goes in as a span set
+// with textContent (utils/leafletText.ts, which states why), and a popup is an
+// element the caller built the same way. There is deliberately no `popupHtml`
+// any more; it was the same sink with a friendlier name.
 export interface MapMarkerInput {
   id: string
   lat: number
   lon: number
   label?: string
   popup?: HTMLElement
-}
-
-function textElement(s: string): HTMLElement {
-  const span = document.createElement('span')
-  span.textContent = s
-  return span
 }
 
 export type ZoomControlPosition = 'topleft' | 'topright' | 'bottomleft' | 'bottomright' | 'none'

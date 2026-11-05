@@ -53,6 +53,7 @@ describe('createDefaultWidget', () => {
     stat: 'statConfig',
     gauge: 'gaugeConfig',
     map: 'mapConfig',
+    floorplan: 'floorplanConfig',
     console: 'consoleConfig',
     publisher: 'publisherConfig',
     status: 'statusConfig',

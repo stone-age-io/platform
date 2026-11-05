@@ -44,13 +44,32 @@
             v-else-if="item.type === 'kv'"
             :item="item"
           />
+
+          <!-- Setpoint -->
+          <MarkerItemSlider
+            v-else-if="item.type === 'slider'"
+            :item="item"
+          />
+
+          <!-- Level bar -->
+          <MarkerItemGauge
+            v-else-if="item.type === 'gauge'"
+            :item="item"
+          />
         </template>
       </div>
     </div>
     
-    <!-- Footer with coordinates (if static) or subject (if dynamic) -->
+    <!-- Footer: whatever locates this marker. A caller that does not locate
+         its markers by coordinate -- the floor plan, whose positions are
+         pixels on an image and mean nothing to a reader -- passes its own
+         line instead. -->
     <div class="panel-footer">
-      <template v-if="marker.positionConfig?.mode === 'dynamic'">
+      <template v-if="footer">
+        <span class="footer-label">{{ footer.label }}</span>
+        <span class="footer-value mono">{{ footer.value }}</span>
+      </template>
+      <template v-else-if="marker.positionConfig?.mode === 'dynamic'">
         <span class="footer-label">Subject:</span>
         <span class="footer-value mono">{{ marker.positionConfig.subject }}</span>
       </template>
@@ -80,6 +99,8 @@ import MarkerItemPublish from './MarkerItemPublish.vue'
 import MarkerItemSwitch from './MarkerItemSwitch.vue'
 import MarkerItemText from './MarkerItemText.vue'
 import MarkerItemKv from './MarkerItemKv.vue'
+import MarkerItemSlider from './MarkerItemSlider.vue'
+import MarkerItemGauge from './MarkerItemGauge.vue'
 import ResponseModal from '@/components/common/ResponseModal.vue'
 import type { MapMarker } from '@/types/dashboard'
 
@@ -94,6 +115,8 @@ import type { MapMarker } from '@/types/dashboard'
 defineProps<{
   marker: MapMarker
   isMobile: boolean
+  /** Replaces the coordinate line in the footer. Absent keeps the map's own. */
+  footer?: { label: string; value: string } | null
 }>()
 
 defineEmits<{

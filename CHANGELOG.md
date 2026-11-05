@@ -22,6 +22,29 @@ and this file starts where the versioned releases do.
   every managed organization, which makes its helpdesk export private. Inventory
   exports are made private by the sweep on the next start.
 
+### Added
+
+- **Floor plan dashboard widget.** A location’s uploaded floor plan as a
+  dashboard widget, with the Things placed on it as live markers. Markers are
+  inventory: they are the Things in the chosen location whose
+  `floorplan_position` is set, so positions stay editable only on the location
+  page and a dashboard cannot drift from the floor. State bindings are written
+  **per Thing Type**, not per Thing, and resolve `{thing}` against each one, so
+  sixty doors take one binding and one subscription. Clicking a marker opens
+  the same detail panel the map widget uses. Nothing was added to the API: no
+  schema change, no migration, no rule change.
+
+  Note that this puts a location’s floor plan and its fixtures on any screen
+  that can open the dashboard, including one signed in with the `dashboard`
+  appliance role, which the console otherwise does not let browse inventory.
+  The reads were always permitted (they are org-scoped, not role-scoped); the
+  widget makes them visible. `plans/floorplan-widget.md` records the decision.
+
+- **Setpoint and level rows on map and floor plan markers.** A marker’s detail
+  panel can now carry a slider (writes a number to a KV key or a subject) and a
+  gauge (reads one back as a level bar), alongside the existing text, KV, switch
+  and publish rows.
+
 ### Security
 
 - **A tenant could import another tenant's events.** The platform's own

@@ -25,6 +25,7 @@ export const WIDGET_TYPES = [
   'stat',
   'gauge',
   'map',
+  'floorplan',
   'console',
   'publisher',
   'status',
@@ -369,7 +370,10 @@ export interface DynamicMarkerSource {
   popupFields?: DynamicMarkerPopupField[]
 }
 
-export type MapItemType = 'publish' | 'switch' | 'text' | 'kv'
+// Adding a member is backward compatible -- a dashboard saved before it
+// simply has no item of that type. REMOVING one is not: every saved
+// dashboard carrying it renders an unknown row.
+export type MapItemType = 'publish' | 'switch' | 'text' | 'kv' | 'slider' | 'gauge'
 
 export interface MapItemSwitchConfig {
   mode: 'kv' | 'core'
@@ -395,6 +399,50 @@ export interface MapItemTextConfig {
   timeWindow?: string
 }
 
+/**
+ * A setpoint row: the write-side counterpart to the switch.
+ *
+ * Same `mode` split as MapItemSwitchConfig and the slider widget, so the
+ * editor row is the one that already exists with different fields. Publishing
+ * happens on release rather than per frame -- dragging 0 to 80 would otherwise
+ * be eighty writes.
+ */
+export interface MapItemSliderConfig {
+  mode: 'kv' | 'core'
+  kvBucket?: string
+  kvKey?: string
+  publishSubject?: string
+  /** Where the current value is read in core mode. Defaults to the publish subject. */
+  stateSubject?: string
+  min: number
+  max: number
+  step: number
+  defaultValue: number
+  unit?: string
+  /** `{{value}}` is replaced. Absent publishes the bare number. */
+  valueTemplate?: string
+  jsonPath?: string
+  confirmOnChange?: boolean
+  confirmMessage?: string
+}
+
+/**
+ * A read-only level row. Bar only, deliberately: the arc wants a whole
+ * widget of space and would be unreadable in a 280px panel.
+ */
+export interface MapItemGaugeConfig {
+  mode: 'kv' | 'core'
+  kvBucket?: string
+  kvKey?: string
+  subject?: string
+  jsonPath?: string
+  min: number
+  max: number
+  unit?: string
+  decimals?: number
+  zones?: { min: number; max: number; color: string }[]
+}
+
 export interface MapItemKvConfig {
   kvBucket: string
   kvKey: string
@@ -412,6 +460,8 @@ export interface MapMarkerItem {
   switchConfig?: MapItemSwitchConfig
   textConfig?: MapItemTextConfig
   kvConfig?: MapItemKvConfig
+  sliderConfig?: MapItemSliderConfig
+  gaugeConfig?: MapItemGaugeConfig
 }
 
 export interface MarkerPositionConfig {
@@ -452,6 +502,74 @@ export interface MapWidgetConfig {
   enableClustering?: boolean
   fitBoundsOnLoad?: boolean
 }
+
+// --- Floor Plan Widget ---
+//
+// Markers are INVENTORY: the Things in `locationId` whose `floorplan_position`
+// is set. The widget stores no positions of its own, so the Location detail
+// view stays the one place a device's position is recorded and a dashboard
+// cannot drift from the floor. It is also why this widget needs no placement
+// editor. plans/floorplan-widget.md has the reasoning.
+
+export type FloorPlanStateMode = 'subject' | 'kv'
+
+/** Where a marker's live state comes from, as a template resolved per Thing. */
+export interface FloorPlanStateSource {
+  mode: FloorPlanStateMode
+  /** subject mode: joined onto the Thing Type's own `subject_prefix`. */
+  subjectSuffix?: string
+  /** kv mode: bucket plus a key template carrying {thing} and friends. */
+  kvBucket?: string
+  kvKeyTemplate?: string
+  /** Read out of the payload once the message or entry arrives. */
+  jsonPath?: string
+}
+
+/**
+ * One binding, applied to every Thing of a Thing Type in the location.
+ *
+ * PER TYPE, NOT PER THING. Sixty doors is sixty hand-written subjects and
+ * nobody will do that twice, so the widget would go unused at exactly the size
+ * it exists for. The template carries the reserved variables and is resolved
+ * against each Thing by utils/floorplanBindings.ts, which is also what lets one
+ * subscription cover every Thing of the type instead of one per marker.
+ *
+ * The state fields deliberately mirror StatusWidgetConfig rather than inventing
+ * a second value-to-colour vocabulary.
+ */
+export interface FloorPlanTypeBinding {
+  id: string
+  thingTypeId: string
+  stateSource?: FloorPlanStateSource
+  mappings?: StatusMapping[]
+  defaultColor?: string
+  defaultLabel?: string
+  showStale?: boolean
+  stalenessThreshold?: number
+  staleColor?: string
+  staleLabel?: string
+  /** Panel rows, resolved per Thing when its panel opens. */
+  items: MapMarkerItem[]
+}
+
+export interface FloorPlanWidgetConfig {
+  /** The Location whose `floorplan` image is the canvas. */
+  locationId: string
+  bindings: FloorPlanTypeBinding[]
+  /** Draw Things whose type has no binding. They get a marker and no panel rows. */
+  showUnbound?: boolean
+}
+
+export const FLOORPLAN_LIMITS = {
+  // MAP_LIMITS does not transfer: it is sized for hand-placed markers, and
+  // these are inventory. A real building fits inside 200; a mis-scoped
+  // location does not get to open thousands of watchers. The per-binding
+  // subscription (one per template, not one per marker) is what makes a cap
+  // this size affordable at all -- per-item it would have to be ~30.
+  MAX_MARKERS: 200,
+  MAX_BINDINGS: 10,
+  MAX_ITEMS_PER_BINDING: 10,
+} as const
 
 // --- Main Widget Configuration ---
 
@@ -508,6 +626,7 @@ export interface WidgetConfigByType {
   stat: { statConfig: StatCardWidgetConfig }
   gauge: { gaugeConfig: GaugeWidgetConfig }
   map: { mapConfig: MapWidgetConfig }
+  floorplan: { floorplanConfig: FloorPlanWidgetConfig }
   console: { consoleConfig: ConsoleWidgetConfig }
   publisher: { publisherConfig: PublisherWidgetConfig }
   status: { statusConfig: StatusWidgetConfig }
@@ -556,6 +675,7 @@ export const DEFAULT_WIDGET_SIZES: Record<WidgetType, { w: number; h: number }> 
   stat: { w: 3, h: 2 },
   gauge: { w: 3, h: 3 },
   map: { w: 6, h: 4 },
+  floorplan: { w: 6, h: 5 },
   console: { w: 6, h: 4 },
   publisher: { w: 4, h: 4 },
   status: { w: 2, h: 2 },
@@ -678,6 +798,17 @@ const WIDGET_DEFAULTS: { [T in WidgetType]: () => WidgetDefaults<T> } = {
       center: { lat: 39.8283, lon: -98.5795 },
       zoom: 4,
       markers: [],
+    },
+  }),
+
+  floorplan: () => ({
+    title: 'Floor Plan',
+    // No location and no bindings: the widget says what it needs rather than
+    // guessing at an id that exists in no organization but the author's.
+    floorplanConfig: {
+      locationId: '',
+      bindings: [],
+      showUnbound: true,
     },
   }),
 
@@ -853,6 +984,38 @@ export function createDefaultItem(type: MapItemType = 'publish'): MapMarkerItem 
         deliverPolicy: 'last',
         timeWindow: '10m'
       }
+    }
+  } else if (type === 'slider') {
+    return {
+      id,
+      type: 'slider',
+      label: 'Setpoint',
+      sliderConfig: {
+        mode: 'kv',
+        // A setpoint is desired state, so it defaults to the writable half
+        // of the twin -- the same choice the switch item makes.
+        kvBucket: TWIN_DESIRED_BUCKET,
+        kvKey: 'thing.DEVICE_01.setpoint',
+        min: 0,
+        max: 100,
+        step: 1,
+        defaultValue: 50,
+        unit: '',
+      },
+    }
+  } else if (type === 'gauge') {
+    return {
+      id,
+      type: 'gauge',
+      label: 'Level',
+      gaugeConfig: {
+        mode: 'kv',
+        kvBucket: TWIN_BUCKET,
+        kvKey: 'thing.DEVICE_01.level',
+        min: 0,
+        max: 100,
+        unit: '%',
+      },
     }
   } else if (type === 'kv') {
     return {
