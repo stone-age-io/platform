@@ -7,7 +7,7 @@ this starts to need one, stop and re-read **Authorization** below, because
 that is the decision being changed.
 
 Three things moved during implementation; each is marked **Changed in
-implementation** below.
+implementation** below. Two bugs found on first real use are under **Traps**.
 
 ## The problem
 
@@ -193,6 +193,37 @@ change, which would break the Location detail view too.
 
 ## Traps
 
+- **Leaflet does all of its positioning from its own stylesheet, and this
+  composable was not importing it.** `.leaflet-pane { position: absolute }`
+  lives in `leaflet/dist/leaflet.css`. Without it every pane computes to
+  `static` and the panes stack in normal flow instead of overlaying, so the
+  marker pane lands one image-height BELOW the image, where the widget’s
+  `overflow: hidden` clips it. The map draws, the plan draws, nothing throws,
+  no console line appears -- the markers are simply gone.
+
+  It hid because a stylesheet is global once ANY module imports it.
+  `useLeafletMap` always did, and the location detail view mounts a
+  geographic map beside the floor plan, so `useFloorPlan` rode on its import
+  for as long as it only ran there. The dashboard widget was the first screen
+  to use a floor plan alone. `leafletCss.spec.ts` now asserts that every file
+  calling `L.map(` imports the stylesheet itself.
+
+- **The marker was styled against the app, but it sits on the operator’s
+  image.** The first glyph drew in `var(--muted)`, which on the dark theme is
+  near-white at half opacity, over a 22% tint. Legible on the console’s own
+  surface; invisible on the white sheet of an architectural drawing, which is
+  what a floor plan almost always is. Nothing in the theme predicts the colour
+  of an uploaded image, and the state colours an operator picks are chosen
+  against the UI too.
+
+  The glyph now carries its own contrast and does not depend on the state
+  colour being visible at all: a solid body in the state colour, a white halo
+  so a dark colour separates on a dark plan, and a dark hairline outside it so
+  a light colour separates on white paper. Both rings are constants, never
+  `currentColor`. The no-data and stale fallbacks are a literal neutral
+  (`NEUTRAL_MARKER`) rather than a theme token, for the same reason.
+
+
 - **The floorplan file is protected, and the file token is not reactive.**
   `locations.floorplan` is `protected: true` like every file field (feature 18),
   so its URL needs a token minted by `POST /api/files/token`, cached for 180
@@ -244,7 +275,9 @@ per-type state bindings, marker colouring, and the existing four panel item
 types. Roughly 350 new lines against roughly 1,300 reused: the widget shell
 (~150, mostly the copied init dance), the config panel (~150, `ConfigMap`
 minus its geographic sections), `setMarkerState` (~15), the `widgets.ts` entry,
-and a gallery fixture.
+and a gallery fixture. A fit-to-plan control was added after first use, the
+same affordance the map widget offers: a plan can be panned and zoomed, and on
+a small dashboard tile the sheet is easy to lose.
 
 **Phase 2 — the two new item types.** `slider` and `gauge`, shared with the map
 widget. **Done.**

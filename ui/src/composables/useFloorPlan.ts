@@ -1,5 +1,15 @@
 import { ref, shallowRef, onUnmounted } from 'vue'
 import L from 'leaflet'
+// Leaflet positions its panes and markers entirely from ITS OWN stylesheet
+// (`.leaflet-pane { position: absolute }`). Without it every pane falls back
+// to static and stacks in normal flow, so the marker pane lands BELOW the
+// image overlay instead of over it -- markers render, hit the widget’s
+// `overflow: hidden`, and simply vanish. Nothing throws and the map itself
+// looks fine, which is why this was invisible for so long: the location
+// detail view mounts a geographic map too, that one imports the stylesheet,
+// and this file quietly rode on it. A dashboard holding only a floor plan
+// widget has no such neighbour. leafletCss.spec.ts pins it.
+import 'leaflet/dist/leaflet.css'
 import type { Thing } from '@/types/pocketbase'
 import { fixLeafletIcons } from '@/utils/leafletIcons'
 import { textElement } from '@/utils/leafletText'
@@ -36,6 +46,11 @@ export function useFloorPlan() {
 
   const markerInstances = new Map<string, L.Marker>()
   let selectedId: string | null = null
+  // Kept so the view can be returned to the whole plan after panning. The
+  // bounds are the image, not the markers: a plan is a fixed sheet, and
+  // fitting to the markers would reframe the building every time a device
+  // is placed or removed.
+  let imageBounds: L.LatLngBounds | null = null
 
   // Detach handlers and drop all markers — used on re-render, re-init, and cleanup.
   // off() releases the click/dragend closures (which capture the parent's emit).
@@ -59,7 +74,7 @@ export function useFloorPlan() {
       attributionControl: false,
     })
 
-    const imageBounds = L.latLngBounds(L.latLng(0, 0), L.latLng(height, width))
+    imageBounds = L.latLngBounds(L.latLng(0, 0), L.latLng(height, width))
     L.imageOverlay(imageUrl, imageBounds).addTo(map.value)
     markerLayer.value = L.layerGroup().addTo(map.value)
     map.value.fitBounds(imageBounds)
@@ -179,6 +194,10 @@ export function useFloorPlan() {
     return { x: Math.round(c?.lng ?? 0), y: Math.round(c?.lat ?? 0) }
   }
 
+  /** Return the view to the whole plan. */
+  const fitToImage = () => {
+    if (map.value && imageBounds) map.value.fitBounds(imageBounds)
+  }
   const invalidateSize = () => map.value?.invalidateSize()
 
   const cleanup = () => {
@@ -188,6 +207,7 @@ export function useFloorPlan() {
       map.value = null
     }
     markerLayer.value = null
+    imageBounds = null
     selectedId = null
     mapInitialized.value = false
   }
@@ -203,6 +223,7 @@ export function useFloorPlan() {
     setMarkerState,
     setMarkerTooltip,
     setMarkerIcon,
+    fitToImage,
     getViewCenter,
     invalidateSize,
     cleanup,

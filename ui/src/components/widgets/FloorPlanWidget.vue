@@ -26,6 +26,14 @@
       <span class="fp-overlay-text">{{ problem }}</span>
     </div>
 
+    <!-- Fit, same affordance the map widget offers. A plan can be panned and
+         zoomed, and on a small dashboard tile it is easy to lose the sheet. -->
+    <div v-if="ready" class="fp-controls">
+      <button class="fp-control-btn" title="Fit the whole plan" aria-label="Fit the whole plan" @click="handleFit">
+        <Maximize :size="15" aria-hidden="true" />
+      </button>
+    </div>
+
     <div v-if="ready && markers.length === 0" class="fp-hint">
       <MapPin class="fp-hint-icon" :size="16" aria-hidden="true" />
       <span>No positioned things in this location</span>
@@ -46,7 +54,7 @@
 </template>
 
 <script setup lang="ts">
-import { MapPin, TriangleAlert } from '@lucide/vue'
+import { Maximize, MapPin, TriangleAlert } from '@lucide/vue'
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useFloorPlan } from '@/composables/useFloorPlan'
 import { useAuthStore } from '@/stores/auth'
@@ -97,6 +105,7 @@ const {
   setSelected,
   setMarkerState,
   setMarkerTooltip,
+  fitToImage,
   invalidateSize,
   cleanup,
 } = useFloorPlan()
@@ -438,6 +447,10 @@ function handleBackgroundClick(event: MouseEvent) {
   }
 }
 
+function handleFit() {
+  fitToImage()
+}
+
 function checkMobile() {
   isMobile.value = window.innerWidth < 768
 }
@@ -510,16 +523,18 @@ onUnmounted(() => {
 .floorplan-container :deep(.leaflet-bottom) { z-index: 1 !important; }
 
 /* The marker's own colour is an inline style set per state; everything here is
-   shape and motion, so nothing has to know the palette. */
+   shape and motion, so nothing has to know the palette. The fallback is a
+   literal rather than a theme token for the reason NEUTRAL_MARKER gives: this
+   glyph sits on the operator's image, not on the console's surface. */
 .floorplan-container :deep(.fp-marker) {
-  color: var(--muted);
+  color: #8b9099;
   transition: color 0.3s ease;
 }
 .floorplan-container :deep(.fp-marker svg) { display: block; }
 .floorplan-container :deep(.fp-marker.marker-selected) {
   filter: drop-shadow(0 0 6px currentColor);
 }
-.floorplan-container :deep(.fp-state-stale) { opacity: 0.55; }
+.floorplan-container :deep(.fp-state-stale) { opacity: 0.75; }
 .floorplan-container :deep(.fp-state-blink) { animation: fp-blink 1.2s steps(1, end) infinite; }
 
 @keyframes fp-blink {
@@ -547,6 +562,38 @@ onUnmounted(() => {
   border-radius: 50%; animation: fp-spin 1s linear infinite;
 }
 @keyframes fp-spin { to { transform: rotate(360deg); } }
+
+.fp-controls {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fp-control-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+.fp-control-btn:hover {
+  background: var(--color-info-bg);
+  border-color: var(--color-info-border);
+}
+
+.fp-control-btn:active { transform: scale(0.95); }
 
 .fp-hint {
   position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 5;

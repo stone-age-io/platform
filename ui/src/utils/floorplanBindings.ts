@@ -254,9 +254,22 @@ export interface MarkerState {
   stale: boolean
 }
 
+/**
+ * The colour a marker falls back to with nothing to show.
+ *
+ * A LITERAL, not a theme token, and that is the whole point: `var(--muted)` is
+ * near-white at half opacity on the dark theme, which is invisible on the white
+ * sheet of an architectural drawing. A marker sits on an image the operator
+ * uploaded, so nothing in the console's palette predicts its backdrop. This is
+ * a mid neutral that reads on white paper and on a dark plan alike, and the
+ * glyph's own halo and hairline (components/widgets/floorplan/markerIcon.ts)
+ * carry the contrast the colour cannot.
+ */
+export const NEUTRAL_MARKER = '#8b9099'
+
 /** What a marker shows before anything has arrived for it. */
 export const UNKNOWN_STATE: MarkerState = {
-  color: 'var(--muted)',
+  color: NEUTRAL_MARKER,
   label: 'No data',
   blink: false,
   stale: true,
@@ -293,7 +306,8 @@ export function markerStateFor(
 
   if (stale) {
     return {
-      color: binding.staleColor || 'var(--muted)',
+      // Same reason as NEUTRAL_MARKER: a stale marker still has to be seen.
+      color: binding.staleColor || NEUTRAL_MARKER,
       label: binding.staleLabel || 'Stale',
       blink: false,
       stale: true,
