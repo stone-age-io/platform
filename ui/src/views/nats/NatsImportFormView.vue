@@ -202,6 +202,13 @@ onMounted(async () => {
               <div class="form-control">
                 <label class="label"><span class="label-text">Activation Token</span></label>
                 <textarea v-model="formData.token" class="textarea textarea-bordered font-mono text-xs" rows="6" maxlength="10000" placeholder="Paste activation JWT if required by the export"></textarea>
+                <label class="label">
+                  <span class="label-text-alt">
+                    Leave empty when the exporting account is in this deployment and its
+                    export lists your account: the platform signs the token. Paste one
+                    only for an account outside this deployment.
+                  </span>
+                </label>
               </div>
             </div>
           </BaseCard>

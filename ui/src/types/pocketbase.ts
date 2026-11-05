@@ -242,6 +242,10 @@ export interface NatsAccountExport extends BaseRecord {
   allow_trace?: boolean
   description?: string
   organization?: string
+  /** Account public keys granted a token_req export; the platform signs their tokens. */
+  allowed_importers?: string[] | null
+  /** Importer key -> unix-second cutoff, written by pb-nats when a key is removed. Read-only. */
+  revocations?: Record<string, number> | null
 }
 
 // NATS Account Import

@@ -36,7 +36,8 @@ const source = computed(() => managedSource(props.name) ?? 'managed')
           Plane, and is reconciled every time the organization is saved and every time
           the platform starts, which rewrites
           <strong>subject</strong>, <strong>type</strong>, <strong>description</strong>
-          <template v-if="kind === 'import'">, <strong>account</strong> and <strong>local subject</strong></template>.
+          <template v-if="kind === 'import'">, <strong>account</strong> and <strong>local subject</strong></template>
+          <template v-else> and <strong>who may import it</strong></template>.
           An edit here would be undone without warning, so the console does not offer one.
         </p>
         <p>
@@ -49,7 +50,8 @@ const source = computed(() => managedSource(props.name) ?? 'managed')
           Provisioned by the <strong>Managed</strong> flag on the organization and
           reconciled every time that organization is saved, which rewrites
           <strong>subject</strong>, <strong>type</strong>, <strong>description</strong>
-          <template v-if="kind === 'import'">, <strong>account</strong> and <strong>local subject</strong></template>.
+          <template v-if="kind === 'import'">, <strong>account</strong> and <strong>local subject</strong></template>
+          <template v-else> and <strong>who may import it</strong></template>.
           An edit here would be undone without warning, so the console does not offer one.
         </p>
         <p>

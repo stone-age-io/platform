@@ -189,8 +189,10 @@ onMounted(loadImport)
                 <div v-else-if="importRecord.token" class="text-sm text-base-content/40 italic">
                   Token set (hidden)
                 </div>
-                <div v-else class="text-sm text-base-content/40 italic">
-                  None
+                <div v-else class="text-sm text-base-content/60">
+                  None stored. If the exporting account is in this deployment and its
+                  export lists this account, the platform signs one into this
+                  account's JWT.
                 </div>
               </div>
             </div>

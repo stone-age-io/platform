@@ -10,6 +10,7 @@ import DangerZone from '@/components/common/DangerZone.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ManagedRecordNotice from '@/components/common/ManagedRecordNotice.vue'
 import { isManagedExport } from '@/utils/managedExports'
+import { revokedImporters } from '@/utils/exportGrants'
 
 const router = useRouter()
 const route = useRoute()
@@ -25,6 +26,7 @@ const exportId = route.params.id as string
 // why. Not a permission -- the API rules still allow the write, it just gets
 // reconciled away on the next organization save.
 const managed = computed(() => isManagedExport(exportRecord.value?.name))
+const revoked = computed(() => revokedImporters(exportRecord.value?.revocations))
 
 async function loadExport() {
   loading.value = true
@@ -156,6 +158,33 @@ onMounted(loadExport)
 
         <!-- Right Column -->
         <div class="space-y-6">
+          <BaseCard v-if="exportRecord.token_req" title="Allowed Importers">
+            <div class="space-y-4">
+              <ul v-if="exportRecord.allowed_importers?.length" class="space-y-2">
+                <li
+                  v-for="key in exportRecord.allowed_importers"
+                  :key="key"
+                  class="bg-base-200 rounded-lg px-3 py-2 border border-base-300 font-mono text-xs break-all"
+                >
+                  {{ key }}
+                </li>
+              </ul>
+              <p v-else class="text-sm text-base-content/60">
+                No account is listed, so no account in this deployment can import it.
+              </p>
+
+              <div v-if="revoked.length">
+                <div class="text-xs font-bold text-base-content/50 uppercase tracking-wider mb-2">Revoked</div>
+                <ul class="space-y-2">
+                  <li v-for="r in revoked" :key="r.key" class="text-xs">
+                    <code class="font-mono break-all">{{ r.key }}</code>
+                    <div class="text-base-content/60 mt-0.5">Revoked {{ formatDate(r.revokedAt) }}</div>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </BaseCard>
+
           <BaseCard v-if="exportRecord.type === 'service'" title="Service Response">
             <dl class="space-y-3">
               <div>

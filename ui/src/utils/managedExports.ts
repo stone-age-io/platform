@@ -16,10 +16,11 @@
 // the console marking it managed is not a false positive -- it is early notice.
 //
 // WHAT ACTUALLY REVERTS: `reconcile` rewrites only the fields in its desired
-// list -- subject, type, description, organization on the export; those plus
-// account and local_subject on the import. `token_req`, `advertise`,
-// `allow_trace` and the service-response fields are create-only and an edit to
-// them WOULD persist. The console still treats the whole record as read-only:
+// list -- subject, type, description, organization, token_req and
+// allowed_importers on the export (both exports are private to the one account
+// they serve); subject, type, description, organization, account and
+// local_subject on the import. `advertise`, `allow_trace` and the
+// service-response fields are create-only and an edit to them WOULD persist. The console still treats the whole record as read-only:
 // splitting one form into a reconciled half and a durable half would need a
 // per-field story in three views, and hand-tuning half of a platform-provisioned
 // pipeline is not a thing to make easy. The banner names the fields that revert

@@ -8,6 +8,8 @@ import type { NatsAccountExport } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ManagedRecordNotice from '@/components/common/ManagedRecordNotice.vue'
 import { isManagedExport } from '@/utils/managedExports'
+import { importerKeyError } from '@/utils/exportGrants'
+import { X } from '@lucide/vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -31,7 +33,23 @@ const formData = ref({
   account_token_position: '',
   advertise: false,
   allow_trace: false,
+  allowed_importers: [] as string[],
 })
+
+const newImporter = ref('')
+const importerError = ref<string | null>(null)
+
+function addImporter() {
+  const key = newImporter.value.trim()
+  importerError.value = importerKeyError(key, formData.value.allowed_importers)
+  if (importerError.value) return
+  formData.value.allowed_importers.push(key)
+  newImporter.value = ''
+}
+
+function removeImporter(key: string) {
+  formData.value.allowed_importers = formData.value.allowed_importers.filter(k => k !== key)
+}
 
 async function resolveAccountId() {
   if (!authStore.currentOrgId) return
@@ -63,6 +81,7 @@ async function loadExport() {
       account_token_position: rec.account_token_position?.toString() || '',
       advertise: rec.advertise || false,
       allow_trace: rec.allow_trace || false,
+      allowed_importers: rec.allowed_importers ?? [],
     }
   } catch (err: any) {
     toast.error('Failed to load export')
@@ -90,6 +109,9 @@ async function handleSubmit() {
       advertise: formData.value.advertise,
       allow_trace: formData.value.allow_trace,
       account_token_position: formData.value.account_token_position ? parseInt(formData.value.account_token_position) : null,
+      // Kept when the token requirement is switched off, so switching it back on
+      // does not lose the list. revocations is never sent: pb-nats writes it.
+      allowed_importers: formData.value.allowed_importers,
     }
 
     if (formData.value.type === 'service') {
@@ -179,7 +201,7 @@ onMounted(async () => {
                   <input v-model="formData.token_req" type="checkbox" class="checkbox checkbox-primary" />
                   <span class="label-text">
                     <span class="font-medium">Require Activation Token</span>
-                    <span class="block text-xs text-base-content/60 mt-1">Importers must provide a token to activate this export.</span>
+                    <span class="block text-xs text-base-content/60 mt-1">Only the accounts you list under Allowed Importers can import this export.</span>
                   </span>
                 </label>
               </div>
@@ -210,6 +232,58 @@ onMounted(async () => {
         </div>
 
         <div class="space-y-6">
+          <BaseCard v-if="formData.token_req" title="Allowed Importers">
+            <div class="space-y-4">
+              <p class="text-sm text-base-content/70">
+                The accounts that may import this export. For an account in this
+                deployment, the platform signs its activation token, so its import
+                needs no token pasted in. Removing an account revokes its access.
+              </p>
+
+              <ul v-if="formData.allowed_importers.length" class="space-y-2">
+                <li
+                  v-for="key in formData.allowed_importers"
+                  :key="key"
+                  class="flex items-center gap-2 bg-base-200 rounded-lg px-3 py-2 border border-base-300"
+                >
+                  <code class="font-mono text-xs break-all flex-1">{{ key }}</code>
+                  <button
+                    type="button"
+                    class="btn btn-ghost btn-xs btn-square"
+                    :aria-label="`Remove ${key}`"
+                    @click="removeImporter(key)"
+                  >
+                    <X class="w-4 h-4" />
+                  </button>
+                </li>
+              </ul>
+              <div v-else role="alert" class="alert alert-warning text-sm">
+                No account is listed, so no account in this deployment can import it.
+              </div>
+
+              <div class="form-control">
+                <label class="label"><span class="label-text">Add an account public key</span></label>
+                <div class="join w-full">
+                  <input
+                    v-model="newImporter"
+                    type="text"
+                    class="input input-bordered join-item flex-1 font-mono text-xs min-w-0"
+                    :class="{ 'input-error': importerError }"
+                    placeholder="A..."
+                    maxlength="56"
+                    @keydown.enter.prevent="addImporter"
+                    @input="importerError = null"
+                  />
+                  <button type="button" class="btn join-item" @click="addImporter">Add</button>
+                </div>
+                <label class="label">
+                  <span v-if="importerError" class="label-text-alt text-error">{{ importerError }}</span>
+                  <span v-else class="label-text-alt">The other organization's key is on its NATS account page.</span>
+                </label>
+              </div>
+            </div>
+          </BaseCard>
+
           <BaseCard v-if="formData.type === 'service'" title="Service Response">
             <div class="space-y-4">
               <div class="form-control">
