@@ -25,6 +25,13 @@ describe('parseDurationMs', () => {
     expect(parseDurationMs('30')).toBeNull()
   })
 
+  it('reads ms, us and ns as their own units, not as minutes or seconds', () => {
+    expect(parseDurationMs('500ms')).toBe(500)
+    expect(parseDurationMs('1m30s500ms')).toBe(90_500)
+    expect(parseHumanDuration('250us')).toBe(250_000)
+    expect(parseHumanDuration('10ns')).toBe(10)
+  })
+
   it('agrees with parseHumanDuration, which stream config still uses', () => {
     for (const s of ['45s', '15m', '3h', '1d', '1h30m']) {
       expect(parseDurationMs(s)).toBe(parseHumanDuration(s) / NANOS_PER_MS)

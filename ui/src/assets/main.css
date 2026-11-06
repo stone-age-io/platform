@@ -32,10 +32,6 @@ body {
   overflow: visible;
 }
 
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
 /* Scrollbars: Firefox reads only the standard `scrollbar-*` properties, Safari
  * and older Chrome only `::-webkit-scrollbar`, so both are needed. `*`, not
  * `:root`, because `scrollbar-width` does not inherit. */

@@ -357,7 +357,12 @@ onMounted(() => {
                   empty-text="No users found."
                 />
                 <label class="label">
-                  <span class="label-text-alt">The owner has full control over this organization</span>
+                  <!-- organizations.owner grants nothing; authority is memberships.role. -->
+                  <span class="label-text-alt">{{
+                    isEdit
+                      ? 'Changing this does not change anyone\'s role. Roles come from memberships.'
+                      : 'Gets an owner membership when the organization is created.'
+                  }}</span>
                 </label>
               </div>
 

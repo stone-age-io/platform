@@ -1,6 +1,3 @@
-================================================
-FILE: ui/src/views/locations/LocationDetailView.vue
-================================================
 <script setup lang="ts">
 import { ImageIcon, MapIcon, MapPin, Navigation } from '@lucide/vue'
 import { ref, onMounted, computed, watch, nextTick, onUnmounted } from 'vue'

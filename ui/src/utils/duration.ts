@@ -17,7 +17,8 @@ export function parseHumanDuration(str: string): number {
   if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10)
 
   let total = 0
-  const regex = /(\d+(?:\.\d+)?)\s*(d|h|m|s|ms|us|ns)/gi
+  // Two-letter units first: in an alternation `m` would otherwise win over `ms`.
+  const regex = /(\d+(?:\.\d+)?)\s*(ms|us|ns|d|h|m|s)/gi
   let match
   while ((match = regex.exec(trimmed)) !== null) {
     const val = parseFloat(match[1])

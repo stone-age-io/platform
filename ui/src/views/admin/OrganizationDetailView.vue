@@ -37,7 +37,7 @@ async function handleDelete() {
   const confirmed = await confirm({
     title: 'Delete Organization',
     message: `Are you sure you want to delete "${org.value.name}"?`,
-    details: 'This will delete ALL data associated with this organization including users, things, locations, and configurations. This action cannot be undone.',
+    details: 'Every membership is removed, so no one can reach this organization again. Its things, locations, types, NATS account and Nebula CA are not deleted: they stay in the database with no organization. User accounts are kept. This cannot be undone.',
     confirmText: 'Delete Organization',
     variant: 'danger',
     requireText: org.value.code || org.value.name || undefined,

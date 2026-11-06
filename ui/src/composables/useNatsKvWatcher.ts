@@ -92,10 +92,11 @@ export function useNatsKvWatcher(
       try {
         kv = await kvm.open(bucket)
       } catch (e: any) {
+        if (thisGeneration !== startGeneration) return
         loading.value = false
-        if (e.message?.includes('stream not found')) {
-          error.value = `Bucket "${bucket}" not found`
-        }
+        error.value = e.message?.includes('stream not found')
+          ? `Bucket "${bucket}" not found`
+          : e.message || `Could not open bucket "${bucket}"`
         return
       }
 

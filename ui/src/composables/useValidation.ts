@@ -53,7 +53,7 @@ export function useValidation() {
           return { valid: false, error: '> wildcard must be the last token in subject' }
         }
         if (parts[gtIndex] !== '>') {
-          return { valid: false, error: '> wildcard must be alone in its token (e.g., "foo.>" not "foo.bar>"' }
+          return { valid: false, error: '> wildcard must be alone in its token (e.g., "foo.>" not "foo.bar>")' }
         }
       }
 

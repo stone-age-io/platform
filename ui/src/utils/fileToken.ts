@@ -36,6 +36,8 @@ const REFRESH_SKEW_SECONDS = 30
 
 let cached = ''
 let inFlight: Promise<string> | null = null
+// Bumped by resetFileToken, so a mint that started before a logout is discarded.
+let generation = 0
 
 /**
  * A usable file token, or '' when there is no session or the mint failed.
@@ -54,9 +56,11 @@ async function getFileToken(): Promise<string> {
 
   if (inFlight) return inFlight
 
-  inFlight = pb.files
+  const startedIn = generation
+  const mint: Promise<string> = pb.files
     .getToken()
     .then((token) => {
+      if (startedIn !== generation) return ''
       cached = token
       return token
     })
@@ -65,10 +69,11 @@ async function getFileToken(): Promise<string> {
       return ''
     })
     .finally(() => {
-      inFlight = null
+      if (inFlight === mint) inFlight = null
     })
+  inFlight = mint
 
-  return inFlight
+  return mint
 }
 
 /**
@@ -77,6 +82,7 @@ async function getFileToken(): Promise<string> {
  * session could read, so the next user on this tab must not inherit it.
  */
 export function resetFileToken(): void {
+  generation++
   cached = ''
   inFlight = null
 }

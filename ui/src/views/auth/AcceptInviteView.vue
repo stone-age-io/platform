@@ -38,17 +38,16 @@ onMounted(() => {
 
 async function executeAccept() {
   // hooks/invites.go
-  await pb.send('/api/org/invites/accept', {
+  const res = await pb.send<{ organization?: string }>('/api/org/invites/accept', {
     method: 'POST',
     body: { token: token.value },
   })
 
   await authStore.loadMemberships()
-  
-  // Assumes the new membership is last in the list.
-  if (authStore.memberships.length > 0) {
-    const newMembership = authStore.memberships[authStore.memberships.length - 1]
-    await authStore.switchOrganization(newMembership.organization)
+
+  // Absent when the caller was already a member; then stay where they are.
+  if (res.organization) {
+    await authStore.switchOrganization(res.organization)
   }
 }
 

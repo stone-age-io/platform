@@ -154,4 +154,40 @@ describe('resetFileToken', () => {
     expect(getToken).toHaveBeenCalledTimes(2)
     expect(after).not.toBe(before)
   })
+
+  it('discards a token whose mint was still in flight at the reset', async () => {
+    // Logout lands while the previous session's mint is pending.
+    let release!: (t: string) => void
+    getToken.mockReturnValueOnce(new Promise<string>((r) => { release = r }))
+    getToken.mockResolvedValueOnce(tokenExpiringIn(180))
+
+    const pending = url()
+    resetFileToken()
+    const oldToken = tokenExpiringIn(180)
+    release(oldToken)
+
+    expect(await pending).toBeNull()
+    const next = await url()
+    expect(getToken).toHaveBeenCalledTimes(2)
+    expect(next).not.toContain(oldToken)
+  })
+
+  it('does not let a stale mint clear a newer one in flight', async () => {
+    let releaseOld!: (t: string) => void
+    let releaseNew!: (t: string) => void
+    getToken.mockReturnValueOnce(new Promise<string>((r) => { releaseOld = r }))
+    getToken.mockReturnValueOnce(new Promise<string>((r) => { releaseNew = r }))
+
+    const stale = url()
+    resetFileToken()
+    const first = url()
+    releaseOld(tokenExpiringIn(180))
+    await stale
+    // Joins the newer in-flight mint rather than starting a third.
+    const second = url()
+    releaseNew(tokenExpiringIn(180))
+
+    expect(await first).toBe(await second)
+    expect(getToken).toHaveBeenCalledTimes(2)
+  })
 })
