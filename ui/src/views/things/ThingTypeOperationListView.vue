@@ -25,9 +25,7 @@ const {
   prevPage,
 } = usePagination<ThingTypeOperation>('thing_type_operations', 20)
 
-// Search runs on the SERVER. The client-side pass this replaces filtered the
-// twenty records already on screen, so a match on page three answered "No
-// results found" -- which is not the same claim at all.
+// Search runs on the server, across all records, not the page on screen.
 const { searchQuery, filter: searchFilter } = useServerSearch(
   ['name', 'description', 'subject_suffix'],
   () => {
@@ -36,15 +34,11 @@ const { searchQuery, filter: searchFilter } = useServerSearch(
   },
 )
 
-// The active sort, in PocketBase's own syntax ('name', '-created'). It rides in
-// queryOptions rather than being passed at the call site, for the same reason the
-// filter does: the pager buttons reuse that object, and a sort that is not in it
-// is a sort that page two forgets.
+// PocketBase sort syntax ('name', '-created').
 const sort = ref('name')
 
-// One options object, passed to EVERY call into usePagination, the pager
-// buttons included -- passing only expand/sort there drops the filter and
-// page two comes back unfiltered.
+// Pass this to EVERY usePagination call, the pager buttons included, or page two
+// loses the filter and sort.
 const queryOptions = computed(() => ({
   filter: searchFilter.value,
   sort: sort.value,
@@ -57,9 +51,8 @@ function onSort(next: string) {
 }
 
 const columns: Column<ThingTypeOperation>[] = [
-  // 'auto', not omitted: omitting it means 28% for column 0 (see Column.width).
-  // This is the only free-text column here -- name plus a clamped description --
-  // so it takes the slack and every other column keeps exactly what it declares.
+  // 'auto', not omitted (omitted means 28% for column 0, see Column.width): the
+  // only free-text column takes the slack.
   { key: 'name', sortable: 'name', width: 'auto', label: 'Name', mobileLabel: 'Name' },
   { key: 'capability', sortable: 'capability', width: '7rem', label: 'Capability', mobileLabel: 'Capability' },
   { key: 'subject_suffix',

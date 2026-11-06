@@ -7,21 +7,8 @@ import {
   CA_EXPIRY_WARNING_DAYS,
 } from './expiry'
 
-/**
- * The window a caller passes is the whole point of these tests.
- *
- * `hooks/cert_expiry.go` deliberately warns at 30 days for a host certificate
- * and 90 for a CA: a host certificate renews itself, a CA can only be ROTATED,
- * and rotation is a three-step procedure with a wait in the middle long enough
- * to outlast every host fetching a config nobody told it to fetch.
- *
- * That split existed server-side while this module had one constant, so the
- * console badged a CA at 30 -- and since a Nebula CA belongs to a TENANT
- * organization and only its owners and admins may rotate one, the console is
- * the surface reaching the party who can act. /api/ready and /metrics reach the
- * platform operator, who cannot. The 90-day warning was therefore delivered
- * exclusively to whoever could do nothing about it.
- */
+// The window a caller passes is the point of these tests: 30 days for a
+// renewable credential, 90 for a CA (see expiry.ts).
 
 const DAY = 86400000
 const NOW = Date.parse('2026-06-01T00:00:00Z')
@@ -32,9 +19,7 @@ function pbDate(msFromNow: number): string {
 }
 
 describe('the two windows are different numbers', () => {
-  // The guard against a future "tidy-up" collapsing them back into one
-  // constant. Both halves of the reason live in expiry.ts; this is the part a
-  // test can hold.
+  // Guards against collapsing them into one constant.
   it('warns three times earlier for a CA than for a renewable credential', () => {
     expect(CA_EXPIRY_WARNING_DAYS).toBe(90)
     expect(EXPIRY_WARNING_DAYS).toBe(30)
@@ -67,8 +52,7 @@ describe('expiryState', () => {
     expect(expiryState(pbDate(40 * DAY), undefined, NOW)).toBe('ok')
   })
 
-  // The regression this file exists for: 60 days out is comfortable for a host
-  // certificate and already late for a CA.
+  // 60 days out is fine for a host certificate and already late for a CA.
   it('classifies the same date differently under each window', () => {
     const in60Days = pbDate(60 * DAY)
     expect(expiryState(in60Days, EXPIRY_WARNING_DAYS, NOW)).toBe('ok')

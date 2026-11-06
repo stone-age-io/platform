@@ -1,8 +1,6 @@
-<!-- ui/src/components/common/ResponseModal.vue -->
 <template>
   <Teleport to="body">
     <div v-if="modelValue" class="modal-overlay" @click.self="close">
-      <!-- CHANGED: .modal -> .nd-modal to avoid DaisyUI conflict -->
       <div class="nd-modal response-modal" :class="status">
         <div class="modal-header">
           <div class="header-content">
@@ -81,7 +79,6 @@ async function copyToClipboard() {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       await navigator.clipboard.writeText(text)
     } else {
-      // Fallback
       const textArea = document.createElement("textarea")
       textArea.value = text
       textArea.style.position = "fixed"
@@ -137,7 +134,7 @@ watch(() => props.modelValue, (isOpen) => {
   to { opacity: 1; }
 }
 
-/* CHANGED: .modal -> .nd-modal */
+/* Not .modal: DaisyUI owns that class. */
 .nd-modal {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -157,7 +154,6 @@ watch(() => props.modelValue, (isOpen) => {
   to { transform: translateY(0); opacity: 1; }
 }
 
-/* Status variants */
 .nd-modal.success { border-top: 4px solid var(--color-success); }
 .nd-modal.error { border-top: 4px solid var(--color-error); }
 
@@ -277,7 +273,6 @@ watch(() => props.modelValue, (isOpen) => {
   background: rgba(255, 255, 255, 0.15);
 }
 
-/* Mobile adjustments */
 @media (max-width: 480px) {
   .nd-modal {
     width: 95%;

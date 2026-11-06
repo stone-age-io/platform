@@ -28,11 +28,10 @@
         </div>
       </div>
 
-      <!-- Dashboards are visible to every role, `dashboard` included -- the
-           appliance login the console otherwise does not let browse inventory
-           at all. That is accepted (plans/floorplan-widget.md, Authorization),
-           but an author should be told rather than discover it, because a plan
-           on a lobby screen is a decision about the building. -->
+      <!-- Dashboards are visible to every role, `dashboard` included, which
+           otherwise cannot browse inventory. Accepted (plans/floorplan-widget.md,
+           Authorization), but an author should be told: a plan on a lobby
+           screen is a decision about the building. -->
       <div v-if="selectedLocation" class="notice">
         <Info :size="14" aria-hidden="true" />
         <span>

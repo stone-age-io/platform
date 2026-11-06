@@ -1,19 +1,16 @@
-// ui/src/utils/timestamp.ts
 import { extractJsonPath } from './jsonPath'
 
 // Epoch magnitudes for "now" (2026): 1.8e9 s, 1.8e12 ms, 1.8e15 µs, 1.8e18 ns.
-// Each boundary sits two or more orders of magnitude from both neighbours, so
-// a real timestamp in any unit lands in exactly one band for centuries either
-// side of today.
+// Each boundary is orders of magnitude from both neighbours, so a real
+// timestamp lands in exactly one band for centuries.
 const MS_FLOOR = 1e11
 const US_FLOOR = 1e14
 const NS_FLOOR = 1e17
 
 /**
- * Read a timestamp out of a payload value, in whatever unit a device chose.
- * Numbers are classified by magnitude (s / ms / µs / ns); numeric strings are
- * numbers; other strings go through Date.parse (ISO 8601). Returns epoch ms, or
- * null when the value is not a usable timestamp -- never a guess.
+ * A payload value as epoch ms, or null. Numbers (and numeric strings) are
+ * classified by magnitude (s / ms / µs / ns); other strings go through
+ * Date.parse.
  */
 export function parseTimestamp(v: unknown): number | null {
   let n: number
@@ -39,12 +36,10 @@ export function parseTimestamp(v: unknown): number | null {
 }
 
 /**
- * The timestamp a buffered message carries, in order of precedence:
- *   1. the payload's own time, when the widget names a `timestampPath` and it
- *      parses -- the only right answer for edge data that arrives late;
- *   2. the time JetStream STORED the message -- so a replay spreads across the
- *      window instead of collapsing onto the moment it was delivered;
- *   3. the time the browser received it, which is all a core message has.
+ * A buffered message's timestamp, in order of precedence:
+ *   1. the payload's own time via `timestampPath` (edge data can arrive late);
+ *   2. when JetStream stored it, so a replay spreads across the window;
+ *   3. when the browser received it.
  */
 export function messageTimestamp(
   data: unknown,

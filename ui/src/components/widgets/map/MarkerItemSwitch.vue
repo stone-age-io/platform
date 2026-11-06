@@ -29,13 +29,6 @@ import { useSwitchState } from '@/composables/useSwitchState'
 import { resolveTemplate } from '@/utils/variables'
 import type { MapMarkerItem } from '@/types/dashboard'
 
-/**
- * Marker Item: Switch Toggle
- * 
- * Reuses useSwitchState composable for KV or Core mode switching.
- * Handles its own subscription lifecycle.
- */
-
 const props = defineProps<{
   item: MapMarkerItem
 }>()
@@ -43,10 +36,8 @@ const props = defineProps<{
 const natsStore = useNatsStore()
 const dashboardStore = useDashboardStore()
 
-// Get confirm function from parent if available
 const requestConfirm = inject<(title: string, message: string, onConfirm: () => void, confirmText?: string) => void>('requestConfirm')
 
-// Build resolved config from item.switchConfig
 const switchConfig = computed(() => {
   if (!props.item.switchConfig) {
     return {
@@ -75,7 +66,6 @@ const switchConfig = computed(() => {
   }
 })
 
-// Use the switch state composable - handles subscription lifecycle
 const { state, error, isPending, toggle } = useSwitchState(switchConfig)
 
 const stateLabel = computed(() => {

@@ -1,37 +1,20 @@
 /**
- * Downscales an image in the browser before it is uploaded.
+ * Downscales an image in the browser before upload. The photo fields are capped
+ * at 2 MiB and a phone produces 3-5 MB; raising the cap instead costs storage
+ * and backup size (files live in pb_data/storage).
  *
- * WHY THIS EXISTS. `things.photo` and `locations.photo` are capped at 2 MiB,
- * and a phone camera produces 3-5 MB, so without this the cap would reject the
- * exact uploads the field is for. Raising the cap instead is the trade nobody
- * should take silently: files live in pb_data/storage with no object store
- * configured, things and locations are the collections with thousands of rows,
- * and every byte rides in every backup of a single-binary deployment.
- *
- * Nothing on screen needs more than 400x400 (the largest declared thumb), so a
- * 1600px long edge is already generous -- it leaves room for a future
- * full-size view without keeping the camera's original.
- *
- * SPLIT DELIBERATELY IN TWO. `targetDimensions` is pure arithmetic and is where
- * every decision lives; `downscaleImage` is the canvas work around it. The
- * split is not tidiness: vitest.config.ts runs in a node environment, jsdom
- * does not implement canvas.toBlob, so the canvas half cannot be tested here at
- * all. Keeping the judgement in a pure function means the untestable part is
- * only plumbing.
+ * Split so every decision is in the pure `targetDimensions`: jsdom has no
+ * canvas.toBlob, so `downscaleImage` cannot be tested.
  */
 
-/** The longest edge a stored photo keeps. */
+/** The longest edge a stored photo keeps (the largest thumb is 400x400). */
 export const MAX_DIMENSION = 1600
 
-/** JPEG quality for re-encoded output. */
 const QUALITY = 0.85
 
 /**
- * The size to draw at, or null when the image is already small enough.
- *
- * Returning null rather than the original dimensions is the contract that keeps
- * an already-small file from being re-encoded: a 200x200 PNG run through a
- * canvas comes out a different, usually larger, JPEG for no reason.
+ * The size to draw at, or null when the image is already small enough, so the
+ * caller skips re-encoding (a small PNG through a canvas becomes a larger JPEG).
  */
 export function targetDimensions(
   width: number,
@@ -44,8 +27,7 @@ export function targetDimensions(
 
   const scale = max / longest
   return {
-    // round, not floor: a 1600x899.5 target floors to 899 and shifts the aspect
-    // ratio by more than a rounding error on tall images.
+    // round, not floor, to keep the aspect ratio.
     width: Math.max(1, Math.round(width * scale)),
     height: Math.max(1, Math.round(height * scale)),
   }
@@ -53,17 +35,11 @@ export function targetDimensions(
 
 /**
  * A downscaled copy of `file`, or the original when nothing would be gained.
- *
- * Never rejects. A browser that cannot decode the image, a canvas that refuses
- * to produce a blob, an animated format -- all of them fall back to uploading
- * what the user chose, and the server's own mimeTypes and maxSize are the
- * backstop. Failing the upload because an optimisation did not work would be
- * the wrong trade.
+ * Never rejects: on any failure it returns the original, and the server's
+ * mimeTypes and maxSize are the backstop.
  */
 export async function downscaleImage(file: File, max: number = MAX_DIMENSION): Promise<File> {
-  // An SVG has no meaningful pixel dimensions to scale and a GIF would lose its
-  // frames. Neither is accepted by the photo fields; this is here so the helper
-  // is safe to point at another field later.
+  // SVG has no pixels to scale and a GIF would lose its frames.
   if (!file.type.startsWith('image/') || file.type === 'image/svg+xml' || file.type === 'image/gif') {
     return file
   }
@@ -91,13 +67,10 @@ export async function downscaleImage(file: File, max: number = MAX_DIMENSION): P
     })
     if (!blob) return file
 
-    // Re-encoding can lose: a large flat-colour PNG may beat JPEG at this size.
-    // Keep whichever is actually smaller rather than assuming.
+    // A flat-colour PNG can beat JPEG; keep whichever is smaller.
     if (blob.size >= file.size) return file
 
-    // .jpg, because the bytes are now JPEG whatever the input was called. A
-    // name that disagrees with its content is the kind of thing that surfaces
-    // three systems downstream.
+    // The bytes are now JPEG, so the name must say so.
     const name = file.name.replace(/\.[^.]+$/, '') + '.jpg'
     return new File([blob], name, { type: 'image/jpeg', lastModified: Date.now() })
   } catch {

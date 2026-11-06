@@ -1,26 +1,14 @@
 <script setup lang="ts">
 /**
- * The OPERATOR's mark: the branding overlay's logo, or the default platform
- * SVG. Deliberately NOT the active organization's -- that is OrgLogo, and it
- * belongs in the org switcher.
+ * The operator's mark: the branding overlay's logo, or the default platform
+ * SVG. Deliberately not the active organization's logo (that is OrgLogo, in the
+ * org switcher).
  *
- * WHY THIS IS WORTH A COMMENT. This component used to resolve
- * `org logo > branding > default`. That priority arrived in adb8ca4 for
- * ui/src/views/badge/BadgeView.vue -- a printable employee identity card, where
- * showing the EMPLOYING organization's mark was exactly right. c19a78e deleted
- * that view, and the priority outlived its only justified consumer.
- *
- * What it left behind was a logo captioned with somebody else's name:
- * AppSidebar renders this immediately beside `brandingStore.appName`, so an
- * organization with a logo got its mark labelled with the operator's product
- * name. It also made the one fixed landmark in the chrome move -- this is the
- * router-link to `/` -- so it changed on every org switch, duplicating the
- * switcher sitting directly below it. And LoginView already disagreed, having
- * no org context to resolve, so the logo swapped the instant you authenticated.
- *
- * So a tenant's identity lives in the org switcher, where switching it is the
- * control. If per-organization white-labelling ever lands it has to move the
- * app NAME as well -- that is a feature, not a logo.
+ * Do not fall back to the org logo here. AppSidebar renders this beside
+ * `brandingStore.appName`, so an org logo would be captioned with the
+ * operator's product name, and this fixed link to `/` would change on every org
+ * switch and on login. Per-org white-labelling would have to move the app name
+ * too.
  */
 import { computed } from 'vue'
 import { useBrandingStore } from '@/stores/branding'
@@ -40,9 +28,8 @@ const sizePx = computed(() => (typeof props.size === 'number' ? `${props.size}px
 
 <template>
   <!--
-    Branding overlay logo: rendered as <img> so the file's own colors are
-    preserved. The .brand-logo-img class is a hook for theme.css — operators can
-    swap the source per theme via `content: url(...)`.
+    <img> keeps the file's own colours. .brand-logo-img is a theme.css hook:
+    operators can swap the source per theme via `content: url(...)`.
   -->
   <img
     v-if="brandingStore.logoUrl"
@@ -52,10 +39,7 @@ const sizePx = computed(() => (typeof props.size === 'number' ? `${props.size}px
     class="brand-logo-img object-contain"
   />
 
-  <!--
-    Default platform logo: inline SVG so currentColor (e.g. text-primary) tints
-    it with the active DaisyUI primary color.
-  -->
+  <!-- Inline SVG so currentColor (e.g. text-primary) tints it. -->
   <svg
     v-else
     xmlns="http://www.w3.org/2000/svg"

@@ -1,7 +1,5 @@
-// ui/src/utils/linkedThing.ts
 import { pb } from '@/utils/pb'
 
-/** The Thing that holds an identity, as much of it as a reason needs. */
 export interface LinkedThing {
   id: string
   name: string
@@ -12,13 +10,9 @@ export interface LinkedThing {
 /**
  * The Thing whose `nats_user` or `nebula_host` is this identity, if any.
  *
- * For a device the Thing's `active` flag is the authority: while the Thing is
- * deactivated the server refuses to re-enable its identities, or to mint them a
- * credential (hooks/active_flag.go, guardLinkedIdentity). The identity pages use
- * this to stop offering what will be refused and to say where the lever is.
- *
- * Advisory, so a failure is swallowed and reads as "no Thing": the page still
- * works without it, and the server holds the line either way.
+ * While that Thing is deactivated the server refuses to re-enable or credential
+ * its identities (hooks/active_flag.go, guardLinkedIdentity); identity pages use
+ * this to hide what will be refused. Advisory: a failure reads as "no Thing".
  */
 export async function findLinkedThing(
   field: 'nats_user' | 'nebula_host',

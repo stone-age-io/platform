@@ -1,9 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { parseDurationMs, parseHumanDuration, NANOS_PER_MS } from './duration'
 
-// parseDurationMs replaced two single-unit regexes (`^(\d+)([smhd])$`) that
-// silently rejected "1h30m" and fell back to five minutes. The fallback now
-// belongs to each caller, so null has to mean exactly "no usable duration".
+// Each caller owns its fallback, so null must mean exactly "no usable duration".
 
 describe('parseDurationMs', () => {
   it.each([

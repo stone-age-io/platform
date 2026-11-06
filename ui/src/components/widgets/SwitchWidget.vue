@@ -10,7 +10,6 @@
         <div class="card-info">
           <div class="card-title">{{ config.title }}</div>
           
-          <!-- Subtle distinction: A tiny 'power' icon next to state -->
           <div class="card-state-row">
             <Power class="card-state-icon" :size="12" aria-hidden="true" />
             <span class="card-state">{{ currentStateLabel }}</span>
@@ -34,11 +33,9 @@
           :disabled="isPending || !natsStore.isConnected"
           @click="toggle"
         >
-          <!-- Big Icon for desktop -->
           <div class="icon-wrapper">
             <component :is="state === 'on' ? Lightbulb : LightbulbOff" class="icon" :size="24" aria-hidden="true" />
           </div>
-          <!-- Label below -->
           <div class="label">{{ currentStateLabel }}</div>
           
           <div v-if="isPending" class="spinner"></div>
@@ -183,7 +180,6 @@ function toggle() {
   font-weight: 500;
 }
 
-/* Active State Text Color */
 .card-content.is-active .card-state,
 .card-content.is-active .card-state-icon {
   color: var(--color-warning);
@@ -239,8 +235,8 @@ function toggle() {
   background: var(--color-warning-bg);
 }
 
-/* The bulb is a line icon now, so the state is its colour: lit in the
-   warning (amber) colour, muted when off. The 💡/🌑 emoji carried their own. */
+/* The bulb is a line icon, so the state is its colour: amber (warning) when on,
+   muted when off. */
 .icon {
   color: var(--muted);
   transition: color 0.2s;

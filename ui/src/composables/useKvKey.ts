@@ -6,12 +6,6 @@ import { decodeBytes, encodeString } from '@/utils/encoding'
 /**
  * Watch one key of a NATS KV bucket.
  *
- * The slider, the status light, the map marker's KV row and the switch each
- * carried their own copy of this, and the copies had drifted: two kept showing
- * a deleted key's last value, one turned a deleted key into "off" whatever the
- * switch's default said, three read every value twice, and only one stopped a
- * restart from running beside the slower one it replaced.
- *
  * - `get` first, because it is the only call that can say a key is MISSING. A
  *   watch on an absent key delivers nothing, which looks exactly like slow.
  * - Then `watch`, skipping revisions `get` already delivered, so each value is

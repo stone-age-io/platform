@@ -30,11 +30,8 @@ const org = ref<OrganizationWithExpand | null>(null)
 const { confirm } = useConfirm()
 const deleting = ref(false)
 
-// Moved off the list row. Deleting an organization blanks rather than cascades
-// -- every relation into it that is non-cascade and non-required is emptied,
-// which orphans the entire inventory -- so the confirm carries the typed gate.
-// The code is the org's own namespace root and is immutable, which makes it the
-// one string that cannot have drifted from what the reader is looking at.
+// Deleting an organization blanks its relations rather than cascading, which
+// orphans the whole inventory, hence the typed gate. The code is immutable.
 async function handleDelete() {
   if (!org.value) return
   const confirmed = await confirm({
@@ -60,7 +57,6 @@ async function handleDelete() {
 }
 const loading = ref(true)
 
-// NATS Account state
 const natsAccount = ref<NatsAccount | null>(null)
 const editingLimits = ref(false)
 const savingLimits = ref(false)
@@ -73,26 +69,21 @@ const limitsForm = ref({
   max_jetstream_memory_storage: -1,
 })
 
-// The tenant's Nebula CA. Operators read every organization's (nebula_ca has an
-// is_operator read branch); private_key is a hidden field, so it never arrives.
-// Summarised here rather than linked: /nebula/ca shows the CA of the READER's
-// current organization, so a link from another tenant's page would land on the
-// wrong CA.
+// Readable via nebula_ca's is_operator branch; private_key is hidden. Summarised,
+// not linked: /nebula/ca shows the reader's own org's CA.
 const nebulaCa = ref<NebulaCA | null>(null)
 const caExpiry = computed(() => expiryState(nebulaCa.value?.expires_at, CA_EXPIRY_WARNING_DAYS))
 const caExpiryText = computed(() => expiryLabel(nebulaCa.value?.expires_at, CA_EXPIRY_WARNING_DAYS))
 const caRotation = computed(() => caRotationState(nebulaCa.value))
 
-// Counts from the org_stats view. Null until loaded, and left null if the read
-// fails, so the card says nothing rather than stating a 0 it does not know.
+// Left null on failure, so the card hides rather than showing a false 0.
 const stats = ref<OrgStats | null>(null)
 
 const isOperator = computed(() => authStore.isOperator)
 
 const id = route.params.id as string
 
-// Protected, so resolving the URL needs a file token: see useFileUrl. The 200x200
-// thumb is one the `logo` field declares (schema.json).
+// 200x200 is a thumb the `logo` field declares (schema.json).
 const logoUrl = useFileUrl(() => {
   const record = org.value
   if (!record?.logo) return null
@@ -106,21 +97,10 @@ async function loadData() {
       expand: 'owner',
     })
 
-    // COUNTS COME FROM org_stats, NEVER FROM THE TENANT COLLECTIONS.
-    //
-    // This page used to count with getList on `things` and `memberships`,
-    // under a comment claiming an operator bypasses rules. It does not:
-    // `is_operator` is a field on `users`, not superuser, and `things`,
-    // `locations` and `memberships` have no operator read branch, deliberately
-    // (an operator reads org metadata and infrastructure, not tenant
-    // inventory). A list rule is applied as an extra WHERE, so those calls
-    // returned 200 with totalItems 0 for every organization but the reader's
-    // own: "0 Things" about a tenant with hundreds, with no error anywhere.
-    //
-    // org_stats is a view whose operator-only rule exposes counts and nothing
-    // else (migrations/schema_update_org_stats.go; test-authz.sh section 27
-    // reads it as an operator with no membership). Do not "simplify" this back
-    // to a getList on the tenant collections.
+    // Counts come from org_stats, never the tenant collections: `things`,
+    // `locations` and `memberships` have no operator read branch, so a getList
+    // there silently returns 0. org_stats is an operator-only view of counts
+    // (migrations/schema_update_org_stats.go, test-authz.sh section 27).
     if (isOperator.value) {
       await Promise.all([loadNatsAccount(), loadNebulaCa(), loadStats()])
     }
@@ -162,7 +142,6 @@ async function loadStats() {
   try {
     stats.value = await pb.collection('org_stats').getOne<OrgStats>(id)
   } catch (err) {
-    // Leave stats null: the card is hidden rather than showing zeros.
     console.error('Failed to load organization counts:', err)
   }
 }
@@ -253,17 +232,7 @@ onMounted(() => loadData())
         </div>
       </div>
 
-      <!--
-        What the red badge above actually means, spelled out where someone
-        reading this page during an incident will see it.
-
-        The badge is old; the enforcement behind it is not (hooks/org_active_flag.go),
-        and for as long as the flag meant nothing the badge was a claim about a
-        tenant that no part of the platform was making good on. Now that it does
-        mean something, the two halves both need saying: what stopped, and what
-        did not. A reader who assumes "Inactive" locks the tenant out of the
-        console will misread every other screen from here on.
-      -->
+      <!-- Says both what suspension stops and what it does not (hooks/org_active_flag.go). -->
       <div v-if="!org.active" class="alert alert-warning">
         <span>
           <strong>This organization is deactivated.</strong>
@@ -275,21 +244,11 @@ onMounted(() => loadData())
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <!-- Info -->
         <div class="md:col-span-2">
           <BaseCard title="Details">
             <dl class="space-y-4">
-              <!--
-                Code comes first, and it is on this page at all because it is the
-                one identifier here that anything outside the database addresses:
-                the root of the organization namespace (ADR 0002), the token the
-                hub rewrites managed helpdesk subjects through, and a string that
-                ends up printed on labels. The id below it is storage.
-
-                It was also the one field the page did not show while the delete
-                confirm asked the reader to TYPE it -- a typed gate whose answer
-                was nowhere on screen.
-              -->
+              <!-- Code is for addressing (ADR 0002), the id is storage. Shown because
+                   the delete confirm asks for it. -->
               <div>
                 <dt class="text-sm font-medium opacity-70">Code</dt>
                 <dd class="font-mono text-sm">{{ org.code || '—' }}</dd>
@@ -319,12 +278,8 @@ onMounted(() => loadData())
           </BaseCard>
         </div>
 
-        <!--
-          Inventory counts, from the org_stats view (see loadData). "Locations",
-          never "sites": a location can be a single room, and the site is a
-          pricing unit with no record of its own, so a location count is not a
-          site count and must not be labelled as one.
-        -->
+        <!-- "Locations", never "sites": a location can be one room, and a site
+             is a pricing unit with no record. -->
         <div v-if="isOperator && stats">
           <BaseCard title="Inventory">
             <dl class="space-y-4">
@@ -352,12 +307,7 @@ onMounted(() => loadData())
           </BaseCard>
         </div>
 
-        <!--
-          Identity: the two per-tenant boundaries, side by side. Each
-          organization holds its own NATS account and its own Nebula CA, and one
-          tenant's CA cannot sign a certificate another tenant trusts. This is
-          the page an operator checks those from, so it shows them.
-        -->
+        <!-- The two per-tenant boundaries: NATS account and Nebula CA. -->
         <div v-if="isOperator" class="md:col-span-3">
           <BaseCard title="Identity">
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -408,15 +358,9 @@ onMounted(() => loadData())
                     </div>
                   </div>
                 </dl>
-                <!--
-                  Same reasoning as the missing-account message below: CA
-                  provisioning runs in the organization's save hook and returns
-                  its error, so a missing CA is a failed save, not a pending one,
-                  and saving the organization again retries it. Except System:
-                  the hook skips it (hooks/org_provisioning.go) and bootstrap
-                  provisions its CA instead, create-if-missing, so the retry is
-                  re-running bootstrap.
-                -->
+                <!-- Provisioning runs synchronously in the save hook, so a missing CA
+                     is a failed save and re-saving retries. The System org is skipped
+                     there (hooks/org_provisioning.go); bootstrap provisions it. -->
                 <p v-else-if="org.is_system_org" class="text-sm opacity-70">
                   No Nebula CA found. The System organization's CA is provisioned by
                   bootstrap, so re-running bootstrap retries it.
@@ -553,18 +497,8 @@ onMounted(() => loadData())
         <!-- No NATS Account Message (Operators only) -->
         <div v-else-if="isOperator && !natsAccount" class="md:col-span-3">
           <BaseCard title="NATS Account Limits">
-            <!--
-              "It may still be provisioning" was not true and cost a reader the
-              only move available to them: provisioning runs synchronously in the
-              organization's after-create/after-update hook and RETURNS its error
-              rather than logging it (hooks/org_provisioning.go), so there is no
-              pending state to wait out. A missing account means the save that
-              should have made it failed, and somebody was told at the time.
-
-              Saying so also names the remedy, which is on this screen: the hook
-              is create-if-missing and bound to update as well as create, so
-              re-saving the organization retries it.
-            -->
+            <!-- No pending state: the save hook provisions synchronously and returns
+                 its error, and is create-if-missing on update too (hooks/org_provisioning.go). -->
             <div class="text-center py-4 opacity-70">
               <p>No NATS account found for this organization.</p>
               <p class="text-sm">

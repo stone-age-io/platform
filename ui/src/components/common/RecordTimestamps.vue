@@ -1,29 +1,15 @@
-<!-- ui/src/components/common/RecordTimestamps.vue -->
 <script setup lang="ts">
 /**
- * The Created / Last updated pair for a record's detail surface.
+ * The Created / Last updated pair for a record's detail surface, so a record
+ * can confirm what the activity feed says about it.
  *
- * It exists for the activity feed. The feed says "someone updated Thing X
- * twenty minutes ago"; the record itself has to be able to confirm that, and a
- * detail view showing only `created` cannot -- it leaves the reader comparing a
- * feed entry against nothing. Every collection the feed covers
- * (hooks/activity.go) carries both autodate fields, so every one of their
- * detail surfaces can show both.
+ * Relative time on top, exact underneath (as in AuditLogView and ActivityView),
+ * not a tooltip: tooltips do not exist on touch devices.
  *
- * RELATIVE ON TOP, EXACT UNDERNEATH, which is the pairing AuditLogView already
- * uses for its When column and the one ActivityView uses. Deliberately not a
- * `title` tooltip for the exact value: correlating two screens is the whole job
- * here, and a tooltip does not exist on a touch device.
+ * Two sibling <div>s, not a <dl>: callers already have one, so they supply it.
  *
- * TWO SIBLING <div>s, NOT a <dl>. Every caller already has a description list
- * and nesting one inside another is invalid HTML, so the caller supplies the
- * container and its grid. A form view that has no <dl> wraps this in one.
- *
- * NO "never edited" MARKER. PocketBase's autodate fields each call
- * types.NowDateTime() separately (core/field_autodate.go), so `created` and
- * `updated` on a record nobody has touched can differ by a millisecond and
- * `created === updated` would be a coin flip. The feed answers that question
- * properly: no `updated` entry means nobody updated it.
+ * No "never edited" marker: PocketBase sets `created` and `updated` separately,
+ * so they can differ by a millisecond on an untouched record.
  */
 import { formatDate, formatRelativeTime } from '@/utils/format'
 

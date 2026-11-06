@@ -3,14 +3,9 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import { useAuthStore } from './auth'
 
-// The `can` map is the console's entire authorization surface, and it mirrors
-// the API rules in schema.json BY HAND. Nothing checked the mirror: the server
-// half is proven by scripts/test-authz.sh, and this half had no guard at all,
-// so a role gaining or losing a capability here was a silent change.
-//
-// The matrix below is the table in CLAUDE.md, transcribed. If a change makes a
-// cell here fail, either the table is out of date or the change is wrong --
-// and either way it should be a decision rather than a surprise.
+// The `can` map mirrors the API rules in schema.json by hand; scripts/test-authz.sh
+// covers the server half. The matrix below is the role table in the root
+// CLAUDE.md: if a cell fails, either the table or the change is wrong.
 type Role = 'owner' | 'admin' | 'member' | 'viewer' | 'dashboard'
 type Capability =
   | 'manageMembers'
@@ -73,10 +68,8 @@ const MATRIX: Record<Role, Record<Capability, boolean>> = {
     manageInventory: false,
     decommissionInventory: false,
   },
-  // The zero-authority role, and the reason it exists. It is the probe: an
-  // allowlist that has quietly become a deny-list lets `dashboard` through, and
-  // a role holding SOME authority cannot prove that, because it passes for the
-  // wrong reason.
+  // The zero-authority probe: a deny-list posing as an allowlist lets it
+  // through, where a role with some authority would pass for the wrong reason.
   dashboard: {
     manageMembers: false,
     manageInfrastructure: false,
@@ -113,14 +106,12 @@ describe('auth capability map', () => {
     expect(Object.values(auth.can).some(Boolean)).toBe(false)
   })
 
-  // owner and admin are deliberately identical in the rules; the only
-  // difference lives elsewhere (an owner cannot leave their own organization).
+  // The only owner/admin difference is outside `can`: an owner cannot leave.
   it('gives owner and admin identical capabilities', () => {
     expect(storeFor('owner').can).toEqual(storeFor('admin').can)
   })
 
-  // viewer reads exactly what member reads. The difference between them is
-  // writes -- not reads, which the API rules do not role-scope at all.
+  // Reads are not role-scoped in the API rules, so only writes differ.
   it('differs between member and viewer only on write capabilities', () => {
     const member = storeFor('member').can
     const viewer = storeFor('viewer').can
@@ -131,9 +122,7 @@ describe('auth capability map', () => {
 })
 
 describe('userRole', () => {
-  // This used to fall back to 'member', which is a fail-OPEN default: a user
-  // whose memberships had not loaded, or whose membership was just deleted, was
-  // handed member capabilities and offered controls the API then refused.
+  // A fallback role here would fail open while memberships load.
   it('is null with no membership in the active organization, not a role', () => {
     const auth = storeFor(null)
     expect(auth.userRole).toBeNull()

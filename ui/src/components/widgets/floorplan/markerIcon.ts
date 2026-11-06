@@ -1,19 +1,15 @@
-// ui/src/components/widgets/floorplan/markerIcon.ts
 import type L from 'leaflet'
 import { elementIcon } from '@/utils/leafletIcon'
 
 /**
  * The floor plan marker: a dot coloured by live state, centred on its position.
  *
- * The backdrop is the operator's uploaded image, not the console, so no theme
- * colour can be trusted to show up on it. The glyph carries its own contrast
- * instead: a solid body in the state colour (`currentColor`), a white ring so a
- * dark colour separates on a dark plan, and a dark hairline so a light colour
- * separates on white paper. Both rings are constants.
+ * It sits on the operator's uploaded image, so no theme colour can be trusted
+ * to show: a solid body in the state colour (`currentColor`), a white ring for
+ * dark plans and a dark hairline for white paper. Both rings are constants.
  *
- * Not Leaflet's default pin: that is a PNG from unpkg and cannot be tinted.
- * Built from DOM nodes, so there is no markup string to grow an injection in;
- * a label belongs in the tooltip.
+ * Not Leaflet's default pin, an untintable PNG. Built from DOM nodes, so there
+ * is no markup string to inject into; a label belongs in the tooltip.
  */
 
 const SIZE = 30

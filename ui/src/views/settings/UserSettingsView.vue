@@ -22,25 +22,17 @@ const toast = useToast()
 const { confirm } = useConfirm()
 const { validateWebSocketUrl } = useValidation()
 
-// --- Profile State ---
 const profileForm = ref({ name: '' })
 const profileLoading = ref(false)
 
-// --- Avatar State ---
-//
-// ImageUploadField owns the picker, the preview and the object-URL lifetime;
-// this view owns only what Save should do. Three states, and they have to stay
-// distinguishable: the stored avatar, a locally-chosen replacement, and a
-// pending REMOVAL -- the last cannot be expressed by clearing the first two, or
-// it is silently dropped on save.
+// A pending removal needs its own flag: clearing `avatarFile` alone cannot
+// express it, and it would be dropped on save.
 const avatarFile = ref<File | null>(null)
 const avatarRemoved = ref(false)
 
-// --- Password State ---
 const passwordForm = ref({ oldPassword: '', password: '', passwordConfirm: '' })
 const passwordLoading = ref(false)
 
-// --- Connectivity State ---
 const newUrl = ref('')
 const availableIdentities = ref<NatsUser[]>([])
 const loadingIdentities = ref(false)
@@ -49,23 +41,17 @@ const identityOptions = computed<PickerOption[]>(() =>
   availableIdentities.value.map(u => ({ id: u.id, label: u.nats_username }))
 )
 
-// Where the URLs on screen actually came from. Three states, not two: with no
-// override AND nothing configured server-side, what is listed is the compiled-in
-// development fallback, and labelling that "From server" would be a lie about a
-// deployment that never set the key.
+// With no override and nothing configured server-side, the list is the
+// compiled-in fallback, which must not be labelled "From server".
 const urlSource = computed<'override' | 'server' | 'fallback'>(() => {
   if (natsStore.usingOverride) return 'override'
   return natsStore.defaultUrls.length ? 'server' : 'fallback'
 })
 
-// Helper to check if we are in "God Mode" (Fake membership)
+// A superuser's synthesized membership (auth.ts loadContext), not a real record.
 const isFakeMembership = computed(() => {
   return authStore.currentMembership?.id.startsWith('super_')
 })
-
-// ============================================================================
-// PROFILE ACTIONS
-// ============================================================================
 
 function initProfile() {
   if (authStore.user) {
@@ -84,16 +70,14 @@ async function updateProfile() {
     if (avatarFile.value) {
       formData.append('avatar', avatarFile.value)
     } else if (avatarRemoved.value) {
-      // An empty value clears a single-file field: PocketBase normalizes it to
-      // an empty slice and stores "" (core/field_file.go, normalizeValue).
+      // An empty value clears a single-file field.
       formData.append('avatar', '')
     }
 
     const collectionName = authStore.user.collectionName || 'users'
     const updatedUser = await pb.collection(collectionName).update(authStore.user.id, formData)
 
-    // The store record is what UserAvatar reads, here and in the sidebar, so
-    // assigning it is what repaints both. No URL to rebuild.
+    // UserAvatar reads the store record, here and in the sidebar.
     authStore.user = updatedUser as unknown as User
     toast.success('Profile updated')
     avatarFile.value = null
@@ -128,15 +112,11 @@ async function updatePassword() {
   }
 }
 
-// ============================================================================
-// MEMBERSHIP / CONTEXT ACTIONS
-// ============================================================================
-
 async function loadIdentities() {
   if (!authStore.currentOrgId) return
   loadingIdentities.value = true
   try {
-    // API rules ensure we only see NATS users for this org
+    // The API rules scope this to the current org.
     availableIdentities.value = await pb.collection('nats_users').getFullList<NatsUser>({
       sort: 'nats_username',
       filter: 'active = true' 
@@ -149,8 +129,7 @@ async function loadIdentities() {
   }
 }
 
-// RecordPicker's model is `string | string[]` because it also does multi-select;
-// this one is single, so take the scalar form.
+// RecordPicker's model is `string | string[]`; this one is single-select.
 async function updateContextIdentity(selected: string | string[]) {
   const natsUserId = (Array.isArray(selected) ? selected[0] : selected) || null
 
@@ -159,10 +138,8 @@ async function updateContextIdentity(selected: string | string[]) {
   try {
     await authStore.updateCurrentMembership({ nats_user: natsUserId || '' })
 
-    // Identity edits no longer flow through the App.vue watcher (which only
-    // tracks currentOrgId), so reconnect explicitly here. connect() handles
-    // tearing down the existing connection and is generation-guarded against
-    // overlapping calls.
+    // The App.vue watcher tracks only currentOrgId, so reconnect here.
+    // connect() tears down the old connection and guards against overlap.
     if (natsStore.isConnected) {
       toast.info('Identity updated. Reconnecting...')
       await natsStore.connect()
@@ -189,8 +166,7 @@ async function handleLeaveOrg() {
     if (authStore.currentOrgId) {
       await authStore.leaveOrganization(authStore.currentOrgId)
       toast.success(`Left ${orgName}`)
-      // Router will handle redirect if current route becomes invalid,
-      // but usually authStore.loadContext() switches to another org automatically.
+      // leaveOrganization() reloads the context, which picks another org.
     }
   } catch (e: any) {
     toast.error(e.message)
@@ -205,11 +181,8 @@ function handleAddUrl() {
       toast.error(syntax.error!)
       return
     }
-    // Syntax is context-free and lives in useValidation; this next rule is not —
-    // it depends on how *this page* was served, which the validator cannot know.
-    // A secure page cannot open an insecure socket — browsers block it outright,
-    // with no user override. Rejecting here beats saving a URL that can never
-    // connect and reports only a generic failure later.
+    // Browsers block ws:// from an HTTPS page outright. This depends on how the
+    // page was served, so it lives here rather than in useValidation.
     if (window.location.protocol === 'https:' && url.startsWith('ws://')) {
       toast.error('This console is served over HTTPS, so it can only connect to wss:// URLs')
       return
@@ -260,9 +233,6 @@ onMounted(() => {
 
       <form @submit.prevent="updateProfile" class="flex flex-col md:flex-row gap-8 items-start">
         <div class="flex flex-col items-center gap-3 shrink-0 mx-auto md:mx-0">
-          <!-- The fallback is UserAvatar, so the settings page draws the same
-               initial circle the sidebar and Members list do rather than a
-               second opinion of what "no avatar" looks like. -->
           <ImageUploadField
             v-model:file="avatarFile"
             v-model:removed="avatarRemoved"
@@ -276,11 +246,6 @@ onMounted(() => {
             add-label="Add Avatar"
           >
             <template #fallback>
-              <!-- Not derived from profileForm: this looked like a live preview
-                   that tracked the name as you typed it, and it never was.
-                   UserAvatar takes the letter from the RECORD's name-or-email
-                   and only reaches fallbackInitial when it has neither, which a
-                   signed-in user never is. -->
               <UserAvatar :user="authStore.user" :size="128" fallback-initial="U" />
             </template>
           </ImageUploadField>
@@ -352,13 +317,8 @@ onMounted(() => {
 
           <div class="divider text-xs text-base-content/50 font-bold">NATS Connection</div>
 
-          <!-- Connection URLs -->
-          <!--
-            Two tiers, never merged: the deployment's URLs (config.yaml, served
-            by /api/client-config) are read-only here, and adding one of your
-            own replaces them ON THIS DEVICE ONLY. The override exists so a box
-            at an edge site can talk to its local leaf node instead of the hub.
-          -->
+          <!-- Never merged: an override replaces the deployment URLs
+               (/api/client-config) on this device only, e.g. to reach a local leaf node. -->
           <div class="form-control">
             <label class="label">
               <span class="label-text">Server URLs</span>

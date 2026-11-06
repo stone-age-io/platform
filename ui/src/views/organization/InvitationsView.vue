@@ -20,7 +20,6 @@ const authStore = useAuthStore()
 const toast = useToast()
 const { confirm } = useConfirm()
 
-// Pagination for invitations list
 const {
   items: invitations,
   page,
@@ -33,18 +32,15 @@ const {
   prevPage,
 } = usePagination<Invitation>('invites', 20)
 
-// All organizations (for operators to select from)
+// For operators, who may invite into any organization.
 const allOrganizations = ref<Organization[]>([])
 
-// `code` is the one globally-unique identifier in the ecosystem and what an
-// operator staring at two similarly-named tenants actually needs, so it is both
-// shown and searchable.
+// `code` is globally unique and tells similarly-named tenants apart.
 const organizationOptions = computed<PickerOption[]>(() =>
   allOrganizations.value.map(o => ({ id: o.id, label: o.name, sublabel: o.code }))
 )
 const loadingOrgs = ref(false)
 
-// Form state
 const showInviteForm = ref(false)
 const inviteForm = ref({
   email: '',
@@ -55,9 +51,6 @@ const submitting = ref(false)
 
 const deleting = ref(false)
 
-/**
- * Load all organizations for operator org selector
- */
 async function loadOrganizations() {
   if (!authStore.isOperator) return
   loadingOrgs.value = true
@@ -65,7 +58,6 @@ async function loadOrganizations() {
     allOrganizations.value = await pb.collection('organizations').getFullList<Organization>({
       sort: 'name',
     })
-    // Default to current org if available
     if (authStore.currentOrgId && !inviteForm.value.organization) {
       inviteForm.value.organization = authStore.currentOrgId
     }
@@ -77,10 +69,7 @@ async function loadOrganizations() {
   }
 }
 
-// Search
-// Search runs on the SERVER. The client-side pass this replaces filtered the
-// twenty records already on screen, so a match on page three answered "No
-// results found" -- which is not the same claim at all.
+// Server-side, so a match beyond the current page is found.
 const { searchQuery, filter: searchFilter } = useServerSearch(
   ['email', 'role', 'invited_by.name', 'invited_by.email'],
   () => {
@@ -89,15 +78,10 @@ const { searchQuery, filter: searchFilter } = useServerSearch(
   },
 )
 
-// The active sort, in PocketBase's own syntax ('name', '-created'). It rides in
-// queryOptions rather than being passed at the call site, for the same reason the
-// filter does: the pager buttons reuse that object, and a sort that is not in it
-// is a sort that page two forgets.
 const sort = ref('-created')
 
-// One options object, passed to EVERY call into usePagination, the pager
-// buttons included -- passing only expand/sort there drops the filter and
-// page two comes back unfiltered.
+// Pass this to every usePagination call, the pager included, or page two
+// loses the filter and sort.
 const queryOptions = computed(() => ({
   filter: searchFilter.value,
   expand: 'invited_by',
@@ -106,14 +90,12 @@ const queryOptions = computed(() => ({
 
 function onSort(next: string) {
   sort.value = next
-  page.value = 1 // a new order makes the old page number meaningless
+  page.value = 1
   loadInvitations()
 }
 
-// Token Visibility State
 const visibleTokens = ref<Record<string, boolean>>({})
 
-// Column configuration for responsive list
 const columns: Column<Invitation>[] = [
   {
     key: 'email',
@@ -151,24 +133,15 @@ const columns: Column<Invitation>[] = [
   },
 ]
 
-/**
- * Check if invitation is expired
- */
 function isExpired(invite: Invitation): boolean {
   if (!invite.expires_at) return false
   return new Date(invite.expires_at) < new Date()
 }
 
-/**
- * Toggle token visibility
- */
 function toggleToken(id: string) {
   visibleTokens.value[id] = !visibleTokens.value[id]
 }
 
-/**
- * Copy token to clipboard
- */
 async function copyToken(token?: string) {
   if (!token) return
   try {
@@ -179,24 +152,17 @@ async function copyToken(token?: string) {
   }
 }
 
-/**
- * Load invitations from API
- * Backend automatically filters by current organization
- */
+// The API rules scope the list to the current organization.
 async function loadInvitations() {
   await load(queryOptions.value)
 }
 
-/**
- * Handle sending new invitation
- */
 async function handleSendInvite() {
   if (!inviteForm.value.email.trim()) {
     toast.error('Email is required')
     return
   }
 
-  // Determine target organization
   const targetOrgId = authStore.isOperator
     ? inviteForm.value.organization
     : authStore.currentOrgId
@@ -209,8 +175,7 @@ async function handleSendInvite() {
   submitting.value = true
 
   try {
-    // Simply create the invitation record
-    // The pb-tenancy library handles sending the email automatically
+    // The server sends the email on create (hooks/invites.go).
     await pb.collection('invites').create({
       email: inviteForm.value.email,
       role: inviteForm.value.role,
@@ -220,7 +185,6 @@ async function handleSendInvite() {
 
     toast.success('Invitation sent!')
 
-    // Reset form and reload list
     inviteForm.value.email = ''
     inviteForm.value.role = 'member'
     if (authStore.isOperator && authStore.currentOrgId) {
@@ -236,12 +200,9 @@ async function handleSendInvite() {
   }
 }
 
-/**
- * Handle resending invitation
- */
 async function handleResend(invite: Invitation) {
   try {
-    // Set resend_invite flag to true
+    // The server mints a fresh token and expiry, then re-sends (hooks/invites.go).
     await pb.collection('invites').update(invite.id, {
       resend_invite: true,
     })
@@ -253,9 +214,6 @@ async function handleResend(invite: Invitation) {
   }
 }
 
-/**
- * Handle deleting invitation
- */
 async function handleDelete(invite: Invitation) {
   const confirmed = await confirm({
     title: 'Revoke Invitation',
@@ -448,7 +406,6 @@ onMounted(() => {
         :loading="loading"
         :clickable="false"
       >
-        <!-- Custom cell for email (with expired badge) -->
         <template #cell-email="{ item }">
           <div>
             <div class="font-medium">
@@ -460,7 +417,6 @@ onMounted(() => {
           </div>
         </template>
         
-        <!-- Custom mobile card for email -->
         <template #card-email="{ item }">
           <div>
             <div class="font-semibold text-base">
@@ -472,7 +428,6 @@ onMounted(() => {
           </div>
         </template>
 
-        <!-- Custom cell for Token -->
         <template #cell-token="{ item }">
           <div class="flex items-center gap-2">
             <div class="font-mono text-xs bg-base-200 px-2 py-1 rounded min-w-[8rem] text-center select-all">
@@ -497,7 +452,6 @@ onMounted(() => {
           </div>
         </template>
 
-        <!-- Custom mobile card for Token -->
         <template #card-token="{ item }">
           <div class="flex items-center gap-2">
             <div class="font-mono text-xs bg-base-200 px-2 py-1 rounded break-all select-all">
@@ -512,7 +466,6 @@ onMounted(() => {
           </div>
         </template>
         
-        <!-- Custom cell for role (badge) -->
         <template #cell-role="{ item }">
           <span 
             class="badge badge-sm"
@@ -522,7 +475,6 @@ onMounted(() => {
           </span>
         </template>
 
-        <!-- Custom cell for expires_at (with expired warning) -->
         <template #cell-expires_at="{ item }">
           <span 
             :class="{ 'text-error': isExpired(item) }"

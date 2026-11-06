@@ -2,31 +2,27 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import path from 'path'
 
-// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [vue()],
   resolve: {
     alias: {
-      // import.meta.dirname, not __dirname: this file is ESM, and Vite's
-      // native config loader (slated to become the default) does not provide
-      // the CJS globals.
+      // Not __dirname: Vite's native ESM config loader has no CJS globals.
       '@': path.resolve(import.meta.dirname, './src'),
     },
   },
   server: {
     port: 5173,
     proxy: {
-      // Proxy API requests to PocketBase
       '/api': {
         target: 'http://127.0.0.1:8090',
         changeOrigin: true,
       },
-      // Proxy admin/auth endpoints
+      // PocketBase admin UI
       '/_': {
         target: 'http://127.0.0.1:8090',
         changeOrigin: true,
       },
-      // Proxy operator branding overlay (theme.css, logo.svg, branding.json)
+      // Operator branding overlay (theme.css, logo.svg, branding.json)
       '/branding': {
         target: 'http://127.0.0.1:8090',
         changeOrigin: true,
@@ -36,60 +32,35 @@ export default defineConfig({
   build: {
     outDir: '../pb_public',
     emptyOutDir: true,
-    // Vite 8 bundles with Rolldown, not Rollup. Two consequences here:
-    // `rollupOptions` is a deprecated alias for `rolldownOptions`, and the
-    // object form of `manualChunks` is gone -- Rolldown accepts only a
-    // function, and `codeSplitting.groups` is the intended replacement. Groups
-    // stay closer to the old object form than a function would: a group also
-    // captures the dependencies of what it matches, because
-    // `includeDependenciesRecursively` defaults to true. That is what kept
-    // e.g. zrender in the echarts chunk.
+    // Vite 8 bundles with Rolldown: `rolldownOptions`, and `codeSplitting.groups`
+    // in place of object-form `manualChunks`. A group also captures the
+    // dependencies of what it matches (`includeDependenciesRecursively`), which
+    // keeps e.g. zrender in the echarts chunk.
     //
-    // Each `test` demands a path separator after the package name so a prefix
-    // cannot swallow a sibling: `vue/` must not capture `vue-echarts/`, which
-    // belongs in the echarts chunk.
+    // Each `test` requires a path separator after the package name, so `vue/`
+    // does not capture `vue-echarts/`.
     //
-    // ORDER IS LOAD-BEARING, and it interacts with the recursive dependency
-    // capture above. Earlier groups win, and a group takes the dependencies of
-    // what it matched -- so with echarts listed first, echarts' own dependency
-    // on Vue dragged @vue/shared, @vue/reactivity and @vue/runtime-core into
-    // the echarts chunk, and grid-layout-plus took @vue/runtime-dom. That left
-    // `vue-vendor` holding only pinia and vue-router (~31kB rather than
-    // ~114kB): the framework was being re-downloaded under two chunk names
-    // that change whenever a chart or grid dependency changes, which is the
-    // opposite of what a long-cached vendor chunk is for.
-    //
-    // So vue-vendor goes FIRST, to claim the framework before any consumer
-    // pulls it in. If you reorder these, verify with `vite build --sourcemap`
-    // and read the chunk .map `sources` -- chunk *names* stay stable and
-    // reveal nothing; only the sizes move.
+    // ORDER IS LOAD-BEARING: earlier groups win, so vue-vendor goes first to
+    // claim the framework before echarts or grid-layout-plus drag @vue/* into
+    // their own chunks. If you reorder, verify with `vite build --sourcemap` and
+    // the chunk .map `sources`; chunk names stay stable, only sizes move.
     rolldownOptions: {
       output: {
         codeSplitting: {
           groups: [
-            // Vue core (cached across deployments). @vue/* is named explicitly
-            // because `vue` is a thin re-export -- the runtime lives in the
-            // scoped packages.
+            // @vue/* is named explicitly: `vue` is a thin re-export of them.
             { name: 'vue-vendor', test: /[\\/]node_modules[\\/](?:@vue[\\/][^\\/]+|vue|vue-router|pinia)[\\/]/ },
-            // Charting library (largest dependency ~1MB)
             { name: 'echarts', test: /[\\/]node_modules[\\/](echarts|vue-echarts)[\\/]/ },
-            // Mapping library
             { name: 'leaflet', test: /[\\/]node_modules[\\/]leaflet[\\/]/ },
-            // MapLibre GL, the vector basemap renderer behind L.maplibreGL.
-            // Named separately from `leaflet` because it is ~1MB on its own:
-            // left ungrouped it fell into the useLeafletMap chunk, so every edit
-            // to that composable re-hashed a megabyte and every returning user
-            // re-downloaded the renderer to pick up a five-line change.
+            // ~1MB on its own; ungrouped it lands in the useLeafletMap chunk and
+            // re-hashes with every edit to that composable.
             { name: 'maplibre', test: /[\\/]node_modules[\\/](?:maplibre-gl|@maplibre[\\/][^\\/]+)[\\/]/ },
-            // NATS messaging libraries
             { name: 'nats', test: /[\\/]node_modules[\\/]@nats-io[\\/]/ },
-            // Grid layout
             { name: 'grid', test: /[\\/]node_modules[\\/]grid-layout-plus[\\/]/ },
           ],
         },
       },
     },
-    // Warn if a chunk exceeds 500KB
     chunkSizeWarningLimit: 500,
   },
 })

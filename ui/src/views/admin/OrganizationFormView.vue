@@ -20,7 +20,6 @@ const id = route.params.id as string | undefined
 const isEdit = computed(() => !!id)
 const loading = ref(false)
 
-// Form state
 const form = ref({
   name: '',
   code: '',
@@ -30,21 +29,16 @@ const form = ref({
   owner: '',
 })
 
-// The system and operator orgs are infrastructure — never offer the managed
-// toggle on them (the export hook skips them anyway).
+// System and operator orgs: no managed toggle (the export hook skips them) and
+// no deactivation (the hook refuses it).
 const isReservedOrg = computed(
   () => !!existingRecord.value?.is_system_org || !!existingRecord.value?.is_operator_org
 )
 
-// Logo state. ImageUploadField owns the picker, the preview and the object-URL
-// lifetime; this view owns only what Save should do.
-// - logoFile: a newly-selected File, or null
-// - removeExistingLogo: on edit, clear the stored logo on save
 const logoFile = ref<File | null>(null)
 const removeExistingLogo = ref(false)
 const existingRecord = ref<any>(null)
 
-// Owner selection state
 const ownerMode = ref<'existing' | 'new'>('existing')
 const users = ref<User[]>([])
 const loadingUsers = ref(false)
@@ -53,7 +47,6 @@ const userOptions = computed<PickerOption[]>(() =>
   users.value.map(u => ({ id: u.id, label: u.email, sublabel: u.name || undefined }))
 )
 
-// New user form
 const newUserForm = ref({
   email: '',
   name: '',
@@ -61,16 +54,14 @@ const newUserForm = ref({
   generatePassword: true,
 })
 const generatedPassword = ref('')
-// No useEscapeKey here on purpose. This modal shows the owner password once
-// and says so in its own copy; Escape dismissing it would lose a secret that
-// cannot be re-read. See useEscapeKey for the rest of that list.
+// No useEscapeKey on purpose: the password is shown once, and Escape would lose
+// it. See useEscapeKey for the rest of that list.
 const showGeneratedPassword = ref(false)
 
 async function loadUsers() {
   loadingUsers.value = true
   try {
     users.value = await pb.collection('users').getFullList({ sort: 'email' })
-    // Default owner to current user for new orgs
     if (!isEdit.value && authStore.user && !form.value.owner) {
       form.value.owner = authStore.user.id
     }
@@ -135,7 +126,6 @@ async function submit() {
   try {
     let ownerId = form.value.owner
 
-    // Create new user if needed
     if (ownerMode.value === 'new') {
       if (!newUserForm.value.email.trim()) {
         toast.error('Email is required for new user')
@@ -162,13 +152,10 @@ async function submit() {
       return
     }
 
-    // Build FormData so we can attach the logo file (or clear it on edit) in
-    // the same request as the rest of the fields.
     const data = new FormData()
     data.append('name', form.value.name)
-    // Create only: the update rule freezes `code`, so sending it on edit would
-    // fail the request even when the value is unchanged. Blank is fine — the
-    // server slugifies the name when no code is given.
+    // Create only: the update rule freezes `code`, and sending it on edit fails
+    // even unchanged. Blank is fine: the server slugifies the name.
     if (!isEdit.value) {
       data.append('code', form.value.code.trim())
     }
@@ -181,7 +168,7 @@ async function submit() {
     if (logoFile.value) {
       data.append('logo', logoFile.value)
     } else if (isEdit.value && removeExistingLogo.value) {
-      // PocketBase convention: empty value clears a single-file field.
+      // An empty value clears a single-file field.
       data.append('logo', '')
     }
 
@@ -193,7 +180,6 @@ async function submit() {
       await pb.collection('organizations').create(data)
       toast.success('Organization created')
 
-      // Show generated password modal if applicable
       if (ownerMode.value === 'new' && generatedPassword.value) {
         showGeneratedPassword.value = true
       } else {
@@ -239,18 +225,15 @@ onMounted(() => {
 
     <form @submit.prevent="submit" class="space-y-6">
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-        <!-- Left Column: Organization Details -->
         <div class="space-y-6">
           <BaseCard title="Organization Details">
             <div class="space-y-4">
-              <!-- Name -->
               <div class="form-control">
                 <label class="label"><span class="label-text">Name *</span></label>
                 <input v-model="form.name" type="text" class="input input-bordered" required :disabled="loading" />
               </div>
 
-              <!-- Code: the root of the public namespace (ADR 0002). Immutable
-                   once set, so it is editable on create and read-only after. -->
+              <!-- Code roots the public namespace (ADR 0002) and is immutable once set. -->
               <div class="form-control">
                 <label class="label"><span class="label-text">Code</span></label>
                 <input
@@ -276,29 +259,14 @@ onMounted(() => {
                 </label>
               </div>
 
-              <!-- Description -->
               <div class="form-control">
                 <label class="label"><span class="label-text">Description</span></label>
                 <textarea v-model="form.description" class="textarea textarea-bordered" rows="3" :disabled="loading"></textarea>
               </div>
 
-              <!--
-                Active Toggle.
-
-                The helper text is not decoration. This toggle enforced nothing
-                at all until hooks/org_active_flag.go, and what it does now is
-                narrow and severe in equal measure: it withdraws the
-                organization's NATS account, which disconnects every device,
-                agent and browser in the tenant at once. Saying so is the
-                difference between a checkbox and a trap -- and stating the
-                limits stops the other reading, that clearing it locks the
-                tenant out of the console, which it does not.
-
-                Disabled on the operator and system organizations because the
-                hook refuses that flip outright (the operator account is the hub
-                every managed tenant imports through). Better to show the reason
-                here than to let the save come back with it.
-              -->
+              <!-- The helper text states both what clearing this does and what it
+                   does not (hooks/org_active_flag.go). Disabled on reserved orgs,
+                   which the hook refuses to deactivate. -->
               <div class="form-control">
                 <label class="label cursor-pointer justify-start gap-4">
                   <input
@@ -322,7 +290,6 @@ onMounted(() => {
                 </label>
               </div>
 
-              <!-- Managed Toggle -->
               <div v-if="!isReservedOrg" class="form-control">
                 <label class="label cursor-pointer justify-start gap-4">
                   <input v-model="form.managed" type="checkbox" class="toggle toggle-primary" :disabled="loading" />
@@ -333,19 +300,12 @@ onMounted(() => {
                 </label>
               </div>
 
-              <!-- Logo -->
               <div class="form-control">
                 <label class="label">
                   <span class="label-text">Logo</span>
                 </label>
                 <div class="flex flex-col items-center gap-2">
-                  <!--
-                    Accepts SVG, unlike the photo fields: a logo is usually
-                    supplied as vector artwork, and it is rendered on a fixed
-                    neutral plate rather than decoded as a photograph.
-                    maxDimension is left at the default -- OrgLogo only ever
-                    draws this at chrome size.
-                  -->
+                  <!-- Accepts SVG, unlike the photo fields: logos are usually vector art. -->
                   <ImageUploadField
                     v-model:file="logoFile"
                     v-model:removed="removeExistingLogo"
@@ -367,11 +327,9 @@ onMounted(() => {
           </BaseCard>
         </div>
 
-        <!-- Right Column: Owner -->
         <div class="space-y-6">
           <BaseCard title="Owner">
             <div class="space-y-4">
-              <!-- Mode Toggle -->
               <div class="tabs tabs-boxed w-fit">
                 <a
                   class="tab"
@@ -389,7 +347,6 @@ onMounted(() => {
                 </a>
               </div>
 
-              <!-- Existing User Dropdown -->
               <div v-if="ownerMode === 'existing'">
                 <RecordPicker
                   v-model="form.owner"
@@ -404,7 +361,6 @@ onMounted(() => {
                 </label>
               </div>
 
-              <!-- New User Form -->
               <div v-else class="space-y-3 p-4 bg-base-200 rounded-lg">
                 <div class="form-control">
                   <label class="label py-1"><span class="label-text">Email *</span></label>
@@ -508,8 +464,7 @@ onMounted(() => {
             <button class="btn" @click="closePasswordModal">Done</button>
           </div>
         </div>
-        <!-- No click-to-close: the password is shown once, and a stray click
-             on the dim area would lose it. Done is the way out. -->
+        <!-- No click-to-close: a stray click would lose the one-time password. -->
         <div class="modal-backdrop"></div>
       </dialog>
     </Teleport>

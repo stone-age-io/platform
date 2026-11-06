@@ -1,6 +1,5 @@
 <template>
   <div class="config-markdown">
-    <!-- Data Source Section -->
     <div class="config-section">
       <div class="section-title">Data Source (Optional)</div>
       <div class="form-group">
@@ -15,14 +14,12 @@
         </div>
       </div>
 
-      <!-- Subscription Mode -->
       <ConfigDataSource 
         v-if="form.dataSourceType === 'subscription'"
         :form="form" 
         :errors="errors" 
       />
 
-      <!-- KV Inputs -->
       <ConfigKvSource
         v-if="form.dataSourceType === 'kv'"
         :form="form"
@@ -31,7 +28,6 @@
       />
     </div>
 
-    <!-- Content Section -->
     <div class="config-section">
       <div class="section-title">Content</div>
       <div class="form-group">

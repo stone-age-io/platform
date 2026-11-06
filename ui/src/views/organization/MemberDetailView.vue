@@ -12,10 +12,7 @@ import RecordPicker from '@/components/common/RecordPicker.vue'
 import UserAvatar from '@/components/common/UserAvatar.vue'
 import type { PickerOption } from '@/types/picker'
 
-/**
- * Local interface that explicitly defines the fields we are expanding 
- * in this specific view.
- */
+// The relations this view expands.
 interface FullMemberMembership extends Membership {
   expand: {
     user: User
@@ -31,8 +28,6 @@ const authStore = useAuthStore()
 const toast = useToast()
 const { confirm } = useConfirm()
 
-// --- State ---
-// Use the locally defined interface here
 const membership = ref<FullMemberMembership | null>(null)
 const natsUsers = ref<NatsUser[]>([])
 const loading = ref(true)
@@ -41,9 +36,7 @@ const natsUserOptions = computed<PickerOption[]>(() =>
   natsUsers.value.map(u => ({ id: u.id, label: u.nats_username }))
 )
 
-// The role being applied, or null. Tracked rather than a bare boolean so the
-// spinner lands on the button that was clicked -- with four roles, "spin on
-// everything except the current one" reads as four simultaneous saves.
+// The role being applied, so only the clicked button spins.
 const roleSavingTo = ref<AssignableRole | null>(null)
 const roleSaving = computed(() => roleSavingTo.value !== null)
 const natsSaving = ref(false)
@@ -59,17 +52,13 @@ const ASSIGNABLE_ROLES: { value: AssignableRole; label: string }[] = [
 
 const memberId = route.params.id as string
 
-// --- Computeds ---
 const isSelf = computed(() => membership.value?.user === authStore.user?.id)
 const isOwner = computed(() => membership.value?.role === 'owner')
 const canManage = computed(() => authStore.can.manageMembers && !isSelf.value && !isOwner.value)
 
-// --- Actions ---
-
 async function loadData() {
   loading.value = true
   try {
-    // Cast the result to our local comprehensive interface
     membership.value = await pb.collection('memberships').getOne(memberId, {
       expand: 'user,organization,nats_user,invited_by'
     }) as FullMemberMembership
@@ -106,8 +95,7 @@ async function updateRole(newRole: AssignableRole) {
   }
 }
 
-// RecordPicker's model is `string | string[]` because it also does multi-select;
-// this one is single, so take the scalar form.
+// RecordPicker's model is `string | string[]`; this one is single-select.
 async function updateNatsIdentity(selected: string | string[]) {
   const natsUserId = (Array.isArray(selected) ? selected[0] : selected) || null
 
@@ -162,7 +150,6 @@ onMounted(loadData)
     </div>
 
     <template v-else-if="membership">
-      <!-- Page Header -->
       <div class="flex flex-col gap-4">
         <div class="breadcrumbs text-sm">
           <ul>
@@ -191,10 +178,8 @@ onMounted(loadData)
         </div>
       </div>
 
-      <!-- Main Dashboard Grid -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         
-        <!-- LEFT COLUMN -->
         <div class="space-y-6">
           <BaseCard title="Profile Information">
             <div class="space-y-5">
@@ -235,8 +220,7 @@ onMounted(loadData)
 
               <div v-else>
                 <label class="label pt-0"><span class="label-text font-bold text-base-content/50 uppercase text-xs">Assign Organization Role</span></label>
-                <!-- A grid rather than a join: four roles do not fit one row on
-                     a phone, and a join wraps into misaligned segments. -->
+                <!-- A grid, not a join: a join wraps into misaligned segments on a phone. -->
                 <div class="grid grid-cols-2 gap-1 bg-base-200 p-1 rounded-xl">
                   <button
                     v-for="r in ASSIGNABLE_ROLES"
@@ -259,7 +243,6 @@ onMounted(loadData)
           </BaseCard>
         </div>
 
-        <!-- RIGHT COLUMN -->
         <div class="space-y-6">
           <BaseCard title="Infrastructure Identity">
             <div class="space-y-5">

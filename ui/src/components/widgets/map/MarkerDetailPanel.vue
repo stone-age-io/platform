@@ -1,6 +1,5 @@
 <template>
   <div class="marker-detail-panel" :class="{ 'is-mobile': isMobile }">
-    <!-- Header -->
     <div class="panel-header">
       <div class="header-content">
         <MapPin class="marker-icon" :size="20" aria-hidden="true" />
@@ -11,7 +10,6 @@
       </button>
     </div>
     
-    <!-- Items -->
     <div class="panel-body">
       <div v-if="marker.items.length === 0" class="empty-items">
         <Inbox class="empty-icon" :size="32" :stroke-width="1.5" aria-hidden="true" />
@@ -20,38 +18,32 @@
       
       <div v-else class="items-list">
         <template v-for="item in marker.items" :key="item.id">
-          <!-- Publish Button -->
           <MarkerItemPublish 
             v-if="item.type === 'publish'"
             :item="item"
             @response="handleResponse"
           />
           
-          <!-- Switch Toggle -->
           <MarkerItemSwitch 
             v-else-if="item.type === 'switch'"
             :item="item"
           />
           
-          <!-- Text Display -->
           <MarkerItemText 
             v-else-if="item.type === 'text'"
             :item="item"
           />
           
-          <!-- KV Display -->
           <MarkerItemKv 
             v-else-if="item.type === 'kv'"
             :item="item"
           />
 
-          <!-- Setpoint -->
           <MarkerItemSlider
             v-else-if="item.type === 'slider'"
             :item="item"
           />
 
-          <!-- Level bar -->
           <MarkerItemGauge
             v-else-if="item.type === 'gauge'"
             :item="item"
@@ -60,10 +52,8 @@
       </div>
     </div>
     
-    <!-- Footer: whatever locates this marker. A caller that does not locate
-         its markers by coordinate -- the floor plan, whose positions are
-         pixels on an image and mean nothing to a reader -- passes its own
-         line instead. -->
+    <!-- Footer: whatever locates this marker. A caller whose positions mean
+         nothing to a reader (the floor plan's image pixels) passes its own line. -->
     <div class="panel-footer">
       <template v-if="footer">
         <span class="footer-label">{{ footer.label }}</span>
@@ -81,7 +71,6 @@
       </template>
     </div>
     
-    <!-- Response Modal for Request/Reply -->
     <ResponseModal
       v-model="responseModal.show"
       :title="responseModal.title"
@@ -104,13 +93,7 @@ import MarkerItemGauge from './MarkerItemGauge.vue'
 import ResponseModal from '@/components/common/ResponseModal.vue'
 import type { MapMarker } from '@/types/dashboard'
 
-/**
- * Marker Detail Panel
- * 
- * Displays marker information and interactive items.
- * - Desktop: Right sidebar (280px wide)
- * - Mobile: Full overlay covering the map
- */
+/** A 280px right sidebar on desktop, a full overlay covering the map on mobile. */
 
 defineProps<{
   marker: MapMarker
@@ -123,7 +106,6 @@ defineEmits<{
   close: []
 }>()
 
-// Response modal state
 const responseModal = ref({
   show: false,
   title: 'Response',
@@ -171,7 +153,6 @@ function handleResponse(response: { success: boolean; data: string; latency: num
   box-shadow: none;
 }
 
-/* Header */
 .panel-header {
   display: flex;
   align-items: center;
@@ -225,7 +206,6 @@ function handleResponse(response: { success: boolean; data: string; latency: num
   color: var(--text);
 }
 
-/* Body */
 .panel-body {
   flex: 1;
   overflow-y: auto;
@@ -258,7 +238,6 @@ function handleResponse(response: { success: boolean; data: string; latency: num
   gap: 8px;
 }
 
-/* Footer */
 .panel-footer {
   padding: 12px 16px;
   border-top: 1px solid var(--border);

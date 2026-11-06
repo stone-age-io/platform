@@ -22,9 +22,8 @@ const loading = ref(true)
 const deleting = ref(false)
 const exportId = route.params.id as string
 
-// Platform-provisioned: the Edit/Delete controls are hidden and the banner says
-// why. Not a permission -- the API rules still allow the write, it just gets
-// reconciled away on the next organization save.
+// Platform-provisioned: Edit/Delete are hidden. Not a permission (the rules
+// allow the write); the next organization save reconciles it away.
 const managed = computed(() => isManagedExport(exportRecord.value?.name))
 const revoked = computed(() => revokedImporters(exportRecord.value?.revocations))
 
@@ -207,9 +206,7 @@ onMounted(loadExport)
         </div>
       </div>
 
-      <!-- The same `managed` gate the header row carries: a platform-provisioned
-           export is rewritten on every organization save, so offering to delete
-           it would offer a change reconciliation silently undoes. -->
+      <!-- Same `managed` gate as the header: reconciliation would undo a delete. -->
       <DangerZone v-if="!managed">
         <button @click="handleDelete" class="btn btn-error" :disabled="deleting">
           Delete Export

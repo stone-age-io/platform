@@ -9,18 +9,15 @@
     />
 
     <template v-else>
-    <!-- Main value -->
     <div class="stat-value" :style="{ color: valueColor }">
       {{ displayValue }}
     </div>
     
-    <!-- Trend indicator -->
     <div v-if="showTrend && trend !== null" class="stat-trend" :class="trendClass">
       <span class="trend-arrow">{{ trendArrow }}</span>
       <span class="trend-text">{{ trendText }}</span>
     </div>
     
-    <!-- Mini sparkline -->
     <div v-if="showSparkline" class="sparkline">
       <svg :viewBox="`0 0 ${sparklineWidth} ${sparklineHeight}`" class="sparkline-svg">
         <polyline
@@ -68,9 +65,8 @@ const latestValue = computed(() => {
   return buffer.value[buffer.value.length - 1].value
 })
 
-// Compare against the value `trendWindow` messages back, or the oldest one
-// held if the buffer is shorter. Refusing when short meant a new card (window
-// 10, buffer 10) could never show a trend at all.
+// Compare against the value `trendWindow` messages back, or the oldest one held
+// if the buffer is shorter, so a new card can still show a trend.
 const previousValue = computed(() => {
   if (buffer.value.length < 2) return null
   const index = Math.max(0, buffer.value.length - 1 - trendWindow.value)
@@ -206,7 +202,6 @@ const sparklinePoints = computed(() => {
   height: 100%;
 }
 
-/* Hide sparkline on small height */
 @container (height < 80px) {
   .sparkline { display: none; }
 }

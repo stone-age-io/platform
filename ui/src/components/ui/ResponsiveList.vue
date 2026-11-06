@@ -1,4 +1,3 @@
-<!-- ui/src/components/ui/ResponsiveList.vue -->
 <script setup lang="ts" generic="T extends { id: string }">
 
 import { computed } from 'vue'
@@ -13,96 +12,44 @@ export interface Column<T = any> {
   class?: string
   mobileLabel?: string
   /**
-   * Give this field the whole width of the mobile card instead of half of it.
-   *
-   * The card lays its fields out two to a row, which on a 393px phone (iPhone
-   * 14 Pro, and the narrowest common size) leaves each value between 105px and
-   * 129px depending on how long its label is -- about thirteen characters. That
-   * is plenty for what most of these columns hold: a date, a count, an enum, a
-   * badge, an IP, a CIDR, a code. It is not close to enough for the ones that
-   * hold a NAME: 'Kansas City Distribution Center' showed 62% of itself and cut
-   * off mid-word.
-   *
-   * So the rule is about the VALUE, not the column's importance: a field whose
-   * value is another record's name, an email address or a NATS subject has no
-   * length bound and takes the full row. Everything else pairs up.
-   *
-   * There is a second reason, and it is free: a wide field cannot fit in a
-   * leftover half, so it always starts a new row -- which means the half-width
-   * field DIRECTLY BEFORE one is left sitting beside an empty half. That field
-   * already owns a whole row; it just is not using it, so widening it costs no
-   * height at all. AuditLogView's Event Type was the case that made this worth
-   * writing down: it sat in front of a wide Collection, so half its row was
-   * dead while its own value was cut off at 87%.
-   *
-   * Do not reach for this to make a field stand out. Every wide field is a row
-   * the short fields no longer share, and a card with all of them wide is just
-   * the one-column layout, which was measured and rejected: forcing one column
-   * on the KV bucket list cost 36px a card to widen five values that already
-   * fit.
+   * Give this field the whole width of the mobile card instead of half (about
+   * thirteen characters on a phone). Use it for values with no length bound: a
+   * record name, an email address, a NATS subject. Also free for the half-width
+   * field directly before a wide one, since that field already owns its row.
+   * Not for emphasis: each wide field costs card height.
    */
   cardWide?: boolean
   /**
-   * Desktop column width, e.g. '8rem' or '20%'. Optional -- see widthOf().
+   * Desktop column width, e.g. '8rem' or '20%'. See widthOf().
    *
-   * The table is `table-fixed`, so a column WITHOUT a width does not shrink to
-   * its content: the un-widthed columns split whatever is left over, equally.
-   * Declare a width on every column whose content has a known size and leave the
-   * free-text one -- the description, the subject, the email -- to absorb the
-   * slack. Get that backwards and the slack lands on the column with the least
-   * to say: Thing Types gave its Operations badge 746px of a 1570px table while
-   * Code, capped at 7rem next to it, wrapped every code longer than fourteen
-   * characters.
+   * The table is `table-fixed`, so un-widthed columns split the leftover space
+   * equally. Width every column whose content has a known size and leave exactly
+   * one free-text column to absorb the slack; if every column is widthed, the
+   * fixed ones absorb it unpredictably.
    *
-   * Widths in use, so a new column has an answer rather than a guess:
+   * Widths in use:
    *   7rem   a single badge, a count, a short enum ('Active', 'Owner')
    *   8rem   a date in `PP` form ('Aug 31, 2026')
-   *   11rem  a `code` value -- fits the ~18 characters real codes reach
-   *   16rem  a person -- a name or an email address
-   *   9rem   the Actions column, set on the <th> below rather than here
-   * Two or more badges in one cell (StatusBadge + ExpiryBadge) need the room to
-   * wrap and are deliberately left un-widthed.
+   *   11rem  a `code` value (~18 characters)
+   *   16rem  a person: a name or an email address
+   *   9rem   the Actions column, set on the <th> below
+   * Cells with two or more badges are left un-widthed so they can wrap.
    *
-   * Always leave exactly one absorber, and be deliberate about which. If EVERY
-   * column is widthed the browser still has to place the excess, and where it
-   * puts it is not where you would guess: a PERCENTAGE column does not grow, so
-   * the fixed columns soak it up instead. Widthing the five short columns on the
-   * KV bucket list moved them 226px -> 238px, i.e. nowhere, while Created and
-   * Actions quietly doubled.
-   *
-   * A record's DESCRIPTION is not a column. It goes under the name in the
-   * identity cell, clamped to one line, with the full text on `title` -- which
-   * is what ten of the twelve lists carrying one already did. The two that
-   * spent a column on it cost more than the column: it competed for width with
-   * Code and Operations, which have known sizes and no slack to give, and it
-   * rode a `class: 'hidden md:table-cell'` that hid the description outright
-   * below 768px while every other list showed it on a phone. Under the name it
-   * sits beside the thing it describes, it is the absorber the table wants
-   * anyway, and it still answers the question it was put on screen to answer --
-   * why this row matched the search.
-   *
-   * So the free-text column IS the identity column on nearly every list, and
-   * there you say `width: 'auto'` on it. That is not the same as omitting the
-   * width: omitting it means 28% for column 0, per widthOf() below. With 'auto'
-   * every other column gets exactly what it declares and the name takes the
-   * rest.
+   * A description is not a column: it goes under the name in the identity cell,
+   * clamped to one line with the full text on `title`. That makes the identity
+   * column the absorber, so give it `width: 'auto'`. Omitting the width is not
+   * the same: column 0 then defaults to 28%.
    */
   width?: string
   /**
-   * The API field to sort this column by -- its presence is what makes the
-   * column sortable. It is a field NAME and not the column key on purpose: the
-   * key is a display path (`expand.type.name`) while the server wants
-   * `type.name`, and the two are not mechanically convertible for every column.
+   * The API field to sort by; setting it makes the column sortable. A field name,
+   * not the column key: the key is a display path (`expand.type.name`), the
+   * server wants `type.name`. A leading `-` sorts descending first (PocketBase
+   * syntax, passed to the API verbatim).
    *
-   * A leading `-` means "sort this one descending first", which is what you want
-   * for dates. That is PocketBase's own sort syntax rather than a second
-   * convention, and it means the value here can be handed to the API verbatim.
-   *
-   * Only name a field the collection actually has. An unknown sort field is a
-   * 400 raised before any API rule is evaluated, it fails for superusers too, and
-   * the browser shows only "Something went wrong while processing your request."
-   * -- so it never looks like a sorting bug. `scripts/check-sort-fields.sh`
-   * checks every value in this file against a real server.
+   * Only name a field the collection has: an unknown one is a 400 with a generic
+   * message, for superusers too. `scripts/check-sort-fields.sh` checks every
+   * `sortable:` value against a real server.
    */
   sortable?: string
 }
@@ -113,9 +60,8 @@ interface Props {
   loading?: boolean
   clickable?: boolean
   /**
-   * The active sort, in PocketBase's own syntax (`name`, `-created`). Empty
-   * means unsorted. This component renders the control and reports the change;
-   * the view owns the reload, because only the view knows the rest of the query.
+   * The active sort in PocketBase syntax (`name`, `-created`); empty is unsorted.
+   * This component only reports changes; the view owns the reload.
    */
   sort?: string
 }
@@ -133,17 +79,8 @@ function get(obj: any, path: string): any {
   return path.split('.').reduce((acc, part) => acc?.[part], obj)
 }
 
-// A cell's text, and whether what came back was nothing.
-//
-// The placeholder is NULL_DISPLAY rather than a local literal so the list
-// tables and the dashboard table widgets agree on what "no value" looks like --
-// this used to print "-" here and "—" there, in the same theme, three clicks
-// apart. Blank cells also render at a third of the contrast: in a table with a
-// sparse column, a full-strength dash reads as data and is the thing your eye
-// lands on, which is exactly backwards.
-//
-// Two functions rather than one returning a pair, because a template cannot
-// destructure a call. Both are cheap and neither touches the DOM.
+// NULL_DISPLAY keeps "no value" the same here and in the dashboard table
+// widgets. Blank cells are also dimmed, so a dash does not read as data.
 function formatted(col: Column<T>, item: T): unknown {
   const raw = get(item, col.key)
   return col.format ? col.format(raw, item) : raw
@@ -159,38 +96,19 @@ function cellText(col: Column<T>, item: T): string {
   return cellBlank(col, item) ? NULL_DISPLAY : String(out)
 }
 
-// The desktop table is `table-fixed`: a column's width comes from its <th>, NOT
-// from the widest cell under it. Under the default `auto` layout a single long
-// description set the width of the whole column -- so the same table had a
-// different shape on every page of results, and every column to its right got
-// squeezed until short values like a date wrapped onto two lines.
-//
-// The width lives on the <th> rather than in a <colgroup> deliberately: a column
-// hidden at a breakpoint (`class: 'hidden xl:table-cell'`) takes its <th> out of
-// the layout and the remaining columns re-share the space, where a <col> would
-// go on reserving width for a column nobody can see.
-//
-// The cost of fixed layout is that content which does not fit has to wrap rather
-// than push the column open, which is what the `break-words` wrapper on each
-// cell is for.
+// `table-fixed`, so widths come from the <th>, not the widest cell, and the
+// table keeps its shape from page to page. Overflowing content wraps (the
+// `break-words` wrapper). Widths go on the <th>, not a <colgroup>, so a column
+// hidden at a breakpoint stops reserving space.
 function widthOf(col: Column<T>, index: number): string | undefined {
-  // Column 0 is the identity column everywhere in this app -- the mobile card
-  // below already treats it that way -- so it gets the larger default share.
+  // Column 0 is always the identity column, so it gets a larger default share.
   return col.width ?? (index === 0 ? '28%' : undefined)
 }
 
-// Sorting is server-side for every PocketBase-backed view, for the same reason
-// search is: those views hold ONE PAGE, so ordering it in the browser sorts the
-// twenty rows it happens to have rather than the set the reader asked about, and
-// says nothing about the difference.
-//
-// The two JetStream lists are the exception, and not a relaxation of that rule
-// but the same rule reaching a different answer: they hold the WHOLE set, since
-// listStreams() and listKvBuckets() return everything in the account and the
-// paging is a slice taken afterwards. `utils/clientSort` orders the full set and
-// the slice comes after. This component neither knows nor cares which kind it is
-// talking to -- it renders the control and reports the change, and the view owns
-// what happens next.
+// Sorting is server-side for PocketBase-backed views, which hold one page, so a
+// browser sort would order only that page. The JetStream lists hold the whole
+// set and sort it with `utils/clientSort` before slicing. Either way this
+// component only reports the change.
 const sortableColumns = computed(() => props.columns.filter(c => c.sortable))
 
 /** The field name without its direction prefix. */
@@ -209,10 +127,8 @@ function sortGlyph(col: Column<T>): string {
   return sortDesc.value ? '↓' : '↑'
 }
 
-// Two states, not three. A third "unsorted" state in the cycle means three
-// clicks to get back where you started and an order nobody asked for in between.
-// The first click uses the column's declared direction, which is why dates open
-// newest-first.
+// Toggles between two directions, with no unsorted third state. The first click
+// uses the column's declared direction (dates open newest-first).
 function toggleSort(col: Column<T>) {
   if (!col.sortable) return
   if (!isSorted(col)) {
@@ -240,16 +156,9 @@ function handleClick(item: T) {
 </script>
 
 <template>
-  <!--
-    tabular-nums on the root, so it reaches the desktop table and the mobile
-    cards from one place (font-variant-numeric inherits). Every column in this
-    app that a reader scans DOWN is numeric -- dates, byte counts, stream
-    sequences, revisions, RTT -- and proportional digits make those ragged,
-    which is most of why a dense table looks unsettled. It only changes digit
-    advance widths, so slotted text is unaffected.
-  -->
+  <!-- tabular-nums on the root reaches table and cards; scanned columns are numeric. -->
   <div class="w-full tabular-nums">
-    <!-- 1. DESKTOP VIEW: Table -->
+    <!-- Desktop: table -->
     <div class="hidden lg:block overflow-x-auto">
       <table class="table table-sm w-full table-fixed">
         <thead>
@@ -274,9 +183,7 @@ function handleClick(item: T) {
               </button>
               <span v-else class="text-base-content/60">{{ col.label }}</span>
             </th>
-            <!-- Actions never holds more than two buttons (Edit/Delete/View, and
-                 View only renders when the other two do not), so a fixed 9rem is
-                 enough and hands the leftover width back to the content. -->
+            <!-- Actions holds at most two buttons, so a fixed 9rem is enough. -->
             <th v-if="$slots.actions" class="w-36 text-right text-[11px] uppercase tracking-wider text-base-content/60">Actions</th>
           </tr>
         </thead>
@@ -307,19 +214,10 @@ function handleClick(item: T) {
       </table>
     </div>
     
-    <!-- 2. MOBILE VIEW: High-Density Cards -->
+    <!-- Mobile: cards -->
     <div class="lg:hidden space-y-2">
-      <!-- This row is inside `lg:hidden`, so it is only ever touched, never
-           clicked -- and it shipped as two 24px targets: `select-xs` and
-           `btn-xs` are both height 1.5rem. The row's Edit button was sized for a
-           thumb one pass ago and these were missed, which is the usual shape of
-           this bug: the control that got looked at was the one in the card, and
-           the one above the cards is not part of any card.
-
-           The sizing is a rule below rather than `h-11` here because `select-xs`
-           and `btn-xs` set `min-height` as well as `height`, so a height utility
-           alone loses to it and silently does nothing. Keeping the daisyUI size
-           classes keeps the font size and padding they carry. -->
+      <!-- Touch-only sort row, sized up to 44px by `.sort-touch` below. Not `h-11`:
+           `select-xs` and `btn-xs` also set `min-height`, which would win. -->
       <div v-if="sortableColumns.length" class="sort-touch flex items-center gap-2 pb-1">
         <span class="text-[10px] uppercase font-bold text-base-content/50 tracking-tight shrink-0">Sort</span>
         <select
@@ -353,42 +251,17 @@ function handleClick(item: T) {
         ]"
         @click="handleClick(item)"
       >
-        <!--
-          gap-1.5 overrides daisyUI's own `.card-body { gap: .5rem }`, which is
-          easy to miss: it applies on top of any margin written here, so the old
-          `mb-1.5` on the identity block and `mt-2` on the action bar were each
-          adding to 8px that was already there rather than setting it.
-        -->
+        <!-- gap-1.5 overrides daisyUI's `.card-body` gap, which adds to any margin. -->
         <div class="card-body p-3 gap-1.5">
           
-          <!-- IDENTITY HEADER (First Column), with the row's actions beside it.
-               They used to sit in a full-width bar of their own under the
-               metadata grid, which cost 44px of every card -- a border, two
-               paddings, a card-body gap and a 24px button -- to say "Edit".
-               Up here the row is already at least as tall as the button, so
-               the actions are free: measured over four Things at 390px, the
-               card went from 194px to 150px on that move alone, and taking the
-               button out entirely from there saves nothing at all. That last
-               part is worth knowing, because three list views point their Edit
-               button at exactly where tapping the card already goes, and the
-               tempting fix is to delete it. Don't: on a card there is no hover
-               and no cursor, so that button is the only thing announcing the
-               row is actionable, and it now costs nothing to keep.
-
-               min-w-0 on the text side is load-bearing -- without it a flex
-               child refuses to shrink below its content and the buttons get
-               pushed off the card instead. -->
+          <!-- Identity (first column) with the row's actions beside it, which costs
+               no card height. Keep an Edit button even where it goes where the
+               card tap goes: on touch it is the only sign the row is actionable.
+               min-w-0 lets the text shrink, or the buttons are pushed off the card. -->
           <div class="flex items-start justify-between gap-2">
             <div class="min-w-0 flex-1">
-              <!-- A `card-` slot wins, then the desktop `cell-` slot, then the
-                   raw value. The middle step is the one that matters: a view
-                   that renders a column through a cell slot alone -- a status
-                   badge, a `Deactivated` marker, a value that is not a record
-                   field at all -- used to drop straight to the raw value on
-                   mobile, which printed `true`, `-`, or nothing for the very
-                   columns a card has room for. Falling back to the desktop
-                   rendering makes the phone show what the table shows unless a
-                   view deliberately says otherwise. -->
+              <!-- A `card-` slot wins, then the desktop `cell-` slot, then the raw
+                   value, so the card shows what the table shows by default. -->
               <slot :name="`card-${columns[0].key}`" :item="item" :value="get(item, columns[0].key)">
                 <slot :name="`cell-${columns[0].key}`" :item="item" :value="get(item, columns[0].key)">
                   <div class="text-sm font-bold text-primary truncate">
@@ -403,7 +276,7 @@ function handleClick(item: T) {
             </div>
           </div>
 
-          <!-- METADATA GRID (Remaining Columns) -->
+          <!-- Remaining columns -->
           <div class="card-fields-touch grid grid-cols-2 gap-x-3 gap-y-0.5 border-t border-base-200/60 pt-2">
             <div 
               v-for="col in columns.slice(1)" 
@@ -411,12 +284,10 @@ function handleClick(item: T) {
               :class="[col.class, col.cardWide ? 'col-span-2' : '']"
               class="flex items-center gap-1.5 overflow-hidden"
             >
-              <!-- Fixed Label: Now handled by ResponsiveList only -->
               <span class="text-[10px] uppercase font-bold opacity-50 tracking-tight shrink-0">
                 {{ col.mobileLabel || col.label }}:
               </span>
 
-              <!-- Value Slot: Now only handles the value part -->
               <div class="flex-1 truncate">
                 <slot :name="`card-${col.key}`" :item="item" :value="get(item, col.key)">
                   <slot :name="`cell-${col.key}`" :item="item" :value="get(item, col.key)">
@@ -432,7 +303,6 @@ function handleClick(item: T) {
       </div>
     </div>
     
-    <!-- EMPTY & LOADING STATES -->
     <div v-if="items.length === 0 && !loading" class="text-center py-12 bg-base-200/30 rounded-box border-2 border-dashed border-base-300">
       <slot name="empty">
         <div class="flex flex-col items-center gap-2 opacity-40">
@@ -450,37 +320,12 @@ function handleClick(item: T) {
 
 <style scoped>
 /*
-  Touch targets. A row's action button is written `btn btn-xs` for the desktop
-  table, where a mouse is pointing at it; in the mobile card that is a 39x24px
-  target, and both platform guidelines want 44x44 (iOS) or 48x48 (Android).
-  This block sizes it up for the card only -- the desktop table is a separate
-  element above and never matches.
+  Touch targets: slotted `btn-xs` buttons in a mobile card (actions and field
+  cells) grow to 44px. Not btn-sm (32px, below both platform guidelines), and
+  not an invisible enlarged hit area: the whole card is tappable, so a hidden
+  target would steal taps meant for the card.
 
-  It costs about 15px a card, measured over a mix of rows with and without a
-  description: 110px average becomes 125px. That is real, and it was worth
-  paying rather than taking either of the two cheaper answers, because both are
-  worse than they look:
-
-    - btn-sm (32px) costs 6px and meets NEITHER guideline. It buys the feeling
-      of having addressed this and none of the substance.
-    - Keeping the 24px button and growing only its HIT area with a transparent
-      ::after costs nothing and was the tempting one. It is wrong here for a
-      reason specific to this layout: an invisible target is free when it sits
-      in dead space, and this one sits inside a LARGER competing target -- the
-      whole card is tappable. Growing it invisibly means a tap 10px above the
-      button, on what looks like the card, silently opens the edit form
-      instead. It makes the primary action unreliable exactly where the
-      secondary one is, and nothing on screen explains why.
-
-  The metadata grid is in the same rule because a button in a card CELL is a
-  touch target for the same reason and was missed for the same reason -- the
-  pass that sized the row's actions looked at the `actions` slot, and the two
-  buttons on the Invitations token are not in it. Today that selector reaches
-  exactly those two; the point of writing it here is that it reaches the next
-  one too.
-
-  `:deep()` because the button is slotted, so it is compiled in the parent's
-  scope and a plain scoped selector would not reach it.
+  `:deep()` because slotted content is compiled in the parent's scope.
 */
 .card-actions-touch :deep(.btn),
 .card-fields-touch :deep(.btn) {
@@ -489,9 +334,7 @@ function handleClick(item: T) {
   min-width: 44px;
 }
 
-/* The sort row above the cards, same 44px rule and the same reasoning. No
-   `:deep()` needed: unlike the action buttons these are this component's own
-   elements, so the scope id lands on them directly. */
+/* The sort row: same 44px rule. Own elements, so no `:deep()`. */
 .sort-touch .select,
 .sort-touch .btn {
   height: 44px;

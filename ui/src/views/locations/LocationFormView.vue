@@ -1,4 +1,3 @@
-<!-- ui/src/views/locations/LocationFormView.vue -->
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -30,7 +29,6 @@ const toast = useToast()
 const locationId = route.params.id as string | undefined
 const isEdit = computed(() => !!locationId && !props.embedded)
 
-// Form data
 const formData = ref({
   name: '',
   description: '',
@@ -45,12 +43,8 @@ const formData = ref({
 
 const metadataEditor = ref<InstanceType<typeof MetadataEditor> | null>(null)
 
-// Image uploads.
-//
-// The loaded record is kept whole rather than a pair of resolved URLs:
-// ImageUploadField resolves its own (every file field is protected and needs a
-// file token), so all this view has to hold is what Save should do -- a staged
-// file, or a staged removal, per field.
+// The record is kept whole because ImageUploadField resolves its own (protected,
+// file-token) URLs; this view holds only a staged file or removal per field.
 const loadedLocation = ref<Location | null>(null)
 
 // A type, once set, is frozen by locations.updateRule (ADR 0003): generated codes
@@ -61,7 +55,6 @@ const floorplanRemoved = ref(false)
 const photoFile = ref<File | null>(null)
 const photoRemoved = ref(false)
 
-// Relation options
 const locationTypes = ref<LocationType[]>([])
 const parentLocations = ref<LocationNode[]>([])
 
@@ -70,15 +63,9 @@ const typeOptions = computed<PickerOption[]>(() =>
 )
 
 /**
- * Self AND everything below it are disabled rather than dropped: a greyed row
- * says why, where a missing row just looks like the record vanished.
- *
- * The descendant half matters as much as the self check. Re-parenting a location
- * under its own descendant makes a cycle, and `flattenLocationTree` can then
- * reach neither end of it -- both fall out of the tree and reappear at the bottom
- * flagged as orphans. The server now refuses that save (hooks/location_path.go,
- * which would otherwise have to build a path through the loop), so this is the
- * friendly half: the row cannot be picked, rather than failing on save.
+ * Self and its descendants are disabled (not dropped, so the row says why):
+ * re-parenting under a descendant makes a cycle. The server also refuses that
+ * save (hooks/location_path.go); this is the friendly half.
  */
 const parentOptions = computed<PickerOption[]>(() =>
   parentLocations.value.map(n => ({
@@ -90,27 +77,20 @@ const parentOptions = computed<PickerOption[]>(() =>
   }))
 )
 
-// Description of the selected location type, shown under the select.
 const selectedTypeHint = computed(() => {
   const t = locationTypes.value.find(x => x.id === formData.value.type)
   return t?.description || ''
 })
 
-// The inventory schema declared by the selected location type, if it has one.
-// Absent means MetadataEditor shows free-form key/value rows.
+// Null means free-form key/value rows.
 const selectedTypeMetadataSchema = computed(() => {
   const t = locationTypes.value.find(x => x.id === formData.value.type)
   return t?.metadata_schema || null
 })
 
-// State
 const loading = ref(false)
 const loadingOptions = ref(true)
 
-
-/**
- * Load form options (types and parent locations)
- */
 async function loadOptions() {
   loadingOptions.value = true
   
@@ -130,9 +110,6 @@ async function loadOptions() {
   }
 }
 
-/**
- * Load existing location for editing
- */
 async function loadLocation() {
   if (!locationId || props.embedded) return
   
@@ -161,7 +138,6 @@ async function loadLocation() {
   }
 }
 
-
 /**
  * Commit a metadata JSON tab left mid-edit. False (with a toast) if it doesn't
  * parse, so a bad blob blocks the save rather than being dropped from it.
@@ -170,11 +146,8 @@ function validateMetadata(): boolean {
   return !metadataEditor.value || metadataEditor.value.commit()
 }
 
-/**
- * Validate coordinates
- */
 function validateCoordinates(): boolean {
-  // Convert to string to handle both string and number types from number input
+  // A number input can yield a string or a number
   const latStr = String(formData.value.latitude ?? '').trim()
   const lngStr = String(formData.value.longitude ?? '').trim()
 
@@ -210,9 +183,6 @@ function validateCoordinates(): boolean {
   return true
 }
 
-/**
- * Handle form submission
- */
 async function handleSubmit() {
   if (!validateMetadata() || !validateCoordinates()) return
   
@@ -221,14 +191,12 @@ async function handleSubmit() {
   try {
     const formDataToSend = new FormData()
     
-    // Basic fields
     formDataToSend.append('name', formData.value.name)
     formDataToSend.append('description', formData.value.description || '')
     formDataToSend.append('code', formData.value.code || '')
     formDataToSend.append('type', formData.value.type || '')
     formDataToSend.append('parent', formData.value.parent || '')
     
-    // Coordinates (as JSON object or empty)
     const latStr = String(formData.value.latitude ?? '').trim()
     const lngStr = String(formData.value.longitude ?? '').trim()
 
@@ -242,20 +210,15 @@ async function handleSubmit() {
       formDataToSend.append('coordinates', '')
     }
     
-    // Metadata. FormData carries strings, so the object is serialised here —
-    // this is the one place the string representation still exists, and it is a
-    // transport detail rather than the form's model.
+    // FormData carries strings; serialising here is a transport detail only.
     if (formData.value.metadata) {
       formDataToSend.append('metadata', JSON.stringify(formData.value.metadata))
     } else {
       formDataToSend.append('metadata', '')
     }
     
-    // Images. An empty value clears a single-file field (PocketBase normalizes
-    // it to an empty slice, core/field_file.go); omitting the key entirely
-    // leaves the stored file alone. Those are three different intents and all
-    // three have to be expressible, which is why each field has a `removed`
-    // flag rather than relying on the absence of a staged file.
+    // An empty value clears a file field; omitting the key keeps the stored file.
+    // Hence the explicit `removed` flag per field.
     if (floorplanFile.value) {
       formDataToSend.append('floorplan', floorplanFile.value)
     } else if (floorplanRemoved.value) {
@@ -270,12 +233,10 @@ async function handleSubmit() {
     let record: Location
 
     if (isEdit.value) {
-      // Update existing location
       record = await pb.collection('locations').update<Location>(locationId!, formDataToSend)
       toast.success('Location updated')
     } else {
-      // Create new location
-      // IMPORTANT: Frontend must set organization
+      // The client must set organization on create
       formDataToSend.append('organization', authStore.currentOrgId!)
       
       record = await pb.collection('locations').create<Location>(formDataToSend)
@@ -312,7 +273,6 @@ onMounted(() => {
 
 <template>
   <div class="space-y-6">
-    <!-- Header: Hide if embedded -->
     <div v-if="!embedded">
       <div class="breadcrumbs text-sm">
         <ul>
@@ -325,25 +285,20 @@ onMounted(() => {
       </h1>
     </div>
     
-    <!-- Loading State -->
     <div v-if="loadingOptions" class="flex justify-center p-12">
       <span class="loading loading-spinner loading-lg"></span>
     </div>
     
-    <!-- Form -->
     <form v-else @submit.prevent="handleSubmit" class="space-y-6">
       
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         
-        <!-- Left Column: Basic Info -->
         <div class="space-y-6">
           <BaseCard title="Basic Information">
             <div class="space-y-4">
-              <!-- The photo beside Name and Description, where the detail view
-                   shows it, rather than in a card of its own in the other
-                   column. See ThingFormView for why beside those two only.
-                   Unlike a Thing's, a location's photo works on create too:
-                   locations use the plain record API with FormData. -->
+              <!-- Photo beside Name and Description only, as in ThingFormView.
+                   Unlike a Thing's, it works on create too: locations use the
+                   plain record API with FormData. -->
               <div class="flex flex-col sm:flex-row sm:items-start gap-5">
                 <div class="shrink-0 sm:order-last">
                   <ImageUploadField
@@ -361,7 +316,6 @@ onMounted(() => {
                 </div>
 
                 <div class="flex-1 min-w-0 space-y-4">
-                  <!-- Name -->
                   <div class="form-control">
                     <label class="label">
                       <span class="label-text">Name *</span>
@@ -375,7 +329,6 @@ onMounted(() => {
                     />
                   </div>
 
-                  <!-- Description -->
                   <div class="form-control">
                     <label class="label">
                       <span class="label-text">Description</span>
@@ -390,7 +343,6 @@ onMounted(() => {
                 </div>
               </div>
               
-              <!-- Code -->
               <div class="form-control">
                 <label class="label">
                   <span class="label-text">Code</span>
@@ -402,10 +354,8 @@ onMounted(() => {
                   class="input input-bordered font-mono"
                   :readonly="isEdit"
                 />
-                <!-- An installer code is preferred for a site: RM-204 is on the
-                     door, and a location code is read in subjects and paths. The
-                     generated one (hooks/codes.go) is the fallback that makes sure
-                     no location is left without a code. ADR 0003. -->
+                <!-- An installer code (RM-204 on the door) is preferred; the
+                     generated one (hooks/codes.go) is the fallback. ADR 0003. -->
                 <label class="label">
                   <span class="label-text-alt">
                     {{ !isEdit
@@ -415,7 +365,6 @@ onMounted(() => {
                 </label>
               </div>
               
-              <!-- Type -->
               <div class="form-control">
                 <label class="label">
                   <span class="label-text">Type</span>
@@ -435,14 +384,12 @@ onMounted(() => {
                     A type cannot be changed once set. To fix a wrong one, delete and recreate the Location.
                   </span>
                 </label>
-                <!-- Same reasoning as the Thing form's type hint: anyone who can
-                     pick a type can read its description. -->
+                <!-- Anyone who can pick a type can read its description. -->
                 <label v-if="selectedTypeHint" class="label">
                   <span class="label-text-alt text-base-content/60">{{ selectedTypeHint }}</span>
                 </label>
               </div>
               
-              <!-- Parent Location -->
               <div class="form-control">
                 <label class="label">
                   <span class="label-text">Parent Location</span>
@@ -464,11 +411,9 @@ onMounted(() => {
           </BaseCard>
         </div>
 
-        <!-- Right Column: Coordinates, Floorplan, Metadata -->
         <div class="space-y-6">
           <BaseCard title="Geo Coordinates">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <!-- Latitude -->
               <div class="form-control">
                 <label class="label">
                   <span class="label-text">Latitude</span>
@@ -482,7 +427,6 @@ onMounted(() => {
                 />
               </div>
               
-              <!-- Longitude -->
               <div class="form-control">
                 <label class="label">
                   <span class="label-text">Longitude</span>
@@ -503,9 +447,8 @@ onMounted(() => {
           
           <BaseCard title="Floorplan">
             <div class="flex flex-col items-center gap-2">
-              <!-- Accepts SVG, which the photo field deliberately does not: a
-                   floorplan is frequently exported as a drawing rather than
-                   photographed. -->
+              <!-- Accepts SVG (the photo field deliberately does not): floorplans
+                   are often exported drawings. -->
               <ImageUploadField
                 v-model:file="floorplanFile"
                 v-model:removed="floorplanRemoved"
@@ -535,7 +478,6 @@ onMounted(() => {
         </div>
       </div>
       
-      <!-- Actions -->
       <div class="flex flex-col sm:flex-row justify-end gap-2 sm:gap-4">
         <button 
           type="button" 

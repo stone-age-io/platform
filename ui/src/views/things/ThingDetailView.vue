@@ -1,4 +1,3 @@
-<!-- ui/src/views/things/ThingDetailView.vue -->
 <script setup lang="ts">
 import { Ban, DownloadIcon, Lock, MapPin, Network, RadioTower, RefreshCw, Shield } from '@lucide/vue'
 import { ref, onMounted, computed } from 'vue'
@@ -38,37 +37,28 @@ const togglingActive = ref(false)
 
 const thingId = route.params.id as string
 
-// The inventory schema declared by this Thing's type, if it has one. The type
-// relation is expanded on load, so this needs no extra request.
+// From the expanded type relation; no extra request.
 const typeMetadataSchema = computed(
   () => (thing.value?.expand?.type as ThingType | undefined)?.metadata_schema || null,
 )
 
-// A quick metadata edit is an inventory write, which members hold. Deleting or
-// deactivating is not — those stay on decommissionInventory.
+// A metadata edit is an inventory write, which members hold. Delete and
+// deactivate stay on decommissionInventory.
 const canEditMetadata = computed(() => authStore.can.manageInventory)
 
-// MetadataCard has already persisted by the time this fires; patch the local
-// record rather than refetching the whole Thing with its expands.
+// MetadataCard has already saved; patch locally instead of refetching the expands.
 function onMetadataSaved(metadata: Record<string, any> | null) {
   if (thing.value) thing.value.metadata = metadata || undefined
 }
 
-/**
- * Live State (digital twin) keys are `thing.<code>.…` in the org-wide `twin`
- * bucket — the Thing's location is not part of the key, so a Thing needs only a
- * code. This used to also require a location code, a leftover from an earlier
- * bucket-per-location design that was never built; the effect was that a coded
- * Thing with no location rendered neither the card nor the offline hint.
- */
+// Twin keys are `thing.<code>.…` in the org-wide bucket; the location is not
+// part of the key, so a code is all a Thing needs.
 const thingCode = computed(() => thing.value?.code)
 const hasTwinConfig = computed(() => !!thingCode.value)
 
-// What this device speaks on: its type's operations resolved against this
-// Thing. Types and operations are readable by every role in the organization,
-// so unlike the identity details above this needs no administrator. Resolved
-// exactly as the Publisher widget resolves a bound operation: codes, never
-// names, and the id where a Thing has no code.
+// The type's operations resolved against this Thing; readable by every role.
+// Resolved as the Publisher widget does: codes, never names, and the id where a
+// Thing has no code.
 const thingType = computed(() => thing.value?.expand?.type as ThingType | undefined)
 const typeOperations = computed(
   () => (thingType.value?.expand?.operations as ThingTypeOperation[] | undefined) || [],
@@ -121,28 +111,19 @@ function downloadNatsCreds() {
 }
 
 /**
- * Whether the credential controls are offered at all.
- *
- * Both of them mint. `regenerate` re-signs for the same key and `revoke` hands
- * back a working replacement, and pb-nats does either on an inactive identity,
- * which issues a credential past the revocation cutoff -- the same thing
- * Reactivate does. So on a deactivated Thing they would be two ways back onto
- * the bus that skip Reactivate, under a badge saying the device is cut off.
- * Reactivate is the one lever, because it is the one that also restores the
- * Thing's own sign-in and its Nebula host (hooks/active_flag.go).
- *
- * There is deliberately no Re-enable here, unlike the NATS user page: for a
- * device `nats_users.active` mirrors `things.active`, and re-enabling the
- * identity alone would put the two out of step.
+ * Whether the credential controls are offered. Regenerate and revoke both mint a
+ * working credential, even on an inactive identity, so on a deactivated Thing
+ * they would bypass Reactivate, the one lever that also restores sign-in and the
+ * Nebula host (hooks/active_flag.go). No Re-enable either: for a device
+ * `nats_users.active` mirrors `things.active`.
  */
 const credentialsLive = computed(() => {
   const natsUser = thing.value?.expand?.nats_user as NatsUser | undefined
   return thing.value?.active !== false && !!natsUser?.active
 })
 
-// Regenerate is NOT a leak response: it re-signs for the SAME key, so every
-// copy of the old file keeps working. What it is for on a device is renewing a
-// credential before the expiry shown beside the username.
+// Not a leak response: it re-signs the same key, so old copies keep working.
+// It renews a credential before its expiry.
 async function regenerateCreds() {
   const natsUser = thing.value?.expand?.nats_user as NatsUser
   if (!natsUser) return
@@ -168,9 +149,8 @@ async function regenerateCreds() {
   }
 }
 
-// The "credentials leaked" button, not a suspend: a new key pair, the old
-// public key onto the account's revocation list, and a working replacement on
-// the same record. Taking the device out of service is Deactivate.
+// The leak response, not a suspend: new key pair, old key revoked, replacement
+// issued on the same record. Taking a device out of service is Deactivate.
 async function revokeCreds() {
   const natsUser = thing.value?.expand?.nats_user as NatsUser
   if (!natsUser) return
@@ -207,16 +187,10 @@ function downloadNebulaConfig() {
 }
 
 /**
- * Deactivate or reactivate the Thing.
- *
- * This is not a cosmetic flag. The server (hooks/active_flag.go) treats the flip
- * as a real decommission: it refreshes the record's tokenKey, which invalidates
- * every auth token the device already holds, and it revokes the linked NATS
- * identity so the signed credential stops working. Reactivating issues a FRESH
- * NATS credential — the old .creds file stays dead, because the revocation
- * cutoff baked into the account JWT is permanent. Say so in the dialog; an
- * operator who expects the old creds to resume will otherwise be surprised at
- * the worst possible moment.
+ * A real decommission (hooks/active_flag.go): deactivating invalidates the
+ * device's auth tokens and revokes its NATS identity. Reactivating issues a NEW
+ * credential; the old .creds stays dead (the revocation cutoff is permanent), so
+ * the dialog says so.
  */
 async function toggleActive() {
   if (!thing.value) return
@@ -255,9 +229,7 @@ async function handleDelete() {
     details: 'This action cannot be undone.',
     confirmText: 'Delete',
     variant: 'danger',
-    // The code where there is one, the name where there is not. Code is
-    // optional on things, and a gate that quietly vanishes on the records
-    // without one would be worse than having no gate at all.
+    // Code is optional, so fall back to the name rather than lose the gate.
     requireText: thing.value.code || thing.value.name || undefined,
   })
   if (!confirmed) return
@@ -329,13 +301,7 @@ onMounted(() => {
         </div>
       </div>
 
-      <!--
-        A deactivated Thing is fully cut off, not merely flagged: its auth tokens
-        were invalidated and its NATS credential revoked on the flip. Spelling
-        that out here is the point of the banner -- the failure mode this feature
-        exists to avoid is an operator reading a red badge and assuming the
-        device is silent when it is not.
-      -->
+      <!-- Spells out that a deactivated Thing is cut off, not merely flagged. -->
       <div v-if="thing.active === false" class="alert alert-warning py-2 text-sm">
         <span>
           This thing is deactivated — it cannot sign in, and its NATS credentials are revoked.
@@ -347,29 +313,11 @@ onMounted(() => {
         <div class="space-y-6">
           <BaseCard title="Basic Information">
             <!--
-              The photo is a COLUMN BESIDE the fields, not a row above them.
-
-              It shipped first as a full-width `Photo` entry at the top of this
-              list, which left a 160px band of empty card to its right and
-              pushed every field below it down for no gain. Beside them it
-              fills that gutter instead and the card is roughly half as tall.
-              Dropping the `Photo` label costs nothing -- it was only telling
-              the reader that a photograph is a photograph.
-
-              It stacks ABOVE the fields on a phone (DOM order, plus
-              sm:order-last to move it right once there is room), because a
-              narrow screen has no gutter to fill and the photo is the fastest
-              confirmation you are on the right record.
-
-              Wrapped in a div rather than given the order class directly:
-              RecordPhoto has a fragment root -- the plate and its Teleported
-              dialog -- so class fallthrough does not apply to it.
-
-              With no photo the list simply takes the full width. That is
-              better than the em-dash the labelled version had to render, since
-              there is no longer a field sitting empty. The exception is a
-              reader who can add one: they get PhotoQuickAdd's dashed plate in
-              the same gutter, at the same size.
+              The photo is a column beside the fields, stacked above them on a
+              phone (DOM order, then sm:order-last). Wrapped in a div because
+              RecordPhoto has a fragment root (plate plus teleported dialog), so
+              classes do not fall through. With no photo the fields take the
+              full width, unless the reader can add one (PhotoQuickAdd).
             -->
             <div class="flex flex-col sm:flex-row sm:items-start gap-5">
               <div v-if="thing.photo" class="shrink-0 sm:order-last">
@@ -423,34 +371,18 @@ onMounted(() => {
             </div>
 
             <!--
-              Timestamps span the FULL card, below the photo, rather than
-              sharing the squeezed column with the fields above.
-
-              Measured, not guessed: this card sits in the page's two-column
-              grid, so a NARROWER viewport gives it a NARROWER body. With the
-              photo taking 140px beside them, the two timestamp columns came to
-              108px each at a 1440px viewport -- "Sep 19, 2026 6:40:11 PM"
-              needs about 125px, so both columns wrapped to three lines on one
-              of the commonest laptop widths. Below the photo they get the full
-              body width and stop wrapping, and the card is still far shorter
-              than the stacked version this replaced.
-
-              A second <dl> rather than one list split across two containers:
-              each is a complete description list, which is what the element is
-              for, and RecordTimestamps needs a <dl> parent to emit its dt/dd
-              pairs into.
+              Timestamps span the full card below the photo. Measured: beside a
+              140px photo at a 1440px viewport, each column was 108px and a full
+              timestamp (about 125px) wrapped to three lines. A second <dl>
+              because RecordTimestamps emits dt/dd pairs into a <dl> parent.
             -->
             <dl class="grid grid-cols-2 gap-4 mt-4">
-              <!-- Both timestamps, not only Created. This is the record side of
-                   the activity feed: the feed reports an update and the record
-                   has to carry something to correlate that against. -->
+              <!-- Updated too, so the record can be correlated with the activity feed. -->
               <RecordTimestamps :created="thing.created" :updated="thing.updated" />
             </dl>
           </BaseCard>
 
-          <!-- Metadata: read-only field list / JSON, with quick edit in place.
-               Rendered unconditionally now — an empty card is how you ADD the
-               first field to a Thing that has none. -->
+          <!-- Shown empty to a writer: that is how the first field gets added. -->
           <MetadataCard
             v-if="canEditMetadata || (thing.metadata && Object.keys(thing.metadata).length > 0)"
             collection="things"
@@ -464,50 +396,19 @@ onMounted(() => {
         
         <div class="space-y-6">
           <BaseCard title="Connectivity">
-            <!--
-              The title is BaseCard's own, like every other card on the page.
-              It was a hand-drawn `card-title text-base` header, 16px against
-              the 20px the rest use, left over from when it held the controls
-              below.
-
-              The three controls used to sit up here in a row under
-              "Connectivity", which is one heading over two identities. Two of
-              them were download buttons with the same 📥 on them, and the NATS
-              one hid its label below 640px, so a phone showed 📥 / 🔄 /
-              📥 Config -- two downloads, one of them unlabelled, for different
-              files. Each now sits in the section that names what it acts on,
-              with a label that fits because it has a row to itself.
-
-              This is not a mobile fix that costs the desktop something. The
-              card lives in `lg:grid-cols-2`, so it is 394px of content on a
-              1280px desktop against 295px on a phone -- close enough that one
-              layout genuinely serves both, and measuring both confirmed it
-              (552px and 557px tall). It costs 56px either way, which buys the
-              two labels and the touch targets.
-            -->
-            <!-- NATS Section.
-
-                 flex-wrap rather than a breakpoint: at 393px and up the label
-                 and both buttons share the row, and at 320px they do not fit,
-                 so the buttons take their own line. Measured, the wrap costs
-                 nothing at all until it is needed -- 557px at 360px wide with
-                 it and without it -- which is the argument for wrapping over a
-                 `flex-col sm:flex-row`, since that one pays 64px on every
-                 phone to fix the narrowest. -->
+            <!-- Each control sits in the section that names what it acts on. -->
+            <!-- NATS. flex-wrap rather than a breakpoint: the buttons drop to their
+                 own line only when they do not fit, where flex-col sm:flex-row
+                 would cost every phone 64px. -->
             <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
               <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider">NATS</span>
-              <!-- Same condition the section body below uses, so the two
-                   not-expanded states show a heading with no controls under
-                   it rather than a download for something unreadable. Plus
-                   credentialsLive: see its note for why a cut-off device
-                   offers none of them. -->
+              <!-- No controls for an unreadable identity, nor (credentialsLive) a cut-off device. -->
               <div v-if="thing.expand?.nats_user && credentialsLive" class="connectivity-actions credential-actions flex gap-2 w-full sm:w-auto">
                 <button @click="downloadNatsCreds" class="btn btn-sm btn-outline" title="Download .creds file">
                   <DownloadIcon :size="16" class="inline-block shrink-0" />
                   <span>.creds</span>
                 </button>
-                <!-- Plain outline: regenerate invalidates nothing, so the
-                     danger colour it used to wear oversold it. Revoke is the
+                <!-- Plain outline: regenerate invalidates nothing. Revoke is the
                      one that breaks a deployed device. -->
                 <button
                   @click="regenerateCreds"
@@ -550,12 +451,9 @@ onMounted(() => {
               <div class="bg-base-200 rounded-lg p-3 border border-base-300">
                 <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider block mb-1">Role</span>
                 <!--
-                  Link only for a reader who can actually open /nats/roles/:id —
-                  the route guards on manageInfrastructure, so for anyone else the
-                  link is a dead end that bounces them off the page. Same reason
-                  the raw role_id is no longer the fallback: nats_roles is
-                  owner/admin-only, so a reader without the expand gets a PB id
-                  they cannot look up.
+                  Link only for readers the /nats/roles/:id route admits
+                  (manageInfrastructure). No raw role_id fallback: nats_roles is
+                  owner/admin-only, so the id is useless to anyone else.
                 -->
                 <router-link
                   v-if="thing.expand.nats_user.expand?.role_id && authStore.can.manageInfrastructure"
@@ -569,9 +467,8 @@ onMounted(() => {
                 </span>
                 <span v-else class="font-mono text-sm text-base-content/60">—</span>
               </div>
-              <!-- Says where the controls went. A deactivated Thing already has
-                   the page banner; this covers the identity being inactive on
-                   its own, which a Thing reached only out of step. -->
+              <!-- Says where the controls went, including an identity inactive
+                   on its own (out of step with the Thing). -->
               <p v-if="!credentialsLive" class="text-xs text-base-content/60">
                 <template v-if="thing.active === false">
                   Credential actions return when the Thing is reactivated.
@@ -587,9 +484,7 @@ onMounted(() => {
               </p>
             </div>
             <!-- Linked, but the caller cannot read nats_users (members see only
-                 their own row). The relation ID is on the things record and IS
-                 readable, so "linked" and "not linked" stay distinguishable
-                 without it — saying "No NATS user linked" here was simply false. -->
+                 their own row). The relation id on the Thing is still readable. -->
             <div v-else-if="thing.nats_user" class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">
               <Lock :size="28" :stroke-width="1.5" class="mx-auto text-base-content/30 mb-2" />
               <p class="text-sm">NATS identity linked</p>
@@ -598,10 +493,7 @@ onMounted(() => {
             <div v-else class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg border border-dashed border-base-300">
               <RadioTower :size="28" :stroke-width="1.5" class="mx-auto text-base-content/30 mb-2" />
               <p class="text-sm">No NATS user linked</p>
-              <!-- A way forward for the reader who can attach one, rather than
-                   a dead end. Attaching is the edit form's job (its NATS card
-                   creates or links in one place), and the gate is the one that
-                   form uses for its identity cards. -->
+              <!-- Same gate as the edit form's identity cards. -->
               <router-link
                 v-if="authStore.can.manageInfrastructure"
                 :to="`/things/${thing.id}/edit`"
@@ -609,10 +501,9 @@ onMounted(() => {
               >Attach a NATS user</router-link>
             </div>
 
-            <!-- Divider -->
             <div class="border-t border-base-300 my-4"></div>
 
-            <!-- Nebula Section. See the NATS heading above for the wrap. -->
+            <!-- Nebula. Same wrap as the NATS heading. -->
             <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
               <span class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Nebula</span>
               <div v-if="thing.expand?.nebula_host" class="connectivity-actions flex gap-2">
@@ -651,9 +542,7 @@ onMounted(() => {
             </div>
           </BaseCard>
 
-          <!-- Its own card rather than a third section of Connectivity: those
-               two sections describe identities a member may not be able to
-               read, while this reads only the type and is open to every role. -->
+          <!-- Not part of Connectivity: this reads only the type, open to every role. -->
           <BaseCard v-if="thingType" title="Subjects">
             <OperationSubjects
               :prefix="thingType.subject_prefix"
@@ -691,11 +580,7 @@ onMounted(() => {
       </DangerZone>
     </template>
 
-    <!--
-      No organization-name prop: a console user is scoped to one organization and
-      already knows whose device this is. The helpdesk passes it because its staff
-      are cross-customer.
-    -->
+    <!-- No organization-name prop: a console user is in one org (the helpdesk passes it). -->
     <QrLabelModal
       v-if="showLabelModal && thing"
       :records="[{ code: thing.code || '', name: thing.name || '', kind: 'thing' }]"
@@ -705,15 +590,7 @@ onMounted(() => {
 </template>
 
 <style scoped>
-/*
-  The connectivity controls, sized for a thumb below `lg` -- the same rule and
-  the same breakpoint as ListPager, for the same reason: these render at every
-  width, so the size has to be conditional, and `lg` is where this app stops
-  drawing touch layouts. `btn-sm` is 32px, under both guidelines.
-
-  The buttons also dropped a redundant `h-8 min-h-0`, which set the height
-  `btn-sm` was already setting.
-*/
+/* Thumb-sized below `lg`, where the app stops drawing touch layouts (as ListPager). */
 @media (max-width: 1023px) {
   .connectivity-actions .btn {
     height: 44px;
@@ -721,11 +598,7 @@ onMounted(() => {
   }
 }
 
-/*
-  Three credential buttons do not fit beside the NATS heading on a phone, and
-  left to wrap they stranded Revoke on a row of its own. Below `sm` they take
-  the full row under the heading instead, as three equal buttons.
-*/
+/* Below `sm`, three equal buttons on their own row, so Revoke is not stranded alone. */
 @media (max-width: 639px) {
   .credential-actions .btn {
     flex: 1 1 0;

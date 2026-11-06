@@ -1,11 +1,7 @@
-<!-- ui/src/components/common/ExpiryBadge.vue -->
 <script setup lang="ts">
 /**
- * Renders nothing unless a credential is expired or close to it.
- *
- * Silence is the common case and the point: a badge that always shows something
- * is a badge nobody reads. See utils/expiry.ts for the threshold and why this
- * lives in the list views rather than in a notification system.
+ * Renders nothing unless a credential is expired or close to it; a badge that
+ * always shows is one nobody reads. Threshold and rationale: utils/expiry.ts.
  */
 import { computed } from 'vue'
 import { expiryState, expiryLabel } from '@/utils/expiry'

@@ -85,11 +85,9 @@ const emit = defineEmits<{
 
 const dashboardStore = useDashboardStore()
 const containerRef = ref<HTMLElement | null>(null)
-// Start from the window, not false. False rendered the desktop grid first on a
-// phone, so every widget mounted, unmounted and mounted again once
-// onMounted measured the container: two sets of subscriptions, and a map
-// created and destroyed mid-load. onMounted still refines it from the
-// container's own width.
+// Start from the window width, not false: false mounted the desktop grid first
+// on a phone and then remounted every widget once onMounted measured the
+// container. onMounted still refines it from the container's own width.
 const isMobile = ref(window.innerWidth < 768)
 
 const breakpoints = { lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }

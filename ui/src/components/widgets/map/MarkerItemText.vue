@@ -21,13 +21,6 @@ import { getSubscriptionManager } from '@/composables/useSubscriptionManager'
 import { resolveTemplate } from '@/utils/variables'
 import type { MapMarkerItem, DataSourceConfig } from '@/types/dashboard'
 
-/**
- * Marker Item: Text Display
- * 
- * Subscribes to a NATS subject via the central subscription manager
- * and displays the extracted value from the widget data store.
- */
-
 const props = defineProps<{
   item: MapMarkerItem
 }>()
@@ -37,15 +30,12 @@ const dashboardStore = useDashboardStore()
 const dataStore = useWidgetDataStore()
 const subManager = getSubscriptionManager()
 
-// Use item.id as the unique identifier for subscriptions
 const subscriptionId = computed(() => `marker-text-${props.item.id}`)
 
-// Track staleness
 const lastUpdate = ref<number>(0)
 const isStale = ref(false)
 let staleCheckInterval: number | null = null
 
-// Get the latest value from the data store buffer
 const latestMessage = computed(() => {
   const buffer = dataStore.getBuffer(subscriptionId.value)
   if (buffer.length === 0) return null
@@ -59,7 +49,6 @@ const displayValue = computed(() => {
   return String(val)
 })
 
-// Build the data source config for the subscription manager
 function buildDataSourceConfig(): DataSourceConfig | null {
   const cfg = props.item.textConfig
   if (!cfg?.subject) return null
@@ -76,10 +65,9 @@ function buildDataSourceConfig(): DataSourceConfig | null {
   }
 }
 
-// The config actually subscribed with. Rebuilding it at unsubscribe time used
-// the NEW variable values (the watcher below runs after they change), so it
-// unsubscribed from the new subject and left the old one feeding this item:
-// after switching A to B the text flipped between both devices' readings.
+// The config actually subscribed with. Rebuilding it at unsubscribe time would
+// use the new variable values (the watcher runs after they change) and leave the
+// old subject feeding this item.
 let subscribedConfig: DataSourceConfig | null = null
 
 function subscribe() {
@@ -88,10 +76,8 @@ function subscribe() {
   const config = buildDataSourceConfig()
   if (!config) return
 
-  // Initialize buffer for this item
   dataStore.initializeBuffer(subscriptionId.value, 10) // Small buffer, we only need latest
 
-  // Subscribe via central manager
   subManager.subscribe(subscriptionId.value, config, props.item.textConfig?.jsonPath)
   subscribedConfig = config
 }
@@ -125,7 +111,6 @@ function stopStaleCheck() {
   }
 }
 
-// Lifecycle
 onMounted(() => {
   if (natsStore.isConnected) {
     subscribe()
@@ -138,7 +123,6 @@ onUnmounted(() => {
   stopStaleCheck()
 })
 
-// Reconnection handling
 watch(() => natsStore.isConnected, (connected) => {
   if (connected) {
     subscribe()

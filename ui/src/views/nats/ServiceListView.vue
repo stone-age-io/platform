@@ -13,13 +13,9 @@ import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 import ListPager from '@/components/ui/ListPager.vue'
 
-// Asked, never stored: the list is whoever answered `$SRV.INFO` just now, the
-// same shape as the site-connectivity recipe. There is no "offline" row,
-// because a service that did not answer has left no record to show.
-//
-// One row per SERVICE, not per instance. Instances repeat their service's name
-// and description, and what tells them apart is their metadata, which only
-// lines up as columns among instances of one service: that is the detail page.
+// Asked, never stored: the list is whoever answered `$SRV.INFO` just now, so
+// there is no "offline" row. One row per service; instances, told apart by
+// their metadata, are on the detail page.
 
 const router = useRouter()
 const natsStore = useNatsStore()

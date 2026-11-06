@@ -21,12 +21,7 @@ const loading = ref(true)
 const deleting = ref(false)
 const roleId = route.params.id as string
 
-/**
- * Grug logic for display:
- * If it's an array, use it. 
- * If it's a string, try to parse JSON. 
- * If that fails, split by comma.
- */
+// Accepts an array, a JSON array string, or a comma-separated string.
 function getSubjectArray(val: any): string[] {
   if (!val) return []
   if (Array.isArray(val)) return val

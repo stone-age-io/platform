@@ -1,7 +1,5 @@
 :root {
-  /* =========================================
-     Theme Bridge: DaisyUI -> NATS Dashboard
-     ========================================= */
+  /* Theme bridge: daisyUI tokens -> the dashboard widgets' variables. */
 
   /* Base Colors */
   --bg: oklch(var(--b2));
@@ -15,12 +13,9 @@
 
   /* Semantic Colors */
   --color-primary: oklch(var(--p));
-  /* DaisyUI v4 dropped the *-focus palette entries (--pf/--sf/--af are absent
-     from daisyui/src/theming/colorNames.js), so oklch(var(--pf)) resolved to an
-     invalid color and every declaration using it was silently discarded — the
-     hover state simply did nothing. An alpha step is used rather than a computed
-     lightness step: relative color syntax (`oklch(from ...)`) and color-mix()
-     both fail on older engines in exactly the same silent way as --pf did. */
+  /* daisyUI v4 has no --pf/--sf/--af, so hover is an alpha step. Not relative
+     color syntax (`oklch(from ...)`) or color-mix(): both fail silently on
+     older engines. */
   --color-primary-hover: oklch(var(--p) / 0.85);
 
   --color-secondary: oklch(var(--s));

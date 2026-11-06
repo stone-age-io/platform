@@ -18,13 +18,6 @@ import { resolveTemplate } from '@/utils/variables'
 import { JSONPath } from 'jsonpath-plus'
 import type { MapMarkerItem } from '@/types/dashboard'
 
-/**
- * Marker Item: KV Display
- *
- * Watches a NATS KV bucket/key and displays the value.
- * Supports JSONPath extraction.
- */
-
 const props = defineProps<{
   item: MapMarkerItem
 }>()
@@ -56,7 +49,6 @@ const displayValue = computed(() => {
   if (isEmpty.value) return '<empty>'
   if (value.value === null) return '...'
 
-  // Format objects as JSON
   if (typeof value.value === 'object') {
     return JSON.stringify(value.value)
   }

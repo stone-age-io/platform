@@ -1,8 +1,5 @@
 import { ref } from 'vue'
 
-/**
- * Confirm dialog options
- */
 interface ConfirmOptions {
   title?: string
   message: string
@@ -11,23 +8,19 @@ interface ConfirmOptions {
   cancelText?: string
   variant?: 'danger' | 'warning' | 'info'
   /**
-   * Gate the confirm button behind typing this string exactly. Pass a record's
-   * code where it has one and its name where it does not -- see ConfirmDialog's
-   * own note for why it is only on the irreversible deletes.
+   * The user must type this exactly to enable confirm: a record's code, or its
+   * name if it has none. Only for irreversible deletes (see ConfirmDialog).
    */
   requireText?: string
 }
 
-/**
- * Internal state for the global confirm dialog
- */
 interface ConfirmState {
   show: boolean
   options: ConfirmOptions
   resolve: ((value: boolean) => void) | null
 }
 
-// Global state - shared across all instances
+// Module-level: one dialog, rendered in App.vue, shared by every caller.
 const state = ref<ConfirmState>({
   show: false,
   options: { message: '' },
@@ -35,33 +28,10 @@ const state = ref<ConfirmState>({
 })
 
 /**
- * Confirm Composable
- *
- * Promise-based confirmation dialog that can be used like the native confirm()
- * but displays a beautiful styled dialog instead of the browser's ugly one.
- *
- * Usage:
- *   const confirm = useConfirm()
- *
- *   // Simple usage (like native confirm)
- *   if (await confirm('Delete this item?')) {
- *     // user clicked confirm
- *   }
- *
- *   // With options
- *   const confirmed = await confirm({
- *     title: 'Delete Thing',
- *     message: 'Are you sure you want to delete "Sensor 1"?',
- *     details: 'This action cannot be undone.',
- *     confirmText: 'Delete',
- *     variant: 'danger'
- *   })
+ * Promise-based replacement for the native confirm(), using the styled dialog.
  */
 export function useConfirm() {
-  /**
-   * Show confirmation dialog and return promise
-   * Resolves to true if confirmed, false if cancelled
-   */
+  /** Resolves true if confirmed, false if cancelled. */
   function confirm(messageOrOptions: string | ConfirmOptions): Promise<boolean> {
     const options: ConfirmOptions = typeof messageOrOptions === 'string'
       ? { message: messageOrOptions }
@@ -84,10 +54,6 @@ export function useConfirm() {
     })
   }
 
-  /**
-   * Handle user confirmation
-   * Called by GlobalConfirmDialog component
-   */
   function handleConfirm() {
     if (state.value.resolve) {
       state.value.resolve(true)
@@ -96,10 +62,6 @@ export function useConfirm() {
     state.value.resolve = null
   }
 
-  /**
-   * Handle user cancellation
-   * Called by GlobalConfirmDialog component
-   */
   function handleCancel() {
     if (state.value.resolve) {
       state.value.resolve(false)
@@ -109,9 +71,8 @@ export function useConfirm() {
   }
 
   return {
-    // For views to call
     confirm,
-    // For GlobalConfirmDialog to use
+    // state and the handlers are for App.vue's ConfirmDialog
     state,
     handleConfirm,
     handleCancel

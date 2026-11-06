@@ -17,7 +17,6 @@ const toast = useToast()
 const networkId = route.params.id as string | undefined
 const isEdit = computed(() => !!networkId)
 
-// Form data
 const formData = ref({
   name: '',
   description: '',
@@ -26,34 +25,27 @@ const formData = ref({
   active: true,
 })
 
-// Relation options
 const cas = ref<NebulaCA[]>([])
 
 const caOptions = computed<PickerOption[]>(() =>
   cas.value.map(ca => ({ id: ca.id, label: ca.name }))
 )
 
-// State
 const loading = ref(false)
 const loadingOptions = ref(true)
 
-/**
- * Load options (CAs)
- */
 async function loadOptions() {
   loadingOptions.value = true
   
   try {
-    // Get valid CAs
     const result = await pb.collection('nebula_ca').getFullList<NebulaCA>({ 
       sort: 'name',
-      // Filter out expired CAs if creating new network
+      // No expired CAs for a new network
       filter: isEdit.value ? '' : `expires_at > "${new Date().toISOString()}"`
     })
     
     cas.value = result
     
-    // Auto-select if only one CA exists and we are creating
     if (!isEdit.value && cas.value.length === 1) {
       formData.value.ca_id = cas.value[0].id
     }
@@ -64,9 +56,6 @@ async function loadOptions() {
   }
 }
 
-/**
- * Load existing network for editing
- */
 async function loadNetwork() {
   if (!networkId) return
   
@@ -90,9 +79,6 @@ async function loadNetwork() {
   }
 }
 
-/**
- * Handle form submission
- */
 async function handleSubmit() {
   loading.value = true
   
@@ -132,7 +118,6 @@ onMounted(() => {
 
 <template>
   <div class="space-y-6">
-    <!-- Header -->
     <div>
       <div class="breadcrumbs text-sm">
         <ul>
@@ -145,17 +130,14 @@ onMounted(() => {
       </h1>
     </div>
     
-    <!-- Loading State -->
     <div v-if="loadingOptions" class="flex justify-center p-12">
       <span class="loading loading-spinner loading-lg"></span>
     </div>
     
-    <!-- Form -->
     <form v-else @submit.prevent="handleSubmit" class="space-y-6">
       
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         
-        <!-- Left Column: Identity & Status -->
         <div class="space-y-6">
           <BaseCard title="Identity">
             <div class="space-y-4">
@@ -205,7 +187,6 @@ onMounted(() => {
           </BaseCard>
         </div>
 
-        <!-- Right Column: Configuration -->
         <div class="space-y-6">
           <BaseCard title="Configuration">
             <div class="space-y-4">
@@ -249,7 +230,6 @@ onMounted(() => {
         </div>
       </div>
       
-      <!-- Actions -->
       <div class="flex flex-col sm:flex-row justify-end gap-2 sm:gap-4">
         <button 
           type="button" 

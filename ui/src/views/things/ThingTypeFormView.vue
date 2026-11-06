@@ -30,10 +30,8 @@ const { confirm } = useConfirm()
 
 const deleting = ref(false)
 
-// Delete lives here rather than on the list row: a row button is aimed by
-// position, and position moves under sort, search and pagination. This form is
-// this collection's only detail surface, so it is also the only other place it
-// could go.
+// Delete lives here, not on the list row: a row button is aimed by position,
+// which moves under sort, search and pagination.
 async function handleDelete() {
   if (!id) return
   const confirmed = await confirm({
@@ -67,15 +65,12 @@ const form = ref({
   operations: [] as string[],
 })
 
-// Inventory metadata schema, authored by MetadataSchemaCard. Null means the type
-// declares no fields and the Thing form falls back to free-form key/value rows.
+// Null means no declared fields; the Thing form falls back to free-form rows.
 const metadataSchema = ref<Record<string, any> | null>(null)
 const metadataSchemaCard = ref<InstanceType<typeof MetadataSchemaCard> | null>(null)
 
 const availableOperations = ref<ThingTypeOperation[]>([])
 
-// Captured on load so the heading can show when this record was created and
-// last changed; undefined on the create path, where the <dl> does not render.
 const createdAt = ref<string | undefined>()
 const updatedAt = ref<string | undefined>()
 
@@ -89,10 +84,8 @@ const operationOptions = computed<PickerOption[]>(() =>
 
 const showOperationModal = ref(false)
 
-// The subjects as far as a type can resolve them: the organization and this
-// type's code fill in, while `{thing}` (and `{location}`, if used) stay as
-// tokens because no Thing exists here. Recomputed as the prefix, the code and
-// the selection change, so the effect of an edit is visible before Save.
+// Only org and type code resolve here; `{thing}` and `{location}` stay as tokens
+// because no Thing exists.
 const subjectContext = computed(() => ({
   org: authStore.currentOrg?.code || '',
   thingTypeCode: form.value.code?.trim() || '',
@@ -185,14 +178,12 @@ onMounted(async () => {
   if (isEdit.value) await loadData()
 })
 
-// Escape closes these; see useEscapeKey for why the dialogs do not get it
-// from the browser and which ones are deliberately left out.
+// See useEscapeKey for why dialogs need this.
 useEscapeKey(showOperationModal, () => { showOperationModal.value = false })
 </script>
 
 <template>
   <div class="space-y-6">
-    <!-- Header -->
     <div>
       <div class="breadcrumbs text-sm">
         <ul>
@@ -201,20 +192,16 @@ useEscapeKey(showOperationModal, () => { showOperationModal.value = false })
         </ul>
       </div>
       <h1 class="text-3xl font-bold">{{ isEdit ? 'Edit' : 'Create' }} Thing Type</h1>
-      <!-- thing_types, location_types and thing_type_operations are in the
-           activity feed (hooks/activity.go) but have no detail view, so this
-           form is their detail surface and the place a feed entry gets
-           correlated against the record. -->
+      <!-- No detail view exists, so this form is where an activity-feed entry
+           (hooks/activity.go) is correlated against the record. -->
       <dl v-if="isEdit" class="grid grid-cols-2 gap-4 max-w-sm mt-3">
         <RecordTimestamps :created="createdAt" :updated="updatedAt" />
       </dl>
     </div>
 
-    <!-- Form -->
     <form @submit.prevent="submit" class="space-y-6">
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-        <!-- Left Column: Identity -->
         <BaseCard title="Identity">
           <div class="space-y-4">
             <div class="form-control">
@@ -236,10 +223,8 @@ useEscapeKey(showOperationModal, () => { showOperationModal.value = false })
           </div>
         </BaseCard>
 
-        <!-- Right Column: Subjects. The prefix, the operations and what they
-             resolve to in one card, because each only means something with the
-             others. (This was "Subject & Capabilities" beside a separate
-             Operations card; the capabilities field it named was dropped.) -->
+        <!-- Prefix, operations and what they resolve to share one card: each
+             only means something with the others. -->
         <BaseCard title="Subjects">
           <div class="space-y-4">
             <div class="form-control">
@@ -252,9 +237,8 @@ useEscapeKey(showOperationModal, () => { showOperationModal.value = false })
               />
               <label class="label">
                 <span class="label-text-alt">
-                  <!-- Single braces are not interpolation in a Vue template, so
-                       these render as written. The {'{org}'} spelling they
-                       replaced is JSX and printed its quotes and braces. -->
+                  <!-- Single braces render as written in Vue; {'{org}'} is JSX
+                       and prints its quotes. -->
                   Template for NATS subjects. Supports
                   <code>{org}</code>, <code>{location}</code>,
                   <code>{thing}</code>, <code>{thing_type_code}</code>.

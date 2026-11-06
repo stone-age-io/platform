@@ -1,7 +1,4 @@
-// ui/src/composables/useWidgetForm.ts
-//
-// Extracted from ConfigureWidgetModal.vue — all form state management,
-// hydration, validation, and save logic for widget configuration.
+// Form state, hydration, validation and save for the widget configure modal.
 
 import { ref, computed, watch, type Ref } from 'vue'
 import { useDashboardStore } from '@/stores/dashboard'
@@ -19,28 +16,22 @@ import type { WidgetType, WidgetConfig, WidgetConfigOf } from '@/types/dashboard
 
 type Validator = ReturnType<typeof useValidation>
 
-// Each handler sees its OWN widget type, not the union, so `widget.textConfig`
-// inside the `text` handler is present rather than asserted. That is the whole
-// benefit of the discriminated union in types/dashboard.ts reaching this file.
+// Each handler is typed with its own widget type, not the union, so its config
+// field is known to be present.
 interface WidgetTypeHandler<T extends WidgetType> {
-  /** Extract widget-specific fields from the widget into flat form state */
+  /** Widget-specific fields into the flat form state. */
   hydrate?: (widget: WidgetConfigOf<T>, state: WidgetFormState) => void
-  /** Add widget-specific validation errors */
   validate?: (form: WidgetFormState, errors: Record<string, string>, v: Validator) => void
-  /** Build widget-specific update payload from form state */
+  /** Form state back into a widget-specific update. */
   buildUpdates?: (form: WidgetFormState, widget: WidgetConfigOf<T>) => Partial<WidgetConfigOf<T>>
 }
 
 type WidgetTypeHandlers = { [T in WidgetType]?: WidgetTypeHandler<T> }
 
 /**
- * The handler for a widget, with its type parameter widened to the union.
- *
- * TypeScript cannot see that `typeHandlers[widget.type]` and `widget` are the
- * same T — correlating an index into a mapped type with the value it came from
- * is beyond what it tracks. This cast says that once, here, where the
- * relationship is a line apart and obvious; every handler body above is checked
- * against its own narrow type, which is where the mistakes actually happen.
+ * The one cast: TypeScript cannot correlate `typeHandlers[widget.type]` with
+ * `widget`, so the handler is widened to the union here. Handler bodies stay
+ * checked against their own narrow type.
  */
 function handlerFor(type: WidgetType): WidgetTypeHandler<WidgetType> | undefined {
   return typeHandlers[type] as WidgetTypeHandler<WidgetType> | undefined
@@ -52,23 +43,19 @@ export interface UseWidgetFormOptions {
   onClose: () => void
 }
 
-// The per-type config component map that used to live here is now one column of
-// `WIDGETS` (components/dashboard/widgets.ts), alongside the widget component
-// itself and the palette entry. It was already a `Record<WidgetType, …>`, so a
-// missing entry was already a compile error; what it was not was in the same
-// place as the other five things adding a widget requires.
+// The per-type config components are in `WIDGETS` (components/dashboard/widgets.ts).
 
 // ============================================================================
 // SHARED HELPERS
 // ============================================================================
 
-/** Extract subject/subjects from widget config — different widgets store it in different places */
 /** A blank form field is undefined; anything else not a number is NaN, for validate to catch. */
 function optionalNumber(text: string): number | undefined {
   const t = String(text).trim()
   return t ? Number(t) : undefined
 }
 
+/** Widgets store their subject in different places. */
 function hydrateSubject(widget: WidgetConfig, state: WidgetFormState): void {
   if (widget.type === 'button') {
     state.subject = widget.buttonConfig?.publishSubject || ''
@@ -86,7 +73,7 @@ function hydrateSubject(widget: WidgetConfig, state: WidgetFormState): void {
   }
 }
 
-/** Extract kvBucket/kvKey from widget config — multiple types use KV in different ways */
+/** Widgets store their KV bucket and key in different places. */
 function hydrateKvFields(widget: WidgetConfig, state: WidgetFormState): void {
   if (widget.type === 'switch' && widget.switchConfig?.mode === 'kv') {
     state.kvBucket = widget.switchConfig.kvBucket || ''
@@ -103,28 +90,22 @@ function hydrateKvFields(widget: WidgetConfig, state: WidgetFormState): void {
   }
 }
 
-// Both of these were `WidgetType[]` literals here. They are now flags on
-// `WIDGETS`, so leaving a new type out of them is a compile error rather than a
-// configure modal that quietly offers the wrong data-source panel.
-
-/** Does this type use the shared data source config (subject + jsonPath + buffer)? */
+/** Uses the shared data source panel (subject, jsonPath, buffer). */
 function usesStandardDataSource(type: WidgetType): boolean {
   return WIDGETS[type].standardDataSource
 }
 
-/** Does this type take a list of subjects via the tag-input UI? */
+/** Takes a list of subjects (tag input). */
 function usesMultipleSubjects(type: WidgetType): boolean {
   return WIDGETS[type].multiSubject
 }
 
-/** Validate subscription-related fields shared across visualization widgets */
 function validateSubscriptionFields(
   form: WidgetFormState,
   errors: Record<string, string>,
   widgetType: WidgetType,
   v: Validator
 ): void {
-  // Multi-subject types (console, streamtable)
   if (usesMultipleSubjects(widgetType)) {
     if (form.subjects.length === 0) {
       errors.subjects = 'At least one subject is required'
@@ -137,7 +118,6 @@ function validateSubscriptionFields(
       }
     }
   } else if (widgetType === 'markdown') {
-    // Markdown: validate subject only in subscription mode
     if (form.dataSourceType === 'subscription') {
       if (form.subject) {
         const r = v.validateSubject(form.subject)
@@ -147,29 +127,25 @@ function validateSubscriptionFields(
       }
     }
   } else {
-    // Standard single-subject
     const r = v.validateSubject(form.subject)
     if (!r.valid) errors.subject = r.error!
   }
 
-  // JSONPath (optional for all)
   if (form.jsonPath) {
     const r = v.validateJsonPath(form.jsonPath)
     if (!r.valid) errors.jsonPath = r.error!
   }
 
-  // Timestamp path (optional; only the shared data source panel shows it)
+  // Only the shared data source panel shows this field.
   if (form.timestampPath) {
     const r = v.validateJsonPath(form.timestampPath)
     if (!r.valid) errors.timestampPath = r.error!
   }
 
-  // Buffer size
   const r = v.validateBufferSize(form.bufferSize)
   if (!r.valid) errors.bufferSize = r.error!
 }
 
-/** Should this widget type go through shared subscription validation? */
 function needsSubscriptionValidation(widgetType: WidgetType, form: WidgetFormState): boolean {
   if (usesStandardDataSource(widgetType)) return true
   if (widgetType === 'markdown') return true
@@ -205,9 +181,8 @@ const typeHandlers: WidgetTypeHandlers = {
       state.chartWindow = cfg?.window || ''
       state.chartYMin = cfg?.yMin != null ? String(cfg.yMin) : ''
       state.chartYMax = cfg?.yMax != null ? String(cfg.yMax) : ''
-      // A chart saved before multi-series read one value through the widget's
-      // own jsonPath. Carry that path into a one-entry list here, so saving the
-      // form IS the migration and there is no stored data to rewrite.
+      // A pre-multi-series chart becomes one series with the widget's jsonPath;
+      // saving the form is the migration.
       state.chartSeries = cfg?.series?.length
         ? cfg.series.map(s => ({ ...s }))
         : [{ label: '', path: widget.jsonPath || '$' }]
@@ -229,8 +204,7 @@ const typeHandlers: WidgetTypeHandlers = {
           if (!r.valid) {
             errors.chartSeries = `${n}: ${r.error}`
           } else if (/(^|\.)(\*|>)(\.|$)/.test(sub)) {
-            // A series matches a message's subject EXACTLY; a wildcard here
-            // would match nothing and the row would just stay empty.
+            // A series matches the subject exactly, so a wildcard would match nothing.
             errors.chartSeries = `${n}: the series subject must be exact (put wildcards in the data source)`
           }
         }
@@ -249,8 +223,7 @@ const typeHandlers: WidgetTypeHandlers = {
         errors.chartYRange = 'Y-axis min must be below max'
       }
 
-      // The chart hides the data source's own Time Window input, so a replay by
-      // time needs this one or it would silently use a value nobody can see.
+      // The chart hides the data source's Time Window input, so it needs its own.
       if (!window && form.useJetStream && form.deliverPolicy === 'by_start_time') {
         errors.chartWindow = 'Replaying "By Time Window" needs a time window'
       }
@@ -270,8 +243,7 @@ const typeHandlers: WidgetTypeHandlers = {
           yMax: optionalNumber(form.chartYMax),
           thresholds: form.chartThresholds.length ? form.chartThresholds.map(r => ({ ...r, label: r.label?.trim() || undefined })) : undefined,
         },
-        // Each series reads the whole payload; a widget-level path would hand
-        // them an already-extracted value instead.
+        // Each series reads the whole payload, so no widget-level path.
         jsonPath: undefined,
       }
     },
@@ -421,8 +393,7 @@ const typeHandlers: WidgetTypeHandlers = {
       state.switchMode = widget.switchConfig?.mode || 'kv'
       state.switchDefaultState = widget.switchConfig?.defaultState || 'off'
       state.switchStateSubject = widget.switchConfig?.stateSubject || ''
-      // `??`, not `||`: false, 0, "" and null are all payloads a device can
-      // expect, and `||` replaced them on every open-and-save.
+      // `??`, not `||`: false, 0, "" and null are valid payloads.
       state.switchOnPayload = JSON.stringify(widget.switchConfig?.onPayload ?? { state: 'on' })
       state.switchOffPayload = JSON.stringify(widget.switchConfig?.offPayload ?? { state: 'off' })
       state.switchLabelOn = widget.switchConfig?.labels?.on || 'ON'
@@ -439,9 +410,8 @@ const typeHandlers: WidgetTypeHandlers = {
         const r = v.validateSubject(form.subject)
         if (!r.valid) errors.subject = r.error!
       }
-      // buildUpdates JSON.parses both payloads, so anything that does not parse
-      // made Save throw and do nothing, with no message. Deliberately stricter
-      // than v.validateJson, which waves through empty and `{{`-templated text.
+      // buildUpdates JSON.parses both payloads, so they must parse. Stricter than
+      // v.validateJson on purpose, which accepts empty and `{{`-templated text.
       for (const [field, text] of [['switchOnPayload', form.switchOnPayload], ['switchOffPayload', form.switchOffPayload]] as const) {
         try { JSON.parse(text) } catch {
           errors[field] = 'Must be valid JSON, e.g. {"state": "on"}, "on", true or 1'
@@ -579,8 +549,8 @@ const typeHandlers: WidgetTypeHandlers = {
       if (!c) return
       state.floorplanLocationId = c.locationId || ''
       state.floorplanShowUnbound = c.showUnbound ?? true
-      // Deep-copied like mapMarkers: the editors below mutate bindings in
-      // place, and the live widget must not change under a cancelled edit.
+      // Deep copy: the editors mutate bindings in place, and a cancelled edit
+      // must not change the live widget.
       state.floorplanBindings = JSON.parse(JSON.stringify(c.bindings || []))
     },
     validate(form, errors) {
@@ -593,8 +563,7 @@ const typeHandlers: WidgetTypeHandlers = {
         floorplanConfig: {
           locationId: form.floorplanLocationId,
           showUnbound: form.floorplanShowUnbound,
-          // A binding with no thing type addresses nothing and would only
-          // ever render as a binding that silently matches no marker.
+          // Without a thing type a binding silently matches no marker.
           bindings: JSON.parse(
             JSON.stringify(form.floorplanBindings.filter(b => !!b.thingTypeId))
           ),
@@ -642,7 +611,7 @@ const typeHandlers: WidgetTypeHandlers = {
       }
     },
     validate(form, errors, v) {
-      // KV mode validation (subscription mode handled by shared validateSubscriptionFields)
+      // Subscription mode is checked by validateSubscriptionFields.
       if (form.dataSourceType === 'kv') {
         const b = v.validateKvBucket(form.kvBucket)
         if (!b.valid) errors.kvBucket = b.error!
@@ -699,7 +668,7 @@ const typeHandlers: WidgetTypeHandlers = {
       state.markdownContent = widget.markdownConfig?.content || ''
     },
     validate(form, errors, v) {
-      // KV mode validation (subscription mode handled by shared validateSubscriptionFields)
+      // Subscription mode is checked by validateSubscriptionFields.
       if (form.dataSourceType === 'kv') {
         const b = v.validateKvBucket(form.kvBucket)
         if (!b.valid) errors.kvBucket = b.error!
@@ -822,8 +791,8 @@ const typeHandlers: WidgetTypeHandlers = {
         state.scannerKvEnabled = c.kvEnabled ?? true
         state.scannerKvBucket = c.kvBucket || ''
         state.scannerKvKeyTemplate = c.kvKeyTemplate || '{value}'
-        // Legacy widgets predate `rules`; seed the two rules that mirror the
-        // old hardcoded revoked/expires_at check so behavior is preserved.
+        // Widgets that predate `rules` get the two rules matching the old
+        // hardcoded revoked/expires_at check.
         state.scannerRules = c.rules !== undefined
           ? JSON.parse(JSON.stringify(c.rules))
           : [
@@ -934,10 +903,6 @@ export function useWidgetForm(options: UseWidgetFormOptions) {
 
   const showDataSourceConfig = computed(() => {
     if (!widgetType.value) return false
-    // The three names that used to be excluded here by hand — status, markdown
-    // and kvtable, which all draw their own data-source UI — were already
-    // absent from the standard list, so the exclusion never decided anything.
-    // One flag now says it once.
     return usesStandardDataSource(widgetType.value)
   })
 
@@ -953,10 +918,8 @@ export function useWidgetForm(options: UseWidgetFormOptions) {
     const widget = dashboardStore.getWidget(widgetId)
     if (!widget) return
 
-    // Start from clean defaults
     const state = createEmptyFormState()
 
-    // Common fields
     state.title = widget.title
     state.jsonPath = widget.jsonPath || ''
     state.timestampPath = widget.timestampPath || ''
@@ -966,11 +929,9 @@ export function useWidgetForm(options: UseWidgetFormOptions) {
     state.jetstreamTimeWindow = widget.dataSource.timeWindow || '10m'
     state.hideSystemSubjects = widget.dataSource.hideSystemSubjects ?? false
 
-    // Shared cross-type field extraction
     hydrateSubject(widget, state)
     hydrateKvFields(widget, state)
 
-    // Type-specific hydration
     const handler = handlerFor(widget.type)
     if (handler?.hydrate) {
       handler.hydrate(widget, state)
@@ -987,18 +948,16 @@ export function useWidgetForm(options: UseWidgetFormOptions) {
     const widget = dashboardStore.getWidget(options.widgetId.value!)
     if (!widget) return false
 
-    // Common: title (markdown allows empty title for cleaner look)
+    // Markdown may have no title.
     const titleResult = validator.validateWidgetTitle(form.value.title)
     if (!titleResult.valid && widget.type !== 'markdown') {
       errors.value.title = titleResult.error!
     }
 
-    // Shared subscription validation for applicable types
     if (needsSubscriptionValidation(widget.type, form.value)) {
       validateSubscriptionFields(form.value, errors.value, widget.type, validator)
     }
 
-    // Type-specific validation
     const handler = handlerFor(widget.type)
     if (handler?.validate) {
       handler.validate(form.value, errors.value, validator)
@@ -1016,14 +975,11 @@ export function useWidgetForm(options: UseWidgetFormOptions) {
     const widget = dashboardStore.getWidget(options.widgetId.value)
     if (!widget) return
 
-    // Common update
     const updates: any = { title: form.value.title.trim() }
 
-    // Standard data source update for visualization widgets
     if (usesStandardDataSource(widget.type)) {
       const trimmedSubject = form.value.subject.trim()
-      // Multi-subject types manage their own subjects array.
-      // All other widget types derive subjects from the single subject field.
+      // Single-subject types derive `subjects` from the subject field.
       const resolvedSubjects = usesMultipleSubjects(widget.type)
         ? form.value.subjects
         : trimmedSubject ? [trimmedSubject] : []
@@ -1041,7 +997,6 @@ export function useWidgetForm(options: UseWidgetFormOptions) {
       updates.buffer = { maxCount: form.value.bufferSize }
     }
 
-    // Type-specific updates
     const handler = handlerFor(widget.type)
     if (handler?.buildUpdates) {
       Object.assign(updates, handler.buildUpdates(form.value, widget))

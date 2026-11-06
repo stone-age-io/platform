@@ -11,7 +11,6 @@ import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 import ListPager from '@/components/ui/ListPager.vue'
 import UserAvatar from '@/components/common/UserAvatar.vue'
 
-// Pagination
 const {
   items: logs,
   page,
@@ -24,10 +23,7 @@ const {
   prevPage,
 } = usePagination<AuditLog>('audit_logs', 20)
 
-// Search & Filter
-// Search runs on the SERVER. The client-side pass this replaces filtered the
-// twenty records already on screen, so a match on page three answered "No
-// results found" -- which is not the same claim at all.
+// Server-side, so a match beyond the current page is found.
 const { searchQuery, filter: searchFilter } = useServerSearch(
   ['collection_name', 'record_id', 'event_type', 'request_ip', 'user.name', 'user.email'],
   () => {
@@ -36,15 +32,10 @@ const { searchQuery, filter: searchFilter } = useServerSearch(
   },
 )
 
-// The active sort, in PocketBase's own syntax ('name', '-created'). It rides in
-// queryOptions rather than being passed at the call site, for the same reason the
-// filter does: the pager buttons reuse that object, and a sort that is not in it
-// is a sort that page two forgets.
 const sort = ref('-created')
 
-// One options object, passed to EVERY call into usePagination, the pager
-// buttons included -- passing only expand/sort there drops the filter and
-// page two comes back unfiltered.
+// Pass this to every usePagination call, the pager included, or page two
+// loses the filter and sort.
 const queryOptions = computed(() => ({
   filter: searchFilter.value,
   expand: 'user',
@@ -53,19 +44,17 @@ const queryOptions = computed(() => ({
 
 function onSort(next: string) {
   sort.value = next
-  page.value = 1 // a new order makes the old page number meaningless
+  page.value = 1
   loadLogs()
 }
 const selectedLog = ref<AuditLog | null>(null)
 
-// Column Configuration
 const columns: Column<AuditLog>[] = [
   {
     key: 'created',
     sortable: '-created',
     label: 'Time',
     mobileLabel: 'Time',
-    // Custom format logic handled in slot
   },
   {
     key: 'expand.user.name',
@@ -75,12 +64,8 @@ const columns: Column<AuditLog>[] = [
     mobileLabel: 'User',
   },
   {
-    // Wide for the second reason in cardWide's note: the column after it is
-    // wide, so its other half can never be filled and the row is already spent.
-    // Measured at 393px, this costs nothing -- four grid rows either way -- and
-    // takes the field from 87% shown to whole. 'EVENT TYPE:' is a long label in
-    // front of a 14-character value, which is what made this the one column on
-    // the list that did not fit.
+    // Wide: the next column is wide too, so this costs no extra card row, and
+    // 'EVENT TYPE:' plus its value does not fit in half.
     key: 'event_type',
     cardWide: true,
     sortable: 'event_type',
@@ -99,38 +84,24 @@ const columns: Column<AuditLog>[] = [
     sortable: 'request_ip',
     label: 'IP Address',
     mobileLabel: 'IP',
-    class: 'hidden xl:table-cell', // Hide IP on smaller desktops to save space
+    class: 'hidden xl:table-cell',
   }
 ]
 
-/**
- * Load logs from API
- */
 async function loadLogs() {
-  // Expand user details to show who performed the action
   await load(queryOptions.value)
 }
 
-/**
- * Handle Modal
- */
 function openDetails(log: AuditLog) {
   selectedLog.value = log
-  // DaisyUI modal toggle
   const modal = document.getElementById('audit_modal') as HTMLDialogElement
   if (modal) modal.showModal()
 }
 
-/**
- * Handle row click
- */
 function handleRowClick(log: AuditLog) {
   openDetails(log)
 }
 
-/**
- * Get badge class based on event type
- */
 function getEventBadgeClass(eventType: string) {
   if (eventType.includes('create')) return 'badge-success'
   if (eventType.includes('update')) return 'badge-warning'
@@ -154,8 +125,7 @@ onMounted(() => {
           System activity and change history
         </p>
       </div>
-      
-      <!-- Refresh Button -->
+
       <button @click="loadLogs" class="btn btn-ghost btn-sm" title="Refresh Logs">
         <RefreshCw :size="16" class="inline-block shrink-0" /> Refresh
       </button>
@@ -218,7 +188,6 @@ onMounted(() => {
         :loading="loading"
         @row-click="handleRowClick"
       >
-        <!-- Time Column -->
         <template #cell-created="{ item }">
           <div class="flex flex-col">
             <span class="font-medium">{{ formatRelativeTime(item.created) }}</span>
@@ -231,7 +200,6 @@ onMounted(() => {
           </div>
         </template>
 
-        <!-- User Column -->
         <template #cell-expand.user.name="{ item }">
           <div class="flex items-center gap-2">
             <UserAvatar :user="item.expand?.user" :size="32" fallback-initial="S" />
@@ -249,27 +217,23 @@ onMounted(() => {
           </div>
         </template>
 
-        <!-- Action Column -->
         <template #cell-event_type="{ item }">
           <span class="badge badge-sm" :class="getEventBadgeClass(item.event_type)">
             {{ formatConstant(item.event_type) }}
           </span>
         </template>
 
-        <!-- Collection Column -->
         <template #cell-collection_name="{ item }">
           <code class="text-xs bg-base-200 px-1 py-0.5 rounded">{{ item.collection_name }}</code>
         </template>
 
-        <!-- View Button -->
         <template #actions="{ item }">
           <button @click.stop="openDetails(item)" class="btn btn-ghost btn-xs">
             Details
           </button>
         </template>
       </ResponsiveList>
-      
-      <!-- Pagination -->
+
       <ListPager
         :page="page"
         :total-pages="totalPages"
@@ -288,7 +252,6 @@ onMounted(() => {
         <h3 class="font-bold text-lg mb-4">Log Details</h3>
         
         <div v-if="selectedLog" class="space-y-4">
-          <!-- Meta Grid -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
             <div class="flex flex-col">
               <span class="font-bold opacity-70">Timestamp</span>
@@ -320,7 +283,6 @@ onMounted(() => {
 
           <!-- Changes Diff -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <!-- Before -->
             <div>
               <h4 class="font-bold text-sm mb-2 text-base-content/70">Before Changes</h4>
               <div v-if="selectedLog.before_changes && Object.keys(selectedLog.before_changes).length" 
@@ -332,7 +294,6 @@ onMounted(() => {
               </div>
             </div>
 
-            <!-- After -->
             <div>
               <h4 class="font-bold text-sm mb-2 text-base-content/70">After Changes</h4>
               <div v-if="selectedLog.after_changes && Object.keys(selectedLog.after_changes).length" 

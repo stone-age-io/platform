@@ -1,16 +1,11 @@
-// ui/src/utils/exportGrants.ts
-//
 // The importer list on a private NATS export (`allowed_importers`, pb-nats
-// v0.3.3). For a `token_req` export, the platform signs the activation token for
-// each listed account in this deployment that imports it, and nats-server refuses
-// the import from any other account. Removing a key revokes it: pb-nats writes the
-// key and the time into `revocations`, which the console only reads.
+// v0.3.3). For a `token_req` export, only listed accounts can import it.
+// Removing a key revokes it: pb-nats records it in `revocations`, which the
+// console only reads.
 
 /**
  * A NATS account public key: `A` followed by 55 base32 characters. Checked here
- * because a mistyped key is not an error anywhere else -- the server stores it,
- * pb-nats never finds an account by it, and the intended importer simply gets
- * nothing.
+ * because nothing else rejects a mistyped key; the importer just gets nothing.
  */
 const ACCOUNT_KEY_RE = /^A[A-Z2-7]{55}$/
 

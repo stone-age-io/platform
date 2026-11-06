@@ -1,4 +1,3 @@
-// ui/src/types/config.ts
 import type { ThresholdRule, MapMarker, StatusMapping, TableColumn, DynamicMarkerPopupField, ScannerRule, ChartType, ChartSeries, FloorPlanTypeBinding } from './dashboard'
 
 export interface WidgetFormState {
@@ -88,8 +87,7 @@ export interface WidgetFormState {
   mapFitBoundsOnLoad: boolean
 
   // Floor Plan Widget
-  // No positions here, deliberately: the markers are the things placed on
-  // the location's own plan, and that is where a position is edited.
+  // No positions: they are edited on the location's own plan.
   floorplanLocationId: string
   floorplanBindings: FloorPlanTypeBinding[]
   floorplanShowUnbound: boolean
@@ -244,10 +242,8 @@ export function createEmptyFormState(): WidgetFormState {
     scannerKvEnabled: true,
     scannerKvBucket: '',
     scannerKvKeyTemplate: '{value}',
-    // No default rules: the scanner doesn't know the shape of the record it will
-    // find, so a new widget passes anything it resolves and the operator adds the
-    // checks that fit their bucket. (Widgets created before `rules` existed keep
-    // the old revoked/expires_at pair via the hydrate path in useWidgetForm.)
+    // No default rules: the record shape is unknown. Older widgets without
+    // `rules` get the legacy revoked/expires_at pair in useWidgetForm's hydrate.
     scannerRules: [],
     scannerPbEnabled: false,
     scannerPbCollection: '',

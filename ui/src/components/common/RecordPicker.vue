@@ -1,27 +1,14 @@
-<!-- ui/src/components/common/RecordPicker.vue -->
 <script setup lang="ts">
 /**
- * A filterable picker for a relation field: one component, two surfaces.
+ * A filterable picker for a relation field. Native <select> stays in use for
+ * enums; relations grow with tenant data, and a location tree needs indentation,
+ * which breaks native type-ahead (it matches from the start of the text).
  *
- * WHY NOT A NATIVE <select>. Native selects win for enums -- free type-ahead,
- * free keyboard nav, a real OS picker on mobile -- and they stay in use for
- * every fixed set defined in code. They lose for relations, which grow with
- * tenant data, and they lose hardest for locations: the tree needs indentation,
- * and native type-ahead matches from the START of the option text, so an option
- * rendered as "   L Room 12" cannot be reached by typing "Room". Indentation and
- * type-ahead are mutually exclusive in a native select. That is the whole reason
- * this exists.
+ * A popover on desktop (keeps the form's scroll position), a full-screen sheet
+ * on mobile (a keyboard-shrunk viewport leaves too little list).
  *
- * WHY TWO SURFACES. Desktop wants light: a popover leaves the form's scroll
- * position untouched, where an inline panel pushes 300px of fields down and
- * snaps them back on select. Mobile wants the opposite: a popover in a
- * keyboard-shrunk viewport leaves ~120px of usable list, so it becomes a
- * full-screen sheet. Same idiom as LocationMapDrawer.
- *
- * It needs no Teleport, unlike the sidebar's org switcher: daisyUI's .card is
- * position:relative with no overflow clipping, so an absolute panel anchors to
- * the card and scrolls with it for free. The sidebar teleports because a compact
- * 64px rail has to escape itself -- that is a sidebar problem, not a popover one.
+ * No Teleport needed: daisyUI's .card has no overflow clipping, so the absolute
+ * panel anchors to the card.
  */
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
@@ -35,10 +22,9 @@ const props = withDefaults(defineProps<{
   title?: string
   placeholder?: string
   /**
-   * Select many. The panel stays open and the filter survives each pick, since
-   * choosing several things from one search is the whole point; selections show
-   * as removable chips under the trigger. Replaces `<select multiple>`, whose
-   * "hold Ctrl/Cmd" affordance is undiscoverable and unusable on a touchscreen.
+   * Select many: the panel stays open and the filter survives each pick, and
+   * selections show as removable chips. Use instead of `<select multiple>`,
+   * which is unusable on a touchscreen.
    */
   multiple?: boolean
   /** Offer an explicit "none" row that clears the field. Ignored when `multiple` -- the chips remove themselves. */
@@ -100,9 +86,8 @@ const filtered = computed(() => {
 })
 
 /**
- * The clear row is part of the list so the keyboard can reach it. It is hidden
- * while filtering so an empty result reads as "no matches" rather than "one
- * match named None".
+ * The clear row is in the list so the keyboard can reach it, and hidden while
+ * filtering so an empty result reads as "no matches".
  */
 const rows = computed<PickerOption[]>(() => {
   if (props.clearable && !props.multiple && !filtering.value) {
@@ -112,9 +97,8 @@ const rows = computed<PickerOption[]>(() => {
 })
 
 /**
- * A hierarchical option carries its ancestors two ways -- indentation while
- * browsing, path while filtering -- and shows exactly one at a time. A flat
- * option's sublabel is a different fact (an IP, a code) and always shows.
+ * A hierarchical option shows its ancestry as indentation while browsing and as
+ * the sublabel path while filtering. A flat option's sublabel always shows.
  */
 function showSublabel(opt: PickerOption): boolean {
   if (!opt.sublabel) return false
@@ -130,8 +114,7 @@ function choose(opt: PickerOption) {
   if (opt.disabled) return
 
   if (props.multiple) {
-    // Stay open and keep the filter: picking four operations out of one search
-    // is the reason this mode exists.
+    // Stay open and keep the filter.
     const next = selectedIds.value.includes(opt.id)
       ? selectedIds.value.filter(id => id !== opt.id)
       : [...selectedIds.value, opt.id]
@@ -178,8 +161,7 @@ function firstEnabled(): number {
   return i >= 0 ? i : 0
 }
 
-/** Clamps at both ends rather than wrapping -- a list that jumps from the last
- *  row back to the first reads as a glitch on a long location tree. */
+/** Clamps rather than wraps; wrapping reads as a glitch on a long tree. */
 function move(step: number) {
   const list = rows.value
   let i = activeIndex.value
@@ -239,7 +221,6 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 
-// A new filter invalidates the highlight.
 watch(query, () => {
   activeIndex.value = firstEnabled()
 })
@@ -259,8 +240,7 @@ onUnmounted(() => window.removeEventListener('click', onClickOutside))
 <template>
   <div @keydown="onKeydown">
     <div class="relative">
-    <!-- Trigger: styled as .select so it sits flush with the native selects
-         still used for enums elsewhere on the same form. -->
+    <!-- Styled as .select to match the native selects on the same form. -->
     <button
       ref="triggerRef"
       type="button"
@@ -278,8 +258,7 @@ onUnmounted(() => window.removeEventListener('click', onClickOutside))
         {{ selected.label }}
         <span v-if="selected.sublabel" class="text-base-content/50">· {{ selected.sublabel }}</span>
       </span>
-      <!-- A value we hold but cannot resolve. Showing the placeholder here would
-           read as "unset" and quietly clear the field on the next save. -->
+      <!-- An unresolvable value: the placeholder would wrongly read as unset. -->
       <span v-else-if="modelValue" class="truncate block w-full font-mono text-xs text-base-content/60">
         {{ modelValue }}
       </span>
@@ -294,7 +273,7 @@ onUnmounted(() => window.removeEventListener('click', onClickOutside))
         ? 'fixed inset-0 z-[9999]'
         : 'absolute left-0 right-0 top-full mt-1 z-30 rounded-box border max-h-80'"
     >
-      <!-- The sheet needs a way out that is not "tap the backdrop"; there is none. -->
+      <!-- The full-screen sheet has no backdrop, so it needs a close button. -->
       <div
         v-if="isMobile"
         class="flex items-center justify-between gap-2 px-4 h-14 flex-shrink-0 border-b border-base-200"
@@ -357,8 +336,7 @@ onUnmounted(() => window.removeEventListener('click', onClickOutside))
     </div>
     </div>
 
-    <!-- Chips sit outside the trigger because a button cannot contain buttons,
-         and each needs its own remove control. -->
+    <!-- Outside the trigger: a button cannot contain the chips' remove buttons. -->
     <div v-if="multiple && selectedOptions.length > 0" class="flex flex-wrap gap-1 mt-2">
       <span v-for="opt in selectedOptions" :key="opt.id" class="badge badge-neutral gap-1 max-w-full">
         <span class="truncate">{{ opt.label }}</span>

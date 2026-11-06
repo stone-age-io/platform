@@ -54,17 +54,12 @@ import {
 import type { DataSourceConfig, MapItemGaugeConfig, MapMarkerItem } from '@/types/dashboard'
 
 /**
- * Marker Item: level bar.
+ * Marker item: level bar. Read only, and bar only: an arc at panel width would
+ * be too small to read. The scale arithmetic is utils/gaugeScale.ts, shared with
+ * the gauge widget so the two agree on which band a value is in.
  *
- * READ ONLY, and bar only. The arc wants a whole widget of space; at panel
- * width it would be a dial too small to read with a number too small to read
- * inside it. The scale arithmetic is utils/gaugeScale.ts, shared with the gauge
- * widget so the two cannot disagree about which band a value is in.
- *
- * It reads its own source rather than taking a value from the parent, for the
- * same reason every other marker row does: the panel is built fresh from a
- * marker and its items, and a row that needed feeding would make the parent
- * know what each row wants.
+ * Like every marker row, it reads its own source rather than being fed by the
+ * parent, so the panel need not know what each row wants.
  */
 
 const props = defineProps<{
@@ -103,9 +98,8 @@ const resolvedSubject = computed(() =>
   !isKv.value ? resolveTemplate(cfg.value.subject || '', vars.value) : ''
 )
 
-// Captured, not rebuilt: unsubscribing with a config rebuilt from the NEW
-// variable values leaves the old subject feeding this row. MarkerItemText
-// carries the same note; it is the same bug in the same place.
+// Captured, not rebuilt: unsubscribing with a config rebuilt from the new
+// variable values leaves the old subject feeding this row (as in MarkerItemText).
 let subscribedConfig: DataSourceConfig | null = null
 
 function subscribe() {

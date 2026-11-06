@@ -1,4 +1,3 @@
-<!-- ui/src/components/dashboard/WidgetContainer.vue -->
 <template>
   <div 
     class="widget-container" 
@@ -14,7 +13,6 @@
     </div>
     
     <template v-else>
-      <!-- HEADER -->
       <div
         v-if="shouldShowHeader"
         class="widget-header vue-draggable-handle"
@@ -73,7 +71,7 @@ import type { WidgetConfig } from '@/types/dashboard'
 const props = defineProps<{
   config?: WidgetConfig
   isMobile?: boolean
-  isFullscreen?: boolean // <--- Added prop
+  isFullscreen?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -89,14 +87,8 @@ const dataStore = useWidgetDataStore()
 const { confirm } = useConfirm()
 const error = ref<string | null>(null)
 
-// A 16-case switch and two hardcoded Sets of type strings used to live here.
-// They are one object now: ./widgets.ts. The Sets were the worse half — leaving
-// a type out of either was an error nowhere, it just made the widget behave
-// wrong on a phone, where nobody developing it was looking.
-//
-// `?? null` rather than a non-null assertion: a dashboard is user data and can
-// be imported from a file, so `type` is only as trustworthy as the JSON it came
-// in on. An unknown type renders the error state below instead of throwing.
+// `?? null`, not `!`: a dashboard can be imported from a file, so `type` may be
+// unknown. An unknown type renders the error state instead of throwing.
 const widget = computed(() => (props.config ? WIDGETS[props.config.type] ?? null : null))
 
 const widgetComponent = computed(() => widget.value?.component ?? null)
@@ -124,12 +116,9 @@ async function handleDelete() {
   }
 }
 
-// How old the newest message is, for the widgets fed by the shared message
-// buffer. Deliberately just a label: no threshold, no colour, no setting. A
-// sensor that reports hourly and one that reports every second need different
-// answers to "stale", and the person reading the screen already knows which is
-// which. Widgets that read KV or draw their own source (Status has its own
-// watchdog) show nothing here.
+// Age of the newest buffered message. Deliberately a label only, with no
+// staleness threshold: the right one differs per sensor and the reader knows it.
+// KV-fed and self-sourced widgets (Status has its own watchdog) show nothing.
 const now = useNow({ interval: 1000 })
 const age = computed(() => {
   if (!props.config || !widget.value?.standardDataSource) return null
@@ -175,8 +164,7 @@ onErrorCaptured((err) => {
   background: oklch(var(--b1));
 }
 
-/* Disconnected: the banner above the grid says why, once. Each widget only
-   dims, rather than sixteen red borders saying the same thing. */
+/* Disconnected: the banner above the grid says why; each widget only dims. */
 .widget-container.is-offline .widget-body {
   opacity: 0.6;
 }
@@ -205,10 +193,8 @@ onErrorCaptured((err) => {
   flex: 1;
 }
 
-/* Locked, at any width: the title sits inside the card as a label, not in a
-   grey strip. One card shape, a name and a value, is most of what makes a
-   tile dashboard read cleanly. The strip, and the uppercase, now mean one
-   thing: you are editing, and it is the handle you drag by. */
+/* Locked: the title is a label inside the card, not a grey strip. The strip and
+   the uppercase mean editing: it is the drag handle. */
 .is-locked .widget-header {
   height: auto;
   min-height: 0;
@@ -230,10 +216,9 @@ onErrorCaptured((err) => {
   margin-bottom: -6px;
 }
 
-/* With a mouse, a locked tile shows its one button (full screen) on hover
-   only, over the corner of the header rather than beside the title, so the
-   title gets the width while it is hidden. A touch screen has no hover, so
-   there it stays in the row and visible. */
+/* With a mouse, a locked tile shows its full-screen button only on hover, over
+   the header corner so the title keeps the width. Touch has no hover, so there
+   it stays visible in the row. */
 @media (hover: hover) {
   .is-locked:not(.is-mobile) .widget-header {
     position: relative;
@@ -267,10 +252,8 @@ onErrorCaptured((err) => {
   margin: -8px -4px;
 }
 
-/* A fixed width, right-aligned, because the text changes length as it
-   counts ("9s ago", "10s ago", "1m ago") and everything after it in the
-   header moved with it. 7ch holds the longest common form, "59m ago"; a
-   locked tile shows the short form ("59m"), so 4ch there. */
+/* Fixed width so the header does not shift as the text counts up. 7ch fits
+   "59m ago"; a locked tile shows the short form ("59m"), so 4ch. */
 .widget-age {
   font-size: 11px;
   font-family: var(--mono, monospace);

@@ -1,9 +1,4 @@
-// ui/src/utils/duration.ts
-//
 // The one parser for human-readable durations ("30s", "5m", "1h30m", "7d").
-// There used to be three: this one (in useJetStreamManager, for stream config)
-// and two identical single-unit regexes in the dashboard code, which silently
-// rejected "1h30m" and fell back to five minutes.
 
 export const NANOS_PER_MS = 1_000_000
 export const NANOS_PER_SEC = 1_000_000_000
@@ -12,14 +7,13 @@ export const NANOS_PER_HOUR = 60 * NANOS_PER_MIN
 export const NANOS_PER_DAY = 24 * NANOS_PER_HOUR
 
 /**
- * Parse human-readable duration to nanoseconds.
- * Supports: "30s", "5m", "2h", "7d", "1h30m", or plain number (treated as nanos).
+ * Parse a duration to nanoseconds. A plain number is read as nanoseconds
+ * (stream config convention).
  */
 export function parseHumanDuration(str: string): number {
   if (!str || str === '0') return 0
   const trimmed = str.trim()
 
-  // Plain number → treat as nanoseconds
   if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10)
 
   let total = 0
@@ -41,11 +35,9 @@ export function parseHumanDuration(str: string): number {
 }
 
 /**
- * Parse a dashboard duration ("10m", "1h30m") to milliseconds.
- * Returns null for empty or unparseable input, so each caller decides its own
- * fallback instead of inheriting one it cannot see. A plain number is NOT
- * accepted here: parseHumanDuration reads it as nanoseconds, which nobody
- * typing "30" into a time-window box means.
+ * Parse a dashboard duration ("10m", "1h30m") to milliseconds, or null for
+ * empty or unparseable input so each caller picks its own fallback. A plain
+ * number is rejected: parseHumanDuration would read it as nanoseconds.
  */
 export function parseDurationMs(str: string | undefined | null): number | null {
   if (!str) return null

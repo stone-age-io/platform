@@ -2,13 +2,11 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 export const useUIStore = defineStore('ui', () => {
-  // State
   const theme = ref<'light' | 'dark'>('dark')
   const sidebarOpen = ref(true) // For mobile drawer
   const sidebarCompact = ref(false) // For desktop compact mode
   const kioskMode = ref(false) // Kiosk: hides all chrome for presentation/wall displays
   
-  // Actions
   function toggleTheme() {
     theme.value = theme.value === 'light' ? 'dark' : 'light'
     document.documentElement.setAttribute('data-theme', theme.value)

@@ -12,12 +12,10 @@ const authStore = useAuthStore()
 const brandingStore = useBrandingStore()
 const toast = useToast()
 
-// View States
 const mode = ref<'login' | 'forgot'>('login')
 const loading = ref(false)
 const showAdminToggle = ref(false)
 
-// Form Data
 const email = ref('')
 const password = ref('')
 const isSuperAdmin = ref(false)
@@ -31,15 +29,11 @@ const checkAdminParam = () => {
 
 onMounted(() => {
   checkAdminParam()
-  // Load available OAuth providers (Google, GitHub, etc.)
   authStore.loadAuthMethods()
 })
 
 watch(() => route.query.admin, checkAdminParam)
 
-/**
- * Authentication Handler (Email/Pass)
- */
 async function handleLogin() {
   loading.value = true
   try {
@@ -52,16 +46,12 @@ async function handleLogin() {
   }
 }
 
-/**
- * Authentication Handler (OAuth2)
- */
 async function handleOAuthLogin(provider: string) {
   loading.value = true
   try {
     await authStore.loginWithOAuth2(provider)
     redirectUser()
   } catch (err: any) {
-    // User closed popup or error occurred
     if (err.isAbort) {
       toast.info('Login cancelled')
     } else {
@@ -78,14 +68,9 @@ function redirectUser() {
     return
   }
 
-  // Honour ?redirect= from the router guard, so following a deep link while
-  // signed out lands where you were going instead of on the dashboard.
-  //
-  // Only a relative in-app path is accepted. A raw query value is attacker
-  // supplied -- it arrives in a URL someone can send you -- and pushing an
-  // absolute one would make this login form an open redirect. The '//' check
-  // is not redundant: '//evil.test/x' is protocol-relative, so a browser reads
-  // it as a host, not a path.
+  // ?redirect= comes from the router guard but arrives in a URL anyone can
+  // send, so only a relative in-app path is accepted, or this is an open
+  // redirect. The '//' check matters: '//evil.test/x' is protocol-relative.
   const target = route.query.redirect
   if (typeof target === 'string' && target.startsWith('/') && !target.startsWith('//')) {
     router.push(target)
@@ -94,9 +79,6 @@ function redirectUser() {
   router.push('/')
 }
 
-/**
- * Password Reset Handler
- */
 async function handleResetRequest() {
   if (!email.value) {
     toast.error('Please enter your email address')
@@ -115,7 +97,6 @@ async function handleResetRequest() {
   }
 }
 
-// Helper for provider icons/colors (Optional)
 function getProviderLabel(name: string) {
   return `Sign in with ${name.charAt(0).toUpperCase() + name.slice(1)}`
 }
@@ -140,19 +121,17 @@ function getProviderLabel(name: string) {
         <!-- LOGIN MODE -->
         <div v-if="mode === 'login'">
           <form @submit.prevent="handleLogin" class="space-y-4">
-            <!-- 1. Email -->
             <div class="form-control">
               <label class="label"><span class="label-text">Email</span></label>
               <input v-model="email" type="email" placeholder="name@company.com" class="input input-bordered" required />
             </div>
             
-            <!-- 2. Password -->
             <div class="form-control">
               <label class="label"><span class="label-text">Password</span></label>
               <input v-model="password" type="password" placeholder="••••••••" class="input input-bordered" required />
             </div>
 
-            <!-- Subtle Admin Toggle -->
+            <!-- Shown only with ?admin=1 -->
             <div v-if="showAdminToggle" class="form-control bg-base-200 p-3 rounded-lg border border-base-300">
               <label class="label cursor-pointer justify-between">
                 <span class="label-text font-bold text-xs uppercase tracking-widest text-base-content/70">Super User</span>
@@ -160,7 +139,6 @@ function getProviderLabel(name: string) {
               </label>
             </div>
             
-            <!-- 3. Sign In Button -->
             <div class="form-control mt-6">
               <button type="submit" class="btn btn-primary w-full" :disabled="loading">
                 <span v-if="loading" class="loading loading-spinner"></span>
@@ -169,7 +147,7 @@ function getProviderLabel(name: string) {
             </div>
           </form>
 
-          <!-- OAuth2 Section (Hidden for SuperUsers) -->
+          <!-- OAuth2: not for superusers -->
           <div v-if="!isSuperAdmin && authStore.authProviders.length > 0" class="mt-6">
             <div class="divider text-xs text-base-content/50">OR</div>
             <div class="flex flex-col gap-3">
@@ -180,14 +158,12 @@ function getProviderLabel(name: string) {
                 class="btn btn-outline w-full"
                 :disabled="loading"
               >
-                <!-- Simple generic icon if specific ones aren't available -->
                 <span v-if="loading" class="loading loading-spinner loading-xs"></span>
                 <span v-else>{{ getProviderLabel(provider.name) }}</span>
               </button>
             </div>
           </div>
 
-          <!-- 4. Forgot Password -->
           <div class="text-center mt-4">
             <button type="button" @click="mode = 'forgot'" class="text-xs link link-primary no-underline hover:underline opacity-70 hover:opacity-100 transition-opacity">
               Forgot password?

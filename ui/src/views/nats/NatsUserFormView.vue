@@ -28,46 +28,35 @@ const toast = useToast()
 const userId = route.params.id as string | undefined
 const isEdit = computed(() => !!userId && !props.embedded)
 
-// Form data
 const formData = ref({
-  // Identity
   nats_username: '',
   description: '',
 
-  // Auth
   email: '',
   password: '',
   passwordConfirm: '',
 
-  // Permissions
   account_id: '',
   role_id: '',
 
-  // Per-user permission overrides
+  // Per-user overrides, comma-separated in the textareas
   publish_permissions: '',
   subscribe_permissions: '',
   publish_deny_permissions: '',
   subscribe_deny_permissions: '',
 
-  // Options
   bearer_token: false,
 
-  // Credential lifetime (optional; empty = never expires)
+  // Empty = never expires
   jwt_expires_at: '',
 })
 
-/**
- * Grug helper: UI needs string for textarea, API wants Array.
- */
 function formatForInput(val: any): string {
   if (!val) return ''
   if (Array.isArray(val)) return val.join(', ')
   return String(val)
 }
 
-/**
- * Grug helper: API wants Array, UI gives string.
- */
 function formatForApi(val: string): string[] {
   if (!val) return []
   return val.split(',')
@@ -75,10 +64,7 @@ function formatForApi(val: string): string[] {
     .filter(s => s !== '')
 }
 
-/**
- * Grug helper: PocketBase date string -> <input type="datetime-local"> value.
- * PB stores UTC ("2026-12-31 23:59:59.000Z"); the input wants local "yyyy-MM-ddTHH:mm".
- */
+// PB stores UTC ("2026-12-31 23:59:59.000Z"); datetime-local wants local "yyyy-MM-ddTHH:mm".
 function pbDateToInput(val?: string): string {
   if (!val) return ''
   const d = new Date(val.replace(' ', 'T'))
@@ -86,17 +72,9 @@ function pbDateToInput(val?: string): string {
 }
 
 /**
- * The account is not a choice. An organization has exactly one, provisioned with
- * it -- `nats_accounts.createRule` is null, so nothing can create a second one
- * through the API -- and which organization you are working in is already
- * answered by the sidebar switcher, the same source `data.organization` uses on
- * create below.
- *
- * As a dropdown it implied a decision that does not exist, and for a platform
- * operator it was worse than useless: `nats_accounts.listRule`'s first branch is
- * an unqualified `is_operator = true`, so the list held every tenant's account
- * with nothing but a name to tell them apart. Filtering by the active org here
- * fixes the display for both; the server-side half of that is tracked separately.
+ * Not a choice: an organization has exactly one account (`nats_accounts.createRule`
+ * is null) and the active org decides which. Filtered by org because an
+ * operator's listRule branch returns every tenant's account.
  */
 const orgAccount = ref<NatsAccount | null>(null)
 const roles = ref<NatsRole[]>([])
@@ -109,13 +87,9 @@ const roleOptions = computed<PickerOption[]>(() =>
   }))
 )
 
-// State
 const loading = ref(false)
 const loadingOptions = ref(true)
 
-/**
- * Load form options (accounts and roles)
- */
 async function loadOptions() {
   loadingOptions.value = true
   
@@ -135,7 +109,6 @@ async function loadOptions() {
     orgAccount.value = accountsResult[0] || null
     roles.value = rolesResult
 
-    // Auto-select defaults
     if (!isEdit.value) {
       const defaultRole = roles.value.find(r => r.is_default)
       if (defaultRole) formData.value.role_id = defaultRole.id
@@ -148,9 +121,6 @@ async function loadOptions() {
   }
 }
 
-/**
- * Load existing user for editing
- */
 async function loadUser() {
   if (!userId || props.embedded) return
   
@@ -182,11 +152,7 @@ async function loadUser() {
   }
 }
 
-/**
- * Handle form submission
- */
 async function handleSubmit() {
-  // Validation: Create mode requires password
   if (!isEdit.value && !formData.value.password) {
     toast.error('Password is required for new users')
     return
@@ -197,8 +163,7 @@ async function handleSubmit() {
     return
   }
 
-  // Nothing in this form can fix a missing account, so say so here rather than
-  // letting the create fail on a rule the operator cannot see.
+  // Say so here rather than fail on a rule the user cannot see.
   if (!formData.value.account_id) {
     toast.error('This organization has no NATS account yet')
     return
@@ -225,7 +190,6 @@ async function handleSubmit() {
         : '',
     }
 
-    // Only send password if entered
     if (formData.value.password) {
       data.password = formData.value.password
       data.passwordConfirm = formData.value.passwordConfirm
@@ -238,8 +202,7 @@ async function handleSubmit() {
       toast.success('NATS user updated')
     } else {
       data.organization = authStore.currentOrgId
-      // Set once, on create. `active` is not editable here on purpose -- see the
-      // note on the Security Settings card. Revoke/Re-enable own it.
+      // Set once, on create; see the Security Settings note.
       data.active = true
       record = await pb.collection('nats_users').create<NatsUser>(data)
       toast.success('NATS user created')
@@ -426,14 +389,8 @@ onMounted(() => {
           
           <BaseCard title="Security Settings">
             <div class="space-y-4">
-              <!--
-                There is deliberately no "Active" toggle here. `active` is a LABEL
-                that pb-nats sets; it is not a control. Clearing it changes the
-                badge and nothing else -- the signed user JWT stays valid and the
-                device keeps connecting. Only revocation cuts NATS off, by adding
-                the public key to the account's revocation list. Use Revoke /
-                Re-enable on the user's detail page.
-              -->
+              <!-- No "Active" toggle here. `active` false is a suspend: pb-nats revokes
+                   the key and issues nothing new. Reactivate is on the detail page. -->
               <div class="form-control">
                 <label class="label cursor-pointer justify-start gap-4">
                   <input

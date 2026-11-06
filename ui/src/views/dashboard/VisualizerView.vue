@@ -1,4 +1,3 @@
-<!-- ui/src/views/dashboard/VisualizerView.vue -->
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, computed, nextTick, provide } from 'vue'
 import { useAuthStore } from '@/stores/auth'
@@ -9,7 +8,6 @@ import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
 import { useWidgetOperations } from '@/composables/useWidgetOperations'
 import { useToast } from '@/composables/useToast'
 
-// Components ...
 import DashboardSidebar from '@/components/dashboard/DashboardSidebar.vue'
 import DashboardGrid from '@/components/dashboard/DashboardGrid.vue'
 import WidgetContainer from '@/components/dashboard/WidgetContainer.vue'
@@ -23,11 +21,8 @@ import VariableEditorModal from '@/components/dashboard/VariableEditorModal.vue'
 import { Braces, Bug, EllipsisVertical, LayoutDashboard, Lock, LockOpen, RefreshCw, X } from '@lucide/vue'
 import type { WidgetType } from '@/types/dashboard'
 
-// The `dashboard` role is offered every widget type. Each one reads from NATS
-// or publishes on it with the caller's own credential, which is the real limit
-// on what the role can do, and none edits PocketBase inventory. It used to get
-// a list that left out chart, gauge, console, stream table, map and markdown,
-// though those only read.
+// The `dashboard` role is offered every widget type: each uses the caller's own
+// NATS credential, which is the real limit, and none edits PocketBase inventory.
 
 const authStore = useAuthStore()
 const natsStore = useNatsStore()
@@ -35,9 +30,8 @@ const dashboardStore = useDashboardStore()
 const uiStore = useUIStore()
 const toast = useToast()
 
-// Restricted mode: no kiosk/debug/shortcuts/grid selector.
-// Keyed on the ROLE, not on the path -- '/' is the only Visualizer route now, and
-// a path check would have to be kept in step with the router by hand.
+// Restricted mode: no kiosk/debug/shortcuts/grid selector. Keyed on the role,
+// not the path, so it need not track the router.
 const isRestrictedMode = computed(() => authStore.isDashboardUser)
 
 const {
@@ -48,7 +42,6 @@ const {
   duplicateWidget,
 } = useWidgetOperations()
 
-// UI State ...
 const isSidebarOpen = ref(false)
 const showAddWidget = ref(false)
 const showConfigWidget = ref(false)
@@ -75,7 +68,6 @@ let kioskHintTimer: ReturnType<typeof setTimeout> | null = null
 
 watch(isKioskMode, (active) => {
   if (active) {
-    // Close sidebar & modals when entering kiosk
     isSidebarOpen.value = false
     showConfigWidget.value = false
     showAddWidget.value = false
@@ -83,7 +75,6 @@ watch(isKioskMode, (active) => {
     showDebugPanel.value = false
     showVariableModal.value = false
 
-    // Show hint briefly
     showKioskHint.value = true
     if (kioskHintTimer) clearTimeout(kioskHintTimer)
     kioskHintTimer = setTimeout(() => { showKioskHint.value = false }, 3000)
@@ -98,7 +89,7 @@ const fullScreenWidget = computed(() => {
   return dashboardStore.getWidget(fullScreenWidgetId.value)
 })
 
-// --- Global Confirmation Logic ---
+// Provided to descendants as 'requestConfirm'.
 const confirmState = ref({
   show: false,
   title: 'Confirm Action',
@@ -117,8 +108,6 @@ function handleGlobalConfirm() {
 }
 
 provide('requestConfirm', requestConfirm)
-
-// --- Actions ---
 
 function toggleSidebar() {
   isSidebarOpen.value = !isSidebarOpen.value
@@ -171,16 +160,12 @@ function handleReloadRemote() {
   }
 }
 
-/**
- * Force Refresh Dashboard
- * Grug say: Wipe data, stop subs, start all over, and shout so self-managed widgets reload too.
- */
 function handleRefreshDashboard() {
   unsubscribeAllWidgets(false) // false = wipe data
   nextTick(() => {
     subscribeAllWidgets()
     // Self-managed widgets (kv, kvtable, switch, slider, pocketbase, status-kv)
-    // don't go through subscribeAllWidgets — tell them to reload themselves.
+    // bypass subscribeAllWidgets and listen for this instead.
     window.dispatchEvent(new Event('dashboard:refresh'))
     toast.info('Dashboard data refreshed')
   })
@@ -194,11 +179,10 @@ function handleGridChange(event: Event) {
   }
 }
 
-// --- Shortcuts ---
 const { shortcuts } = useKeyboardShortcuts([
   { key: 's', description: 'Save Dashboard', handler: handleSave },
   { key: 'n', description: 'Add New Widget', handler: () => { if (!dashboardStore.isLocked) showAddWidget.value = true } },
-  { key: 'r', description: 'Refresh Dashboard Data', handler: handleRefreshDashboard }, // NEW
+  { key: 'r', description: 'Refresh Dashboard Data', handler: handleRefreshDashboard },
   { key: 'b', description: 'Toggle Dashboard Sidebar', handler: toggleSidebar },
   { key: 'a', description: 'Toggle App Sidebar', handler: () => uiStore.toggleCompact() },
   { key: 'v', description: 'Toggle Variables', handler: () => { if (hasVariables.value || !dashboardStore.isLocked) showVariableBar.value = !showVariableBar.value } },
@@ -221,9 +205,6 @@ const { shortcuts } = useKeyboardShortcuts([
   { key: '?', description: 'Show Shortcuts', handler: () => { showShortcutsModal.value = true } }
 ])
 
-// --- Lifecycle ---
-
-// Warn user before leaving with unsaved changes
 function handleBeforeUnload(e: BeforeUnloadEvent) {
   if (dashboardStore.isDirty) {
     e.preventDefault()
@@ -240,15 +221,14 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  // Grug say: keep data warm during navigation
+  // true = keep data warm for when the user comes back
   unsubscribeAllWidgets(true)
   window.removeEventListener('beforeunload', handleBeforeUnload)
   if (kioskHintTimer) clearTimeout(kioskHintTimer)
-  // Exit kiosk on navigating away so MainLayout returns to normal
+  // Otherwise MainLayout stays in kiosk layout on the next page.
   if (uiStore.kioskMode) uiStore.kioskMode = false
 })
 
-// Watchers
 watch(() => natsStore.isConnected, (connected) => {
   if (connected) subscribeAllWidgets()
 })
@@ -267,10 +247,8 @@ watch(() => dashboardStore.currentVariableValues, () => {
   }
 }, { deep: true })
 
-// Note: createWidget() already calls subscribeWidget() internally.
-// This watcher is only needed for widgets added through non-createWidget paths
-// (e.g., dashboard load, remote sync). Since those paths use subscribeAllWidgets(),
-// this watcher was causing double-subscriptions. Removed.
+// No watcher on the widget list: createWidget() subscribes the new widget
+// itself, and one here would subscribe it twice.
 </script>
 
 <template>
@@ -305,12 +283,7 @@ watch(() => dashboardStore.currentVariableValues, () => {
           </div>
         </div>
         
-        <!--
-          On a phone (below sm) the toolbar keeps one button per thing done most
-          in each state -- Save or Update when there is one, + and the lock while
-          editing -- and everything else goes in the ⋮ menu. Above sm it is all
-          inline, as it always was.
-        -->
+        <!-- Below sm only Save/Update, + and the lock stay inline; the rest is in the ⋮ menu. -->
         <div class="toolbar-right">
           <button v-if="dashboardStore.remoteChanged" class="btn btn-sm btn-warning" title="A newer version of this shared dashboard was saved" @click="handleReloadRemote">Update</button>
           <button v-else-if="dashboardStore.isDirty" class="btn btn-sm btn-outline" title="Save Dashboard (S)" @click="handleSave">Save</button>
@@ -378,7 +351,6 @@ watch(() => dashboardStore.currentVariableValues, () => {
       </div>
     </div>
     
-    <!-- Modals ... (Unchanged) -->
     <AddWidgetModal v-model="showAddWidget" @select="handleCreateWidget" />
     <ConfigureWidgetModal v-model="showConfigWidget" :widget-id="configWidgetId" @saved="handleWidgetConfigSaved" />
     <KeyboardShortcutsModal v-model="showShortcutsModal" :shortcuts="shortcuts" />
@@ -567,11 +539,8 @@ watch(() => dashboardStore.currentVariableValues, () => {
   position: relative;
 }
 
-/* Touch screens: every toolbar button is 32px to look at and 44px to hit.
-   The extra 6px a side is an invisible ::after, so the toolbar keeps its
-   height and the buttons their look; 4px each way sideways meets the 8px gap
-   without two targets overlapping. Keyed on the pointer, not the width: a
-   tablet needs it as much as a phone, a narrow desktop window does not. */
+/* Touch screens: an invisible ::after grows each 32px button to a 44px hit
+   target without changing the layout. Keyed on the pointer, not the width. */
 @media (pointer: coarse) {
   .toolbar-left .sidebar-toggle-btn,
   .toolbar-right .btn {
@@ -587,23 +556,19 @@ watch(() => dashboardStore.currentVariableValues, () => {
 
 @media (max-width: 640px) {
   .visualizer-toolbar { padding: 0.25rem 0.5rem; }
-  /* No width cap: .dashboard-info already gives the name whatever the
-     buttons leave, and a fixed 120px cut "Northwind Cold Chain" with
-     another 115px free. */
+  /* No width cap: .dashboard-info already gives the name what the buttons leave. */
   .dashboard-name { font-size: 0.9rem; }
   .dashboard-info { gap: 0.25rem; margin-left: 0.25rem; }
 }
 
-/* Kiosk mode: fill entire viewport since AppHeader + toolbar are hidden.
-   Reset the negative-margin/expanded-width trick — MainLayout already removes
-   the <main> padding in kiosk mode so the breakout is no longer needed. */
+/* Kiosk: fill the viewport. MainLayout drops the <main> padding in kiosk mode,
+   so the negative-margin breakout is reset. */
 .visualizer-view.kiosk-active {
   height: 100vh;
   margin: 0;
   width: 100%;
 }
 
-/* Kiosk hint toast */
 .kiosk-hint {
   position: fixed;
   top: 1.5rem;

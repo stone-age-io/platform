@@ -1,15 +1,11 @@
-<!-- ui/src/components/widgets/StreamTableWidget.vue -->
 <template>
   <div class="streamtable-widget" :class="{ 'card-layout': layoutMode === 'card' }">
-    <!-- Not Configured -->
     <div v-if="!hasSubjects" class="empty-state">
       <RadioTower class="empty-icon" :size="28" :stroke-width="1.5" aria-hidden="true" />
       <div v-if="layoutMode !== 'card'">Configure one or more subjects</div>
     </div>
 
-    <!-- Data -->
     <template v-else>
-      <!-- Toolbar -->
       <div class="toolbar">
         <button
           class="tool-btn"
@@ -29,7 +25,6 @@
         />
       </div>
 
-      <!-- Table -->
       <div class="data-container">
         <ResponsiveList
           :items="filteredRows"
@@ -68,7 +63,6 @@
         </ResponsiveList>
       </div>
 
-      <!-- Footer -->
       <div class="widget-footer">
         <span class="text-[10px] opacity-50">
           <template v-if="isPaused">
@@ -90,7 +84,6 @@
       </div>
     </template>
 
-    <!-- Detail Modal -->
     <Teleport to="body">
       <div v-if="selectedRow" class="modal-overlay" @click.self="selectedRow = null">
         <div class="detail-modal">
@@ -269,7 +262,7 @@ function downloadCsv() {
 }
 
 function handleRefresh() {
-  // Grug say: refresh means show new data, not stay stuck on old snapshot.
+  // A refresh shows new data, not the paused snapshot.
   isPaused.value = false
   pausedSnapshot.value = []
 }
@@ -396,7 +389,6 @@ onUnmounted(() => {
 .cell-style-error   { color: oklch(var(--er)); font-weight: 600; }
 .cell-style-info    { color: oklch(var(--in)); font-weight: 600; }
 
-/* Detail modal */
 .modal-overlay {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;

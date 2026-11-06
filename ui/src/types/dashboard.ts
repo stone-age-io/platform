@@ -1,17 +1,8 @@
-// ui/src/types/dashboard.ts
-
 import { TWIN_BUCKET, TWIN_DESIRED_BUCKET } from '@/utils/twin'
 
 /**
- * Widget Types
- *
- * ONE list, at runtime, with the type derived from it — rather than a bare
- * string union. Adding a widget type means editing several places that are not
- * compiler-checked (a component switch, the palette, a handful of `string[]`
- * membership tests), and a union alone cannot be iterated, so nothing could
- * assert "every type is handled" without a hand-maintained second copy of the
- * list. This makes the list itself the source: `Record<WidgetType, …>` still
- * fails to compile when a type is missing, and a test can now walk every type.
+ * Widget types as a runtime list with the union derived from it, so tests can
+ * iterate every type and `Record<WidgetType, …>` still fails to compile on a gap.
  */
 export const WIDGET_TYPES = [
   'chart',
@@ -80,26 +71,20 @@ export interface DataSourceConfig {
   timeWindow?: string
 
   // Keep `$...` and `_INBOX` traffic out of a subscription whose first token
-  // is a wildcard. Absent means off, so dashboards saved before it existed
-  // behave as they always did; a new console sets it. utils/systemSubjects.ts.
+  // is a wildcard (utils/systemSubjects.ts). Absent means off, for old dashboards.
   hideSystemSubjects?: boolean
 }
 
-// A time window is a chart setting (ChartWidgetConfig.window), not a buffer
-// one: only a chart ages messages out. A `maxAge` here was stored, never
-// enforced, and dropped by every save.
+// No time window here: that is ChartWidgetConfig.window, since only a chart
+// ages messages out.
 export interface BufferConfig {
   maxCount: number
 }
 
 // --- Widget-Specific Configurations ---
-// One line on a chart. Every series reads the FULL payload (BufferedMessage.raw),
-// so N series can come out of one message or out of N subjects:
-//   - skip the message if `subject` is set and is not exactly its subject;
-//   - skip it if `path` finds nothing;
-//   - otherwise it is a point.
-// `subject` is what separates devices that all publish the same shape
-// ({"running": true}), where the path alone cannot tell them apart.
+// One line on a chart. Each series reads the full payload (BufferedMessage.raw)
+// and takes a point unless `subject` is set and does not match exactly, or
+// `path` finds nothing. `subject` separates devices that publish the same shape.
 export interface ChartSeries {
   label: string
   path: string
@@ -108,17 +93,15 @@ export interface ChartSeries {
 
 export interface ChartWidgetConfig {
   chartType: ChartType
-  // Absent on charts saved before multi-series: they draw one series from the
-  // widget-level jsonPath (BufferedMessage.value), and the config form turns
-  // that into a one-entry list the next time the chart is saved.
+  // Absent on older charts: they draw one series from the widget-level jsonPath
+  // until the config form next saves them as a one-entry list.
   series?: ChartSeries[]
   // Duration string ("30m"). Empty = keep the last N messages (the buffer size).
-  // When set it is ALSO the JetStream replay window, so the two cannot disagree.
+  // When set it is also the JetStream replay window.
   window?: string
-  // Timeline: first match wins, giving a segment its colour and label. A value
-  // no rule matches keeps a colour hashed from the value itself.
-  // Line and bar: each rule with a numeric value is drawn as a dashed line at
-  // that value. The operator is not used there; a line has no direction.
+  // Timeline: first match colours and labels a segment; unmatched values get a
+  // colour hashed from the value. Line and bar: each numeric rule is a dashed
+  // line at that value, and the operator is ignored.
   thresholds?: ThresholdRule[]
   // Line and bar: fixed y-axis ends. Absent = fitted to the data.
   yMin?: number
@@ -193,8 +176,7 @@ export interface StatCardWidgetConfig {
 }
 
 export interface GaugeWidgetConfig {
-  // 'bar' is a horizontal level (a tank, a battery) over the same range,
-  // zones and unit. Absent = the arc every gauge saved before it draws.
+  // 'bar' is a horizontal level (a tank, a battery). Absent = arc.
   style?: 'arc' | 'bar'
   min: number
   max: number
@@ -223,9 +205,8 @@ export interface PublisherWidgetConfig {
   defaultPayload?: string
   history?: PublisherHistoryItem[]
   timeout?: number
-  // Thing Type Spec binding — when both are set, the widget resolves the
-  // subject from the Thing's context and renders a form driven by the
-  // operation's subject suffix, resolved against the Thing's context.
+  // When both are set, the subject resolves from the Thing's context, its
+  // type's prefix and the operation's suffix.
   thingId?: string
   thingTypeOperationId?: string
 }
@@ -256,39 +237,33 @@ export interface MarkdownWidgetConfig {
 export type ScanPurpose = 'muster' | 'verify' | 'other'
 
 export interface ScannerWidgetConfig {
-  // KV lookup — resolve the scanned string against a bucket the caller's own NATS
-  // credential can read. The value may be any JSON shape; rules below read it.
+  // KV lookup with the caller's own NATS credential. Any JSON shape; rules read it.
   kvEnabled?: boolean
   kvBucket?: string
   kvKeyTemplate?: string     // e.g. "{value}" — {value} replaced with scanned content
 
-  // Validation rules applied to the looked-up record to decide PASS/FAIL.
-  // Empty/undefined → any found record passes.
-  //
-  // This verdict is computed IN THE BROWSER and is advisory: it tells the operator
-  // holding the device what the record says. It is not an authorization decision
-  // and nothing downstream should treat the published `passed` as one.
+  // PASS/FAIL rules on the looked-up record; none means any found record passes.
+  // Computed in the browser and advisory only: nothing downstream may treat the
+  // published `passed` as an authorization decision.
   rules?: ScannerRule[]
 
-  // PocketBase lookup — optional, for asset/thing scan scenarios
   pbEnabled?: boolean
   pbCollection?: string
   pbFilter?: string          // e.g. 'public_key = "{value}"'
   pbFields?: string
 
-  // Publish scan event. Subject is templatable; payload is a fixed JSON shape.
+  // Subject is templatable; the payload is a fixed JSON shape.
   publishEnabled?: boolean
   publishSubjectTemplate?: string   // tokens: {value} {scanner} {scanner_kind} {device_label} {purpose} {location} {passed} {reason} {ts}
 
-  // Legacy (pre-template) — read as fallback if publishSubjectTemplate is absent
+  // Legacy fallback when publishSubjectTemplate is absent.
   publishSubject?: string
 
-  // Scan context — populates tokens in subject/payload templates
+  // Fill tokens in the subject/payload templates.
   deviceLabel?: string
   scanPurpose?: ScanPurpose
   location?: string          // free-form id or label
 
-  // Behavior
   dedupWindowMs?: number     // suppress repeat scans of same value within window
   lookupTimeoutMs?: number   // abort KV lookup after this
   allowManualEntry?: boolean // show a text input fallback
@@ -370,9 +345,7 @@ export interface DynamicMarkerSource {
   popupFields?: DynamicMarkerPopupField[]
 }
 
-// Adding a member is backward compatible -- a dashboard saved before it
-// simply has no item of that type. REMOVING one is not: every saved
-// dashboard carrying it renders an unknown row.
+// Adding a member is safe; removing one breaks every saved dashboard using it.
 export type MapItemType = 'publish' | 'switch' | 'text' | 'kv' | 'slider' | 'gauge'
 
 export interface MapItemSwitchConfig {
@@ -400,12 +373,8 @@ export interface MapItemTextConfig {
 }
 
 /**
- * A setpoint row: the write-side counterpart to the switch.
- *
- * Same `mode` split as MapItemSwitchConfig and the slider widget, so the
- * editor row is the one that already exists with different fields. Publishing
- * happens on release rather than per frame -- dragging 0 to 80 would otherwise
- * be eighty writes.
+ * A setpoint row, with the same `mode` split as the switch item. Publishes on
+ * release, not per frame, so a drag is one write.
  */
 export interface MapItemSliderConfig {
   mode: 'kv' | 'core'
@@ -426,10 +395,7 @@ export interface MapItemSliderConfig {
   confirmMessage?: string
 }
 
-/**
- * A read-only level row. Bar only, deliberately: the arc wants a whole
- * widget of space and would be unreadable in a 280px panel.
- */
+/** A read-only level row. Bar only: an arc is unreadable in a 280px panel. */
 export interface MapItemGaugeConfig {
   mode: 'kv' | 'core'
   kvBucket?: string
@@ -466,13 +432,12 @@ export interface MapMarkerItem {
 
 export interface MarkerPositionConfig {
   mode: 'static' | 'dynamic'
-  
-  // Dynamic settings
+
+  // Dynamic mode only
   subject?: string
   latJsonPath?: string // e.g. "$.lat" or "$[0]"
   lonJsonPath?: string // e.g. "$.lon" or "$[1]"
-  
-  // JetStream settings
+
   useJetStream?: boolean
   deliverPolicy?: DeliverPolicy
   timeWindow?: string
@@ -483,8 +448,7 @@ export interface MapMarker {
   label: string
   lat: number
   lon: number
-  
-  // Position Config
+
   positionConfig?: MarkerPositionConfig
   
   color?: string
@@ -504,9 +468,8 @@ export interface MapWidgetConfig {
 }
 
 // --- Floor Plan Widget ---
-//
-// Markers are inventory: the Things in `locationId` with a `floorplan_position`.
-// The widget stores no positions. plans/floorplan-widget.md has the reasoning.
+// Markers are the Things in `locationId` with a `floorplan_position`; the widget
+// stores no positions (plans/floorplan-widget.md).
 
 export type FloorPlanStateMode = 'subject' | 'kv'
 
@@ -577,29 +540,16 @@ export interface WidgetConfigBase {
 }
 
 /**
- * The one config object each widget type owns.
+ * The one config object each widget type owns, keyed by `type`: a type in
+ * WIDGET_TYPES with no entry here does not compile, and a narrowed widget gets
+ * its config without a `!`.
  *
- * WHY THIS IS A MAP AND NOT SIXTEEN OPTIONAL FIELDS. It used to be sixteen
- * `xxxConfig?:` fields stacked on one interface, each read by exactly one
- * widget. That shape cannot help anybody: every widget had to write
- * `props.config.gaugeConfig!` — an assertion the compiler accepts and the
- * browser finds out about — and a new widget type could be added to
- * WIDGET_TYPES, to the palette and to the container without ever declaring a
- * config at all, with nothing to say so until it rendered empty.
+ * The field names are frozen: every saved dashboard (localStorage, KV, exported
+ * JSON) carries these keys, so renaming them is a data migration.
  *
- * Keyed by `type`, the compiler becomes the checklist: a type listed in
- * WIDGET_TYPES with no entry here does not compile, and inside a widget that
- * has narrowed `config` by type, its own config object is present rather than
- * asserted.
- *
- * THE FIELD NAMES ARE DELIBERATELY UNCHANGED. A single `config` field would
- * read better and would also rename sixteen keys inside every dashboard ever
- * saved — localStorage, the KV-backed dashboards, and every exported JSON file
- * somebody is keeping. That is a data migration, not a refactor.
- *
- * Narrowing is a compile-time claim about data that arrives at runtime from
- * user-editable JSON, so the import path still has to behave when a config
- * object is missing. `types/dashboard.spec.ts` pins the construction side.
+ * Narrowing is a compile-time claim about user-editable JSON, so readers must
+ * still cope with a missing config object. `types/dashboard.spec.ts` pins the
+ * construction side.
  */
 export interface WidgetConfigByType {
   chart: { chartConfig: ChartWidgetConfig }
@@ -626,13 +576,7 @@ export type WidgetConfig = {
   [T in WidgetType]: WidgetConfigBase & { type: T } & WidgetConfigByType[T]
 }[WidgetType]
 
-/**
- * One widget of a known type — what a widget component takes as its prop:
- *
- *   defineProps<{ config: WidgetConfigOf<'gauge'> }>()
- *
- * which is how `config.gaugeConfig` stops needing a `!`.
- */
+/** One widget of a known type, e.g. `defineProps<{ config: WidgetConfigOf<'gauge'> }>()`. */
 export type WidgetConfigOf<T extends WidgetType> = Extract<WidgetConfig, { type: T }>
 
 export type StorageType = 'local' | 'kv'
@@ -677,17 +621,9 @@ export const DEFAULT_BUFFER_CONFIG: BufferConfig = {
 }
 
 /**
- * What each widget type starts life as, beyond the fields every widget shares.
- *
- * This was a 16-case `switch` that mutated a half-built object. A `Record` over
- * WidgetType instead, for the reason WIDGETS gives: a case missing from a
- * switch falls through in silence, and what fell through here was a widget with
- * no config object at all — added to the palette, addable to a dashboard, and
- * empty on arrival. The entry's own type requires its config object, so there
- * is no longer a way to write that widget.
- *
- * `title` is required because a widget with no title is unidentifiable on a
- * grid of twelve. Anything else from the base is optional and overrides it.
+ * What each widget type starts as, beyond the shared fields. A `Record`, not a
+ * switch, so every type must supply its config object. `title` is required;
+ * any other base field is optional and overrides the shared default.
  */
 type WidgetDefaults<T extends WidgetType> = { title: string } &
   Omit<WidgetConfigOf<T>, keyof WidgetConfigBase | 'type'> &
@@ -698,9 +634,7 @@ const WIDGET_DEFAULTS: { [T in WidgetType]: () => WidgetDefaults<T> } = {
     title: 'Chart Widget',
     // No widget-level jsonPath: each series reads the whole payload.
     chartConfig: { chartType: 'line', series: [{ label: 'Value', path: '$.value' }] },
-    // The shared default of 10 is a latest-value buffer; a chart of 10 points
-    // is barely a line, and a time window would be capped long before it
-    // filled. Same bound as console and streamtable.
+    // The shared 10 is a latest-value buffer, too few for a line or a window.
     buffer: { maxCount: 200 },
   }),
 
@@ -728,9 +662,8 @@ const WIDGET_DEFAULTS: { [T in WidgetType]: () => WidgetDefaults<T> } = {
 
   switch: () => ({
     title: 'Switch Control',
-    // A switch writes, so it defaults to the writable half of the twin.
-    // Widgets are general-purpose — any bucket works; these are only a
-    // starting point that points somewhere real.
+    // A switch writes, so it starts on the desired-state twin bucket; any
+    // bucket works.
     switchConfig: {
       mode: 'kv',
       kvBucket: TWIN_DESIRED_BUCKET,
@@ -790,8 +723,7 @@ const WIDGET_DEFAULTS: { [T in WidgetType]: () => WidgetDefaults<T> } = {
 
   floorplan: () => ({
     title: 'Floor Plan',
-    // No location and no bindings: the widget says what it needs rather than
-    // guessing at an id that exists in no organization but the author's.
+    // Empty: the widget prompts for a location rather than guessing an id.
     floorplanConfig: {
       locationId: '',
       bindings: [],
@@ -803,9 +735,6 @@ const WIDGET_DEFAULTS: { [T in WidgetType]: () => WidgetDefaults<T> } = {
     title: 'Console Stream',
     dataSource: { type: 'subscription', subject: '>', subjects: ['>'], hideSystemSubjects: true },
     consoleConfig: { fontSize: 12, showTimestamp: true },
-    // 200, matching streamtable. The 100 here was overridden by a second
-    // defaults function that ran afterwards, so 200 is what a console widget
-    // has actually had.
     buffer: { maxCount: 200 },
   }),
 
@@ -837,8 +766,7 @@ const WIDGET_DEFAULTS: { [T in WidgetType]: () => WidgetDefaults<T> } = {
   }),
 
   markdown: () => ({
-    // Empty title often looks better for static text: the content renders its
-    // own heading, so a title bar above it is the same words twice.
+    // Untitled: the content usually carries its own heading.
     title: '',
     markdownConfig: {
       content: '### Hello World\n\nThis is a **markdown** widget.\n\nYou can use variables like {{device_id}}.',
@@ -899,11 +827,8 @@ export function createDefaultWidget<T extends WidgetType>(
   const size = DEFAULT_WIDGET_SIZES[type]
   const id = `widget_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
-  // The cast is the one place the compiler cannot follow: it checks each
-  // WIDGET_DEFAULTS entry against its own type, but cannot see that spreading
-  // the generic `WIDGET_DEFAULTS[type]()` over the base completes
-  // WidgetConfigOf<T>. The entries are what is actually checked, and they are
-  // the thing that used to be wrong.
+  // The compiler checks each WIDGET_DEFAULTS entry but cannot see that the
+  // generic spread completes WidgetConfigOf<T>, hence the cast.
   return {
     id,
     type,
@@ -979,8 +904,7 @@ export function createDefaultItem(type: MapItemType = 'publish'): MapMarkerItem 
       label: 'Setpoint',
       sliderConfig: {
         mode: 'kv',
-        // A setpoint is desired state, so it defaults to the writable half
-        // of the twin -- the same choice the switch item makes.
+        // A setpoint is desired state, like the switch item.
         kvBucket: TWIN_DESIRED_BUCKET,
         kvKey: 'thing.DEVICE_01.setpoint',
         min: 0,

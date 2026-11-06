@@ -35,7 +35,6 @@
       </div>
     </div>
 
-    <!-- SVG Gauge -->
     <svg v-else :viewBox="`0 0 ${size} ${viewHeight}`" class="gauge-svg">
       <!-- Background track -->
       <path
@@ -98,9 +97,8 @@
         {{ cfg.unit }}
       </text>
 
-      <!-- Range, in the gap between the two ends of the arc, inside the dial.
-           Below the ends it needed a strip of its own, and in a short tile the
-           whole dial shrank to make room, taking the labels down to ~9px. -->
+      <!-- Range, in the gap between the arc's ends inside the dial. Below the
+           ends it needed its own strip, which shrank the dial in a short tile. -->
       <text :x="arcStart.x + 16" :y="arcStart.y + 12" text-anchor="start" class="gauge-range">{{ cfg.min }}</text>
       <text :x="arcEnd.x - 16" :y="arcEnd.y + 12" text-anchor="end" class="gauge-range">{{ cfg.max }}</text>
     </svg>
@@ -146,9 +144,8 @@ const isBar = computed(() => cfg.value.style === 'bar')
 const buffer = computed(() => dataStore.getBuffer(props.config.id))
 const hasData = computed(() => buffer.value.length > 0)
 
-// null when there is no usable number: Number(undefined) is NaN (a JSONPath
-// that matched nothing drew "NaN" and a NaN arc) and Number(null) is 0 (a
-// JetStream error drew a confident "0.00").
+// null when there is no usable number: Number(undefined) is NaN and
+// Number(null) is 0, which would draw "NaN" or a false "0.00".
 const latestValue = computed<number | null>(() => {
   if (buffer.value.length === 0) return null
   const val = buffer.value[buffer.value.length - 1].value
@@ -157,13 +154,10 @@ const latestValue = computed<number | null>(() => {
   return Number.isFinite(n) ? n : null
 })
 
-// Every fraction below divides by max - min. Equal, or the wrong way round,
-// gave NaN and an arc that silently was not there; the form refuses it now,
-// but a dashboard can be imported from a file.
-// The arithmetic lives in utils/gaugeScale.ts so the marker panel row draws
-// from the same rules -- a bar in a 280px panel and this arc must not
-// disagree about which band a value is in. It is also the only half of a
-// gauge that any test can reach.
+// Every fraction divides by max - min. The form refuses equal or inverted
+// bounds, but a dashboard can be imported from a file. The arithmetic lives in
+// utils/gaugeScale.ts so the marker panel's bar and this arc agree on which
+// band a value is in.
 const gaugeRange = computed(() => ({ min: cfg.value.min, max: cfg.value.max }))
 const rangeValid = computed(() => rangeIsValid(gaugeRange.value))
 const displayValue = computed(() => formatValue(latestValue.value, cfg.value.decimals))
@@ -199,7 +193,7 @@ const fullGaugePath = computed(() => describeArc(center, center, radius, -135, 1
 const fullArcLength = computed(() => radius * (270 * Math.PI) / 180)
 const valueArcLength = computed(() => `${fullArcLength.value * valuePercent.value} ${fullArcLength.value * 10}`)
 const valueDashOffset = computed(() => -fullArcLength.value * (1 - valuePercent.value))
-// Was white at 10%, which vanished on the light theme.
+// Theme-relative: a fixed white vanishes on the light theme.
 const backgroundColor = computed(() => 'oklch(var(--bc) / 0.1)')
 
 const valueColor = computed(() =>
@@ -314,7 +308,6 @@ const zonePaths = computed(() =>
   font-family: var(--mono);
 }
 
-/* Hide labels on small width */
 @container (width < 140px) {
   .gauge-range { display: none; }
   .gauge-unit { display: none; }

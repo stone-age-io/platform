@@ -6,7 +6,6 @@ import { useToast } from '@/composables/useToast'
 import type { User, Membership, Organization, SuperUser, NatsUser } from '@/types/pocketbase'
 import type { AuthProviderInfo } from 'pocketbase'
 
-// Extended interface to include the expansion we need
 export interface ExtendedMembership extends Membership {
   expand?: {
     organization: Organization
@@ -15,22 +14,13 @@ export interface ExtendedMembership extends Membership {
 }
 
 export const useAuthStore = defineStore('auth', () => {
-  // ============================================================================
-  // STATE
-  // ============================================================================
-  
   const user = ref<User | SuperUser | null>(null)
   const memberships = ref<ExtendedMembership[]>([])
   const currentOrgId = ref<string | null>(null)
   const isSuperAdmin = ref(false)
-  
-  // OAuth State
+
   const authProviders = ref<AuthProviderInfo[]>([])
-  
-  // ============================================================================
-  // COMPUTED
-  // ============================================================================
-  
+
   const isAuthenticated = computed(() => !!user.value)
   
   const currentMembership = computed(() => {
@@ -46,102 +36,61 @@ export const useAuthStore = defineStore('auth', () => {
     return currentMembership.value?.expand?.nats_user || null
   })
   
-  // null when there is no membership in the active organization, NOT a role.
-  //
-  // This used to fall back to 'member', which is a fail-OPEN default: a user
-  // with no resolved membership -- memberships still loading, or a membership
-  // just deleted, which now clears their organization context server-side --
-  // was handed member capabilities, so the console offered create and edit
-  // controls the API then refused. The least privileged answer to "what may
-  // this person do here" is "nothing", and every consumer below compares
-  // against specific role strings, so null denies by construction rather than
-  // by a rule someone has to remember to maintain.
+  // null (not a fallback role) when there is no membership in the active org,
+  // e.g. while memberships load. Every consumer compares against specific role
+  // strings, so null denies everything. Do not default to 'member': that fails open.
   const userRole = computed<Membership['role'] | null>(() => {
     if (isSuperAdmin.value) return 'owner'
     return currentMembership.value?.role ?? null
   })
   
-  // What each role may do, in one place. The router, the sidebar, and individual
-  // views all read this, so a role change is a one-line edit here rather than a
-  // hunt through inline ['owner','admin'] arrays.
-  //
-  // This mirrors the API rules in schema.json and is a UI convenience only —
-  // the server enforces the same boundaries in its own rules. Keep the two in
-  // step: if you gate a collection there, add or reuse a capability here.
-  // scripts/test-authz.sh is what proves the server half.
+  // What each role may do; the router, sidebar and views all read this. It
+  // mirrors the API rules in schema.json and the role table in the root
+  // CLAUDE.md, and is navigation only: the server enforces the rules
+  // (scripts/test-authz.sh proves it). Keep all three in step.
   const can = computed(() => {
     const role = userRole.value
     const isAdmin = role === 'owner' || role === 'admin'
     return {
-      // Members and invitations.
       manageMembers: isAdmin,
-      // NATS identities/roles/exports/imports, Nebula CA/networks/hosts. These
-      // records mint signed credentials, so they are owner/admin only.
+      // NATS and Nebula records mint signed credentials.
       manageInfrastructure: isAdmin,
       // Thing types, thing operations, location types.
       manageDefinitions: isAdmin,
       // JetStream streams and KV buckets.
       manageMessaging: isAdmin,
-      // Reading things and locations. `viewer` is a tenant's read-only staff:
-      // it sees the inventory screens and writes nothing.
-      //
-      // This is NOT a read boundary and must not be mistaken for one. The read
-      // rules on things, locations, thing_types, location_types,
-      // and thing_type_operations are org-scoped with no role check, so
-      // every role in the org — `dashboard` included — can already read all of
-      // it over the API. What this capability decides is which screens the
-      // console navigates to. If a read ever needs to be a boundary, it has to
-      // be a branch in schema.json; adding it here would be theatre.
+      // Which screens the console shows, NOT a read boundary: inventory read
+      // rules are org-scoped with no role check, so every role (dashboard too)
+      // can read it over the API. A real boundary belongs in schema.json.
       viewInventory: isAdmin || role === 'member' || role === 'viewer',
-      // The tenant activity feed. Same role set as viewInventory, and a separate
-    // entry only so the route and the sidebar can say what they mean --
-    // gating an Activity screen on `viewInventory` is a lie the next reader has
-    // to decode. It is NOT a boundary and must not be mistaken for one: the
-    // feed is org-scoped in schema.json with no role branch, so every role in
-    // the organization can read it over the API, `dashboard` included. That is
-    // deliberate -- the feed only describes records those roles can already
-    // read. Tightening this line would be theatre.
-    viewActivity: isAdmin || role === 'member' || role === 'viewer',
-    // Things and locations — the day-to-day inventory work, open to members.
-      // Deliberately excludes `viewer`: this is the capability every create /
-      // edit control is gated on.
+      // Same roles as viewInventory, named separately so routes say what they
+      // mean. Also not a boundary: the feed is org-scoped with no role branch.
+      viewActivity: isAdmin || role === 'member' || role === 'viewer',
+      // Every create / edit control. Excludes `viewer`.
       manageInventory: isAdmin || role === 'member',
-      // Taking inventory out of service: deleting a thing/location, and flipping
-      // a thing's `active` flag. Separate from manageInventory because members
-      // create and edit but do not decommission — deactivating revokes the
-      // device's NATS identity and blocklists its Nebula certificate, and
-      // deleting orphans both.
+      // Delete a thing/location, or flip a thing's `active` flag. Not for
+      // members: deactivating revokes NATS and Nebula identities.
       decommissionInventory: isAdmin,
     }
   })
 
-  // Dashboard user: the Visualizer and their own settings, nothing else. This is
-  // the least privileged role -- it holds no capability in the `can` map above,
-  // which is why scripts/test-authz.sh uses it to prove the rules are allowlists.
-  //
-  // Distinct from `viewer`, which is the read-only HUMAN: a viewer browses the
-  // whole console read surface and writes nothing. `dashboard` is an appliance
-  // login for an unattended screen, so it gets one screen. Do not collapse the
-  // two -- a kiosk in a hallway and an auditor at a desk want different things,
-  // and merging them would also cost the test suite its zero-authority probe.
+  // Appliance login for an unattended screen: the Visualizer and its own
+  // settings only. Holds no capability, which makes it the zero-authority probe
+  // in scripts/test-authz.sh. Do not merge it with `viewer` (a read-only human).
   const isDashboardUser = computed(() => {
     if (isSuperAdmin.value) return false
     return currentMembership.value?.role === 'dashboard'
   })
 
-  // Operator: can manage all organizations (create/edit/delete orgs, invite to any org)
+  // Operators manage every organization.
   const isOperator = computed(() => {
     if (isSuperAdmin.value) return true
     return (user.value as User)?.is_operator === true
   })
 
-  // Can access /organizations routes for org management
+  // Gates the /organizations routes.
   const canManageOrganizations = computed(() => isOperator.value)
-  
-  // ============================================================================
-  // ACTIONS
-  // ============================================================================
-  
+
   async function login(email: string, password: string, asSuperAdmin = false) {
     const collection = asSuperAdmin ? '_superusers' : 'users'
     const authData = await pb.collection(collection).authWithPassword(email, password)
@@ -161,17 +110,15 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function loginWithOAuth2(provider: string) {
-    // This triggers the popup window
     const authData = await pb.collection('users').authWithOAuth2({ provider })
     
     user.value = authData.record as unknown as User
     isSuperAdmin.value = false // OAuth is strictly for standard users
     
-    // Update profile avatar if provided by OAuth and not set locally
+    // Copy the provider's avatar into PocketBase if the user has none.
     if (authData.meta?.avatarUrl && !user.value.avatar) {
       try {
         const formData = new FormData()
-        // Fetch the image and convert to blob to upload to PocketBase
         const response = await fetch(authData.meta.avatarUrl)
         if (response.ok) {
           const blob = await response.blob()
@@ -194,12 +141,8 @@ export const useAuthStore = defineStore('auth', () => {
   
   async function logout() {
     pb.authStore.clear()
-    // The file token is a separate credential with its own lifetime and is NOT
-    // cleared by authStore.clear(). It stays valid for up to its full duration
-    // (180s), and it is a bearer credential for every file the session that
-    // minted it could read -- so without this the next person to log in on this
-    // tab would be handed the previous one's token and could see files their own
-    // account cannot.
+    // authStore.clear() does not clear the cached file token, a bearer
+    // credential valid up to 180s; the next login on this tab would inherit it.
     resetFileToken()
     user.value = null
     memberships.value = []
@@ -247,11 +190,9 @@ export const useAuthStore = defineStore('auth', () => {
   async function switchOrganization(orgId: string) {
     if (!user.value || currentOrgId.value === orgId) return
     const collection = isSuperAdmin.value ? '_superusers' : 'users'
-    // Persist to the backend BEFORE flipping local state. PocketBase API rules
-    // (e.g. nats_users.viewRule) check the server-side `current_organization`,
-    // so any reactive consumer that fires off a request the instant currentOrgId
-    // changes must see the backend already in the new context. Otherwise the
-    // request gets denied by the rule for the previous org.
+    // Persist before flipping local state: API rules read the server-side
+    // `current_organization`, and consumers fire requests as soon as
+    // currentOrgId changes.
     try {
       await pb.collection(collection).update(user.value.id, { current_organization: orgId })
     } catch (e) {
@@ -286,26 +227,12 @@ export const useAuthStore = defineStore('auth', () => {
     await loadContext()
   }
   
-  // Hydration is memoized so the router guard and main.ts share ONE in-flight
-  // promise regardless of which asks first.
-  //
-  // THE BUG THIS FIXES: app.use(router) starts resolving the initial navigation
-  // as soon as the router is installed -- before main.ts gets to the next line
-  // and calls this. `user` is set synchronously below, so isAuthenticated was
-  // already true and nobody was bounced to /login (main.ts's comment describes
-  // fixing exactly that), but `memberships` needs a network round-trip, so
-  // every capability in `can` still read false. The guard therefore denied
-  // every capability-gated route on a cold load: deep links AND a plain browser
-  // refresh both landed on the dashboard, silently, with the sidebar happily
-  // showing the link you had just been refused.
-  //
-  // Memoized rather than "call it earlier in main.ts", because an ordering
-  // convention between two files is exactly what broke -- this cannot be got
-  // wrong by whoever edits main.ts next.
-  //
-  // No reset on logout: logout() clears pb.authStore, so a later await resolves
-  // instantly against an empty store and the guard sends you to /login, which
-  // is correct. login() populates the store itself and does not need this.
+  // Memoized so the router guard and main.ts share one in-flight promise. The
+  // router starts the initial navigation before main.ts calls this, and until
+  // memberships load every capability reads false, so the guard must await it.
+  // Memoized rather than "call it earlier in main.ts": an ordering convention
+  // between two files is what broke before.
+  // No reset on logout: the cleared authStore makes a later await a no-op.
   let hydration: Promise<void> | null = null
 
   function initializeFromAuth(): Promise<void> {
@@ -318,7 +245,7 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = pb.authStore.model as unknown as User
       isSuperAdmin.value = pb.authStore.model.collectionName === '_superusers'
       try {
-        // Refresh token first to verify it's still valid server-side
+        // Verify the stored token server-side before trusting it.
         const collection = isSuperAdmin.value ? '_superusers' : 'users'
         const authData = await pb.collection(collection).authRefresh()
         user.value = authData.record as unknown as User
@@ -331,14 +258,12 @@ export const useAuthStore = defineStore('auth', () => {
   }
   
   return {
-    // State
     user,
     memberships,
     currentOrgId,
     isSuperAdmin,
     authProviders,
-    
-    // Computed
+
     isAuthenticated,
     currentMembership,
     currentOrg,
@@ -348,8 +273,7 @@ export const useAuthStore = defineStore('auth', () => {
     isDashboardUser,
     isOperator,
     canManageOrganizations,
-    
-    // Actions
+
     login,
     loginWithOAuth2,
     loadAuthMethods,

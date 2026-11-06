@@ -1,18 +1,14 @@
-// src/composables/useLeafletMap.ts
 import { ref, shallowRef, onUnmounted } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { setWorkerUrl } from 'maplibre-gl'
-// maplibre-gl 6 no longer inlines its tile-parsing worker. Left alone it loads
-// `./maplibre-gl-worker.mjs` relative to its own module URL, which after Vite
-// bundles it into a hashed chunk is a file the build never emits -- and nothing
-// throws: the style's background paints and water, roads and labels (all parsed
-// in the worker) silently vanish, leaving a flat sheet of colour.
+// maplibre-gl 6 loads its tile worker as a separate file, relative to its own
+// module URL, which Vite never emits. Without setWorkerUrl() below the map is a
+// flat sheet of colour with no error.
 //
-// `?worker&url`, not `?url`: the worker file imports `./maplibre-gl-shared.mjs`,
-// and `?url` copies the one file as a bare asset whose import then 404s inside
-// the worker, which fails exactly as silently. `?worker&url` has Vite bundle the
-// worker entry with its imports into one emitted file and hand back its URL.
+// `?worker&url`, not `?url`: the worker imports `./maplibre-gl-shared.mjs`, and
+// `?url` copies the file alone, so that import 404s just as silently.
+// `?worker&url` bundles the worker with its imports into one emitted file.
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import 'maplibre-gl/dist/maplibre-gl.css'
 // Side-effect import: registers L.maplibreGL and augments the leaflet module types.
@@ -30,32 +26,17 @@ import { textElement } from '@/utils/leafletText'
 import type { BufferedMessage } from '@/stores/widgetData'
 
 /**
- * Unified Leaflet map composable.
- *
- * Covers list/detail views (popup or click handler), dashboard widgets
- * (clustered + KV-driven dynamic markers), and cluster-click drawers.
+ * Leaflet map for list/detail views, dashboard widgets (clustered, KV-driven
+ * markers) and cluster-click drawers.
  */
 
 /**
- * Basemap styles. Keyless, and vector rather than raster.
+ * OpenFreeMap basemap styles: keyless, commercial use allowed, self-hostable.
+ * They are MapLibre style documents, not raster templates, so the basemap is
+ * an L.maplibreGL WebGL layer under ordinary Leaflet markers and needs WebGL.
  *
- * Both sources had to move. CARTO put its raster basemaps behind an API key and
- * is retiring them, so dark_all now serves a watermark; light mode was calling
- * tile.openstreetmap.org directly, which the OSMF tile usage policy does not
- * allow for a product. OpenFreeMap replaces both: no key, no request cap,
- * commercial use permitted, and self-hostable if a deployment ever cannot reach
- * tiles.openfreemap.org.
- *
- * These are MapLibre style documents, not {z}/{x}/{y} templates — OpenFreeMap
- * publishes no raster endpoint — so the basemap renders through L.maplibreGL
- * onto a WebGL canvas instead of L.tileLayer. That swap is contained here:
- * markers, clustering, popups and the floor-plan image overlay are unchanged
- * Leaflet on top of it. It does mean the basemap needs WebGL, which is worth
- * remembering for the 'dashboard' appliance screens.
- *
- * fiord is a designed dark style and needs no correction, so the brightness
- * filter dark_all required is gone from assets/main.css. Do not re-add it: the
- * GL canvas lands in .leaflet-tile-pane too, and it would wash fiord out.
+ * Do not add a brightness filter for dark mode in assets/main.css: fiord is
+ * already dark, and the GL canvas sits in .leaflet-tile-pane.
  */
 const STYLE_URLS = {
   light: 'https://tiles.openfreemap.org/styles/bright',
@@ -63,27 +44,18 @@ const STYLE_URLS = {
 }
 
 /**
- * OpenFreeMap's style JSON carries no `attribution` on its sources, so MapLibre
- * renders no credit of its own and ODbL still requires one. Added to the map's
- * attribution control once at init rather than per layer — it is the same for
- * both styles, and L.maplibreGL's options are typed as MapLibre's own, which
- * have no Leaflet `attribution` key.
- *
- * Three names separated by dots rather than a sentence. The prose form ("... Data
- * from OpenStreetMap contributors") wrapped to three lines in a dashboard widget
- * and grew across the zoom control, which every map here puts at bottomleft.
- * Shortening is half the fix; assets/main.css keeps it to one line and truncates
- * rather than wrapping, so the credit can never cover a control again.
+ * ODbL requires a credit and OpenFreeMap's styles carry none, so it is added to
+ * the Leaflet attribution control at init. Kept short, and assets/main.css
+ * truncates it to one line, so it cannot cover the zoom control in a widget.
  */
 const TILE_ATTRIBUTION = '&copy; <a href="https://openfreemap.org">OpenFreeMap</a> &middot; <a href="https://www.openmaptiles.org/">OpenMapTiles</a> &middot; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
 
 const DEFAULT_CENTER = { lat: 39.8283, lon: -98.5795 }
 const DEFAULT_ZOOM = 4
 
-// Nothing in this file hands Leaflet a string: a label goes in as a span set
-// with textContent (utils/leafletText.ts, which states why), and a popup is an
-// element the caller built the same way. There is deliberately no `popupHtml`
-// any more; it was the same sink with a friendlier name.
+// Never hand Leaflet a string (it uses innerHTML): labels go through
+// textElement (utils/leafletText.ts) and a popup is a caller-built element.
+// Deliberately no `popupHtml` option.
 export interface MapMarkerInput {
   id: string
   lat: number
@@ -99,10 +71,9 @@ export interface InitMapOptions {
   center?: { lat: number; lon: number }
   zoom?: number
   enableClustering?: boolean
-  // When provided, clustering is forced on, default zoom/spiderfy is suppressed,
-  // and the handler receives the child marker ids.
+  // Forces clustering on, suppresses zoom/spiderfy, and receives the child marker ids.
   onClusterClick?: (markerIds: string[]) => void
-  // Position of Leaflet's built-in zoom control. 'none' hides it. Default 'topleft'.
+  // Default 'topleft'; 'none' hides it.
   zoomControlPosition?: ZoomControlPosition
 }
 
@@ -111,8 +82,8 @@ export interface FitOptions {
   maxZoom?: number
 }
 
-// Once per module rather than per map: it is a global, read when MapLibre spins
-// up its worker pool on the first map, and this is the app's only MapLibre caller.
+// Load-bearing (see the import note). Once per module: it is a global, read when
+// MapLibre starts its worker pool, and this is the only MapLibre caller.
 setWorkerUrl(maplibreWorkerUrl)
 
 export function useLeafletMap() {
@@ -152,15 +123,14 @@ export function useLeafletMap() {
     const mapInstance = L.map(containerId, {
       center: [center.lat, center.lon],
       zoom,
-      // Was an L.tileLayer option; the GL layer supplies no zoom bounds, and
-      // without this Leaflet would zoom in without limit.
+      // The GL layer supplies no zoom bounds; without this zoom is unlimited.
       maxZoom: 19,
       zoomControl: false,
       attributionControl: true,
     })
 
-    // The default "⧉ Leaflet" prefix is width a dashboard widget cannot spare,
-    // and the credit that has to be there is the data's, not the library's.
+    // Drop the "Leaflet" prefix: widgets cannot spare the width, and only the
+    // data credit is required.
     mapInstance.attributionControl.setPrefix(false)
     mapInstance.attributionControl.addAttribution(TILE_ATTRIBUTION)
 
@@ -209,19 +179,13 @@ export function useLeafletMap() {
       map.value.removeLayer(basemapLayer.value)
     }
 
-    // STYLE_URLS being two constants is a SECURITY property, not a convenience.
+    // Security: STYLE_URLS must stay constants. The binding copies a style's
+    // source `attribution` into Leaflet's attribution control via innerHTML,
+    // unsanitized, so a configurable style URL (e.g. a self-hosted tile server)
+    // is a script-injection path. Sanitize before making it configurable.
     //
-    // The Leaflet binding lifts a style's source `attribution` into LEAFLET's
-    // attribution control, which assigns straight to innerHTML with no
-    // sanitizing at all. So making STYLE_URLS configurable -- a self-hosted tile
-    // server, per the note above -- hands whoever serves the style document a
-    // script-injection path into the console. Sanitize before widening it.
-    //
-    // attributionControl: false keeps MapLibre's own control off, so the credit
-    // on screen stays the single Leaflet one fed by TILE_ATTRIBUTION. It was a
-    // security setting too while this app ran maplibre-gl 5, whose DOM.sanitize()
-    // carried GHSA-jrc7-96c5-q579; 6.4.1+ fixes that, so on v6 it is only
-    // cosmetic -- but it guards nothing about the innerHTML path above.
+    // attributionControl: false hides MapLibre's own credit so only
+    // TILE_ATTRIBUTION shows. It does not protect the innerHTML path above.
     const newLayer = L.maplibreGL({
       style: isDarkMode ? STYLE_URLS.dark : STYLE_URLS.light,
       attributionControl: false,
@@ -273,10 +237,7 @@ export function useLeafletMap() {
     }
   }
 
-  /**
-   * Diff KV-watcher rows against existing dynamic markers:
-   * adds new, removes deleted, repositions moved.
-   */
+  /** Diffs KV-watcher rows against the dynamic markers: add, remove, move. */
   function updateDynamicMarkers(
     rows: Map<string, KvRow>,
     source: DynamicMarkerSource,
@@ -375,10 +336,7 @@ export function useLeafletMap() {
     applySelectionClass(markerId)
   }
 
-  /**
-   * Update positions of static markers configured with dynamic position bindings,
-   * using the latest matching message from the widget buffer.
-   */
+  /** Moves configured markers with a dynamic position to their latest matching message. */
   function updateMarkerPositions(
     markersConfig: MapMarker[],
     messages: BufferedMessage[],
@@ -436,10 +394,7 @@ export function useLeafletMap() {
     return typeof val === 'number' && !isNaN(val)
   }
 
-  /**
-   * Fit map view to all current markers (static + dynamic).
-   * Returns false if there's nothing to fit.
-   */
+  /** Fits the view to all markers; false if there is nothing to fit. */
   function fitAllMarkers(opts: FitOptions = {}): boolean {
     if (!map.value) return false
 

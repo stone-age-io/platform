@@ -6,28 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ThingFormView from './ThingFormView.vue'
 import { useAuthStore } from '@/stores/auth'
 
-// The third exception to this suite's no-mounting rule (ConfirmDialog and
-// QrLabelModal are the others), and the narrowest one: this file mounts a view,
-// which is the thing vitest.config.ts argues against.
-//
-// WHY THIS ONE. 57,881 lines of console and nothing renders a component in CI,
-// so `vue-tsc && vite build` stays green while a form draws nothing. Of the 242
-// components, this is the one where a silent regression stops somebody creating
-// a device — and the body it submits is not a shape the compiler checks, because
-// `pb.send` takes `any` and the route parses JSON on the far side.
-//
-// WHAT IT PINS, and nothing more:
-//   - the form renders, with the fields a Thing cannot be created without;
-//   - the create body is the one POST /api/org/things parses (hooks/thing_routes.go),
-//     including the nats/nebula mode objects;
-//   - a member's update body OMITS nats_user and nebula_host. That is not a
-//     tidiness point: the member branch of things.updateRule requires
-//     `nats_user:changed = false`, a field absent from a JSON body counts as
-//     unchanged, and sending it turns an ordinary inventory edit into a 404.
-//     scripts/test-authz.sh proves the server half; this proves the client
-//     still sends what that half expects.
-//
-// It does NOT assert on layout, classes or wording. Those change on purpose.
+// One of the mounted exceptions listed in vitest.config.ts: the submitted body
+// is not a shape the compiler checks (`pb.send` takes `any`). It pins only:
+//   - the form renders the fields a Thing cannot be created without;
+//   - the create body matches what POST /api/org/things parses (hooks/thing_routes.go);
+//   - a member's update body OMITS nats_user and nebula_host: things.updateRule
+//     requires `nats_user:changed = false` for members, so sending them 404s.
+//     scripts/test-authz.sh proves the server half.
+// Not layout, classes or wording.
 
 const { send, getOne, getFullList, getFirstListItem, update, push, toast } = vi.hoisted(() => ({
   send: vi.fn(),
@@ -46,8 +32,7 @@ vi.mock('vue-router', () => ({
   useRouter: () => ({ push, back: vi.fn(), replace: vi.fn() }),
 }))
 
-// The collection name is passed through to every stub, so a test can say which
-// collection it is answering for — and assert which ones were asked at all.
+// The collection name is passed to every stub so tests can assert which were asked.
 vi.mock('@/utils/pb', () => {
   const pb = {
     send,
@@ -103,15 +88,12 @@ async function mountForm(opts: { edit?: boolean } = {}) {
 
   const wrapper = mount(ThingFormView, {
     global: {
-      // The quick-add modals mount three OTHER whole form views. They are
-      // tested, or not, on their own; pulling them in here would make this
-      // spec fail for reasons that have nothing to do with the Thing form.
+      // The quick-add modals mount other whole form views; keep them out.
       stubs: {
         NatsUserFormView: true,
         NebulaHostFormView: true,
         LocationFormView: true,
-        // Needs a file token and a real <img> pipeline. Neither is what this
-        // file is about.
+        // Needs a file token and a real <img> pipeline.
         ImageUploadField: true,
         Teleport: true,
         RouterLink: true,
@@ -136,8 +118,7 @@ beforeEach(() => {
     locations: [{ id: 'loc1', name: 'Roof', parent_id: '' }],
     nats_users: [],
     nebula_hosts: [],
-    // A default role, so auto-provisioning is actually reachable. Without one
-    // the form refuses before the round trip, which is its own test below.
+    // A default role makes auto-provisioning reachable (no role is tested below).
     nats_roles: [{ id: 'role1', name: 'device', is_default: true }],
     nebula_networks: [],
   }
@@ -179,10 +160,8 @@ describe('ThingFormView renders', () => {
     signIn('member')
     await mountForm()
 
-    // Inventory reference data only. nats_users is row-scoped to the caller, so
-    // asking as a member returns their own personal identity as the sole
-    // option, and the Nebula lists come back empty — offering either would be
-    // a picker full of choices the API will refuse.
+    // Inventory reference data only. As a member, nats_users would return only
+    // their own identity and the Nebula lists would be empty.
     expect(listedCollections().sort()).toEqual(['locations', 'thing_types'])
   })
 })
@@ -202,8 +181,7 @@ describe('ThingFormView submits', () => {
     expect(init.method).toBe('POST')
     expect(init.body).toMatchObject({
       name: 'Lobby Camera',
-      // Both halves are always present and always objects. The route reads
-      // body.nats.mode and body.nebula.mode unconditionally.
+      // Always both objects: the route reads body.nats.mode and body.nebula.mode unconditionally.
       nats: { mode: 'auto' },
       nebula: { mode: 'none' },
     })

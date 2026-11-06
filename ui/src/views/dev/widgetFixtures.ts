@@ -1,22 +1,9 @@
-// ui/src/views/dev/widgetFixtures.ts
+// One fixture per widget type, for the /dev/widgets gallery (dev builds only).
 //
-// One fixture per widget type, for the /dev/widgets gallery.
-//
-// WHY A Record<WidgetType, …> AND NOT A LIST. A widget type with no fixture is
-// a compile error, which is the only reason this file is worth having: a
-// gallery that silently omitted the widget somebody just added would be worse
-// than no gallery, because it reads as coverage. Same reasoning as
-// `DEFAULT_WIDGET_SIZES` and `WIDGETS`.
-//
-// WHAT A FIXTURE IS NOT. It is not a test and nothing asserts on it. It is the
-// smallest plausible configuration plus enough buffered messages that the
-// widget draws its normal state rather than its empty one, so a human can look
-// at sixteen widgets in one scroll without a NATS server, a login or a
-// dashboard.
-//
-// Widgets that read NATS directly (KV lookups, the scanner's camera) have no
-// messages to give them: they render their disconnected state here, and that
-// is the honest result rather than a mock of a server. Their `note` says so.
+// A Record<WidgetType, …>, not a list, so a widget type with no fixture is a
+// compile error. Nothing asserts on a fixture: it is just enough config and
+// buffered messages for the widget to draw its normal state. Widgets that read
+// NATS directly render their disconnected state, and their `note` says so.
 
 import { createDefaultWidget, type WidgetConfig, type WidgetConfigOf, type WidgetType } from '@/types/dashboard'
 
@@ -62,12 +49,9 @@ function make<T extends WidgetType>(
   messages: FixtureMessage[] = []
 ): DevFixture {
   const widget = createDefaultWidget(type, { x: 0, y: 0 })
-  // Assigned rather than spread: spreading a narrowed widget with a Partial of
-  // itself widens `type` back to the union and the result stops being a
-  // WidgetConfig at all.
+  // Not a spread: that widens `type` back to the union and breaks WidgetConfig.
   Object.assign(widget, overrides)
-  // Stable ids, so a hot reload refills the buffer it already filled rather
-  // than leaking a new one per edit.
+  // Stable ids, so a hot reload reuses its buffer instead of leaking one.
   widget.id = `dev_${type}`
   return { note, widget, messages }
 }
@@ -160,9 +144,8 @@ export function buildFixtures(): Record<WidgetType, DevFixture> {
       'Ring buffer of messages as rows, newest first.',
       {
         title: 'Recent Messages',
-        // Without subjects the widget draws "Configure one or more subjects"
-        // rather than its rows — it reports an unconfigured data source before
-        // it looks at the buffer.
+        // Without subjects the widget shows "Configure one or more subjects"
+        // and never reads the buffer.
         dataSource: { type: 'subscription', subjects: ['telemetry.thing.>'] },
         streamtableConfig: {
           columns: [
@@ -229,9 +212,7 @@ export function buildFixtures(): Record<WidgetType, DevFixture> {
                 actionType: 'publish',
                 timeout: 1000,
               },
-              // A setpoint and a level, the two rows added in phase 2. Both
-              // read NATS directly, so without a connection they render
-              // their own empty state rather than a mocked value.
+              // Both read NATS directly, so offline they show their empty state.
               {
                 id: 'i2',
                 type: 'slider',
@@ -275,9 +256,7 @@ export function buildFixtures(): Record<WidgetType, DevFixture> {
     floorplan: make('floorplan', 'Needs a location with an uploaded plan and a PocketBase session; shows its no-location state here.', {
       title: 'North Riser',
       floorplanConfig: {
-        // Deliberately empty. Pointing it at an id would render as "Location
-        // not found" in every organization but the one it was written in,
-        // which reads as a broken widget rather than an unconfigured one.
+        // Empty on purpose: a real id is "Location not found" in every other org.
         locationId: '',
         showUnbound: true,
         bindings: [
@@ -321,8 +300,7 @@ export function buildFixtures(): Record<WidgetType, DevFixture> {
 
     kv: make('kv', 'Reads one KV key. Empty without a NATS connection, which is the correct empty state.', {
       title: 'Device State',
-      // The default has no bucket, which makes the widget say "config
-      // required" — true, but it hides the state this fixture is for.
+      // The default has no bucket and would show "config required" instead.
       dataSource: { type: 'kv', kvBucket: 'twin', kvKey: 'thing.AHU-1.state' },
     }),
 

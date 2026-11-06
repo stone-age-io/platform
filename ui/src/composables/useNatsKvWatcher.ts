@@ -1,7 +1,4 @@
-// ui/src/composables/useNatsKvWatcher.ts
-//
-// Generalized KV prefix watcher — extracted from the patterns in useOccupancy.ts.
-// Watches a NATS KV bucket for keys matching a pattern and maintains a reactive Map of rows.
+// Watches a NATS KV bucket for keys matching a pattern and keeps a reactive Map of rows.
 
 import { ref, onMounted, onUnmounted, watch, type Ref } from 'vue'
 import { useNatsStore } from '@/stores/nats'
@@ -29,7 +26,7 @@ export function useNatsKvWatcher(
   const loading = ref(false)
   const error = ref<string | null>(null)
 
-  // Internal buffer for RAF batching
+  // Batched into rows once per animation frame.
   const buffer = new Map<string, KvRow>()
   const deletedKeys = new Set<string>()
   let flushHandle: number | null = null
@@ -48,7 +45,6 @@ export function useNatsKvWatcher(
     return resolveTemplate(raw, dashboardStore.currentVariableValues)
   }
 
-  // Derive the key prefix from the pattern (strip trailing .> or >)
   function getPrefix(pattern: string): string {
     if (pattern.endsWith('.>')) return pattern.slice(0, -2)
     if (pattern === '>') return ''
@@ -56,13 +52,12 @@ export function useNatsKvWatcher(
   }
 
   function flushBuffer() {
-    // Apply deletes
     for (const key of deletedKeys) {
       buffer.delete(key)
     }
     deletedKeys.clear()
 
-    // Replace the entire Map to trigger Vue reactivity
+    // A new Map, so Vue sees the change.
     rows.value = new Map(buffer)
     flushHandle = null
   }
@@ -78,8 +73,7 @@ export function useNatsKvWatcher(
     const pattern = getPattern()
     if (!bucket || !pattern || !natsStore.isConnected || !natsStore.nc) return
 
-    // Guard against concurrent starts: if stopWatching() is called while we're
-    // awaiting below, this generation becomes stale and we bail out.
+    // A start or stop during the awaits below makes this generation stale.
     const thisGeneration = ++startGeneration
 
     loading.value = true
@@ -98,7 +92,6 @@ export function useNatsKvWatcher(
       try {
         kv = await kvm.open(bucket)
       } catch (e: any) {
-        // Bucket might not exist yet
         loading.value = false
         if (e.message?.includes('stream not found')) {
           error.value = `Bucket "${bucket}" not found`
@@ -106,12 +99,10 @@ export function useNatsKvWatcher(
         return
       }
 
-      // Stale check: another start/stop happened while we were awaiting open()
       if (thisGeneration !== startGeneration) return
 
       const iter = await kv.watch({ key: pattern })
 
-      // Stale check: another start/stop happened while we were awaiting watch()
       if (thisGeneration !== startGeneration) {
         try { iter.stop() } catch {}
         return
@@ -119,7 +110,7 @@ export function useNatsKvWatcher(
 
       kvWatcher = iter
 
-      // Fallback: if no keys match, the iterator blocks forever
+      // With no matching keys the iterator never delivers delta 0, so time out the spinner.
       loadingTimeout = setTimeout(() => {
         if (initialLoad) {
           initialLoad = false
@@ -129,17 +120,15 @@ export function useNatsKvWatcher(
 
       ;(async () => {
         for await (const e of iter) {
-          // Bail if this watcher was superseded
           if (thisGeneration !== startGeneration) break
 
-          // Clear loading after initial values are delivered
+          // delta 0 marks the last of the initial values.
           if (initialLoad && e.delta === 0) {
             initialLoad = false
             loading.value = false
             if (loadingTimeout) { clearTimeout(loadingTimeout); loadingTimeout = null }
           }
 
-          // Extract key suffix by stripping the watched prefix
           const keySuffix = prefix && e.key.startsWith(prefix + '.')
             ? e.key.slice(prefix.length + 1)
             : e.key
@@ -155,7 +144,6 @@ export function useNatsKvWatcher(
               try {
                 data = JSON.parse(raw)
               } catch {
-                // Non-JSON value — wrap in a simple object
                 data = { __value__: raw }
               }
 
@@ -167,13 +155,13 @@ export function useNatsKvWatcher(
                 data
               })
             } catch (err) {
-              // Ignore malformed entries
+              // Skip a malformed entry.
             }
           }
           scheduleUpdate()
         }
 
-        // Iterator ended without hitting delta === 0 (empty bucket)
+        // Ended without a delta 0 (empty bucket).
         if (initialLoad) {
           initialLoad = false
           loading.value = false
@@ -187,7 +175,7 @@ export function useNatsKvWatcher(
   }
 
   function stopWatching() {
-    startGeneration++ // Invalidate any in-flight startWatching call
+    startGeneration++ // invalidates an in-flight startWatching
     if (kvWatcher) {
       try { kvWatcher.stop() } catch {}
       kvWatcher = null
@@ -221,7 +209,6 @@ export function useNatsKvWatcher(
     window.removeEventListener('dashboard:refresh', refresh)
   })
 
-  // Restart when connection, bucket, or pattern changes
   watch(
     [
       () => natsStore.isConnected,

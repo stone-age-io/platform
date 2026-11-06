@@ -1,32 +1,26 @@
-<!-- ui/src/components/widgets/MapWidget.vue -->
 <template>
   <div class="map-widget">
-    <!-- Map container -->
     <div
       :id="mapContainerId"
       class="map-container"
       @click="handleMapClick"
     />
 
-    <!-- Loading overlay -->
     <div v-if="!mapReady" class="map-loading">
       <div class="loading-spinner"></div>
       <span>Loading map...</span>
     </div>
 
-    <!-- No markers hint -->
     <div v-if="mapReady && totalMarkerCount === 0 && !dynamicLoading" class="no-markers-hint">
       <MapPin class="hint-icon" :size="16" aria-hidden="true" />
       <span class="hint-text">No markers configured</span>
     </div>
 
-    <!-- Dynamic markers loading -->
     <div v-if="mapReady && hasDynamic && dynamicLoading" class="no-markers-hint">
       <LoaderCircle class="hint-icon animate-spin" :size="16" aria-hidden="true" />
       <span class="hint-text">Loading dynamic markers...</span>
     </div>
 
-    <!-- Map Controls -->
     <div v-if="mapReady && totalMarkerCount > 0" class="map-controls">
       <!-- Search: collapsible input + toggle -->
       <div class="search-bar" :class="{ 'search-open': searchOpen }">
@@ -58,7 +52,6 @@
       </button>
     </div>
 
-    <!-- Filter stats badge (only when actively filtering) -->
     <div
       v-if="mapReady && searchQuery && filteredTotalCount !== totalMarkerCount"
       class="filter-stats"
@@ -66,7 +59,6 @@
       {{ filteredTotalCount }} of {{ totalMarkerCount }}
     </div>
 
-    <!-- Static Marker Detail Panel -->
     <MarkerDetailPanel
       v-if="selectedStaticMarker"
       :marker="selectedStaticMarker"
@@ -74,7 +66,6 @@
       @close="closePanel"
     />
 
-    <!-- Dynamic Marker Detail Panel -->
     <DynamicMarkerPanel
       v-if="selectedDynamicRow"
       :row="selectedDynamicRow"
@@ -253,9 +244,7 @@ function checkMobile() {
   isMobile.value = window.innerWidth < 768
 }
 
-/**
- * Centralized Position Sync for static markers with dynamic position config
- */
+/** Position sync for static markers whose position comes from live data. */
 function syncMarkerPositions() {
   if (mapReady.value && buffer.value.length > 0) {
     updateMarkerPositions(markers.value, buffer.value, dashboardStore.currentVariableValues)
@@ -284,7 +273,6 @@ async function initializeMap() {
       zoomControlPosition: 'bottomleft',
     })
 
-    // Render static markers
     renderMarkers(filteredStaticMarkers.value, handleStaticMarkerClick)
 
     mapReady.value = true
@@ -302,11 +290,9 @@ async function initializeMap() {
 watch(mapReady, (ready) => {
   if (ready) {
     syncMarkerPositions()
-    // If dynamic markers are already loaded, render them
     if (hasDynamic.value && filteredDynamicRows.value.size > 0 && dynamicCfg.value) {
       updateDynamicMarkers(filteredDynamicRows.value, dynamicCfg.value, handleDynamicMarkerClick)
     }
-    // Fit bounds on load if configured
     if (fitBoundsOnLoad.value) {
       window.setTimeout(() => fitAllMarkers(), 500)
     }
@@ -318,12 +304,10 @@ watch(buffer, () => {
   syncMarkerPositions()
 }, { deep: true })
 
-// Dashboard variable changes
 watch(() => dashboardStore.currentVariableValues, () => {
   syncMarkerPositions()
 }, { deep: true })
 
-// Dynamic KV marker updates (filtered)
 watch(filteredDynamicRows, (newRows) => {
   if (mapReady.value && dynamicCfg.value) {
     updateDynamicMarkers(newRows, dynamicCfg.value, handleDynamicMarkerClick)
@@ -334,14 +318,12 @@ watch(filteredDynamicRows, (newRows) => {
 watch([resolvedDynBucket, resolvedDynPattern], () => {
   if (mapReady.value) {
     clearDynamicMarkers()
-    // Close panel if a dynamic marker was selected
     if (selectedMarkerType.value === 'dynamic') {
       closePanel()
     }
   }
 })
 
-// Standard UI watchers
 watch(() => uiStore.theme, (newTheme) => updateTheme(newTheme === 'dark'))
 
 watch(filteredStaticMarkers, () => {
@@ -361,10 +343,9 @@ watch(searchQuery, () => {
   if (!inStatic && !inDynamic) closePanel()
 })
 
-// Reinitialize map when center/zoom/clustering changes. Compared by value: a
-// deep watch fired whenever the config object was replaced (a shared
-// dashboard's KV revision arriving, say), tearing the map down mid-load for
-// nothing.
+// Reinitialize when center/zoom/clustering changes, compared by value: a
+// replaced config object (a shared dashboard's KV revision) must not tear the
+// map down mid-load.
 watch(() => JSON.stringify([mapCenter.value, mapZoom.value, enableClustering.value]), () => {
   cleanup()
   mapReady.value = false

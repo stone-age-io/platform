@@ -8,12 +8,8 @@ import {
   valueAtPath,
 } from './twin'
 
-// twinDrift is 20 lines and the platform's documentation spends several hundred
-// words on its exact semantics: subset for objects, exact for arrays and
-// scalars, and no operators, ever. None of that was pinned by anything, and the
-// function was typed (any, any), so a "helpful" change to make a range work
-// would have compiled, passed the build, and quietly redefined what every
-// desired value on every deployment means.
+// Pins twinDrift's semantics: subset for objects, exact for arrays and scalars,
+// no operators. It is typed (any, any), so nothing else would catch a change.
 describe('twinDrift', () => {
   it('reports nothing when the reported value matches', () => {
     expect(twinDrift({ mode: 'auto' }, { mode: 'auto' })).toEqual([])
@@ -23,8 +19,6 @@ describe('twinDrift', () => {
   })
 
   // A desired value is a PARTIAL assertion: only the keys it names are checked.
-  // Full equality rots -- the day a device reports one new field, every
-  // assertion set months ago flips to "differs".
   it('ignores reported keys the desired value does not mention', () => {
     const desired = { setpoint: 20 }
     const reported = { setpoint: 20, temp: 20.3, rssi: -61, firmware: '2.1.0' }
@@ -51,17 +45,14 @@ describe('twinDrift', () => {
     expect(twinDrift(desired, reported)).toEqual(['a', 'c'])
   })
 
-  // Subset semantics are objects-only. An array is a value, so a desired array
-  // must match exactly -- otherwise "the first two elements are right" would
-  // silently count as agreement.
+  // Subset semantics are objects-only; a desired array must match exactly.
   it('compares arrays exactly, not as a subset', () => {
     expect(twinDrift({ zones: [1, 2] }, { zones: [1, 2] })).toEqual([])
     expect(twinDrift({ zones: [1, 2] }, { zones: [1, 2, 3] })).toEqual(['zones'])
     expect(twinDrift({ zones: [1, 2] }, { zones: [2, 1] })).toEqual(['zones'])
   })
 
-  // The degenerate case: a top-level scalar has no keys to recurse into, so its
-  // path is the empty string -- the whole value.
+  // A top-level scalar's path is the empty string: the whole value.
   it('uses the empty path for a top-level scalar', () => {
     expect(twinDrift('manual', 'auto')).toEqual([''])
     expect(twinDrift(20, 21)).toEqual([''])
@@ -72,10 +63,7 @@ describe('twinDrift', () => {
     expect(twinDrift({ n: 1 }, { n: '1' })).toEqual(['n'])
   })
 
-  // The rule the documentation is most emphatic about. An operator-looking
-  // object is just an object: {$gt: 30} is compared as a value, so it differs
-  // from a number rather than being interpreted. If this ever starts passing,
-  // someone has begun building a rules engine inside a KV browser.
+  // No operators: {$gt: 30} is compared as a plain value, never interpreted.
   it('treats an operator-shaped desired value as a plain value, not an operator', () => {
     expect(twinDrift({ temp: { $gt: 30 } }, { temp: 35 })).toEqual(['temp'])
     expect(twinDrift({ temp: { $between: [18, 22] } }, { temp: 20 })).toEqual(['temp'])
@@ -88,8 +76,8 @@ describe('twinDrift', () => {
   })
 })
 
-// The drift indicator renders the VALUES, not a word for the difference, so
-// turning a path back into a before/after is part of the contract.
+// The drift indicator renders the values, so path -> before/after is part of
+// the contract.
 describe('valueAtPath', () => {
   it('returns the whole value for the empty path', () => {
     expect(valueAtPath({ a: 1 }, '')).toEqual({ a: 1 })
@@ -116,11 +104,9 @@ describe('valueAtPath', () => {
   })
 })
 
-// The two bucket names and their retention are duplicated in the agent repo's
+// The bucket names and retention are duplicated in the agent repo's
 // internal/edge/twin.go, and whichever side creates a bucket first defines it.
-// Nothing enforces that they agree — they are now in different repositories, so
-// nothing can — which is why this side pins its values here; the Go side has its
-// own test.
+// Nothing cross-repo enforces it, so each side pins its own values.
 describe('twin bucket definitions', () => {
   it('names the two buckets by owner, not by what they describe', () => {
     expect(TWIN_BUCKET).toBe('twin')

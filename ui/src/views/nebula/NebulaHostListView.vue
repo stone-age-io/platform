@@ -16,7 +16,6 @@ import StatusBadge from '@/components/common/StatusBadge.vue'
 
 const router = useRouter()
 
-// Pagination
 const {
   items: hosts,
   page,
@@ -29,10 +28,7 @@ const {
   prevPage,
 } = usePagination<NebulaHost>('nebula_hosts', 20)
 
-// Search query
-// Search runs on the SERVER. The client-side pass this replaces filtered the
-// twenty records already on screen, so a match on page three answered "No
-// results found" -- which is not the same claim at all.
+// Search runs on the server, across all records, not the page on screen.
 const { searchQuery, filter: searchFilter } = useServerSearch(
   ['hostname', 'overlay_ip', 'public_host_port', 'network_id.name'],
   () => {
@@ -41,15 +37,11 @@ const { searchQuery, filter: searchFilter } = useServerSearch(
   },
 )
 
-// The active sort, in PocketBase's own syntax ('name', '-created'). It rides in
-// queryOptions rather than being passed at the call site, for the same reason the
-// filter does: the pager buttons reuse that object, and a sort that is not in it
-// is a sort that page two forgets.
+// PocketBase sort syntax ('name', '-created').
 const sort = ref('')
 
-// One options object, passed to EVERY call into usePagination, the pager
-// buttons included -- passing only expand/sort there drops the filter and
-// page two comes back unfiltered.
+// Pass this to EVERY usePagination call, the pager buttons included, or page two
+// loses the filter and sort.
 const queryOptions = computed(() => ({
   filter: searchFilter.value,
   sort: sort.value,
@@ -63,14 +55,9 @@ function onSort(next: string) {
 }
 
 /**
- * Hosts whose certificate no longer matches their network -- the /32 defect
- * pb-nebula carried until v0.3.0, plus anything whose overlay_ip was edited
- * afterwards. Loaded once per org rather than per page: it is a handful of ids,
- * and paging through a fleet should not re-audit it each time.
- *
- * This list view is the right place for it for the same reason ExpiryBadge is
- * here -- the failure is silent everywhere else. A host with the wrong mask
- * looks entirely healthy: active, in date, certificate present.
+ * Hosts whose certificate does not match their network (the /32 defect, or an
+ * overlay_ip edited since). Loaded once, not per page. Shown here because the
+ * host otherwise looks entirely healthy.
  */
 const staleHostIds = ref<Set<string>>(new Set())
 
@@ -78,7 +65,6 @@ async function loadStaleHosts() {
   staleHostIds.value = await fetchStaleHostIds()
 }
 
-// Column configuration
 const columns: Column<NebulaHost>[] = [
   {
     key: 'hostname',
@@ -120,16 +106,10 @@ const columns: Column<NebulaHost>[] = [
   },
 ]
 
-/**
- * Load hosts from API
- */
 async function loadHosts() {
   await load(queryOptions.value)
 }
 
-/**
- * Handle row click
- */
 function handleRowClick(host: NebulaHost) {
   router.push(`/nebula/hosts/${host.id}`)
 }
@@ -142,7 +122,6 @@ onMounted(() => {
 
 <template>
   <div class="space-y-6">
-    <!-- Header -->
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
       <div>
         <h1 class="text-3xl font-bold">Nebula Hosts</h1>
@@ -156,7 +135,6 @@ onMounted(() => {
       </router-link>
     </div>
     
-    <!-- Search -->
     <div class="form-control">
       <input 
         v-model="searchQuery"
@@ -166,12 +144,10 @@ onMounted(() => {
       />
     </div>
     
-    <!-- Loading State -->
     <div v-if="loading && hosts.length === 0" class="flex justify-center p-12">
       <span class="loading loading-spinner loading-lg"></span>
     </div>
 
-    <!-- Error State -->
     <BaseCard v-else-if="error && hosts.length === 0">
       <div class="text-center py-12">
         <span class="text-6xl">&#9888;</span>
@@ -181,7 +157,6 @@ onMounted(() => {
       </div>
     </BaseCard>
 
-    <!-- Empty State -->
     <BaseCard v-else-if="hosts.length === 0 && !searchQuery">
       <div class="text-center py-12">
         <Server :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
@@ -195,7 +170,6 @@ onMounted(() => {
       </div>
     </BaseCard>
     
-    <!-- No Search Results -->
     <BaseCard v-else-if="hosts.length === 0">
       <div class="text-center py-12">
         <SearchX :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
@@ -206,7 +180,6 @@ onMounted(() => {
       </div>
     </BaseCard>
     
-    <!-- Responsive List -->
     <BaseCard v-else :no-padding="true">
       <ResponsiveList 
         :sort="sort"
@@ -216,7 +189,6 @@ onMounted(() => {
         :loading="loading"
         @row-click="handleRowClick"
       >
-        <!-- Custom cell for hostname -->
         <template #cell-hostname="{ item }">
           <div>
             <div class="font-medium font-mono">
@@ -228,7 +200,6 @@ onMounted(() => {
           </div>
         </template>
         
-        <!-- Custom mobile card for hostname -->
         <template #card-hostname="{ item }">
           <div>
             <div class="font-semibold font-mono text-base">
@@ -240,15 +211,11 @@ onMounted(() => {
           </div>
         </template>
         
-        <!-- Custom cell for IP -->
         <template #cell-overlay_ip="{ item }">
           <code class="text-sm">{{ item.overlay_ip }}</code>
         </template>
         
-        <!--
-          Type: lighthouse and relay are independent roles, so a host can be
-          both, either, or neither. "Node" is only correct when it is neither.
-        -->
+        <!-- Lighthouse and relay are independent; "Node" means neither. -->
         <template #cell-is_lighthouse="{ item }">
           <div class="flex flex-wrap items-center gap-1">
             <span v-if="item.is_lighthouse" class="badge badge-sm badge-primary">Lighthouse</span>
@@ -265,11 +232,7 @@ onMounted(() => {
           </div>
         </template>
 
-        <!--
-          Status = the active badge plus, when it matters, the certificate
-          expiry. Nebula host certs always carry one (validity_years), and an
-          expired cert drops the host off the overlay with no other warning.
-        -->
+        <!-- Plus cert expiry: an expired cert drops the host with no other warning. -->
         <template #cell-active="{ item }">
           <div class="flex flex-wrap items-center gap-1">
             <StatusBadge :active="item.active" />
@@ -298,7 +261,6 @@ onMounted(() => {
           </div>
         </template>
 
-        <!-- Actions -->
         <template #actions="{ item }">
           <router-link 
             :to="`/nebula/hosts/${item.id}/edit`" 
@@ -309,7 +271,6 @@ onMounted(() => {
         </template>
       </ResponsiveList>
       
-      <!-- Pagination -->
       <ListPager
         :page="page"
         :total-pages="totalPages"

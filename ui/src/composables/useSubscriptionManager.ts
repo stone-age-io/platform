@@ -1,4 +1,3 @@
-// ui/src/composables/useSubscriptionManager.ts
 import { useNatsStore } from '@/stores/nats'
 import { useWidgetDataStore } from '@/stores/widgetData'
 import { useToast } from '@/composables/useToast'
@@ -16,12 +15,11 @@ import { isSystemSubject, sweepsSystemSubjects } from '@/utils/systemSubjects'
 import type { DataSourceConfig } from '@/types/dashboard'
 
 /**
- * Subscription Manager (Modular v3 API + Ordered Consumers)
- * 
- * Grug say: 
- * 1. SDK v3 types use underscores: 'deliver_policy', 'filter_subjects'.
- * 2. No name in js.consumers.get() = Ordered Consumer.
- * 3. Ordered Consumers are stateless on server, perfect for 🔄 button.
+ * Shared NATS subscriptions for dashboard widgets, core and JetStream.
+ *
+ * JetStream uses ordered consumers (js.consumers.get() with no name): stateless
+ * on the server, so a refresh simply makes a new one. SDK v3 option keys use
+ * underscores ('deliver_policy', 'filter_subjects').
  */
 
 // Per listener, not per subscription: core subscriptions are shared by
@@ -161,8 +159,7 @@ export function useSubscriptionManager() {
         failedCount++
       }
     }
-    // Affected widgets silently stop updating otherwise — one aggregated
-    // toast per reconnect, not one per subscription.
+    // Say so, or those widgets just stop updating. One toast per reconnect.
     if (failedCount > 0) {
       toast.error(`Failed to restore ${failedCount} widget subscription${failedCount === 1 ? '' : 's'} after reconnect`)
     }
@@ -242,9 +239,6 @@ export function useSubscriptionManager() {
     processCoreMessages(subRef)
   }
 
-  /**
-   * Create JetStream Subscription using Ordered Consumer (v3 API)
-   */
   async function createJetStreamSubscription(subRef: SubscriptionRef): Promise<void> {
     if (!natsStore.nc) throw new Error('Not connected')
     
@@ -253,10 +247,8 @@ export function useSubscriptionManager() {
     const config = subRef.config
 
     try {
-      // 1. Find the stream name for the subject
       const streamName = await jsm.streams.find(subRef.subject)
 
-      // 2. Build options using underscored keys from types.ts
       const consumerOpts: any = {
         filter_subjects: [subRef.subject],
       }
@@ -273,7 +265,7 @@ export function useSubscriptionManager() {
         default: consumerOpts.deliver_policy = 'last'
       }
 
-      // 3. Get the consumer (No name provided = Ordered Consumer)
+      // No name: an ordered consumer.
       const consumer = await js.consumers.get(streamName, consumerOpts)
       const messages = await consumer.consume()
       
@@ -321,9 +313,7 @@ export function useSubscriptionManager() {
     try {
       for await (const msg of subRef.iterator) {
         if (!subRef.isActive) break
-        // msg.time is when JetStream STORED the message, not when it was
-        // delivered, so a replay keeps its spacing instead of arriving all
-        // at once "now".
+        // msg.time is when JetStream stored it, so a replay keeps its spacing.
         dispatchMessage(subRef, msg.data, msg.subject, msg.time.getTime(), msg.seq)
       }
     } catch (err) {

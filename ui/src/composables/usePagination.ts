@@ -3,49 +3,23 @@ import { pb } from '@/utils/pb'
 import type { BaseRecord } from '@/types/pocketbase'
 
 /**
- * Pagination Composable
- * 
- * Provides simple pagination for PocketBase collections.
- * Handles loading state, errors, and page navigation.
- * 
- * Usage:
- *   const { items, page, totalPages, loading, load, nextPage, prevPage } = 
- *     usePagination<Thing>('things', 20)
- *   
- *   onMounted(() => {
- *     load({ expand: 'type,location' })
- *   })
+ * Page-at-a-time loading of a PocketBase collection. Pass the same options to
+ * every call (load and the pager functions), or a page change drops the filter.
  */
 export function usePagination<T extends BaseRecord>(
-  collectionName: string, 
+  collectionName: string,
   perPage = 20
 ) {
-  // ============================================================================
-  // STATE
-  // ============================================================================
-  
   const items = ref<T[]>([])
   const page = ref(1)
   const totalPages = ref(1)
   const totalItems = ref(0)
   const loading = ref(false)
   const error = ref<string | null>(null)
-  
-  // ============================================================================
-  // COMPUTED
-  // ============================================================================
-  
+
   const hasMore = computed(() => page.value < totalPages.value)
   const hasPrev = computed(() => page.value > 1)
-  
-  // ============================================================================
-  // ACTIONS
-  // ============================================================================
-  
-  /**
-   * Load a page of data
-   * @param options - PocketBase query options
-   */
+
   async function load(options?: {
     filter?: string
     sort?: string
@@ -55,7 +29,6 @@ export function usePagination<T extends BaseRecord>(
     error.value = null
     
     try {
-      // Build options object, only including defined values
       const queryOptions: Record<string, any> = {}
       
       if (options?.filter) {
@@ -86,10 +59,7 @@ export function usePagination<T extends BaseRecord>(
       loading.value = false
     }
   }
-  
-  /**
-   * Go to next page
-   */
+
   async function nextPage(options?: {
     filter?: string
     sort?: string
@@ -100,10 +70,7 @@ export function usePagination<T extends BaseRecord>(
       await load(options)
     }
   }
-  
-  /**
-   * Go to previous page
-   */
+
   async function prevPage(options?: {
     filter?: string
     sort?: string
@@ -114,10 +81,7 @@ export function usePagination<T extends BaseRecord>(
       await load(options)
     }
   }
-  
-  /**
-   * Go to specific page
-   */
+
   async function goToPage(
     pageNum: number, 
     options?: {
@@ -131,10 +95,7 @@ export function usePagination<T extends BaseRecord>(
       await load(options)
     }
   }
-  
-  /**
-   * Reset pagination state
-   */
+
   function reset() {
     page.value = 1
     items.value = []
@@ -142,11 +103,7 @@ export function usePagination<T extends BaseRecord>(
     totalItems.value = 0
     error.value = null
   }
-  
-  // ============================================================================
-  // RETURN PUBLIC API
-  // ============================================================================
-  
+
   return {
     items,
     page,

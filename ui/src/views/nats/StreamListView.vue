@@ -22,11 +22,9 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 const searchQuery = ref('')
 
-// Alphabetical by default. JetStream answers in whatever order it holds them,
-// which is stable enough to look deliberate and arbitrary enough to be useless.
+// Alphabetical by default; JetStream order is arbitrary.
 const sort = ref('name')
 
-// Client-side search
 const filteredStreams = computed(() => {
   const q = searchQuery.value.toLowerCase().trim()
   if (!q) return streams.value
@@ -37,14 +35,10 @@ const filteredStreams = computed(() => {
   )
 })
 
-// Client-side sort, over the filtered set and BEFORE the slice. Sorting
-// paginatedStreams instead would order rows that were already the wrong twenty
-// -- on page one as much as page two -- and hide it completely on any account
-// whose streams fit on a single page. Safe here only because listStreams()
-// returns the whole account: see utils/clientSort.
+// Sort before the slice. Safe client-side only because listStreams() returns
+// the whole account (see utils/clientSort).
 const sortedStreams = computed(() => sortBy(filteredStreams.value, sort.value))
 
-// Client-side pagination
 const currentPage = ref(1)
 const itemsPerPage = 20
 const totalPages = computed(() => Math.max(1, Math.ceil(filteredStreams.value.length / itemsPerPage)))
@@ -57,25 +51,11 @@ watch(searchQuery, () => { currentPage.value = 1 })
 
 function onSort(next: string) {
   sort.value = next
-  currentPage.value = 1 // a new order makes the old page number meaningless
+  currentPage.value = 1
 }
 
-// Subjects is the one column left un-widthed, so it absorbs the slack. It is
-// the only column here whose content has no bound -- a stream can carry one
-// subject or a dozen -- while retention, message count, size and consumer count
-// are all short and known. They used to split the leftover width equally, which
-// gave a one-digit consumer count the same 226px as a subject list and left the
-// subject list truncating at 200px on a 1570px table.
-//
-// The 200px was a hardcoded max-w on the cell, which is why widening the column
-// alone would have changed nothing. A cap inside a fixed-layout column is a
-// second opinion about width that cannot agree with the first; the truncate and
-// its title tooltip stay, and they now bite at the column edge.
-//
-// A leading `-` means "descending on the first click", the same convention the
-// dated lists use. For a size or a count that is the end worth opening on: the
-// question these columns get asked is which stream is eating the disk, never
-// which one is emptiest.
+// Subjects is left un-widthed to absorb the slack: it is the only unbounded
+// column. A leading `-` sorts descending on first click (biggest first).
 const columns: Column<StreamSummary>[] = [
   { key: 'name', sortable: 'name', label: 'Name', mobileLabel: 'Name' },
   { key: 'subjects',
@@ -257,7 +237,6 @@ watch(() => natsStore.isConnected, (connected) => {
           </template>
         </ResponsiveList>
 
-        <!-- Pagination -->
         <ListPager
           v-if="filteredStreams.length > itemsPerPage"
           :page="currentPage"

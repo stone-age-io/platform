@@ -1,7 +1,5 @@
-<!-- ui/src/components/dashboard/DashboardTree.vue -->
 <template>
   <div class="dashboard-tree">
-    <!-- Folders -->
     <div v-for="(content, folderName) in folders" :key="folderName" class="tree-folder">
       <div 
         class="folder-header" 
@@ -15,7 +13,6 @@
       </div>
       
       <div v-if="openFolders[folderName]" class="folder-content">
-        <!-- Recursive call for subfolders -->
         <DashboardTree 
           v-if="hasSubfolders(content)"
           :structure="content"
@@ -28,7 +25,6 @@
       </div>
     </div>
 
-    <!-- Items (Dashboards) in this level -->
     <div v-for="item in items" :key="item.key" class="tree-item">
       <div 
         class="dashboard-item"
@@ -44,7 +40,6 @@
         <!-- flex-1 + min-width: 0 allows the name to truncate without pushing actions off-screen -->
         <span class="item-name flex-1 truncate">{{ item.name }}</span>
         
-        <!-- Actions menu -->
         <div class="item-actions" @click.stop>
           <button 
             class="action-btn"
@@ -90,7 +85,6 @@ import { Copy, FileDown, Folder, FolderOpen, House, LayoutDashboard, Trash2 } fr
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { useDashboardStore } from '@/stores/dashboard'
 
-// Define recursive structure
 interface TreeStructure {
   [key: string]: TreeStructure | string // string is the leaf (key)
 }
@@ -111,7 +105,6 @@ const dashboardStore = useDashboardStore()
 const openFolders = ref<Record<string, boolean>>({})
 const activeMenuId = ref<string | null>(null)
 
-// Separate items (leaves) from folders
 const items = computed(() => {
   const result: { name: string; key: string }[] = []
   for (const [key, value] of Object.entries(props.structure)) {
@@ -216,7 +209,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 8px; /* Grug say: bigger padding for fat fingers */
+  padding: 10px 8px; /* touch target */
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s;
@@ -267,9 +260,8 @@ onUnmounted(() => {
   align-items: center;
 }
 
-/* --- Action Button Logic --- */
 .action-btn {
-  /* Grug say: No hide button. User see button, user know button exist. */
+  /* Always visible, not hidden until hover: a hidden button is undiscoverable. */
   opacity: 0.4; 
   background: none;
   border: none;
@@ -300,7 +292,6 @@ onUnmounted(() => {
   }
 }
 
-/* Action Menu Dropdown */
 .action-menu {
   position: absolute;
   top: 100%;

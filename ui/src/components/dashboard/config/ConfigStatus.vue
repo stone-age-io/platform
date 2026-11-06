@@ -1,7 +1,6 @@
 <template>
   <div class="config-status">
     
-    <!-- Data Source Selection -->
     <div class="config-section">
       <div class="section-title">Data Source</div>
       <div class="form-group">
@@ -12,14 +11,12 @@
         </select>
       </div>
 
-      <!-- Subscription Mode (Reusing ConfigDataSource) -->
       <ConfigDataSource 
         v-if="form.dataSourceType === 'subscription'"
         :form="form" 
         :errors="errors" 
       />
 
-      <!-- KV Inputs (Only shown if KV mode) -->
       <ConfigKvSource
         v-if="form.dataSourceType === 'kv'"
         :form="form"
@@ -28,13 +25,11 @@
       />
     </div>
 
-    <!-- Mappings Section -->
     <div class="config-section">
       <div class="section-title">State Mappings</div>
       <StatusMappingEditor :mappings="form.statusMappings" />
     </div>
 
-    <!-- Default State -->
     <div class="config-section">
       <div class="section-title">Default State</div>
       <div class="form-row">
@@ -64,7 +59,6 @@
       </div>
     </div>
 
-    <!-- Staleness Logic -->
     <div class="config-section">
       <div class="section-title">Staleness (Watchdog)</div>
       <div class="form-group">

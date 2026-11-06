@@ -1,4 +1,3 @@
-<!-- ui/src/components/common/MetadataCard.vue -->
 <script setup lang="ts">
 import { CopyIcon, Pencil, Plus } from '@lucide/vue'
 import { ref, computed } from 'vue'
@@ -7,17 +6,12 @@ import { useToast } from '@/composables/useToast'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import MetadataEditor from './MetadataEditor.vue'
 
-// MetadataCard — the metadata block on a detail page, with quick edit.
+// The metadata block on a detail page, with quick edit. The read view is the
+// same MetadataEditor with `disabled`, so the two cannot drift apart.
 //
-// Locked, it is a MetadataEditor with `disabled` set, so the read view and the
-// edit view are the same component and cannot drift apart in layout or in which
-// fields they show. Unlocked, the same editor becomes writable in place.
-//
-// The save sends ONLY `metadata`. That is not just economy: things.updateRule
-// admits a member through a branch requiring `nats_user:changed = false` and
-// `nebula_host:changed = false`, and a field absent from the body counts as
-// unchanged — so a partial update is exactly what keeps a member's edit legal.
-// Sending the whole record back is what would turn an inventory edit into a 404.
+// The save sends only `metadata`: the member branch of things.updateRule needs
+// `nats_user` and `nebula_host` unchanged, and an absent field counts as
+// unchanged. Sending the whole record would turn a member's edit into a 404.
 
 interface Props {
   collection: 'things' | 'locations'
@@ -44,37 +38,18 @@ const editor = ref<InstanceType<typeof MetadataEditor> | null>(null)
 const isEmpty = computed(() => !props.modelValue || Object.keys(props.modelValue).length === 0)
 const fieldCount = computed(() => Object.keys(props.modelValue || {}).length)
 
-// This is the app's first collapsible card, so the pattern lives here rather
-// than in BaseCard. Generalising on the first instance is how you get an
-// abstraction shaped by one caller; if a second card wants this, that is when it
-// moves.
-//
-// The reason for collapsing is mobile, not desktop. On a wide screen the grid's
-// other column usually sets the row height anyway (the location page's map card
-// is min-h-[550px], taller than this card's 500px cap, so collapsing frees
-// nothing there). At `grid-cols-1` there is no other column: metadata sits
-// directly between Basic Information and everything below it, Live State
-// included, and 500px of it is 500px of scroll.
-//
-// Which is why the initial state is a function of size rather than a constant:
-// collapsing earns its click on the 11-field record it was written for, and on a
-// two-field one it is a click to reveal two lines. And only below `lg`, where the
-// detail pages' grid becomes one column: the size cutoff once applied at every
-// width, so a five-field Thing loaded collapsed on a desktop with the room beside
-// it empty, hiding the inventory a technician opened the page to read. Read once
-// at setup, not a computed — after that the state belongs to the reader, and a
-// window resize should not snap it open or shut. (Deliberately not persisted:
-// remembering it per record is the version of this that needs a store, and
-// nobody has asked for it.)
+// Collapsing is for the one-column mobile layout, where metadata sits between
+// Basic Information and everything below. So it starts collapsed only below
+// `lg` and only for larger documents. Read once at setup, not a computed: after
+// that the state is the reader's, and a resize should not snap it. Not persisted.
+// Kept here, not in BaseCard, until a second card wants it.
 const AUTO_EXPAND_MAX = 4
 const WIDE = '(min-width: 1024px)' // Tailwind `lg`, the detail grid's breakpoint
 const expanded = ref(window.matchMedia(WIDE).matches || fieldCount.value <= AUTO_EXPAND_MAX)
 
 function startEdit() {
-  // Editing a collapsed card would otherwise show nothing. One click, not two.
   expanded.value = true
-  // Deep clone so Cancel genuinely discards — the editor mutates nested values
-  // in place for `json` rows.
+  // Deep clone so Cancel discards: the editor mutates `json` rows in place.
   draft.value = props.modelValue ? JSON.parse(JSON.stringify(props.modelValue)) : null
   editing.value = true
 }
@@ -85,8 +60,7 @@ function cancelEdit() {
 }
 
 async function save() {
-  // Commit a JSON tab or nested-object row left mid-edit; refuses on a parse
-  // error rather than saving a stale value.
+  // Commit a JSON tab or row left mid-edit; refuses on a parse error.
   if (editor.value && !editor.value.commit()) return
 
   saving.value = true
@@ -120,16 +94,10 @@ async function copyMetadata() {
   <BaseCard>
     <template #header>
       <div class="flex justify-between items-center mb-2 gap-2">
-        <!-- The title is the disclosure control. The field count travels with it
-             so a collapsed card is never a blind click — you can see whether
-             there is anything in there without opening it.
-             `flex-1` so the target is all the header width the actions don't
-             claim, rather than hugging the text: a ~150px hit area next to two
-             small buttons is a bad aim on touch and reads as a heading, not a
-             control, on desktop. Hence also the hover tint and 44px minimum.
-             The hover padding is cancelled by a matching negative margin on
-             both axes, so the title lines up with every other card's rather
-             than sitting 4px in and down. -->
+        <!-- The title is the disclosure control, with the field count so a
+             collapsed card is never a blind click. flex-1 and 44px min height
+             for a touch target; the hover padding is cancelled by negative
+             margins so the title aligns with other cards. -->
         <button
           type="button"
           class="flex flex-1 items-center gap-2 min-w-0 text-left -mx-2 px-2 rounded-lg
@@ -140,16 +108,8 @@ async function copyMetadata() {
           aria-controls="metadata-body"
           @click="expanded = !expanded"
         >
-          <!-- An SVG chevron rather than a `▶` glyph, whose weight and baseline
-               drift with the platform font.
-
-               The rotation is on this wrapping span and NOT on the <svg>, where
-               it silently did nothing: with `rotate-90` on the svg the computed
-               transform stayed the identity matrix and a 45° test rotation left
-               its box 14px wide, while the same class on a span rotated it (16.5px
-               → 23px at 45°). Don't "simplify" this by dropping the wrapper — the
-               failure is invisible in code review and the chevron just stops
-               moving. -->
+          <!-- The rotation is on this span, not the <svg>: `rotate-90` on the svg
+               silently does nothing. Do not drop the wrapper. -->
           <span
             class="flex shrink-0 opacity-50 transition-transform duration-150"
             :class="{ 'rotate-90': expanded }"
@@ -168,8 +128,7 @@ async function copyMetadata() {
           </span>
         </button>
 
-        <!-- btn-sm on mobile, btn-xs from `sm`: a 24px Save is too small to hit
-             with a thumb, and these are the controls you reach for most. -->
+        <!-- btn-sm on mobile: a 24px button is too small for a thumb. -->
         <div class="flex items-center gap-1 shrink-0">
           <button
             v-if="!editing && !isEmpty"
@@ -177,9 +136,7 @@ async function copyMetadata() {
             title="Copy raw JSON"
             @click="copyMetadata"
           >
-            <!-- Icon only on mobile. Growing these to btn-sm for thumbs cost the
-                 disclosure button 45px of the header row, and of the three labels
-                 up here "Copy" is the one a 📋 already says. -->
+            <!-- Icon only on mobile, to leave the header row room. -->
             <CopyIcon :size="16" class="inline-block shrink-0" /><span class="hidden sm:inline">Copy</span>
           </button>
 
@@ -205,8 +162,7 @@ async function copyMetadata() {
       </div>
     </template>
 
-    <!-- v-if, not v-show: a collapsed card should not be paying to render a
-         document nobody is looking at. -->
+    <!-- v-if, not v-show: do not render a collapsed document. -->
     <div v-if="expanded" id="metadata-body">
       <MetadataEditor
         v-if="editing"
@@ -223,13 +179,9 @@ async function copyMetadata() {
         disabled
       />
 
-      <!-- Mobile-only second copy of the edit actions. The editor's field list is
-           unbounded below `sm` (see MetadataEditor), so the header pair can be
-           scrolled off the top by a long document — and this is where the thumb
-           already is when the last field has been filled in. A sticky header
-           would be the other answer, but DaisyUI's `.card` sets
-           `overflow: hidden`, which makes it the (non-scrolling) containing
-           block and kills `position: sticky` outright. -->
+      <!-- Mobile-only second copy of the edit actions: below `sm` the field list
+           is unbounded, so the header pair scrolls away. Not a sticky header:
+           DaisyUI's `.card` sets `overflow: hidden`, which kills `position: sticky`. -->
       <div v-if="editing" class="flex justify-end gap-2 mt-4 pt-3 border-t border-base-300 sm:hidden">
         <button class="btn btn-sm btn-ghost" :disabled="saving" @click="cancelEdit">
           Cancel

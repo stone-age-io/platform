@@ -21,9 +21,8 @@ const loading = ref(true)
 const deleting = ref(false)
 const importId = route.params.id as string
 
-// Platform-provisioned: the Edit/Delete controls are hidden and the banner says
-// why. Not a permission -- the API rules still allow the write, it just gets
-// reconciled away on the next organization save.
+// Platform-provisioned: Edit/Delete are hidden. Not a permission (the rules
+// allow the write); the next organization save reconciles it away.
 const managed = computed(() => isManagedImport(importRecord.value?.name))
 const showToken = ref(false)
 

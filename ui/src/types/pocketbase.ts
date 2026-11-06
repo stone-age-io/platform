@@ -1,4 +1,3 @@
-// Base record interface that all PocketBase records extend
 export interface BaseRecord {
   id: string
   created: string
@@ -8,14 +7,12 @@ export interface BaseRecord {
   expand?: Record<string, any>
 }
 
-// Auth collections add these fields on top of BaseRecord
 export interface AuthRecord extends BaseRecord {
   email: string
   emailVisibility: boolean
   verified: boolean
 }
 
-// SuperUser (System Admin)
 export interface SuperUser extends AuthRecord {
   current_organization?: string 
   // Optional fields to satisfy UI components shared with User
@@ -23,12 +20,9 @@ export interface SuperUser extends AuthRecord {
   avatar?: string
 }
 
-// Organization
 export interface Organization extends BaseRecord {
   name: string
-  // The ecosystem's namespace root (ADR 0002): optional, immutable, and the one
-  // globally-unique identifier -- unlike `name`, which is mutable. Present on the
-  // collection since the org-code migration; this interface had not caught up.
+  // Namespace root (ADR 0002): optional, immutable, globally unique; `name` is not.
   code?: string
   description?: string
   active: boolean
@@ -39,9 +33,8 @@ export interface Organization extends BaseRecord {
   managed?: boolean // exports its service events into the operator hub account
 }
 
-// org_stats: a view collection, one row per organization keyed by its id, with
-// counts only. Operator-read. Not a BaseRecord: a view row has no created or
-// updated. See migrations/schema_update_org_stats.go.
+// org_stats view: counts per organization, operator-read. Not a BaseRecord (a
+// view row has no created/updated). migrations/schema_update_org_stats.go.
 export interface OrgStats {
   id: string // the organization's id
   things: number
@@ -50,7 +43,6 @@ export interface OrgStats {
   members: number
 }
 
-// Membership
 export interface Membership extends BaseRecord {
   user: string // User ID
   organization: string // Organization ID
@@ -59,7 +51,6 @@ export interface Membership extends BaseRecord {
   nats_user?: string
 }
 
-// Invitation
 export interface Invitation extends BaseRecord {
   email: string
   token?: string
@@ -70,7 +61,6 @@ export interface Invitation extends BaseRecord {
   invited_by?: string
 }
 
-// User
 export interface User extends AuthRecord {
   name?: string
   avatar?: string
@@ -78,12 +68,8 @@ export interface User extends AuthRecord {
   is_operator?: boolean // Platform operator flag - can manage all organizations
 }
 
-// Thing Type
-//
-// A capability is a property of an OPERATION, not of a type: it distinguishes a
-// request from a reply on the same subject suffix. thing_types.capabilities used
-// to carry the union of its operations' capabilities as well, hand-maintained
-// and read by nothing, and was dropped with message_schemas.
+// A capability belongs to an operation, not a type: it tells a request from a
+// reply on the same subject suffix.
 export type ThingTypeCapability = 'publish' | 'subscribe' | 'request' | 'reply'
 
 export interface ThingType extends BaseRecord {
@@ -91,17 +77,16 @@ export interface ThingType extends BaseRecord {
   name?: string
   description?: string
   code?: string
-  // 1-4 capitals, copied into every code generated for a Thing of this type
-  // (CA-9KD-4PX). Separate from the Location Type prefixes. See ADR 0003.
+  // 1-4 capitals starting every generated Thing code of this type (CA-9KD-4PX).
+  // Separate from Location Type prefixes. ADR 0003.
   prefix?: string
   subject_prefix?: string
   operations?: string[] // Thing Type Operation IDs
-  // Optional JSON Schema describing the inventory fields tracked for this class
-  // of device. Drives the Thing form's metadata editor; not validated on write.
+  // Optional JSON Schema for the Thing form's metadata editor; not validated on write.
   metadata_schema?: Record<string, any> | null
 }
 
-// Thing Type Operation (shareable across Thing Types)
+// Shareable across Thing Types.
 export interface ThingTypeOperation extends BaseRecord {
   organization?: string
   name: string
@@ -110,14 +95,11 @@ export interface ThingTypeOperation extends BaseRecord {
   description?: string
 }
 
-// Thing
 export interface Thing extends AuthRecord {
   organization?: string
   name?: string
   description?: string
-  // One image of the physical device, for the moment somebody is standing in
-  // front of it after scanning its label. Edit-only: POST /api/org/things is a
-  // JSON provisioning route and cannot carry an upload.
+  // Edit-only: POST /api/org/things is a JSON route and cannot carry an upload.
   photo?: string
   type?: string // Thing Type ID
   code?: string
@@ -126,26 +108,23 @@ export interface Thing extends AuthRecord {
   floorplan_position?: { x: number; y: number } // Pixel coords on the location's floorplan image
   nats_user?: string
   nebula_host?: string
-  // Deactivating blocks new logins (authRule), invalidates outstanding tokens,
-  // and revokes the linked NATS identity. Owner/admin only. See hooks/active_flag.go.
+  // Deactivating blocks logins, invalidates tokens and revokes the linked NATS
+  // identity. Owner/admin only. hooks/active_flag.go.
   active?: boolean
 }
 
-// Location Type
 export interface LocationType extends BaseRecord {
   organization?: string
   name?: string
   description?: string
   code?: string
-  // 1-4 capitals, copied into every code generated for a Location of this
-  // type. Separate from the Thing Type prefixes. See ADR 0003.
+  // 1-4 capitals starting every generated Location code of this type.
+  // Separate from Thing Type prefixes. ADR 0003.
   prefix?: string
-  // Optional JSON Schema describing the inventory fields tracked for this class
-  // of place. Drives the Location form's metadata editor; not validated on write.
+  // Optional JSON Schema for the Location form's metadata editor; not validated on write.
   metadata_schema?: Record<string, any> | null
 }
 
-// Location
 export interface Location extends BaseRecord {
   organization?: string
   name?: string
@@ -165,7 +144,6 @@ export interface Location extends BaseRecord {
   metadata?: Record<string, any>
 }
 
-// NATS Account
 export interface NatsAccount extends BaseRecord {
   name: string
   description?: string
@@ -187,7 +165,6 @@ export interface NatsAccount extends BaseRecord {
   organization?: string
 }
 
-// NATS User
 export interface NatsUser extends AuthRecord {
   nats_username: string
   description?: string
@@ -210,7 +187,6 @@ export interface NatsUser extends AuthRecord {
   organization?: string
 }
 
-// NATS Role
 export interface NatsRole extends BaseRecord {
   name: string
   description?: string
@@ -228,7 +204,6 @@ export interface NatsRole extends BaseRecord {
   organization?: string
 }
 
-// NATS Account Export
 export interface NatsAccountExport extends BaseRecord {
   account_id: string
   name: string
@@ -248,7 +223,6 @@ export interface NatsAccountExport extends BaseRecord {
   revocations?: Record<string, number> | null
 }
 
-// NATS Account Import
 export interface NatsAccountImport extends BaseRecord {
   account_id: string
   name: string
@@ -263,7 +237,6 @@ export interface NatsAccountImport extends BaseRecord {
   organization?: string
 }
 
-// Nebula CA
 export interface NebulaCA extends BaseRecord {
   name: string
   certificate?: string
@@ -273,19 +246,16 @@ export interface NebulaCA extends BaseRecord {
   curve?: string
   organization?: string
 
-  // Rotation. `rotate` is a write-only action field and is never set from the
-  // console -- nebula_ca.updateRule is operator-only, so the three steps go
-  // through POST /api/org/nebula-ca/rotate. The other three are pb-nebula's
-  // output, and rotation state is DERIVED from them rather than stored: an
-  // incoming CA means prepared, an outgoing one means committed. See
-  // caRotationState() in utils/nebula.ts.
+  // Rotation. `rotate` is a write-only action field the console never sets
+  // (updateRule is operator-only; it uses POST /api/org/nebula-ca/rotate). The
+  // rest are pb-nebula output, from which caRotationState() in utils/nebula.ts
+  // derives the state: incoming CA = prepared, outgoing = committed.
   rotate?: string
   next_certificate?: string
   previous_certificate?: string
   rotated_at?: string
 }
 
-// Nebula Network
 export interface NebulaNetwork extends BaseRecord {
   name: string
   description?: string
@@ -295,7 +265,6 @@ export interface NebulaNetwork extends BaseRecord {
   organization?: string
 }
 
-// Nebula Host
 export interface NebulaHost extends AuthRecord {
   hostname: string
   overlay_ip: string
@@ -314,51 +283,38 @@ export interface NebulaHost extends AuthRecord {
   network_id: string
   organization?: string
 
-  // A relay forwards traffic for peers that cannot reach each other directly.
-  // Config-only -- nothing about relaying reaches the certificate -- but it
-  // still needs a public_host_port, or the host listens on an ephemeral port
-  // while every peer is handed its overlay IP as a usable path.
+  // Config-only, but a relay still needs a public_host_port, or it listens on
+  // an ephemeral port while peers are told it is reachable.
   is_relay?: boolean
 
-  // Per-host overrides. Zero and '' mean "inherit the default", which is why
-  // they are optional rather than defaulted here.
+  // Zero and '' mean "inherit the default".
   mtu?: number
   tun_device?: string
 
-  // The two halves of gateway routing, which live on DIFFERENT hosts and do not
-  // derive one another. unsafe_networks is signed INTO the gateway's
-  // certificate -- Nebula authorizes routing on the certificate, not on config
-  // -- so editing it is inert until a new certificate is issued.
+  // Gateway routing has two halves on different hosts. unsafe_networks is
+  // signed into the gateway's certificate, so an edit is inert until a new
+  // certificate is issued.
   unsafe_networks?: string[]
-  // On every host that wants to REACH those subnets. `via` is the gateway's
-  // overlay IP. Plain config, and no peer embeds another host's routes.
+  // On each host that wants to reach those subnets; `via` is the gateway's
+  // overlay IP. Plain config.
   unsafe_routes?: Array<{ route: string; via: string }>
 
-  // Underlay prefixes this host should favour when a peer advertises several
-  // addresses -- typically the LAN it sits on. IPv6 is allowed here and nowhere
-  // else in the platform, because it constrains the underlay, not the overlay.
+  // Underlay prefixes to favour among a peer's addresses (typically its LAN).
+  // The only place IPv6 is allowed: it constrains the underlay, not the overlay.
   preferred_ranges?: string[]
 
-  // The rest of this host's static_host_map entry, beyond public_host_port.
-  // Nebula's value there is a LIST, which is how a dual-stack lighthouse, one
-  // reachable over two internet paths, and a split-horizon deployment are all
-  // expressed. Only a LIGHTHOUSE's list reaches anyone else -- a relay's
-  // endpoint is learned at runtime and never embedded in a peer config.
+  // Further static_host_map entries beyond public_host_port (dual-stack,
+  // multi-path, split-horizon). Only a lighthouse's list reaches peers.
   additional_host_ports?: string[]
 
-  // What this host REPORTS about itself, as opposed to what peers are told
-  // about it. The two are not duplicates and behind NAT both are needed: a
-  // host in cloud 1:1 NAT sees only its private address on the wire, so
-  // without this it reports 10.x to every peer even while static_host_map
-  // correctly points them at the public one. Format "ip:port", and a port of 0
-  // means "use the real listening port".
+  // What this host reports about itself, distinct from what peers are told;
+  // behind 1:1 NAT it would otherwise report its private address. "ip:port",
+  // where port 0 means the real listening port.
   advertise_addrs?: string[]
 
-  // Which of this host's OWN interface addresses it advertises. Nebula's
-  // default is all of them, so a containerised edge offers docker0 and every
-  // bridge to peers that then burn a handshake timeout each. Nebula's own
-  // structure: an optional `interfaces` map of name-regex to bool, plus
-  // CIDR-to-bool entries.
+  // Which local interface addresses to advertise (Nebula default: all, so a
+  // container host offers docker0 and every bridge). Nebula's structure: an
+  // optional `interfaces` map of name-regex to bool, plus CIDR-to-bool entries.
   local_allow_list?: Record<string, any>
 
   // Action field: set true and pb-nebula re-issues the certificate immediately,
@@ -366,21 +322,13 @@ export interface NebulaHost extends AuthRecord {
   renew?: boolean
 }
 
-// Audit Log
 /**
- * One line in the tenant activity feed: who changed what in the console, and
- * when.
+ * One line in the tenant activity feed. Not AuditLog (the operator trail with
+ * full snapshots): org-scoped, no record values, and only collections every
+ * role can already read (hooks/activity.go).
  *
- * Deliberately NOT AuditLog. That is the operator forensic trail -- full
- * before/after snapshots, no organization column, `is_operator = true` to read.
- * This is org-scoped, carries no record values at all, and covers only the
- * collections every role in an organization can already read. See
- * hooks/activity.go for the invariant that decides which.
- *
- * `actor` is a plain id rather than a relation, so there is nothing to expand:
- * a relation would be blanked when the user is deleted and the line would lose
- * its attribution. `actor_label` and `resource_label` are snapshots taken at
- * write time for the same reason -- render those, not a lookup.
+ * `actor` is a plain id, not a relation, so it survives user deletion; render
+ * the write-time snapshots `actor_label` and `resource_label`, not a lookup.
  */
 export interface Activity extends BaseRecord {
   organization: string

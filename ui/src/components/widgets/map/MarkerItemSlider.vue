@@ -42,20 +42,14 @@ import { toNumber } from '@/utils/gaugeScale'
 import type { DataSourceConfig, MapItemSliderConfig, MapMarkerItem } from '@/types/dashboard'
 
 /**
- * Marker Item: setpoint slider.
+ * Marker item: setpoint slider, the write-side counterpart to the switch row for
+ * values that are a number (a setpoint, a damper position, a dim level).
  *
- * The write-side counterpart to the switch row, for the values that are a
- * number rather than a state -- a temperature setpoint, a damper position, a
- * dim level.
- *
- * IT DOES NOT SHARE CODE WITH SliderWidget, deliberately. `useSwitchState`
- * exists because switch state is genuinely subtle (a missing key is the
- * configured default, a toggle is `pending` until confirmed or five seconds
- * pass). A slider has none of that: reading is "parse a number", writing is one
- * publish or one KV put. The widget's other 500 lines are its retry button, its
- * card layout, its status line and its refresh handling, none of which a panel
- * row has. MarkerItemKv does not share with KvWidget for the same reason.
- * Extract if slider semantics ever grow switch's subtlety -- not before.
+ * Deliberately shares no code with SliderWidget. useSwitchState exists because
+ * switch state is subtle (a missing key is the default, a toggle is pending
+ * until confirmed); a slider is "parse a number" plus one publish or KV put, and
+ * the widget's extra code is layout and retry handling a panel row lacks. Same
+ * for MarkerItemKv and KvWidget. Extract only if slider semantics grow subtle.
  */
 
 const props = defineProps<{
@@ -81,10 +75,8 @@ const vars = computed(() => dashboardStore.currentVariableValues)
 
 const localValue = ref<number>(cfg.value.defaultValue ?? 0)
 /**
- * While the thumb is held, incoming values are ignored.
- *
- * Without it the control fights the operator: a retained KV value or a device
- * echo arrives mid-drag and yanks the thumb back under their finger.
+ * While the thumb is held, incoming values are ignored, so a retained KV value
+ * or a device echo cannot yank it back mid-drag.
  */
 const isDragging = ref(false)
 const error = ref<string | null>(null)
@@ -180,9 +172,8 @@ async function publishValue(val: number) {
       try {
         payload = JSON.stringify(JSON.parse(trimmed))
       } catch {
-        // Caught here rather than written: a template that is nearly JSON would
-        // otherwise be stored as a string the reader cannot parse, and the
-        // operator would see a successful write with a value nothing can use.
+        // Caught here rather than written: nearly-JSON would be stored as a
+        // string nothing can parse, behind a write that looked successful.
         error.value = 'Invalid JSON template'
         return
       }

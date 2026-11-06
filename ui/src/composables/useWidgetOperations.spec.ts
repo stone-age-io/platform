@@ -2,15 +2,9 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DataSourceConfig, WidgetConfig, WidgetConfigOf, Dashboard } from '@/types/dashboard'
 
-// Unsubscribing used to re-derive subjects from the widget config and the
-// CURRENT variable values, but both unsubscribe paths run after what they read
-// has already changed:
-//   - a variable change unsubscribed from the NEW subject and left the old one
-//     feeding the widget, so a chart showed device A and B at once;
-//   - a dashboard switch walked `activeWidgets`, already the NEW dashboard's,
-//     so the old dashboard's widgets were never unsubscribed;
-//   - map markers dropped `useJetStream` and missed their own key.
-// The manager is faked: the question is what useWidgetOperations asks of it.
+// Unsubscribe runs after the variables or `activeWidgets` have changed, so it
+// must use what was subscribed, not re-derive it. The manager is faked: the
+// question is what useWidgetOperations asks of it.
 
 const live = new Map<string, Set<string>>() // widgetId -> subscription keys
 const key = (c: DataSourceConfig) => `${c.useJetStream ? 'js' : 'core'}:${c.subject}`

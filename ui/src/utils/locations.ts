@@ -1,26 +1,20 @@
-// ui/src/utils/locations.ts
 import type { Location } from '@/types/pocketbase'
 
 /**
  * A location flattened out of the parent/child tree, in display order.
  *
- * `depth` and `path` say the same thing two ways on purpose. A picker indents by
- * `depth` while you browse, and swaps to `path` while you filter -- indenting a
- * filtered subset is meaningless, because the parents that gave the indent its
- * meaning are not in the result. The path is also what tells three "Room 12"s
- * apart.
+ * A picker indents by `depth` while browsing and shows `path` while filtering,
+ * where the parents are not in the result.
  */
 export interface LocationNode {
   id: string
   name: string
   depth: number
-  /** Ancestor names, outermost first: "Building A > Floor 2". Empty for roots. */
+  /** Ancestor names, outermost first: "Building A › Floor 2". Empty for roots. */
   path: string
   /**
-   * Ancestor ids, outermost first. This is what lets a parent picker refuse the
-   * subtree below the record being edited: making a location a child of its own
-   * descendant creates a cycle, and the walk below then cannot reach either of
-   * them, so both drop out of the tree and reappear as orphans.
+   * Ancestor ids, outermost first. Lets a parent picker refuse the record's own
+   * subtree, which would create a cycle.
    */
   ancestorIds: string[]
   /** Parent is missing from the input set, or the tree has a cycle. */
@@ -28,16 +22,12 @@ export interface LocationNode {
 }
 
 const NAME_FALLBACK = 'Unnamed'
-const PATH_SEPARATOR = ' › ' // ›
+const PATH_SEPARATOR = ' › '
 
 /**
  * Flatten locations into display order: roots alphabetically, each followed by
- * its subtree.
- *
- * Anything the walk cannot reach -- a record whose parent was filtered out of
- * `items`, or a cycle -- is appended flat and flagged `orphan`. Dropping those
- * would make a real location unpickable, which is worse than showing it without
- * its place in the tree.
+ * its subtree. Anything unreachable (parent not in `items`, or a cycle) is
+ * appended flat and flagged `orphan` rather than dropped, so it stays pickable.
  */
 export function flattenLocationTree(items: Location[]): LocationNode[] {
   const childrenOf = new Map<string, Location[]>()
@@ -52,7 +42,7 @@ export function flattenLocationTree(items: Location[]): LocationNode[] {
       siblings.push(item)
       childrenOf.set(item.parent, siblings)
     }
-    // A parent outside this set means the orphan pass below picks it up.
+    // A parent outside this set: the orphan pass below picks it up.
   }
 
   const byName = (a: Location, b: Location) => (a.name || '').localeCompare(b.name || '')

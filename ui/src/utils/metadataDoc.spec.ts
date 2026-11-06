@@ -1,10 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { describedKeys, undescribedEntries, mergeRows } from './metadataDoc'
 
-// The invariant is the round trip: splitting a document between the schema
-// form and the rows, then merging it back, must give the same document. A key
-// that falls between the two halves is not an error anywhere — it is simply
-// gone after the next save.
+// The invariant is the round trip: split then merge must give the same
+// document. A key lost between the halves is silently gone after the next save.
 
 const schema = {
   type: 'object',

@@ -1,6 +1,5 @@
 <template>
   <div class="marker-editor" :class="{ 'is-expanded': isExpanded }">
-    <!-- Marker Header (collapsible) -->
     <div class="marker-header" @click="isExpanded = !isExpanded">
       <MapPin class="marker-icon" :size="18" aria-hidden="true" />
       <span class="marker-label">{{ marker.label || 'Unnamed Marker' }}</span>
@@ -21,7 +20,6 @@
       </button>
     </div>
     
-    <!-- Marker Body -->
     <div v-if="isExpanded" class="marker-body">
       
       <!-- POSITION SECTION -->
@@ -39,7 +37,6 @@
           />
         </div>
 
-        <!-- Mode Toggle -->
         <div class="form-row">
           <label>Mode</label>
           <div class="mode-toggle">
@@ -60,7 +57,6 @@
           </div>
         </div>
         
-        <!-- STATIC MODE INPUTS -->
         <div v-if="!isDynamic" class="coord-row">
           <div class="form-row">
             <label>Latitude</label>
@@ -95,7 +91,6 @@
           <MapPin class="inline align-[-2px]" :size="14" aria-hidden="true" /> Use Map Center
         </button>
 
-        <!-- DYNAMIC MODE INPUTS -->
         <template v-if="isDynamic">
           <div class="form-row">
             <label>Subject</label>
@@ -131,7 +126,6 @@
             </div>
           </div>
 
-          <!-- JetStream Options -->
           <div class="form-row checkbox-row">
             <label class="checkbox-label">
               <input 
@@ -179,7 +173,6 @@
           />
         </div>
         
-        <!-- Limit warning -->
         <div v-if="isAtLimit" class="limit-warning">
           <TriangleAlert class="inline align-[-2px]" :size="14" aria-hidden="true" /> Maximum {{ MAX_ITEMS_PER_MARKER }} items per marker
         </div>
@@ -415,7 +408,6 @@ function updateItem(index: number, updatedItem: MapMarkerItem) {
   border-color: var(--color-accent);
 }
 
-/* Mode Toggle */
 .mode-toggle {
   display: flex;
   background: var(--input-bg);

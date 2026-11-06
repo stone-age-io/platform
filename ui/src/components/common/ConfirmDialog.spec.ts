@@ -5,14 +5,9 @@ import { nextTick } from 'vue'
 
 import ConfirmDialog from './ConfirmDialog.vue'
 
-// The exception to this suite's no-mounting rule, and the reason is the subject:
-// what is under test IS the DOM contract. Dialog semantics, focus movement and
-// key handling cannot be asserted against a pure function, and this component
-// is the gate in front of every destructive action in the console — deleting a
-// Thing, revoking a credential, decommissioning a device.
-//
-// It was a plain <div> with no role, no aria, no Escape handler, no focus trap,
-// and `autofocus` on the destructive button.
+// Mounted, an exception to the no-mounting rule: the DOM contract (dialog
+// semantics, focus, keys) is the subject, and this dialog gates every
+// destructive action in the console.
 
 function mountDialog(props: Record<string, unknown> = {}) {
   return mount(ConfirmDialog, {
@@ -26,9 +21,8 @@ function mountDialog(props: Record<string, unknown> = {}) {
   })
 }
 
-// The component teleports to <body>, so its markup is NOT inside the mounted
-// wrapper's tree -- wrapper.find() cannot see any of it. Query the document and
-// wrap, so .trigger() still flushes Vue's queue.
+// The component teleports to <body>, so wrapper.find() cannot see it. Query the
+// document and wrap, so .trigger() still flushes Vue's queue.
 function q(selector: string) {
   const el = document.querySelector(selector)
   if (!el) throw new Error('not found in document: ' + selector)
@@ -70,9 +64,8 @@ describe('ConfirmDialog accessibility', () => {
     wrapper.unmount()
   })
 
-  // Two dialogs in ONE app, which is the only case that can occur: useId is
-  // unique per app instance, so mounting two separate apps would give both the
-  // same counter and prove nothing about the console, where there is one app.
+  // Both in one app: useId is unique per app instance, so two separate apps
+  // would prove nothing.
   it('gives two dialogs in the same app distinct label ids', () => {
     const host = mount(
       {
@@ -99,8 +92,7 @@ describe('ConfirmDialog accessibility', () => {
 })
 
 describe('ConfirmDialog focus behaviour', () => {
-  // The container takes focus, NOT a button. `autofocus` used to sit on the
-  // destructive action, so Enter on an unread dialog deleted the thing.
+  // The container takes focus, not a button, so Enter cannot confirm unread.
   it('focuses the dialog itself, so Enter cannot confirm by accident', async () => {
     const wrapper = mountDialog({ modelValue: false })
     await wrapper.setProps({ modelValue: true })
@@ -152,9 +144,7 @@ describe('ConfirmDialog focus behaviour', () => {
     wrapper.unmount()
   })
 
-  // aria-modal claims the rest of the page is inert. Without trapping Tab,
-  // focus walks out of the dialog into a page the user cannot see but can still
-  // activate — so the claim would be false.
+  // aria-modal claims the page is inert, so Tab must not walk out of the dialog.
   it('wraps Tab from the last control back to the first', async () => {
     const wrapper = mountDialog()
     const el = dialog(wrapper)
@@ -221,11 +211,8 @@ describe('ConfirmDialog dismissal', () => {
 })
 
 describe('ConfirmDialog typed gate', () => {
-  // Every failure mode here is SILENT. A gate that does not disable lets the
-  // click through and nothing says so; a gate that never opens looks like a
-  // broken button; a gate that survives a cancel arms the NEXT record, and the
-  // dialog is a single shared instance in App.vue, so the next record is a
-  // different one. None of them throws.
+  // Every failure here is silent. The dialog is one shared instance in App.vue,
+  // so a gate that survives a cancel arms the next, different record.
 
   it('is absent unless a record asks for it', () => {
     const wrapper = mountDialog()
@@ -287,8 +274,7 @@ describe('ConfirmDialog typed gate', () => {
     wrapper.unmount()
   })
 
-  // Mounted closed and then opened, because the focus move lives in a watch
-  // on modelValue -- mounting already-open never fires it.
+  // Mounted closed, then opened: the focus move is a watch on modelValue.
   it('focuses the gate rather than a button', async () => {
     const wrapper = mountDialog({ modelValue: false, requireText: 'gw-01' })
     await wrapper.setProps({ modelValue: true })

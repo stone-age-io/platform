@@ -18,7 +18,6 @@
       <!-- CARD LAYOUT (Mobile/Compact) -->
       <template v-if="layoutMode === 'card'">
         
-        <!-- Case A: Simple Value (Row Layout) -->
         <div v-if="isSingleValue" class="card-content">
           <div class="card-info">
             <div class="card-title">{{ config.title }}</div>
@@ -28,7 +27,6 @@
           </div>
         </div>
 
-        <!-- Case B: Complex/JSON Value (Stacked Layout) -->
         <div v-else class="card-content-stacked">
           <div class="card-header-row">
             <div class="card-title">{{ config.title }}</div>
@@ -151,9 +149,8 @@ watch(rows, (map) => {
     }
     hasValue.value = true
     revision.value = row.revision
-    // When the value was WRITTEN, not when this browser read it: the watcher
-    // delivers the current value on every load and reconnect, so browser time
-    // showed a key untouched for days as updated a moment ago.
+    // When the value was written, not when this browser read it: the watcher
+    // redelivers the current value on every load and reconnect.
     lastUpdated.value = row.timestamp.toLocaleString()
   } else if (natsStore.isConnected) {
     hasValue.value = false
@@ -266,8 +263,7 @@ const valueColor = computed(() => {
   overflow: hidden;
 }
 
-/* Same label and number as a stat tile beside it: a KV value is a reading
-   too, and was the one phone tile that looked like a list row. */
+/* Same label and number as a stat tile: a KV value is a reading too. */
 .card-title {
   font-size: 13px;
   font-weight: 500;

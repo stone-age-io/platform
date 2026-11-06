@@ -38,7 +38,6 @@ const natsStore = useNatsStore()
 const authStore = useAuthStore()
 const { initMap, renderMarkers, updateTheme, invalidateSize, cleanup: cleanupMap } = useLeafletMap()
 
-// --- State ---
 const location = ref<Location | null>(null)
 const loading = ref(true)
 const deleting = ref(false)
@@ -47,23 +46,20 @@ const mapContainerId = 'mini-map-container'
 const activeTab = ref<'floorplan' | 'coordinates'>('floorplan')
 const miniMapInitialized = ref(false)
 
-// The inventory schema declared by this Location's type, if it has one. The type
-// relation is already expanded on load, so this needs no extra request.
+// From the expanded type relation; no extra request.
 const typeMetadataSchema = computed(
   () => (location.value?.expand?.type as LocationType | undefined)?.metadata_schema || null,
 )
 
-// A quick metadata edit is an inventory write, which members hold. Deleting is
-// not — that stays on decommissionInventory.
+// A metadata edit is an inventory write, which members hold. Delete stays on
+// decommissionInventory.
 const canEditMetadata = computed(() => authStore.can.manageInventory)
 
-// MetadataCard has already persisted by the time this fires; patch the local
-// record rather than refetching the Location with its expands.
+// MetadataCard has already saved; patch locally instead of refetching the expands.
 function onMetadataSaved(metadata: Record<string, any> | null) {
   if (location.value) location.value.metadata = metadata || undefined
 }
 
-// --- Pagination & Search: Sub-Locations ---
 const subLocSearch = ref('')
 const {
   items: subLocations,
@@ -76,7 +72,6 @@ const {
   prevPage: prevSubLocPage,
 } = usePagination<Location>('locations', 5)
 
-// --- Pagination & Search: Things ---
 const thingSearch = ref('')
 const {
   items: things,
@@ -89,7 +84,6 @@ const {
   prevPage: prevThingPage,
 } = usePagination<Thing>('things', 10)
 
-// --- List Columns ---
 const subLocColumns: Column<Location>[] = [
   { key: 'name', label: 'Name', mobileLabel: 'Name' },
   { key: 'expand.type.name', label: 'Type', mobileLabel: 'Type' },
@@ -102,9 +96,6 @@ const thingColumns: Column<Thing>[] = [
   { key: 'code', width: '11rem', label: 'Code', mobileLabel: 'Code' },
 ]
 
-/**
- * Breadcrumbs
- */
 const breadcrumbs = computed(() => {
   const path: { id: string; name: string }[] = []
   if (!location.value) return path
@@ -117,9 +108,6 @@ const breadcrumbs = computed(() => {
   return path
 })
 
-/**
- * Filter Logic
- */
 const subLocFilter = computed(() => {
   if (!location.value) return ''
   const id = location.value.id
@@ -137,38 +125,33 @@ const thingFilter = computed(() => {
   return pb.filter('location = {:id} && (name ~ {:q} || code ~ {:q})', { id, q })
 })
 
-// All things (unpaginated) for the Floor Plan map
+// All things here, unpaginated, for the floor plan
 const allThingsForMap = ref<Thing[]>([])
 
-/**
- * Main Load Function
- */
 async function loadData(id: string) {
   cleanupMap()
   miniMapInitialized.value = false
   loading.value = true
 
   try {
-    // 1. Load Location Details
     location.value = await pb.collection('locations').getOne<Location>(id, {
       expand: 'type,parent.parent.parent.parent',
     })
 
-    // Pick the default tab based on what data exists. Floorplan wins when both are set.
+    // Floorplan wins when both are set.
     if (location.value?.floorplan) activeTab.value = 'floorplan'
     else if (location.value?.coordinates) activeTab.value = 'coordinates'
 
-    // 2. Load Lists (Paginated). Page one: the view is reused when you move
-    // from one location to another, and the old page may not exist here.
+    // Back to page one: the view is reused across locations, and the old page
+    // may not exist here.
     subLocPage.value = 1
     thingPage.value = 1
     await Promise.all([
       refreshSubLocs(),
       refreshThings(),
-      // 3. Load Map Data (All items, strictly for coordinates)
       pb.collection('things').getFullList<Thing>({
         filter: `location = "${id}"`,
-        fields: 'id,name,description,code,floorplan_position,expand.type.name,expand.location.id,expand.location.name', // optimize fetch
+        fields: 'id,name,description,code,floorplan_position,expand.type.name,expand.location.id,expand.location.name',
         expand: 'type,location'
       }).then(res => allThingsForMap.value = res)
     ])
@@ -183,9 +166,8 @@ async function loadData(id: string) {
 
 }
 
-// Lazily init the mini-map once the coordinates tab is actually in the DOM.
-// The outer detail region is gated by v-else-if="location" (unmounts while `loading`),
-// and Leaflet needs both a mounted container AND a non-hidden panel to render.
+// Lazy init: the detail region unmounts while `loading`, and Leaflet needs a
+// mounted container in a visible panel.
 watch([() => location.value, activeTab, loading], async ([loc, tab, isLoading]) => {
   if (isLoading || !loc?.coordinates?.lat || tab !== 'coordinates') return
   await nextTick()
@@ -209,10 +191,8 @@ watch([() => location.value, activeTab, loading], async ([loc, tab, isLoading]) 
   }
 }, { immediate: true })
 
-// Built with textContent, never a template string: Leaflet puts a string popup
-// straight into innerHTML, and the name and description are member-editable,
-// so an interpolated popup ran whatever a member typed in the session of
-// whoever opened the map.
+// textContent, never a template string: Leaflet puts a string popup into
+// innerHTML, and name and description are member-editable (XSS).
 function locationPopup(id: string, name: string, typeName: string, description?: string): HTMLElement {
   const el = (tag: string, cls: string, text: string) => {
     const e = document.createElement(tag)
@@ -229,7 +209,6 @@ function locationPopup(id: string, name: string, typeName: string, description?:
   return root
 }
 
-// Helpers to refresh lists with current filters
 async function refreshSubLocs() {
   await loadSubLocs({ filter: subLocFilter.value, expand: 'type', sort: 'name' })
 }
@@ -238,12 +217,9 @@ async function refreshThings() {
   await loadThings({ filter: thingFilter.value, expand: 'type', sort: 'name' })
 }
 
-/**
- * Persist a thing's floor-plan position. A null position un-maps it from the plan.
- */
+/** A null position removes the thing from the plan. */
 async function handleUpdatePosition({ id, position }: { id: string, position: { x: number, y: number } | null }) {
   try {
-    // Update local map data
     const thing = allThingsForMap.value.find(t => t.id === id)
     if (!thing) return
 
@@ -270,9 +246,7 @@ async function handleDelete() {
     details: 'Sub-locations and things at this location will not be deleted.',
     confirmText: 'Delete',
     variant: 'danger',
-    // The code where there is one, the name where there is not: code is
-    // optional here, and a gate that quietly vanishes on the records without
-    // one would be worse than having no gate at all.
+    // Code is optional, so fall back to the name rather than lose the gate.
     requireText: location.value.code || location.value.name || undefined,
   })
   if (!confirmed) return
@@ -289,7 +263,6 @@ async function handleDelete() {
   }
 }
 
-// Watchers for Search
 let subLocTimeout: any
 watch(subLocSearch, () => {
   clearTimeout(subLocTimeout)
@@ -317,13 +290,11 @@ onUnmounted(() => cleanupMap())
 
 <template>
   <div class="space-y-6">
-    <!-- Loading -->
     <div v-if="loading" class="flex justify-center p-12">
       <span class="loading loading-spinner loading-lg"></span>
     </div>
     
     <template v-else-if="location">
-      <!-- Standard Detail Header -->
       <div class="flex flex-col gap-4">
         <div class="text-sm breadcrumbs">
           <ul>
@@ -360,15 +331,12 @@ onUnmounted(() => cleanupMap())
         </div>
       </div>
       
-      <!-- Layout Grid -->
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
-        <!-- Left Column (Metadata & Geo Map) -->
         <div class="lg:col-span-5 flex flex-col gap-6">
           <BaseCard title="Basic Information">
-            <!-- The photo is a column beside the fields rather than a row above
-                 them; see the note on ThingDetailView for why, and why it is
-                 wrapped rather than given the order class directly. -->
+            <!-- Photo column beside the fields; see ThingDetailView for the
+                 layout and why it is wrapped in a div. -->
             <div class="flex flex-col sm:flex-row sm:items-start gap-5">
               <div v-if="location.photo" class="shrink-0 sm:order-last">
                 <RecordPhoto
@@ -410,9 +378,8 @@ onUnmounted(() => cleanupMap())
                     </dd>
                   </div>
                 </div>
-                <!-- Computed by the server from the codes above it (ADR 0004).
-                     Shown because it is what a dashboard filters on:
-                     location_path=~".*/CODE/.*" selects everything under here. -->
+                <!-- Server-computed (ADR 0004). Shown because dashboards filter on
+                     it: location_path=~".*/CODE/.*" selects everything under here. -->
                 <div v-if="location.path">
                   <dt class="text-sm font-medium text-base-content/70">Path</dt>
                   <dd class="mt-1">
@@ -422,19 +389,14 @@ onUnmounted(() => cleanupMap())
               </dl>
             </div>
 
-            <!-- Full-width below the photo, not sharing the squeezed column;
-                 see the measured note on ThingDetailView. -->
+            <!-- Full width below the photo; see the measured note on ThingDetailView. -->
             <dl class="grid grid-cols-2 gap-4 mt-4">
-              <!-- Both timestamps, not only Created. This is the record side of
-                   the activity feed: the feed reports an update and the record
-                   has to carry something to correlate that against. -->
+              <!-- Updated too, so the record can be correlated with the activity feed. -->
               <RecordTimestamps :created="location.created" :updated="location.updated" />
             </dl>
           </BaseCard>
 
-          <!-- Metadata: read-only field list / JSON, with quick edit in place.
-               Shown even when empty for a caller who may edit — that empty card
-               is how the first field gets added. -->
+          <!-- Shown empty to a writer: that is how the first field gets added. -->
           <MetadataCard
             v-if="canEditMetadata || (location.metadata && Object.keys(location.metadata).length > 0)"
             collection="locations"
@@ -447,12 +409,10 @@ onUnmounted(() => cleanupMap())
 
         </div>
 
-        <!-- Right Column: Combined Location Map card (floorplan and/or coordinates) -->
         <div class="lg:col-span-7 flex flex-col gap-6">
           <BaseCard class="flex flex-col h-full min-h-[550px]" :no-padding="true">
-            <!-- px-8 pt-8 is .card-body's padding, so this title starts where
-                 Basic Information's does in the card beside it. The bottom
-                 stays 16px: the tabs' -mb-[17px] is measured against it. -->
+            <!-- px-8 pt-8 matches .card-body so the title aligns with the card
+                 beside it. pb-4 stays: the tabs' -mb-[17px] is measured against it. -->
             <div class="px-8 pt-8 pb-4 border-b border-base-300 flex justify-between items-center bg-base-200/30 gap-3">
               <!-- Tabs when both exist; static label otherwise -->
               <div v-if="location.floorplan && location.coordinates" role="tablist" class="tabs tabs-bordered -mb-[17px]">
@@ -469,16 +429,12 @@ onUnmounted(() => cleanupMap())
                   @click="activeTab = 'coordinates'"
                 ><MapPin :size="16" class="inline-block shrink-0" /> Geo Map</a>
               </div>
-              <!-- The page's card-title, like every other card on it. This was a
-                   10px uppercase label, the smallest of three heading sizes on
-                   the page. The tabs above are controls, not a heading, and
-                   keep their own size. -->
               <h2 v-else class="card-title">
                 {{ location.floorplan ? 'Floor Plan' : location.coordinates ? 'Geo Location' : 'Location' }}
               </h2>
             </div>
 
-            <!-- Floorplan panel (overlay controls + drawers live inside FloorPlanMap) -->
+            <!-- Overlay controls and drawers live inside FloorPlanMap -->
             <div v-show="location.floorplan && activeTab === 'floorplan'" class="flex-grow flex flex-col">
               <FloorPlanMap
                 v-if="location.floorplan"
@@ -489,7 +445,6 @@ onUnmounted(() => cleanupMap())
               />
             </div>
 
-            <!-- Coordinates panel -->
             <div v-show="location.coordinates && activeTab === 'coordinates'" class="p-4 flex-grow flex flex-col gap-4">
               <div v-if="location.coordinates" class="grid grid-cols-2 gap-2 text-center">
                 <div class="bg-base-200 rounded p-2">
@@ -515,7 +470,6 @@ onUnmounted(() => cleanupMap())
               </div>
             </div>
 
-            <!-- Empty state: neither floorplan nor coordinates -->
             <div v-if="!location.floorplan && !location.coordinates" class="flex-grow flex flex-col items-center justify-center p-8 text-center">
               <MapIcon :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30 mb-4" />
               <h3 class="font-bold opacity-60">No Map or Floor Plan</h3>
@@ -532,15 +486,12 @@ onUnmounted(() => cleanupMap())
         </div>
       </div>
 
-      <!-- Lower Section: Lists & Digital Twin -->
       <div class="space-y-6">
         
-        <!-- 2. Sub-Locations List -->
         <BaseCard :no-padding="true" v-if="subLocations.length > 0 || subLocSearch || subLocLoading">
           <template #header>
             <div class="flex justify-between items-center mb-2">
               <h2 class="card-title">Sub-Locations</h2>
-              <!-- Search Input -->
               <input 
                 v-model="subLocSearch"
                 type="text"
@@ -557,13 +508,6 @@ onUnmounted(() => cleanupMap())
             @row-click="(i) => router.push(`/locations/${i.id}`)" 
           />
 
-          <!-- The shared pager, not a local copy of one. The two footers on
-               this page were hand-rolled and had drifted from it in four ways
-               that all mattered: 24px buttons where every other list in the app
-               now has 44px ones on a phone, a page number with no total to
-               compare it against, no disable while a page is in flight, and no
-               stacking on a narrow screen. It also said "N items" where the
-               shared one names what is being counted. -->
           <ListPager
             v-if="subLocTotalItems > 0"
             :page="subLocPage"
@@ -577,12 +521,10 @@ onUnmounted(() => cleanupMap())
           />
         </BaseCard>
 
-        <!-- 3. Associated Things List -->
         <BaseCard :no-padding="true" v-if="things.length > 0 || thingSearch || thingLoading">
           <template #header>
             <div class="flex justify-between items-center mb-2">
               <h2 class="card-title">Associated Things</h2>
-              <!-- Search Input -->
               <input 
                 v-model="thingSearch"
                 type="text"
@@ -614,7 +556,6 @@ onUnmounted(() => cleanupMap())
           />
         </BaseCard>
 
-        <!-- Live State (digital twin) -->
         <template v-if="location.code">
           <div v-if="natsStore.isConnected" class="mt-6">
             <KvDashboard
@@ -636,8 +577,7 @@ onUnmounted(() => cleanupMap())
 
       </div>
 
-      <!-- decommissionInventory, matching locations.deleteRule. This was
-           ungated, so a member got a Delete button the server refused. -->
+      <!-- decommissionInventory, matching locations.deleteRule. -->
       <DangerZone v-if="authStore.can.decommissionInventory">
         <button @click="handleDelete" class="btn btn-error" :disabled="deleting">
           Delete Location
@@ -654,7 +594,7 @@ onUnmounted(() => cleanupMap())
 </template>
 
 <style scoped>
-/* Grug UX: Invert floorplan colors in dark mode for better visual cohesion */
+/* Invert floorplan colours in dark mode */
 :deep([data-theme='dark']) .leaflet-image-layer {
   filter: invert(0.9) hue-rotate(180deg) brightness(0.8) contrast(1.2);
 }

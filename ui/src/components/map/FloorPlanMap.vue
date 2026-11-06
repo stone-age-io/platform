@@ -35,10 +35,9 @@ function checkMobile() {
   isMobile.value = window.innerWidth < 768
 }
 
-// Guards against an out-of-order load. `locations.floorplan` is a protected
-// file, so building its URL now awaits a file token, and navigating between two
-// locations can leave two loads in flight -- without this the slower one wins
-// and the map shows the previous location's plan.
+// Guards against an out-of-order load: the protected floor plan URL awaits a
+// file token, so navigating between locations can leave two loads in flight,
+// and the slower must not win.
 let floorplanLoad = 0
 
 const loadMap = async () => {
@@ -52,10 +51,8 @@ const loadMap = async () => {
   if (!props.location?.floorplan) return
   loading.value = true
 
-  // Protected: a URL without a file token is a guaranteed 404. The server
-  // checks it against the locations viewRule, so a floor plan is now readable
-  // only inside the organization that owns the site -- the URL on its own is no
-  // longer enough.
+  // Protected: a URL without a file token is a 404, and the server checks the
+  // token against the locations viewRule.
   const imageUrl = await fileUrl({
     record: props.location,
     filename: props.location.floorplan,
@@ -73,9 +70,8 @@ const loadMap = async () => {
     renderAll()
     loading.value = false
   }
-  // Without this the spinner runs forever on any failed load. That was always
-  // true; protection makes it reachable -- an expired token or a revoked
-  // membership now fails here rather than never.
+  // Without this the spinner runs forever on a failed load (an expired token, a
+  // revoked membership).
   img.onerror = () => {
     if (seq !== floorplanLoad) return
     console.warn('Failed to load floor plan image')

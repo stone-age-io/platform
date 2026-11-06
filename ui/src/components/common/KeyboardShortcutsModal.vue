@@ -1,7 +1,6 @@
 <template>
   <Teleport to="body">
     <div v-if="modelValue" class="modal-overlay" @click.self="close">
-      <!-- CHANGED: .modal -> .nd-modal -->
       <div class="nd-modal">
         <div class="modal-header">
           <h3>Keyboard Shortcuts</h3>
@@ -16,7 +15,6 @@
               <div class="desc">{{ s.description }}</div>
             </div>
             
-            <!-- Always show Help shortcut -->
             <div class="shortcut-row">
               <div class="keys"><kbd>?</kbd></div>
               <div class="desc">Show this help menu</div>
@@ -70,7 +68,7 @@ function formatKey(key: string): string {
   backdrop-filter: blur(2px);
 }
 
-/* CHANGED: .modal -> .nd-modal */
+/* Not .modal: DaisyUI owns that class. */
 .nd-modal {
   background: oklch(var(--b1));
   border: 1px solid oklch(var(--b3));

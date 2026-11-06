@@ -14,7 +14,6 @@ import StatusBadge from '@/components/common/StatusBadge.vue'
 
 const router = useRouter()
 
-// Pagination
 const {
   items: networks,
   page,
@@ -27,10 +26,7 @@ const {
   prevPage,
 } = usePagination<NebulaNetwork>('nebula_networks', 20)
 
-// Search query
-// Search runs on the SERVER. The client-side pass this replaces filtered the
-// twenty records already on screen, so a match on page three answered "No
-// results found" -- which is not the same claim at all.
+// Search runs on the server, across all records, not the page on screen.
 const { searchQuery, filter: searchFilter } = useServerSearch(
   ['name', 'description', 'cidr_range', 'ca_id.name'],
   () => {
@@ -39,15 +35,11 @@ const { searchQuery, filter: searchFilter } = useServerSearch(
   },
 )
 
-// The active sort, in PocketBase's own syntax ('name', '-created'). It rides in
-// queryOptions rather than being passed at the call site, for the same reason the
-// filter does: the pager buttons reuse that object, and a sort that is not in it
-// is a sort that page two forgets.
+// PocketBase sort syntax ('name', '-created').
 const sort = ref('')
 
-// One options object, passed to EVERY call into usePagination, the pager
-// buttons included -- passing only expand/sort there drops the filter and
-// page two comes back unfiltered.
+// Pass this to EVERY usePagination call, the pager buttons included, or page two
+// loses the filter and sort.
 const queryOptions = computed(() => ({
   filter: searchFilter.value,
   sort: sort.value,
@@ -60,7 +52,6 @@ function onSort(next: string) {
   loadNetworks()
 }
 
-// Column configuration
 const columns: Column<NebulaNetwork>[] = [
   {
     key: 'name',
@@ -98,16 +89,10 @@ const columns: Column<NebulaNetwork>[] = [
   },
 ]
 
-/**
- * Load networks from API
- */
 async function loadNetworks() {
   await load(queryOptions.value)
 }
 
-/**
- * Handle row click
- */
 function handleRowClick(network: NebulaNetwork) {
   router.push(`/nebula/networks/${network.id}`)
 }
@@ -119,7 +104,6 @@ onMounted(() => {
 
 <template>
   <div class="space-y-6">
-    <!-- Header -->
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
       <div>
         <h1 class="text-3xl font-bold">Nebula Networks</h1>
@@ -133,7 +117,6 @@ onMounted(() => {
       </router-link>
     </div>
     
-    <!-- Search -->
     <div class="form-control">
       <input 
         v-model="searchQuery"
@@ -143,12 +126,10 @@ onMounted(() => {
       />
     </div>
     
-    <!-- Loading State -->
     <div v-if="loading && networks.length === 0" class="flex justify-center p-12">
       <span class="loading loading-spinner loading-lg"></span>
     </div>
 
-    <!-- Error State -->
     <BaseCard v-else-if="error && networks.length === 0">
       <div class="text-center py-12">
         <span class="text-6xl">&#9888;</span>
@@ -158,7 +139,6 @@ onMounted(() => {
       </div>
     </BaseCard>
 
-    <!-- Empty State -->
     <BaseCard v-else-if="networks.length === 0 && !searchQuery">
       <div class="text-center py-12">
         <NetworkIcon :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
@@ -172,7 +152,6 @@ onMounted(() => {
       </div>
     </BaseCard>
     
-    <!-- No Search Results -->
     <BaseCard v-else-if="networks.length === 0">
       <div class="text-center py-12">
         <SearchX :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
@@ -183,7 +162,6 @@ onMounted(() => {
       </div>
     </BaseCard>
     
-    <!-- Responsive List -->
     <BaseCard v-else :no-padding="true">
       <ResponsiveList 
         :sort="sort"
@@ -193,7 +171,6 @@ onMounted(() => {
         :loading="loading"
         @row-click="handleRowClick"
       >
-        <!-- Custom cell for name -->
         <template #cell-name="{ item }">
           <div>
             <div class="font-medium">
@@ -205,7 +182,6 @@ onMounted(() => {
           </div>
         </template>
         
-        <!-- Custom mobile card for name -->
         <template #card-name="{ item }">
           <div>
             <div class="font-semibold text-base">
@@ -217,12 +193,10 @@ onMounted(() => {
           </div>
         </template>
         
-        <!-- Custom cell for CIDR (mono) -->
         <template #cell-cidr_range="{ item }">
           <code class="text-sm">{{ item.cidr_range }}</code>
         </template>
         
-        <!-- Custom cell for status (badge) -->
         <template #cell-active="{ item }">
           <StatusBadge :active="item.active" />
         </template>
@@ -231,7 +205,6 @@ onMounted(() => {
           <StatusBadge :active="item.active" />
         </template>
         
-	<!-- Actions -->
         <template #actions="{ item }">
           <router-link 
             :to="`/nebula/networks/${item.id}/edit`" 
@@ -242,7 +215,6 @@ onMounted(() => {
         </template>
       </ResponsiveList>
       
-      <!-- Pagination -->
       <ListPager
         :page="page"
         :total-pages="totalPages"

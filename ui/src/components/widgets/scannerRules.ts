@@ -17,7 +17,7 @@ function evalRule(rec: any, r: ScannerRule): boolean {
     case 'exists':     return v !== undefined && v !== null
     case 'missing':    return v === undefined || v === null
     case 'future': {
-      // Absent value ≡ no expiry → pass. Mirrors legacy behavior for expires_at.
+      // Absent value means no expiry: pass.
       if (v == null) return true
       const t = Date.parse(String(v))
       return !Number.isNaN(t) && t > Date.now()

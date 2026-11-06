@@ -2,9 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { formatAge, formatColumnValue } from './format'
 
 // Timestamp columns in the KV table, stream table and dynamic-marker panel.
-// Their parser used to disagree with the one messages are stamped with (see
-// utils/timestamp): a Go UnixNano value threw inside the table's computed and
-// blanked the whole table, and anything unparseable read as "just now".
+// They must parse like utils/timestamp, and show "-" rather than "just now"
+// for anything unparseable.
 
 const MS = Date.parse('2026-09-23T12:00:00Z')
 

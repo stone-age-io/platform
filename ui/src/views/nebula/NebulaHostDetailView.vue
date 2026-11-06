@@ -25,10 +25,7 @@ const certIsStale = ref(false)
 
 const hostId = route.params.id as string
 
-/**
- * What the certificate SHOULD say, for the warning below. Presentation only --
- * the comparison itself happens on the server, against the certificate.
- */
+/** What the certificate should say, for display; the server does the comparison. */
 const expectedNetwork = computed(() =>
   expectedCertNetwork(host.value?.overlay_ip, host.value?.expand?.network_id?.cidr_range),
 )
@@ -47,9 +44,7 @@ async function loadHost() {
     loading.value = false
   }
 
-  // Advisory, and deliberately not awaited into the loading state: the page is
-  // useful without it, and an unreachable audit endpoint must not blank a host
-  // the operator came here to read.
+  // Advisory, after loading ends: an unreachable audit endpoint must not blank the page.
   certIsStale.value = (await fetchStaleHostIds()).has(hostId)
 }
 
@@ -78,30 +73,14 @@ async function handleDelete() {
 }
 
 /**
- * Re-issue this host's certificate.
+ * Re-issue the key pair, certificate and config. The field is `renew` (an
+ * unknown key such as `regenerate` is silently dropped by PocketBase); pb-nebula
+ * acts on the false -> true edge and resets it in the same save.
  *
- * The field is `renew`, and it used to be `regenerate` -- which is not a field
- * on nebula_hosts and never has been. PocketBase drops unknown keys from an
- * update body without complaint, so this button returned 200, toasted
- * "Certificate regenerated" and did nothing at all, for every release up to
- * this one. The certificate on screen afterwards was the same certificate.
- *
- * `renew` is an action field: pb-nebula re-issues on the false -> true edge and
- * resets it in the same save, so it never reads back as state.
- */
-/**
- * Re-issue: a new key pair and certificate, and a config built around them.
- *
- * Never on an inactive host, and the button is not offered for one. A
- * deactivated host is revoked by its certificate's FINGERPRINT sitting in every
- * peer's pki.blocklist, and pb-nebula builds that list from the certificate
- * currently STORED on the record. Re-issuing would replace the stored
- * certificate, so the next blocklist rebuild under this CA would list the new
- * fingerprint and drop the old -- un-revoking the certificate the device
- * actually holds. Since pb-nebula v0.3.3 the server refuses `renew` on an
- * inactive host with a 400, so hiding the button is no longer the only thing
- * standing in the way -- it just saves the admin a refusal. Reactivating is
- * the way back, and it re-issues by itself.
+ * Never on an inactive host: its revocation is the stored certificate's
+ * fingerprint in every peer's blocklist, so replacing that certificate would
+ * un-revoke the one the device holds. The server refuses it too (pb-nebula
+ * v0.3.3+). Reactivating re-issues by itself.
  */
 async function confirmRegenerate() {
   if (!host.value || !host.value.active) return
@@ -152,13 +131,11 @@ onMounted(() => {
 
 <template>
   <div class="space-y-6">
-    <!-- Loading State -->
     <div v-if="loading" class="flex justify-center p-12">
       <span class="loading loading-spinner loading-lg"></span>
     </div>
     
     <template v-else-if="host">
-      <!-- Header -->
       <div class="flex flex-col gap-4">
         <div class="breadcrumbs text-sm">
           <ul>
@@ -184,12 +161,8 @@ onMounted(() => {
         </div>
       </div>
       
-      <!--
-        The /32 warning. Worth a banner rather than a badge because the failure
-        it describes is invisible from every other angle: the certificate is
-        valid, the config renders, the host starts, the handshake completes, and
-        no traffic moves. Nothing else on this page looks wrong.
-      -->
+      <!-- The /32 warning is a banner: nothing else shows the failure (the
+           handshake completes and no traffic moves). -->
       <div v-if="certIsStale" class="alert alert-warning items-start">
         <TriangleAlert :size="20" class="inline-block shrink-0" />
         <div>
@@ -209,10 +182,8 @@ onMounted(() => {
         <button v-if="host.active" class="btn btn-sm" @click="confirmRegenerate">Re-issue</button>
       </div>
 
-      <!-- Content Grid -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         
-        <!-- Left Column: Identity & Network -->
         <div class="space-y-6">
           <BaseCard title="Identity & Network">
             <dl class="space-y-4">
@@ -309,7 +280,6 @@ onMounted(() => {
             </dl>
           </BaseCard>
 
-          <!-- Firewall Rules (Stacked in Left Column) -->
           <BaseCard title="Firewall Rules">
             <div class="space-y-4">
               <div>
@@ -328,7 +298,6 @@ onMounted(() => {
           </BaseCard>
         </div>
         
-        <!-- Right Column: Config & Security -->
         <div class="space-y-6">
           <BaseCard>
             <template #header>
@@ -359,7 +328,6 @@ onMounted(() => {
             </template>
 
             <div class="space-y-4">
-              <!-- Status Indicators -->
               <div class="bg-base-200 rounded-lg p-3 border border-base-300">
                 <span class="text-xs text-base-content/50 uppercase block mb-1">Status</span>
                 <div class="flex items-center gap-1.5" v-if="host.active">
@@ -372,13 +340,11 @@ onMounted(() => {
                 </div>
               </div>
 
-              <!-- Cert Expiry -->
               <div v-if="host.expires_at">
                 <dt class="text-xs font-bold text-base-content/50 uppercase tracking-wider mb-1">Certificate Expires</dt>
                 <dd class="text-sm">{{ formatDate(host.expires_at) }}</dd>
               </div>
 
-              <!-- Config Preview -->
               <div v-if="host.config_yaml">
                 <div class="text-xs font-bold text-base-content/50 uppercase tracking-wider mb-1">Config Preview</div>
                 <div class="bg-base-200 p-3 rounded-lg font-mono text-xs overflow-x-auto whitespace-pre max-h-48 border border-base-300">
@@ -386,7 +352,6 @@ onMounted(() => {
                 </div>
               </div>
 
-              <!-- Host Certificate -->
               <div v-if="host.certificate">
                 <div class="flex justify-between items-center mb-1">
                   <div class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Host Certificate</div>

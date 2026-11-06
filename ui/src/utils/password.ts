@@ -1,10 +1,6 @@
 /**
- * Generate a random password of the specified length.
- * Uses a mix of lowercase, uppercase, digits, and special characters.
- *
- * Backed by the Web Crypto CSPRNG (crypto.getRandomValues), not Math.random,
- * because these passwords become device/identity credentials. Bytes that would
- * introduce modulo bias are rejected so every character is uniformly likely.
+ * Uses crypto.getRandomValues, not Math.random: these become device/identity
+ * credentials. Bytes that would cause modulo bias are rejected.
  */
 export function generateRandomPassword(length = 16): string {
   const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*'

@@ -1,18 +1,11 @@
-<!-- ui/src/views/dev/WidgetGalleryView.vue -->
 <!--
-  Every widget, rendered against fixtures, at /dev/widgets.
+  Every widget, rendered against fixtures, at /dev/widgets: no test renders a
+  widget, so this is where a person looks at them.
 
-  WHY THIS EXISTS. 24,000 of the console's lines are the dashboard and its
-  widgets, and no test renders any of them: `vue-tsc && vite build` stays green
-  while a widget draws nothing. This is the cheapest thing that puts eyes on all
-  sixteen at once — one page, no NATS, no login, no dashboard to set up.
-
-  IT NEVER SHIPS. The route is registered inside `if (import.meta.env.DEV)`,
-  which Vite replaces with `false` in a production build, so this component and
-  its fixtures are dropped from the bundle rather than merely unreachable.
-
-  NOT STORYBOOK, DELIBERATELY. A dependency, a second build and a second set of
-  config files, to arrive at a page with sixteen widgets on it.
+  It never ships: the route is registered inside `if (import.meta.env.DEV)`,
+  which Vite replaces with `false` in production, so this view and its fixtures
+  are dropped from the bundle, not merely unreachable. Keep it that way; there
+  is no auth guard in front of it.
 -->
 <template>
   <div class="gallery" :data-theme="theme">
@@ -69,11 +62,8 @@ const theme = computed(() => (dark.value ? 'dark' : 'light'))
 
 const fixtures = ref(Object.values(buildFixtures()))
 
-/**
- * Push each fixture's messages into the widget data buffer, which is where
- * every buffer-backed widget reads from. Timestamps are built at call time, so
- * refilling also resets anything that ages (trends, staleness, a chart window).
- */
+// Fixtures are rebuilt so timestamps are fresh, which also resets anything that
+// ages (trends, staleness, a chart window).
 function fill() {
   fixtures.value = Object.values(buildFixtures())
   for (const f of fixtures.value) {

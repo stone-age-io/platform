@@ -12,25 +12,19 @@ import {
 } from './subjectResolver'
 
 describe('DEFAULT_PREFIX', () => {
-  // This constant is a published contract: ADR 0003 and docs/thing-types.md in
-  // platform-docs state it, and it once shipped disagreeing with the docs
-  // (location-first) for as long as it existed. Nothing type-checks a docs page,
-  // so assert the literal.
+  // A published contract (ADR 0003, docs/thing-types.md in platform-docs).
+  // Nothing type-checks a docs page, so assert the literal.
   it('is the documented family-first, location-free default', () => {
     expect(DEFAULT_PREFIX).toBe('{thing_type_code}.{thing}')
   })
 
-  // Things move, and a subject resolved from the current location would move
-  // with them. The default must not reintroduce it.
+  // Things move, so the default must not include the location.
   it('does not contain the location', () => {
     expect(DEFAULT_PREFIX).not.toContain(VAR_LOCATION)
   })
 
-  // The real invariant, and the reason the order is not cosmetic. A template
-  // leading with a variable that resolves to "*" produces a wildcard-leading
-  // subject. JetStream refuses two streams whose subject filters overlap, and a
-  // wildcard-leading filter intersects every literal-rooted one — so a single
-  // such role pattern makes per-thing-type streams impossible.
+  // A wildcard-leading filter overlaps every literal-rooted one, and JetStream
+  // refuses overlapping streams, so per-thing-type streams need a literal first token.
   it('resolves to a role pattern whose first token is a literal', () => {
     const firstToken = resolveRolePattern(DEFAULT_PREFIX).split('.')[0]
     expect(firstToken).not.toBe('*')
@@ -61,10 +55,8 @@ describe('resolveThing', () => {
       .toBe('freezer.KC-DC1.FZ-1')
   })
 
-  // Callers detect incomplete input by looking for a leftover token, so an
-  // unset field must NOT silently collapse to an empty string — that would
-  // produce `camera..CAM-042`, a subject with an empty token that reads as
-  // valid and matches nothing.
+  // Callers detect incomplete input by a leftover token; an empty string would
+  // give `camera..CAM-042`, which looks valid and matches nothing.
   it('leaves unset fields as literal template tokens', () => {
     const out = resolveThing(DEFAULT_PREFIX, { thingTypeCode: 'camera' })
     expect(out).toBe(`camera.${VAR_THING}`)
@@ -107,10 +99,8 @@ describe('resolveOperationSubjects', () => {
       .toEqual(['publish_alarm', 'publish_state', 'subscribe_grant', 'reply_diag'])
   })
 
-  // The card draws the shared prefix quietly and the suffix plainly, while
-  // select-all copies the whole subject. That only holds if the halves add up
-  // to exactly the subject, so pin it -- including an operation with no suffix,
-  // which is the prefix alone and must not grow a trailing dot.
+  // The halves must add up to exactly the subject; with no suffix, the prefix
+  // alone with no trailing dot.
   it('splits each subject into the shared prefix and its own suffix', () => {
     const withBare = [...ops, { id: '5', name: 'publish_bare', capability: 'publish', subject_suffix: '' }]
     const out = resolveOperationSubjects('acc.{location}.door.{thing}', withBare, { location: 'KC', thing: 'D-1' })

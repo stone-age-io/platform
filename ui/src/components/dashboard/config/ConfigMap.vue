@@ -1,6 +1,5 @@
 <template>
   <div class="config-map">
-    <!-- Map View Settings -->
     <div class="config-section">
       <div class="section-header">
         <MapIcon class="section-icon" :size="18" aria-hidden="true" />
@@ -48,7 +47,6 @@
       </div>
     </div>
 
-    <!-- Map Options -->
     <div class="config-section">
       <div class="section-header">
         <Settings class="section-icon" :size="18" aria-hidden="true" />
@@ -72,7 +70,6 @@
       </div>
     </div>
 
-    <!-- Dynamic Markers Section -->
     <div class="config-section">
       <div class="section-header">
         <RefreshCw class="section-icon" :size="18" aria-hidden="true" />
@@ -160,7 +157,6 @@
           </div>
         </div>
 
-        <!-- Popup Fields -->
         <div class="form-group">
           <label>Popup Fields</label>
 
@@ -205,7 +201,6 @@
       </template>
     </div>
 
-    <!-- Static Markers Section -->
     <div class="config-section">
       <div class="section-header">
         <MapPin class="section-icon" :size="18" aria-hidden="true" />
@@ -231,7 +226,6 @@
         />
       </div>
 
-      <!-- Marker limit warning -->
       <div v-if="isAtMarkerLimit" class="limit-warning">
         <TriangleAlert class="inline align-[-2px]" :size="14" aria-hidden="true" /> Maximum {{ MAX_MARKERS }} markers per map widget
       </div>
@@ -246,7 +240,6 @@
       </button>
     </div>
 
-    <!-- Tips -->
     <div class="tips-section">
       <div class="tip">
         <Lightbulb class="tip-icon" :size="14" aria-hidden="true" />
@@ -470,7 +463,6 @@ function getMarkerItemErrors(markerIndex: number): Record<number, Record<string,
   gap: 12px;
 }
 
-/* Toggle rows */
 .toggle-row {
   display: flex;
   align-items: center;
@@ -492,7 +484,6 @@ function getMarkerItemErrors(markerIndex: number): Record<number, Record<string,
   color: var(--text);
 }
 
-/* Popup fields */
 .empty-fields {
   padding: 12px;
   font-size: 12px;
@@ -568,7 +559,6 @@ function getMarkerItemErrors(markerIndex: number): Record<number, Record<string,
   color: var(--color-accent);
 }
 
-/* Empty state */
 .empty-markers {
   display: flex;
   flex-direction: column;
@@ -597,7 +587,6 @@ function getMarkerItemErrors(markerIndex: number): Record<number, Record<string,
   color: var(--muted);
 }
 
-/* Markers list */
 .markers-list {
   display: flex;
   flex-direction: column;
@@ -605,7 +594,6 @@ function getMarkerItemErrors(markerIndex: number): Record<number, Record<string,
   margin-bottom: 16px;
 }
 
-/* Limit warning */
 .limit-warning {
   padding: 12px 16px;
   background: var(--color-warning-bg);
@@ -617,7 +605,6 @@ function getMarkerItemErrors(markerIndex: number): Record<number, Record<string,
   text-align: center;
 }
 
-/* Add marker button */
 .btn-add-marker {
   width: 100%;
   display: flex;
@@ -645,7 +632,6 @@ function getMarkerItemErrors(markerIndex: number): Record<number, Record<string,
   font-weight: 700;
 }
 
-/* Tips section */
 .tips-section {
   display: flex;
   flex-direction: column;
@@ -683,7 +669,6 @@ function getMarkerItemErrors(markerIndex: number): Record<number, Record<string,
   text-decoration: none;
 }
 
-/* Responsive */
 @media (max-width: 500px) {
   .coord-inputs {
     grid-template-columns: 1fr 1fr;

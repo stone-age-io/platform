@@ -20,16 +20,12 @@ const router = useRouter()
 const toast = useToast()
 const authStore = useAuthStore()
 
-// This screen is reachable by `viewer`, which writes nothing, so Edit needs
-// its own gate. Delete is not here at all any more -- it is decommissionInventory
-// and lives in the danger zone on the detail view, which is also the only place
-// it can be aimed at a record the reader has actually looked at.
+// `viewer` reaches this screen and writes nothing, so Edit needs its own gate.
+// Delete lives only in the detail view's danger zone (decommissionInventory).
 const canWrite = computed(() => authStore.can.manageInventory)
 
-// View Mode
 const viewMode = ref<'list' | 'map'>('list')
 
-// Pagination
 const {
   items: things,
   page,
@@ -42,14 +38,9 @@ const {
   prevPage,
 } = usePagination<Thing>('things', 20)
 
-// Search runs on the SERVER, not over the 20 records already on screen.
-//
-// The client-side version admitted as much in the UI ("searching current page
-// only"), which is a disclaimer nobody reads after a zero-result answer. It also
-// made `metadata` unsearchable in any useful sense: the whole point of searching
-// it is questions like "which devices were serviced before 2025", and an answer
-// drawn from one page is not an answer. PocketBase matches a json column as text,
-// so one `~` covers both its keys and its values without knowing any type's schema.
+// Search runs on the server, across all records, not the page on screen.
+// PocketBase matches a json column as text, so one `~` on `metadata` covers its
+// keys and values without knowing any schema.
 const { searchQuery, filter: searchFilter } = useServerSearch(
   ['name', 'description', 'code', 'metadata', 'type.name', 'location.name'],
   () => {
@@ -58,15 +49,11 @@ const { searchQuery, filter: searchFilter } = useServerSearch(
   },
 )
 
-// The active sort, in PocketBase's own syntax ('name', '-created'). It rides in
-// queryOptions rather than being passed at the call site, for the same reason the
-// filter does: the pager buttons reuse that object, and a sort that is not in it
-// is a sort that page two forgets.
+// PocketBase sort syntax ('name', '-created').
 const sort = ref('')
 
-// One options object, passed to EVERY call into usePagination, the pager buttons
-// included -- passing only `expand` there drops the filter and page two comes
-// back unfiltered.
+// Pass this to EVERY usePagination call, the pager buttons included, or page two
+// loses the filter and sort.
 const queryOptions = computed(() => ({
   filter: searchFilter.value,
   sort: sort.value,
@@ -79,16 +66,9 @@ function onSort(next: string) {
   loadThings()
 }
 
-// Labels for the CURRENT FILTER, not the current page. The search box is the
-// selection mechanism -- row checkboxes would need select-all, select-across-
-// pages and a selection store, for a workflow that is almost always already a
-// filter ("everything at site S01", "the sensors I just imported"). The count
-// rides in the button so the scope is visible before the click.
-//
-// No capability gate: this reads records the caller can already read, so its
-// entry capability is the screen's. A control only needs its own v-if when its
-// rule differs from the one that let the reader in -- which is why Edit has one
-// and this does not.
+// Labels print the whole current filter, not the page; the search box is the
+// selection mechanism. No capability gate: it only reads what the screen already
+// lets the caller read.
 const showLabelModal = ref(false)
 const loadingLabels = ref(false)
 const labelRecords = ref<{ code: string; name: string; kind: 'thing' }[]>([])
@@ -96,9 +76,8 @@ const labelRecords = ref<{ code: string; name: string; kind: 'thing' }[]>([])
 async function openLabels() {
   loadingLabels.value = true
   try {
-    // A fresh getFullList rather than `things`, which holds one page of 20.
-    // Same filter and sort as the list, so the stack comes off the printer in
-    // the order on screen. `fields` keeps it to the two columns a label uses.
+    // Not `things` (one page). Same filter and sort as the list, so labels print
+    // in screen order.
     const all = await pb.collection('things').getFullList<Thing>({
       filter: searchFilter.value,
       sort: sort.value || 'name',
@@ -117,7 +96,6 @@ async function openLabels() {
   }
 }
 
-// Column configuration for responsive list
 const columns: Column<Thing>[] = [
   {
     key: 'name',
@@ -156,26 +134,15 @@ const columns: Column<Thing>[] = [
   },
 ]
 
-/**
- * Load things from API
- * Backend automatically filters by current organization via API rules
- */
 async function loadThings() {
-  // Backend handles org filtering via API rules; this adds only the search.
+  // API rules scope to the org; this adds only the search.
   await load(queryOptions.value)
 }
 
-
-/**
- * Handle row/card click - navigate to detail view
- */
 function handleRowClick(thing: Thing) {
   router.push(`/things/${thing.id}`)
 }
 
-/**
- * Initialize on mount
- */
 onMounted(() => {
   loadThings()
 })
@@ -183,14 +150,11 @@ onMounted(() => {
 
 <template>
   <div class="space-y-6">
-    <!-- Header & Controls -->
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-      <!-- Left Side: Title & Mobile Toggle -->
       <div class="w-full sm:w-auto">
         <div class="flex justify-between items-center">
           <h1 class="text-3xl font-bold">Things</h1>
 
-          <!-- Mobile Toggle: Next to title -->
           <div class="join shadow-sm border border-base-300 sm:hidden">
             <button
               class="join-item btn btn-sm px-3"
@@ -213,17 +177,9 @@ onMounted(() => {
         </p>
       </div>
 
-      <!-- Right Side: Desktop Toggle & New Button -->
-      <!-- Every button in this row is `flex-1 sm:flex-initial`, the same idiom the
-           Thing and Location DETAIL views use for their action rows. The New
-           button used to be `w-full sm:w-auto`, which was right while it was
-           alone and wrong the moment Labels joined it: `.btn` carries
-           `flex-shrink: 0`, so it asked for 100% of a row it was sharing and
-           neither button could give any back — the primary action rendered past
-           the right edge of the screen. `flex-1` sets `flex: 1 1 0%`, which
-           restores shrink and splits the row evenly. -->
+      <!-- Buttons are `flex-1 sm:flex-initial`, not `w-full`: `.btn` has
+           `flex-shrink: 0`, so a w-full button sharing the row overflows it. -->
       <div class="flex gap-3 w-full sm:w-auto">
-        <!-- Desktop Toggle: Hidden on mobile -->
         <div class="hidden sm:inline-flex join shadow-sm border border-base-300">
           <button
             class="join-item btn"
@@ -259,7 +215,6 @@ onMounted(() => {
       </div>
     </div>
     
-    <!-- Search -->
     <div class="form-control">
       <input
         v-model="searchQuery"
@@ -274,15 +229,12 @@ onMounted(() => {
       </label>
     </div>
 
-    <!-- LIST VIEW -->
     <template v-if="viewMode === 'list'">
 
-    <!-- Loading State -->
     <div v-if="loading && things.length === 0" class="flex justify-center p-12">
       <span class="loading loading-spinner loading-lg"></span>
     </div>
 
-    <!-- Error State -->
     <BaseCard v-else-if="error && things.length === 0">
       <div class="text-center py-12">
         <span class="text-6xl">&#9888;</span>
@@ -292,9 +244,7 @@ onMounted(() => {
       </div>
     </BaseCard>
 
-    <!-- Empty State. Guarded on !searchQuery: with a server-side filter an empty
-         result during a search means "no match", not "no inventory", and offering
-         "create your first thing" to someone who has 400 of them is nonsense. -->
+    <!-- Guarded on !searchQuery: an empty search result means no match, not no inventory. -->
     <BaseCard v-else-if="things.length === 0 && !searchQuery">
       <div class="text-center py-12">
         <Package :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
@@ -308,7 +258,6 @@ onMounted(() => {
       </div>
     </BaseCard>
     
-    <!-- No Search Results -->
     <BaseCard v-else-if="things.length === 0">
       <div class="text-center py-12">
         <SearchX :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
@@ -322,7 +271,6 @@ onMounted(() => {
       </div>
     </BaseCard>
     
-    <!-- Responsive List -->
     <BaseCard v-else :no-padding="true">
       <ResponsiveList 
         :sort="sort"
@@ -332,11 +280,7 @@ onMounted(() => {
         :loading="loading"
         @row-click="handleRowClick"
       >
-        <!--
-          Deactivated state rides along with the name rather than taking its own
-          column: the list is already five columns wide, and a deactivated Thing
-          is the exception, not a value you scan down a column for.
-        -->
+        <!-- Deactivated rides with the name: it is an exception, not a column to scan. -->
         <template #cell-name="{ item }">
           <div>
             <div class="font-medium flex items-center gap-2">
@@ -353,7 +297,6 @@ onMounted(() => {
           </div>
         </template>
 
-        <!-- Custom mobile card for name (make it prominent) - no longer a link -->
         <template #card-name="{ item }">
           <div>
             <div class="font-semibold text-base flex items-center gap-2">
@@ -370,7 +313,6 @@ onMounted(() => {
           </div>
         </template>
         
-        <!-- Custom cell for type (badge) -->
         <template #cell-expand.type.name="{ item }">
           <span v-if="item.expand?.type" class="badge badge-ghost badge-sm">
             {{ item.expand.type.name }}
@@ -385,13 +327,12 @@ onMounted(() => {
          <span v-else class="text-base-content/40">—</span>
         </template>
 
-        <!-- Custom cell for code (mono font) -->
         <template #cell-code="{ item }">
           <code v-if="item.code" class="text-xs">{{ item.code }}</code>
           <span v-else class="text-base-content/40">—</span>
         </template>
         
-        <!-- Actions - @click.stop is handled in ResponsiveList -->
+        <!-- ResponsiveList handles @click.stop -->
         <template #actions="{ item }">
           <router-link
             v-if="canWrite"
@@ -410,10 +351,7 @@ onMounted(() => {
         </template>
       </ResponsiveList>
       
-      <!-- Pagination. Shown while searching too: the server paginates the matches,
-           so page 2 of a search is a real page. The pager passes queryOptions
-           rather than a bare expand — dropping the filter here is what would make
-           page 2 revert to unfiltered results. -->
+      <!-- Pass queryOptions, not a bare expand, or page 2 loses the search. -->
       <ListPager
         :page="page"
         :total-pages="totalPages"
@@ -428,7 +366,6 @@ onMounted(() => {
 
     </template>
 
-    <!-- MAP VIEW -->
     <div v-else-if="viewMode === 'map'">
       <ThingMapViz :search-query="searchQuery" />
     </div>

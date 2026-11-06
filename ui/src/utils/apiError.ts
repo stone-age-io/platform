@@ -1,14 +1,9 @@
 /**
  * The message worth showing for a failed PocketBase request.
  *
- * The SDK's `err.message` is the response's top-level message, which for a
- * refused write is usually generic ("Failed to create record."). When the server
- * explains itself, it does so in the per-field errors under `response.data`, and
- * a form that toasts only `err.message` drops the explanation on the floor. A NATS
- * limit of 0 is the case that prompted this: the server says what 0 would do and
- * what to write instead, and the form said "Failed to save role".
- *
- * Field errors are listed in the order the server sent them, as `field: message`.
+ * The top-level `err.message` is usually generic ("Failed to create record.");
+ * the server's explanation is in the per-field errors under `response.data`.
+ * Those are listed in server order as `field: message`.
  */
 export function apiErrorMessage(err: unknown, fallback: string): string {
   const e = err as { message?: unknown; response?: { data?: unknown } } | null

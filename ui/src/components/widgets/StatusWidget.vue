@@ -26,7 +26,6 @@
 
     <!-- STANDARD LAYOUT (Desktop) -->
     <template v-else>
-      <!-- Main Indicator -->
       <div 
         class="status-indicator"
         :class="{ 'is-blinking': currentState.blink }"
@@ -37,7 +36,6 @@
         </div>
       </div>
 
-      <!-- Footer Info (Last Updated) -->
       <div class="status-footer">
         <!-- Icon only: the main label already reads as the stale label. -->
         <span v-if="isStale" class="stale-warning"><TriangleAlert :size="12" aria-label="Stale" /></span>
@@ -69,20 +67,17 @@ const props = withDefaults(defineProps<{
 const dataStore = useWidgetDataStore()
 const dashboardStore = useDashboardStore()
 
-// Config Accessors
 const cfg = computed(() => props.config.statusConfig)
 const mappings = computed(() => cfg.value.mappings || [])
 const staleThreshold = computed(() => cfg.value.stalenessThreshold || 60000)
 const isKvMode = computed(() => props.config.dataSource.type === 'kv')
 
-// Data
 const buffer = computed(() => dataStore.getBuffer(props.config.id))
 const latestMsg = computed(() => buffer.value[buffer.value.length - 1])
 
 // The same one-second clock as the age in every other tile's corner.
 const now = useNow({ interval: 1000 })
 
-// Computed State Logic
 const isStale = computed(() => {
   if (!cfg.value.showStale) return false
   if (!latestMsg.value) return true // No data = stale
@@ -135,7 +130,7 @@ const currentState = computed(() => {
 
 const timeAgo = computed(() => {
   if (!latestMsg.value) return 'No data'
-  // The short form a locked tile shows: it ran "90m" where the others say "1h".
+  // The short form a locked tile shows, matching the other tiles ("1h", not "90m").
   return formatAge(now.value.getTime() - latestMsg.value.timestamp).replace(/ ago$/, '')
 })
 
@@ -153,10 +148,8 @@ watch(kvKey.entry, (e) => {
     dataStore.clearBuffer(props.config.id)
     return
   }
-  // The same shape a subscription delivers: parsed JSON, the widget's
-  // JSONPath applied, and the time the value was WRITTEN. It used to push the
-  // raw string stamped with the time it was read, so `$.state` never applied
-  // and a key untouched for hours read as live for a minute after every load.
+  // The same shape a subscription delivers: parsed JSON, the widget's JSONPath
+  // applied, and the time the value was written, not when it was read.
   dataStore.batchAddMessages([{
     widgetId: props.config.id,
     value: extractJsonPath(e.value, props.config.jsonPath),
@@ -181,12 +174,10 @@ watch(kvKey.entry, (e) => {
 }
 
 /* --- STANDARD LAYOUT --- */
-/* A tint of the state colour with the label in that colour, not a solid
-   block of it. Solid red and green tiles out-shouted every reading on the
-   dashboard; a tint still reads across a room. The tint is a ::before at low
-   opacity because the colour can be a CSS variable, which neither
-   `${color}40` (the old glow, silently invalid for var(...)) nor color-mix
-   (see assets/dashboard-compat.css) can take reliably. */
+/* A tint of the state colour, not a solid block, which out-shouted every
+   reading on the dashboard. The tint is a low-opacity ::before because the
+   colour can be a CSS variable, which neither `${color}40` nor color-mix (see
+   assets/dashboard-compat.css) can take reliably. */
 .status-indicator {
   width: 100%;
   flex: 1;
@@ -284,8 +275,7 @@ watch(kvKey.entry, (e) => {
   font-weight: 600;
   color: var(--text);
   line-height: 1.25;
-  /* Two lines, then an ellipsis: a half-width tile cut "Springfield
-     gateway" down to "SPRINGFIELD GATI". */
+  /* Two lines, then an ellipsis, so a half-width tile keeps a long label. */
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;

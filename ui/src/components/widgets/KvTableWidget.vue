@@ -1,14 +1,11 @@
-<!-- ui/src/components/widgets/KvTableWidget.vue -->
 <template>
   <div class="kvtable-widget" :class="{ 'card-layout': layoutMode === 'card' }">
-    <!-- Loading -->
     <WidgetStateOverlay
       v-if="loading && tableRows.length === 0"
       state="loading"
       :compact="layoutMode === 'card'"
     />
 
-    <!-- Error -->
     <WidgetStateOverlay
       v-else-if="error"
       state="error"
@@ -16,7 +13,6 @@
       :compact="layoutMode === 'card'"
     />
 
-    <!-- Not Configured -->
     <WidgetStateOverlay
       v-else-if="!cfg.kvBucket"
       state="empty"
@@ -25,9 +21,7 @@
       :compact="layoutMode === 'card'"
     />
 
-    <!-- Data -->
     <template v-else>
-      <!-- Search -->
       <div v-if="tableRows.length > 0" class="search-bar">
         <input
           v-model="searchQuery"
@@ -37,7 +31,6 @@
         />
       </div>
 
-      <!-- Table -->
       <div class="data-container">
         <ResponsiveList
           :items="filteredRows"
@@ -77,7 +70,6 @@
         </ResponsiveList>
       </div>
 
-      <!-- Footer -->
       <div class="widget-footer">
         <span class="text-[10px] opacity-50">
           <template v-if="isCapped">
@@ -99,7 +91,6 @@
       </div>
     </template>
 
-    <!-- Detail Modal -->
     <Teleport to="body">
       <div v-if="selectedRow" class="modal-overlay" @click.self="selectedRow = null">
         <div class="detail-modal">
@@ -171,7 +162,6 @@ const { rows, loading, error } = useNatsKvWatcher(
   () => resolvedPattern.value
 )
 
-// Build ResponsiveList columns from config
 const tableColumns = computed<Column<any>[]>(() => {
   return (cfg.value.columns || []).map((col: TableColumn) => ({
     key: col.id,
@@ -180,7 +170,6 @@ const tableColumns = computed<Column<any>[]>(() => {
   }))
 })
 
-// Extract column values from each KvRow
 function extractValue(row: KvRow, col: TableColumn): any {
   const path = col.path
   // Meta-paths
@@ -189,7 +178,6 @@ function extractValue(row: KvRow, col: TableColumn): any {
   if (path === '__revision__') return row.revision
   if (path === '__timestamp__') return row.timestamp
 
-  // JSONPath extraction
   try {
     return JSONPath({ path, json: row.data, wrap: false })
   } catch {
@@ -204,7 +192,6 @@ const hasRelativeTime = computed(() => (cfg.value.columns || []).some(c => c.for
 const clock = window.setInterval(() => { now.value = Date.now() }, 30_000)
 onUnmounted(() => window.clearInterval(clock))
 
-// Transform KvRow Map into flat table rows
 const tableRows = computed(() => {
   if (hasRelativeTime.value) void now.value
   const columns = cfg.value.columns || []
@@ -220,7 +207,6 @@ const tableRows = computed(() => {
     result.push(item)
   }
 
-  // Sort
   const sortCol = cfg.value.defaultSortColumn
   const sortDir = cfg.value.defaultSortDirection || 'desc'
   if (sortCol) {
@@ -246,7 +232,6 @@ const cappedRows = computed(() =>
 )
 const isCapped = computed(() => totalRowCount.value > maxRows.value)
 
-// Client-side search filter
 const filteredRows = computed(() => {
   if (!searchQuery.value.trim()) return cappedRows.value
   const q = searchQuery.value.toLowerCase()
@@ -364,7 +349,6 @@ function downloadCsv() {
 .cell-style-error   { color: oklch(var(--er)); font-weight: 600; }
 .cell-style-info    { color: oklch(var(--in)); font-weight: 600; }
 
-/* Detail Modal */
 .modal-overlay {
   position: fixed;
   top: 0;

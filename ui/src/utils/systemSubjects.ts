@@ -1,24 +1,13 @@
-// ui/src/utils/systemSubjects.ts
-
 /**
  * "Hide system subjects": a wildcard at the front of a subscription does not
- * sweep up NATS's own traffic. That one sentence is the whole feature.
+ * sweep up NATS's own traffic (first token starting with `$`, or `_INBOX`),
+ * which is mostly the dashboard's own KV/JetStream requests and replies.
  *
- * System means the first token starts with `$` (NATS reserves that prefix:
- * `$JS`, `$KV`, `$SYS`, `$O`) or is `_INBOX` (request/reply answers). A console
- * on `>` otherwise shows mostly the dashboard talking to itself -- every KV and
- * JetStream widget on the same connection makes `$JS.API` requests and gets
- * `_INBOX` replies, and NATS echoes a connection's own publishes back to it.
+ * Only a subscription whose FIRST token is a wildcard is filtered, so an
+ * explicit `$KV.twin.>` is always delivered (as MQTT treats `$` topics).
  *
- * Only a subscription whose FIRST token is a wildcard is filtered, so asking
- * for `$KV.twin.>` explicitly always delivers it, with no exception to reason
- * about. Twin changes on a quiet console are `['>', '$KV.twin.>']`. MQTT
- * behaves the same way: its wildcards never match `$` topics at the first
- * level.
- *
- * This saves no bandwidth. NATS has no negative subscription, so the browser
- * still receives everything `>` matches; the filter only keeps it out of the
- * buffer, where it would otherwise evict the messages you wanted.
+ * Saves no bandwidth (NATS has no negative subscription); it only keeps the
+ * messages out of the buffer.
  */
 
 /** Can this subscription pattern match a system subject at all? */

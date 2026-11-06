@@ -19,9 +19,6 @@ const rotating = ref(false)
 const addingKey = ref(false)
 const removingKey = ref('')
 
-/**
- * Load account by Organization ID (Singleton)
- */
 async function loadAccount() {
   if (!authStore.currentOrgId) return
   
@@ -29,7 +26,7 @@ async function loadAccount() {
   account.value = null
   
   try {
-    // Fetch the FIRST account for this org
+    // One account per org.
     account.value = await pb.collection('nats_accounts').getFirstListItem<NatsAccount>(
       `organization = "${authStore.currentOrgId}"`
     )
@@ -37,7 +34,7 @@ async function loadAccount() {
     if (err.status !== 404) {
       toast.error(err.message || 'Failed to load NATS account')
     }
-    // 404 is acceptable here (handled in template)
+    // 404: the template shows the no-account state.
   } finally {
     loading.value = false
   }
@@ -59,11 +56,9 @@ async function copyToClipboard(text: string, label: string) {
 }
 
 /**
- * Signing-key operations go through a dedicated route, not a record update.
- * `nats_accounts.updateRule` is operator-only, because a rule cannot permit these
- * three trigger fields while forbidding the account limits and the signed `jwt`.
- * The route takes no record id — it always acts on the caller's active
- * organization's account. See hooks/nats_account_routes.go.
+ * Through a dedicated route, not a record update: `nats_accounts.updateRule` is
+ * operator-only, since a rule cannot allow these trigger fields but forbid the
+ * limits and `jwt`. It acts on the active org's account (hooks/nats_account_routes.go).
  */
 type KeyAction = 'rotate' | 'add_signing' | 'remove_signing'
 
@@ -75,13 +70,9 @@ async function applyKeyAction(action: KeyAction, publicKey?: string) {
   await loadAccount()
 }
 
-// What happens after a key change, from pb-nats (internal/sync/manager.go):
-// NATS rejects a user JWT whose issuer is no longer one of the account's signing
-// keys, so every deployed .creds file signed with a removed key dies at once.
-// pb-nats then reissues a file for every ACTIVE user in the account by itself
-// (regenerateUsersInAccount), and skips suspended ones, so a rotation is not a
-// way back for a revoked device. The work left to a person is DELIVERING those
-// files, not regenerating them -- the old dialog said the opposite.
+// After a key change, every .creds signed by a removed key dies at once, and
+// pb-nats reissues files for ACTIVE users only (regenerateUsersInAccount).
+// What is left to a person is delivering them.
 async function rotateKeys() {
   if (!account.value) return
 
@@ -148,7 +139,6 @@ function getSigningKeyPublicKey(key: any): string {
   return key?.public_key || key?.publicKey || JSON.stringify(key)
 }
 
-// Watch for org changes
 onMounted(() => {
   loadAccount()
 })
@@ -165,14 +155,8 @@ onMounted(() => {
     <div v-else-if="!account" class="text-center py-12">
       <RadioTower :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
       <h3 class="text-xl font-bold mt-4">No NATS Account Found</h3>
-      <!--
-        There used to be a "Provision NATS Account" button here that created the
-        record from the browser. It could never work for the roles that reach
-        this view -- nats_accounts.createRule is null -- and for a superuser it
-        wrote stale hard-coded limits instead of nats.default_limits. The server
-        provisions the account (hooks/org_provisioning.go), create-if-missing on
-        every organization save, so re-saving the organization IS the retry.
-      -->
+      <!-- No provision button: nats_accounts.createRule is null. The server provisions
+           on every org save (hooks/org_provisioning.go), so re-saving is the retry. -->
       <p class="text-base-content/70 mt-2 max-w-md mx-auto">
         Your organization does not have a NATS account yet. It is provisioned by the
         server when the organization is saved; if that failed, saving the organization
@@ -193,7 +177,6 @@ onMounted(() => {
     <!-- Details -->
     <template v-else>
       <div class="flex flex-col gap-4">
-        <!-- Simplified Breadcrumbs -->
         <div class="breadcrumbs text-sm">
           <ul>
             <li>NATS</li>

@@ -1,61 +1,21 @@
 <script setup lang="ts">
 // Printable QR labels for things and locations, sized to real label stock.
 //
-// It takes a LIST. A detail view passes one record; a list view passes its whole
-// filtered set. There is deliberately no "bulk mode" — one record is a list of
-// one, so there is a single code path and no pair of layouts to keep in step.
+// It takes a list: a detail view passes one record, a list view its whole
+// filtered set. One code path, no separate bulk layout.
 //
-// The payload is the bare `code` — no host, no organization, no kind token
-// (ADR 0002 in platform-docs). Three consequences shape this component:
+// The payload is the bare `code` (ADR 0002 in platform-docs). That keeps the
+// symbol small enough for EC level H on a sticker that gets scratched and
+// painted. The printed code is the fallback when a label will not scan.
 //
-//   Maximum error correction is affordable. A short code at EC level H (30%
-//   recovery) is a version-1 or version-2 symbol; the URL form of the same
-//   identifier needs version 6, roughly four times the modules on an
-//   identically sized sticker. A label lives on a device in a plant room and
-//   gets scratched, painted and wiped, so that headroom goes to recovery.
+// Everything printed is the organization's own data, never the operator brand.
+// The top line is the org code (its name only when it has none): a thing code
+// is unique only within its org, and the org code is immutable. The type is not
+// printed; the name already says it and the small stock has no line to spare.
 //
-//   The human-readable line is not decoration. It is the fallback for the label
-//   that will not scan — greasy, torn, or in a closet too dark to focus in —
-//   where a tech reads the code aloud or types it into the scanner's manual
-//   field. It gets equal billing.
-//
-// Everything printed is the organization's own data: its identifier on the top
-// line, then the record's code and name. The operator's brand used to take the
-// top line, and the organization was left off on a reconnaissance argument.
-// Both were reversed. A label is printed inside one organization and describes
-// that organization's record, while the brand is a deployment-wide setting that
-// says nothing true about who owns or services this particular device. And the
-// device already sits on its owner's premises, so naming the owner tells a
-// passer-by very little.
-//
-//   The top line is the organization's CODE, and its name only when it has no
-//   code. A thing code is unique only within its organization (ADR 0002), so
-//   `AHU-1` alone is ambiguous to a technician who services several customers;
-//   the org code is the globally unique half that makes the sticker
-//   unambiguous. It is also immutable, and a sticker stays on a device for
-//   years, so where there is a choice the label prints the identifier that
-//   cannot go out of date.
-//
-//   The type is deliberately NOT printed. In a real inventory the name already
-//   says what the thing is, and the small stock has no line to spare for a
-//   restatement.
-//
-// ── Sizing ───────────────────────────────────────────────────────────────────
-//
-// Everything below is in MILLIMETRES, not pixels. CSS mm maps to physical mm at
-// print, so the artwork comes off the printer at the size of the stock instead
-// of at whatever the browser happens to map 96 px/inch to. Screen preview is a
-// side effect of the same units and is close enough to judge.
-//
-// Both sizes are common plain thermal stock, and the layout reserves NO RFID
-// inlay keep-out. It used to. The band cost the 2″ × 1″ label a third of its
-// text column — 19.4 mm for brand, code and name, which wraps a 13-character
-// code — to accommodate media this platform cannot use: there is no encoder, no
-// reader, and no field on a thing to hold an EPC. A 2″ × 1″ UHF smart label
-// barely exists in any case, since a UHF dipole needs length and that stock
-// starts around 4″ × 2″; 50 mm smart labels are HF/NFC and a different reader
-// entirely. If RFID ever arrives here, it comes back measured against a real
-// inlay's datasheet rather than a conservative guess.
+// Sizing is in millimetres, which map to physical mm at print. Both sizes are
+// plain thermal stock with no RFID inlay keep-out: the platform cannot encode
+// RFID, and the band cost the small label a third of its text column.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import QRCode from 'qrcode'
 import { useAuthStore } from '@/stores/auth'
@@ -72,8 +32,7 @@ interface LabelSize {
   pad: number
   /** Square QR side. Height-bound. */
   qr: number
-  /** Point sizes — print-native units, so they survive the mm layout. The
-   *  organization line and the Site marker share orgPt. */
+  /** Point sizes (print-native). The org line and the Site marker share orgPt. */
   orgPt: number
   /** The code is sized per label to fill the column; see fitCodePt. */
   codeMinPt: number
@@ -81,18 +40,12 @@ interface LabelSize {
   namePt: number
 }
 
-// Geometry is checked rather than eyeballed: with a 4-module quiet zone, the
-// worst-case symbol among realistic codes is 33 modules across. At these QR
-// sizes that is 0.61 mm per module on the small stock and 1.21 mm on the large
-// — both above the ~0.5 mm a phone camera needs. The small QR stays at 20 mm
-// although 22 would fit the height: every millimetre it gains comes out of the
-// text column, and the module size already has headroom.
+// The worst realistic symbol is 33 modules with quiet zone: 0.61 mm per module
+// on the small stock, 1.21 mm on the large, above the ~0.5 mm a phone needs.
+// The small QR stays at 20 mm; anything more comes out of the text column.
 //
-// The type sizes are set so that the tallest stack that can occur (the
-// organization line, a code wrapped to two lines at its minimum, a two-line
-// name, the Site marker) still fits the stock's height inside its padding —
-// about 19 of 22.4 mm on the small label and 31 of 44.8 mm on the large. They
-// were 4 / 8 / 5 pt and 7 / 16 / 9 pt, which left half of each label blank.
+// Type sizes are set so the tallest possible stack (org line, a two-line code at
+// its minimum, a two-line name, the Site marker) fits inside the padding.
 const SIZES = [
   {
     key: '2x1',
@@ -131,28 +84,21 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ close: [] }>()
 
-// Every caller lists records from the active organization, so that is the one
-// the labels belong to. Read here rather than passed in: a prop would be one
-// more thing each of the four call sites could forget.
+// Every caller lists records from the active organization, so read it here
+// rather than as a prop each caller could forget.
 const authStore = useAuthStore()
 const orgLine = computed(() => authStore.currentOrg?.code || authStore.currentOrg?.name || '')
 const labels = ref<(LabelRecord & { dataUrl: string })[]>([])
 const error = ref('')
 const sizeKey = ref<string>(SIZES[0].key)
 
-// A code is optional on every record that can carry a label, so a filtered set
-// will contain some that cannot. Print the rest and name the ones left out —
-// dropping them silently means a tech walks a site with a short stack.
+// Records without a code are skipped and named; a silent drop is only found at the site.
 const skipped = computed(() => props.records.filter((r) => !r.code).map((r) => r.name || 'Untitled'))
 
 const size = computed(() => SIZES.find((s) => s.key === sizeKey.value) ?? SIZES[0])
 
-// Absolute placement inside a fixed-size box: the most predictable thing a
-// print engine can be handed.
-//
-// A 1 mm gutter is wider than it reads: the symbol carries its own 4-module
-// quiet zone INSIDE the image (see `margin` below), adding ~2.4 mm of white on
-// the small stock and ~4.8 mm on the large before any glyph starts.
+// Absolute placement in a fixed-size box is what print engines handle most
+// predictably. The 1 mm gutter adds to the quiet zone already inside the image.
 const TEXT_GAP = 1
 const textLeft = computed(() => size.value.pad + size.value.qr + TEXT_GAP)
 
@@ -166,10 +112,8 @@ const qrStyle = computed(() => ({
   height: `${size.value.qr}mm`,
 }))
 const textWidth = computed(() => size.value.w - textLeft.value - size.value.pad)
-// The block is centred on the label, so without a height limit an overlong one
-// grows both ways and pushes the organization line off the top edge. Capped, it
-// overflows downward instead: the name and Site marker are clipped first, the
-// code last. Only a code near the 63-character schema maximum gets there.
+// The block is centred, so without a cap an overlong one would push the org line
+// off the top. Capped, it clips from the bottom (name and Site marker first).
 const textStyle = computed(() => ({
   left: `${textLeft.value}mm`,
   right: `${size.value.pad}mm`,
@@ -186,13 +130,10 @@ async function render() {
         ...r,
         dataUrl: await QRCode.toDataURL(r.code, {
           errorCorrectionLevel: 'H',
-          // 4 is the quiet zone ISO/IEC 18004 requires, and the library's
-          // default. Carrying it inside the image rather than relying on
-          // surrounding white space means the clearance is guaranteed by the
-          // symbol itself, whatever the label layout does around it.
+          // The ISO/IEC 18004 quiet zone, inside the image so the layout cannot
+          // eat into it.
           margin: 4,
-          // Rendered far larger than it prints so the symbol is crisp at any
-          // DPI; the mm box below is what sets the physical size.
+          // Oversized for crispness at any DPI; the mm box sets the printed size.
           width: 1024,
           color: { dark: '#000000', light: '#ffffff' },
         }),
@@ -204,17 +145,14 @@ async function render() {
   }
 }
 
-// `records` is an array literal in the parent template, so its identity changes
-// on every parent re-render — and a detail view re-renders whenever its live
-// NATS data ticks. Watching the array would re-encode every symbol on each tick,
-// so watch the codes themselves, which change only when the set does.
+// `records` is a new array on every parent re-render (each live-data tick on a
+// detail view), so watch the codes, or every symbol is re-encoded per tick.
 const codesKey = computed(() => props.records.map((r) => r.code).join(' '))
 watch(codesKey, render)
 
-// @page cannot be expressed in a scoped style block or interpolated from a
-// template, so the page box is written imperatively and torn down with the
-// modal. Without it the browser prints the labels onto whatever paper size is
-// selected, complete with its default margins.
+// @page cannot live in a scoped style or be interpolated from a template, so the
+// per-size page box is written imperatively and removed with the modal. Without
+// it the browser prints onto the selected paper size with default margins.
 let pageStyleEl: HTMLStyleElement | null = null
 function applyPageSize() {
   if (!pageStyleEl) {
@@ -240,21 +178,16 @@ function print() {
   window.print()
 }
 
-// Escape closes these; see useEscapeKey for why the dialogs do not get it
-// from the browser and which ones are deliberately left out.
-// Mounted only while open, so the open state is simply "yes".
+// Mounted only while open, so the open state is always true.
 useEscapeKey(() => true, () => emit('close'))
 </script>
 
 <template>
   <!--
-    Teleported to <body> so that the rest of the application is a SIBLING of this
-    dialog rather than an ancestor. That is what lets the print rules below drop
-    it with display:none. The single-label version could only use
-    visibility:hidden — a hidden element still occupies its box — so its one
-    label had to be yanked to the page origin with position:absolute. Absolute
-    boxes do not fragment across pages predictably, and paginating is the whole
-    point of printing more than one.
+    Teleported to <body> so the rest of the app is a sibling, not an ancestor,
+    and the print rules can drop it with display:none. visibility:hidden would
+    keep its box, forcing the labels to position:absolute, which does not
+    paginate predictably.
   -->
   <Teleport to="body">
     <dialog class="modal modal-open qr-label-dialog">
@@ -296,10 +229,7 @@ useEscapeKey(() => true, () => emit('close'))
           </div>
         </div>
 
-        <!--
-          Colours are pinned rather than themed: this goes onto white stock, so a
-          dark-theme label would print as a black rectangle.
-        -->
+        <!-- Colours pinned, not themed: a dark-theme label would print black. -->
         <div v-if="labels.length" class="qr-label-pages flex flex-col items-start gap-2 overflow-auto max-h-[60vh]">
           <div
             v-for="l in labels"
@@ -310,21 +240,15 @@ useEscapeKey(() => true, () => emit('close'))
             <img :src="l.dataUrl" alt="" class="absolute top-1/2 -translate-y-1/2" :style="qrStyle" />
 
             <div class="absolute top-1/2 -translate-y-1/2 overflow-hidden" :style="textStyle">
-              <!-- Not uppercased, unlike the Site marker: org codes are lowercase
-                   by their pattern, and this is an identifier someone may type. -->
+              <!-- Not uppercased: org codes are lowercase and may be typed. -->
               <div v-if="orgLine" class="qr-label-org font-semibold leading-none truncate"
                    :style="{ fontSize: `${size.orgPt}pt` }">{{ orgLine }}</div>
-              <!-- break-words, not break-all: a code too long for one line at its
-                   minimum size wraps at a hyphen ("…SUPPLY-FAN-" / "03") and
-                   splits mid-token only when a single segment will not fit. -->
+              <!-- break-words, not break-all: wrap at hyphens, mid-token only if forced. -->
               <div class="qr-label-code font-mono font-bold leading-tight break-words"
                    :style="{ fontSize: `${codePt(l.code)}pt`, marginTop: '0.6mm' }">{{ l.code }}</div>
               <div class="leading-tight break-words line-clamp-2"
                    :style="{ fontSize: `${size.namePt}pt`, marginTop: '0.3mm' }">{{ l.name }}</div>
-              <!--
-                Things dominate an inventory, so only the rarer kind is marked —
-                an unmarked label reads as a device, which is the common case.
-              -->
+              <!-- Only the rarer kind is marked; unmarked reads as a device. -->
               <div v-if="l.kind === 'location'" class="uppercase tracking-wide leading-none"
                    :style="{ fontSize: `${size.orgPt}pt`, marginTop: '0.4mm' }">Site</div>
             </div>
@@ -344,21 +268,19 @@ useEscapeKey(() => true, () => emit('close'))
 </template>
 
 <!--
-  Deliberately NOT scoped. The print rules have to reach past this component to
-  drop the rest of the application, which a scoped attribute selector cannot do.
-  They are inert until this modal mounts, and it only mounts while it is open.
-  The @page box itself is written from script — see applyPageSize.
+  Deliberately not scoped: the print rules must reach past this component to
+  drop the rest of the app. They apply only while the modal is mounted (open).
+  The @page box is written from script; see applyPageSize.
 -->
 <style>
 @media print {
-  /* The dialog is teleported to <body>, so the app is a sibling and can be
-     removed from the layout outright rather than merely made invisible. */
+  /* Teleported, so the app is a sibling and can be removed outright. */
   body > *:not(.qr-label-dialog) {
     display: none !important;
   }
 
-  /* Strip the modal to a plain block, so each label is an ordinary in-flow child
-     of the page — the one pagination case every print engine agrees on. */
+  /* Strip the modal to plain blocks so each label is an in-flow child of the
+     page, the one pagination case every print engine agrees on. */
   .qr-label-dialog,
   .qr-label-dialog .modal-box,
   .qr-label-pages {
@@ -377,12 +299,11 @@ useEscapeKey(() => true, () => emit('close'))
     box-shadow: none !important;
   }
 
-  /* Controls, headings and the skipped-records notice are not artwork. */
   .qr-print-hide {
     display: none !important;
   }
 
-  /* The stock IS the page, so no offset, no border, and one label per sheet. */
+  /* The stock is the page: one label per sheet. */
   .qr-label-page {
     margin: 0 !important;
     border: none !important;

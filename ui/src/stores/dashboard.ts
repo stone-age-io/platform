@@ -1,4 +1,3 @@
-// ui/src/stores/dashboard.ts
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { useNatsStore } from './nats'
@@ -19,7 +18,6 @@ interface DashboardExportFile {
 export const useDashboardStore = defineStore('dashboard', () => {
   const natsStore = useNatsStore()
 
-  // State
   const localDashboards = ref<Dashboard[]>([])
   const remoteKeys = ref<string[]>([])
   const activeDashboard = ref<Dashboard | null>(null)
@@ -31,7 +29,6 @@ export const useDashboardStore = defineStore('dashboard', () => {
   const startupDashboard = ref<{ id: string, storage: StorageType } | null>(null)
   const lastSelectedDashboard = ref<{ id: string, storage: StorageType } | null>(null)
   
-  // UI State
   const storageError = ref<string | null>(null)
   const isDirty = ref(false)
   const remoteChanged = ref(false)
@@ -43,7 +40,6 @@ export const useDashboardStore = defineStore('dashboard', () => {
   let activeWatcher: any = null
   let hasInitializedOnce = false
 
-  // Computed
   const activeDashboardId = computed(() => activeDashboard.value?.id || null)
   const activeWidgets = computed<WidgetConfig[]>(() => activeDashboard.value?.widgets || [])
   const isLocked = computed(() => activeDashboard.value?.isLocked ?? false)
@@ -63,7 +59,6 @@ export const useDashboardStore = defineStore('dashboard', () => {
     return Array.from(folders).sort()
   })
 
-  // Helpers
   function detectStorageErrorType(error: any): StorageErrorType {
     if (!error) return 'unknown'
     const errorString = error.toString().toLowerCase()
@@ -84,11 +79,8 @@ export const useDashboardStore = defineStore('dashboard', () => {
   function clearStorageError() { storageError.value = null }
 
   // Lock Management
-  // Locking is whether you are editing right now, not a change to the layout,
-  // so it does not mark a shared dashboard dirty. It used to: unlocking to look
-  // around put "Save" up with nothing changed, and saving then pushed your lock
-  // state to everyone. A local dashboard still keeps it on this device; a
-  // shared one carries it with the next real save.
+  // Locking is an editing mode, not a layout change, so it never marks a shared
+  // dashboard dirty; a shared one carries the lock state with the next real save.
   function toggleLock() {
     setLocked(!isLocked.value)
   }
@@ -174,11 +166,9 @@ export const useDashboardStore = defineStore('dashboard', () => {
 
         let dashboardToLoad: Dashboard | undefined
 
-        // On initial app load: the pinned startup dashboard, else the one open
-        // last time. A phone home-screen icon or a wall screen should reopen
-        // where it was; falling through to the first local dashboard also
-        // overwrote lastSelected, so a shared one was never reopened at all.
-        // On navigation back: lastSelectedDashboard, to restore previous state.
+        // Initial load: the pinned startup dashboard, else the one open last
+        // time (a wall screen should reopen where it was). Navigating back:
+        // lastSelectedDashboard.
         const targetDashboard = isInitialLoad
           ? (startupDashboard.value ?? lastSelectedDashboard.value)
           : lastSelectedDashboard.value
@@ -189,13 +179,11 @@ export const useDashboardStore = defineStore('dashboard', () => {
         if (targetDashboard?.storage === 'local') {
           dashboardToLoad = localDashboards.value.find(d => d.id === targetDashboard.id)
         } else if (targetDashboard?.storage === 'kv' && enableSharedDashboards.value) {
-          // Remote dashboard will be loaded after NATS connects (handled by watcher)
-          // Don't load a local dashboard if user was viewing a remote one
+          // The NATS-connect watcher opens it; load no local dashboard meanwhile.
         }
 
         // Fall back to activeDashboardId or the first dashboard unless the
-        // watcher is about to open a shared one. A target that no longer
-        // exists, or a shared one with sharing off, used to leave nothing open.
+        // watcher is about to open a shared one.
         const awaitingShared = targetDashboard?.storage === 'kv' && enableSharedDashboards.value
         if (!dashboardToLoad && !awaitingShared) {
           if (parsed.activeDashboardId) {
@@ -468,9 +456,8 @@ export const useDashboardStore = defineStore('dashboard', () => {
     })()
   }
 
-  // On an organization switch. A KV dashboard lives in the bucket of the org
-  // being left, so keeping it on screen would draw one tenant's layout over the
-  // other's bus. Fall back to a local dashboard, which are device-wide.
+  // On an organization switch: a KV dashboard belongs to the org being left, so
+  // fall back to a local (device-wide) one.
   function leaveRemoteDashboard() {
     remoteKeys.value = []
     if (activeDashboard.value?.storage !== 'kv') return
@@ -491,7 +478,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
     isDirty.value = false
     remoteChanged.value = false
 
-    // Track last selected dashboard for navigation restoration
+    // Remembered so navigating back reopens it.
     const idOrKey = dashboard.storage === 'kv' ? dashboard.kvKey : dashboard.id
     if (idOrKey) {
       lastSelectedDashboard.value = { id: idOrKey, storage: dashboard.storage || 'local' }
@@ -736,8 +723,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
     if (connected) {
       if (enableSharedDashboards.value) refreshRemoteKeys()
 
-      // Load remote dashboard if the last selected (or startup) was a KV dashboard
-      // Prioritize lastSelected to restore navigation state, fallback to startup for initial load
+      // Open a shared dashboard if lastSelected (else startup) is one.
       const kvDashboardToLoad = lastSelectedDashboard.value?.storage === 'kv'
         ? lastSelectedDashboard.value
         : startupDashboard.value?.storage === 'kv'

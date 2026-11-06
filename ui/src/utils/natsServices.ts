@@ -1,11 +1,7 @@
-// ui/src/utils/natsServices.ts
-//
-// NATS micro service discovery (ADR-32): every service subscribes to
-// `$SRV.INFO` and `$SRV.STATS`, and to `$SRV.INFO.<name>` for its own name, so
-// one request to each, collecting every reply that arrives, lists what is
-// running in this account right now. Nothing is stored. The edge agent
-// registers as `stone-agent`, which is what makes this a list of live sites as
-// well as of services.
+// NATS micro service discovery (ADR-32): one request to `$SRV.INFO` and
+// `$SRV.STATS`, collecting every reply, lists what is running in this account
+// now. Nothing is stored. The edge agent registers as `stone-agent`, so this
+// also lists live sites.
 
 import { NoRespondersError, PermissionViolationError } from '@nats-io/nats-core'
 import type { NatsConnection } from '@nats-io/nats-core'
@@ -39,9 +35,8 @@ const count = (n: unknown): number => (typeof n === 'number' ? n : 0)
 
 /**
  * Join INFO and STATS replies on instance id, and each endpoint on its name.
- * INFO is the list; a STATS reply with no INFO beside it is dropped rather than
- * shown half-empty, since the two travel the same path and missing one is the
- * stall timer cutting it short.
+ * INFO is the list; a STATS reply without a matching INFO (cut off by the stall
+ * timer) is dropped.
  */
 export function mergeServiceReplies(infos: any[], stats: any[]): ServiceInstance[] {
   const statsById = new Map(stats.filter(s => s?.id).map(s => [s.id, s]))
@@ -111,25 +106,21 @@ export function metadataKeys(instances: ServiceInstance[]): string[] {
 }
 
 /**
- * A version short enough for a column. A Go pseudo-version
- * (`0.1.1-0.20261013022711-733be73d0e58`) is a base version, a timestamp and a
- * commit; the timestamp is what wrapped it onto five lines, and the base and a
- * short commit are what anyone compares. Anything else is returned as is.
+ * A Go pseudo-version (`0.1.1-0.20261013022711-733be73d0e58`) shortened to its
+ * base version and a short commit. Anything else is returned as is.
  */
 export function shortVersion(v: string): string {
   const m = /^v?(\d+\.\d+\.\d+)-(?:0\.)?\d{14}-([0-9a-f]{12})(\+.*)?$/.exec(v)
   return m ? `${m[1]} · ${m[2].slice(0, 7)}${m[3] ?? ''}` : v
 }
 
-/** Every service in the account. */
 export async function discoverServices(nc: NatsConnection): Promise<ServiceInstance[]> {
   const [infos, stats] = await Promise.all([collect(nc, '$SRV.INFO'), collect(nc, '$SRV.STATS')])
   return mergeServiceReplies(infos, stats)
 }
 
-/** The instances of one service, asked of that service alone. The name comes
-    from the URL, so anything a micro service cannot be called (a dot, a
-    wildcard) is answered with nothing rather than put into a subject. */
+/** The instances of one service. The name comes from the URL, so one with a
+    dot or wildcard returns nothing rather than going into a subject. */
 export async function discoverService(nc: NatsConnection, name: string): Promise<ServiceInstance[]> {
   if (!/^[A-Za-z0-9_-]+$/.test(name)) return []
   const [infos, stats] = await Promise.all([collect(nc, `$SRV.INFO.${name}`), collect(nc, `$SRV.STATS.${name}`)])

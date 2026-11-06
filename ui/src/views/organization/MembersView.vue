@@ -12,10 +12,9 @@ import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 import ListPager from '@/components/ui/ListPager.vue'
 import UserAvatar from '@/components/common/UserAvatar.vue'
 
-const router = useRouter() // Added
+const router = useRouter()
 const authStore = useAuthStore()
 
-// Pagination for members list
 const {
   items: members,
   page,
@@ -28,10 +27,7 @@ const {
   prevPage,
 } = usePagination<Membership>('memberships', 20)
 
-// Search
-// Search runs on the SERVER. The client-side pass this replaces filtered the
-// twenty records already on screen, so a match on page three answered "No
-// results found" -- which is not the same claim at all.
+// Server-side, so a match beyond the current page is found.
 const { searchQuery, filter: searchFilter } = useServerSearch(
   ['user.name', 'user.email', 'role'],
   () => {
@@ -40,20 +36,11 @@ const { searchQuery, filter: searchFilter } = useServerSearch(
   },
 )
 
-// The active sort, in PocketBase's own syntax ('name', '-created'). It rides in
-// queryOptions rather than being passed at the call site, for the same reason the
-// filter does: the pager buttons reuse that object, and a sort that is not in it
-// is a sort that page two forgets.
 const sort = ref('role,-created')
 
-// One options object, passed to EVERY call into usePagination, the pager
-// buttons included -- passing only expand/sort there drops the filter and page
-// two comes back unfiltered.
-//
-// The organization clause is ANDed with the search rather than replaced by it.
-// A platform operator reaches this view too, and their memberships listRule
-// spans organizations, so dropping the clause would let another tenant's
-// members appear in a search result here.
+// Pass this to every usePagination call, the pager included, or page two
+// loses the filter and sort. The org clause is ANDed, never replaced: an
+// operator's memberships listRule spans organizations.
 const queryOptions = computed(() => {
   const org = `organization = "${authStore.currentOrgId}"`
   return {
@@ -65,7 +52,7 @@ const queryOptions = computed(() => {
 
 function onSort(next: string) {
   sort.value = next
-  page.value = 1 // a new order makes the old page number meaningless
+  page.value = 1
   loadMembers()
 }
 
@@ -99,7 +86,6 @@ async function loadMembers() {
   await load(queryOptions.value)
 }
 
-// Navigate to Detail View
 function handleRowClick(member: Membership) {
   router.push(`/organization/members/${member.id}`)
 }
@@ -193,7 +179,6 @@ onMounted(() => {
         :clickable="true"
         @row-click="handleRowClick"
       >
-        <!-- Custom cell for name -->
         <template #cell-expand.user.name="{ item }">
           <div class="flex items-center gap-3">
             <UserAvatar :user="item.expand?.user" :size="40" />
@@ -208,7 +193,6 @@ onMounted(() => {
           </div>
         </template>
         
-        <!-- Custom mobile card for name -->
         <template #card-expand.user.name="{ item }">
           <div class="flex items-center gap-3">
             <UserAvatar :user="item.expand?.user" :size="48" />
@@ -223,12 +207,10 @@ onMounted(() => {
           </div>
         </template>
         
-        <!-- Custom cell for email -->
         <template #cell-expand.user.email="{ item }">
           <span class="text-base-content/70 text-sm">{{ item.expand?.user?.email }}</span>
         </template>
         
-        <!-- Custom cell for role -->
         <template #cell-role="{ item }">
           <span 
             class="badge badge-sm"
@@ -238,7 +220,6 @@ onMounted(() => {
           </span>
         </template>
         
-        <!-- Actions -->
         <template #actions="{ item }">
           <button 
             @click.stop="handleRowClick(item)"
@@ -249,7 +230,6 @@ onMounted(() => {
         </template>
       </ResponsiveList>
       
-      <!-- Pagination -->
       <ListPager
         :page="page"
         :total-pages="totalPages"

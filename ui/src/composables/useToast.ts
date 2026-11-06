@@ -1,8 +1,5 @@
 import { ref } from 'vue'
 
-/**
- * Toast notification interface
- */
 interface Toast {
   id: number
   message: string
@@ -10,25 +7,11 @@ interface Toast {
   duration: number
 }
 
-// Global state - shared across all instances of useToast
+// Module-level, so a toast outlives the component that raised it. App.vue renders them.
 const toasts = ref<Toast[]>([])
 let toastId = 0
 
-/**
- * Toast Composable
- * 
- * Simple toast notification system.
- * Uses a global array so toasts persist across component unmounts.
- * 
- * Usage:
- *   const toast = useToast()
- *   toast.success('Saved!')
- *   toast.error('Failed to save')
- */
 export function useToast() {
-  /**
-   * Show a toast notification
-   */
   function show(
     message: string, 
     type: Toast['type'] = 'info', 
@@ -36,16 +19,12 @@ export function useToast() {
   ) {
     const id = toastId++
     toasts.value.push({ id, message, type, duration })
-    
-    // Auto-remove after duration
+
     setTimeout(() => {
       remove(id)
     }, duration)
   }
   
-  /**
-   * Remove a toast by ID
-   */
   function remove(id: number) {
     const index = toasts.value.findIndex(t => t.id === id)
     if (index > -1) {
@@ -53,14 +32,11 @@ export function useToast() {
     }
   }
   
-  /**
-   * Clear all toasts
-   */
   function clear() {
     toasts.value = []
   }
   
-  // Convenience methods with type-appropriate default durations
+  // Errors stay longest.
   const success = (msg: string, duration?: number) => show(msg, 'success', duration ?? 3000)
   const error = (msg: string, duration?: number) => show(msg, 'error', duration ?? 5000)
   const info = (msg: string, duration?: number) => show(msg, 'info', duration ?? 3000)

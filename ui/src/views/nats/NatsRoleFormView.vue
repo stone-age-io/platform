@@ -43,20 +43,12 @@ const formData = ref({
   max_payload: '-1',
 })
 
-/**
- * Grug helper: UI needs string for textarea, API wants Array.
- * This takes the JSON field (Array) and makes it a comma-separated string.
- */
 function formatForInput(val: any): string {
   if (!val) return ''
   if (Array.isArray(val)) return val.join(', ')
   return String(val)
 }
 
-/**
- * Grug helper: API wants Array, UI gives string.
- * This cleans up the comma-separated input into a clean Array.
- */
 function formatForApi(val: string): string[] {
   if (!val) return []
   return val.split(',')
@@ -73,7 +65,6 @@ async function loadRole() {
       name: role.name,
       description: role.description || '',
       is_default: role.is_default || false,
-      // Map JSON arrays to strings for the UI
       publish_permissions: formatForInput(role.publish_permissions),
       publish_deny_permissions: formatForInput(role.publish_deny_permissions),
       subscribe_permissions: formatForInput(role.subscribe_permissions),
@@ -100,7 +91,6 @@ async function handleSubmit() {
       name: formData.value.name,
       description: formData.value.description || null,
       is_default: formData.value.is_default,
-      // Send clean arrays to the API
       publish_permissions: formatForApi(formData.value.publish_permissions),
       publish_deny_permissions: formatForApi(formData.value.publish_deny_permissions),
       subscribe_permissions: formatForApi(formData.value.subscribe_permissions),
@@ -148,7 +138,6 @@ onMounted(() => { if (isEdit.value) loadRole() })
 </script>
 
 <template>
-  <!-- Template remains the same as previous version -->
   <div class="space-y-6">
     <div v-if="!embedded">
       <div class="breadcrumbs text-sm">
@@ -200,9 +189,7 @@ onMounted(() => { if (isEdit.value) loadRole() })
                 <label class="label"><span class="label-text">Max Payload (bytes)</span></label>
                 <input v-model="formData.max_payload" type="number" class="input input-bordered font-mono" />
               </div>
-              <!-- These go into every user JWT signed from the role, where 0
-                   means none: a credential with 0 subscriptions is disconnected
-                   as soon as it connects. The server refuses 0 (hooks/nats_limits.go). -->
+              <!-- In a user JWT 0 means none, so the server refuses it (hooks/nats_limits.go). -->
               <p class="text-[10px] text-base-content/50 italic px-1">
                 -1 = no per-user limit (the account limit still applies). 0 is not allowed:
                 NATS reads it as none. To stop a role publishing or subscribing, leave that Allow list empty.
@@ -214,10 +201,7 @@ onMounted(() => { if (isEdit.value) loadRole() })
         <div class="space-y-6">
           <BaseCard title="Permissions">
             <div class="space-y-6">
-              <!-- An empty allow list is a hard deny in that direction, since
-                   pb-nats v0.3.0. It used to sign `>` -- everything in the
-                   account -- and this form gave no hint either way, while the
-                   subscribe placeholder read `>` and looked like the default. -->
+              <!-- An empty allow list grants nothing (pb-nats v0.3.0+); full access is an explicit `>`. -->
               <p class="text-xs text-base-content/70">
                 An empty <strong>Allow</strong> list grants <strong>nothing</strong> in
                 that direction. Enter <code>&gt;</code> to allow everything in the

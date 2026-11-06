@@ -7,14 +7,9 @@ const uiStore = useUIStore()
 </script>
 
 <template>
-  <!-- 
-    Sticky Header for Mobile
-    lg:hidden: Hides on desktop
-    sticky top-0 z-30: Keeps header fixed while scrolling
-  -->
+  <!-- Mobile only (lg:hidden), sticky while scrolling. -->
   <header class="navbar bg-base-100 border-b border-base-300 min-h-[3rem] py-0 lg:hidden sticky top-0 z-30">
     
-    <!-- Left: Sidebar Toggle -->
     <div class="flex-none">
       <label for="sidebar-drawer" class="btn btn-square btn-ghost" aria-label="Open navigation menu">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-6 h-6 stroke-current">
@@ -23,7 +18,6 @@ const uiStore = useUIStore()
       </label>
     </div>
     
-    <!-- Center: Logo -->
     <div class="flex-1 flex justify-center">
       <router-link to="/" class="btn btn-ghost btn-circle p-1">
         <span class="text-primary">
@@ -32,7 +26,6 @@ const uiStore = useUIStore()
       </router-link>
     </div>
 
-    <!-- Right: Theme Toggle -->
     <div class="flex-none">
       <button
         class="btn btn-square btn-ghost"

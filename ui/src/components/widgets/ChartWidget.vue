@@ -1,4 +1,3 @@
-<!-- ui/src/components/widgets/ChartWidget.vue -->
 <template>
   <div class="chart-widget" :class="{ 'card-layout': layoutMode === 'card' }">
     <template v-if="hasData">
@@ -7,9 +6,8 @@
         :autoresize="true"
         class="chart"
       />
-      <!-- The buffer size caps memory even with a time window. When the cap is
-           what bounds the chart, say so: otherwise a "last hour" chart quietly
-           shows the last ten minutes. -->
+      <!-- When the buffer cap, not the time window, is what bounds the chart, say
+           so: otherwise a "last hour" chart quietly shows the last ten minutes. -->
       <div v-if="bufferFull" class="buffer-hint">
         buffer full: showing last {{ buffer.length }} messages
       </div>
@@ -80,7 +78,7 @@ const PALETTE_SIZE = 8 // CHART_SERIES in useDesignTokens
 const buffer = computed(() => dataStore.getBuffer(props.config.id))
 const hasData = computed(() => buffer.value.length > 0)
 
-// pie and gauge were removed; anything unrecognised draws as line.
+// Anything unrecognised (including the removed pie and gauge) draws as line.
 const chartType = computed(() => {
   const t = props.config.chartConfig?.chartType
   return t === 'bar' || t === 'timeline' ? t : 'line'
@@ -95,8 +93,7 @@ const seriesList = computed<(ChartSeries | null)[]>(() => {
 })
 
 // --- Clock ---
-// With a window the axis must keep sliding while no messages arrive, or an
-// idle chart freezes on the last moment anything happened. A timeline needs it
+// Keeps a windowed axis sliding while no messages arrive. A timeline needs it
 // regardless: its last segment runs to "now".
 const now = ref(Date.now())
 let timer: number | undefined
@@ -158,7 +155,7 @@ function xyOption() {
       symbolSize: 6,
       showSymbol: data.length <= 50,
       lineStyle: { color, width: 2 },
-      // Grug say: Explicitly tell chart to keep line visible on hover
+      // Keep the line visible on hover.
       emphasis: { disabled: false, lineStyle: { width: 2, color }, itemStyle: { color } },
     }
   })

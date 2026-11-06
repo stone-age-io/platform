@@ -3,30 +3,10 @@ import { watchDebounced } from '@vueuse/core'
 import { pb } from '@/utils/pb'
 
 /**
- * Server-side search for a paginated list view.
- *
- * Every list view in this console used to filter `items.value` — the twenty
- * records already on screen — which makes a search box that quietly lies. Type a
- * name that lives on page three and you get "No results found", which is not
- * "not on this page" but reads exactly like it. Some views admitted it in small
- * grey text under the input; most did not, and the ones that did still put the
- * disclaimer where nobody looks after a zero-result answer.
- *
- * So the filter goes to the server. Three things have to be true for that to
- * work, and getting any one of them wrong is what made the client-side version
- * tempting in the first place:
- *
- *  1. The query is debounced, because every keystroke is now a request.
- *  2. Typing resets to page one. Staying on page three of the previous result
- *     set shows an empty list for a query that matches plenty.
- *  3. The SAME filter has to reach every call into usePagination, the pager
- *     buttons included — pass only `expand` to nextPage() and page two silently
- *     drops the filter.
- *
- * (1) and (2) are handled here. (3) is why views build one `queryOptions`
- * computed and pass it everywhere, rather than writing the options out per call.
- *
- * Usage:
+ * Server-side search for a paginated list view (never filter only the page on
+ * screen). The query is debounced. `onSearch` must reset to page one, and the
+ * same filter must reach every usePagination call, pager buttons included, so
+ * views build one `queryOptions` computed and pass it everywhere:
  *
  *   const { searchQuery, filter } = useServerSearch(
  *     ['name', 'description', 'code'],
@@ -34,23 +14,11 @@ import { pb } from '@/utils/pb'
  *   )
  *   const queryOptions = computed(() => ({ filter: filter.value, expand: 'type' }))
  *
- * Field names may reach through relations (`type.name`, `user.email`) and may
- * name a json column (`metadata`), which PocketBase matches as text — so one `~`
- * covers both its keys and its values without knowing any schema.
+ * Fields may go through relations (`type.name`) or name a json column
+ * (`metadata`), which PocketBase matches as text.
  *
- * **The input's placeholder names every field in this list, and nothing else.**
- * It is the only place the console says what a search covers, so a field
- * missing from it is a capability nobody finds: five views searched
- * `description` without saying so, and that bit hardest on the lists that draw
- * a description under the name — the row is there to explain why it matched,
- * but only for someone who guessed they could type it. A field named and NOT
- * searched is the worse half of the same bug, and one shipped: MembersView
- * listed `organization.name` beside a query already hard-scoped to the current
- * organization, so typing your own organization's name matched every row and
- * returned the whole list dressed as a result.
- *
- * Phrase it `Search by a, b, or c...` and leave the noun out — the <h1> two
- * lines above already says what you are looking at.
+ * The input's placeholder names exactly these fields, no more and no fewer:
+ * `Search by a, b, or c...`, without a noun.
  */
 export function useServerSearch(fields: string[], onSearch: () => void, debounce = 300) {
   const searchQuery = ref('')
@@ -59,10 +27,8 @@ export function useServerSearch(fields: string[], onSearch: () => void, debounce
     const q = searchQuery.value.trim()
     if (!q) return undefined
 
-    // The field names are developer-supplied constants and are interpolated
-    // directly; the user's query is bound by pb.filter, which escapes it. Never
-    // build the value side of a filter by hand — a quote in a search box would
-    // otherwise be a filter-injection bug.
+    // Field names are developer constants; the user's query must go through
+    // pb.filter's binding, never by hand, or it is a filter-injection bug.
     const expr = fields.map(f => `${f} ~ {:q}`).join(' || ')
     return pb.filter(expr, { q })
   })

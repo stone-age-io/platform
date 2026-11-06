@@ -1,7 +1,5 @@
-<!-- ui/src/components/dashboard/VariableBar.vue -->
 <template>
   <div class="variable-bar">
-    <!-- Case A: Has Variables -->
     <div v-if="hasVariables" class="variables-list">
       <div 
         v-for="variable in variables" 
@@ -10,7 +8,6 @@
       >
         <label class="variable-label">{{ variable.label }}</label>
         
-        <!-- Select Input -->
         <select 
           v-if="variable.type === 'select'"
           :value="currentValues[variable.name]"
@@ -22,7 +19,6 @@
           </option>
         </select>
         
-        <!-- Text Input -->
         <input 
           v-else
           :value="currentValues[variable.name]"
@@ -33,7 +29,6 @@
       </div>
     </div>
     
-    <!-- Case B: Empty State -->
     <div v-else class="empty-state">
       <span class="empty-text">No variables defined</span>
       <button v-if="!dashboardStore.isLocked" class="add-variable-btn" @click="$emit('edit')">
@@ -41,9 +36,8 @@
       </button>
     </div>
     
-    <!-- Choosing a value is viewing, so it works locked; it is never saved.
-         Adding or editing a variable changes the dashboard, so it waits for
-         an unlock like every other edit. -->
+    <!-- Choosing a value is viewing: it works locked and is never saved. Adding
+         or editing a variable is an edit, so it needs an unlock. -->
     <div class="bar-actions">
       <button v-if="hasVariables && !dashboardStore.isLocked" class="action-btn" @click="$emit('edit')" title="Edit Variables" aria-label="Edit variables">
         <Pencil :size="14" aria-hidden="true" />
@@ -185,7 +179,6 @@ function handleTextInput(name: string, value: string) {
   background: var(--color-info-bg);
 }
 
-/* Mobile Optimization */
 @media (max-width: 600px) {
   .variable-bar {
     padding: 12px;
@@ -228,7 +221,6 @@ function handleTextInput(name: string, value: string) {
     /* Move to top of flex container */
     order: -1;
     
-    /* Visual Tweaks */
     padding-bottom: 4px;
     margin-bottom: 4px;
     border-bottom: 1px solid var(--border);

@@ -1,8 +1,6 @@
-// Subject template resolver. There is no Go counterpart — this file is the only
-// implementation. (It claimed to mirror internal/subjectresolver/resolver.go for
-// as long as it existed; that package has never been written, so "keep the two in
-// sync" was an instruction nobody could follow.) The contract it implements is
-// documented in platform-docs: docs/thing-types.md and docs/connectivity.md.
+// Subject template resolver. The only implementation (there is no Go
+// counterpart). The contract is documented in platform-docs:
+// docs/thing-types.md and docs/connectivity.md.
 
 export const VAR_ORG = '{org}'
 export const VAR_LOCATION = '{location}'
@@ -11,20 +9,13 @@ export const VAR_THING_TYPE_CODE = '{thing_type_code}'
 
 // Family-first, and location-free (ADR 0003 in platform-docs).
 //
-// Family-first so that ONE JetStream stream can bind `sensor.>` and capture
-// every sensor. It also has to lead with a literal token: a wildcard-leading
-// subject filter intersects every literal-rooted one, and JetStream refuses to
-// create two streams whose filters overlap, so no two thing types could ever own
-// a stream apiece.
+// Family-first so one JetStream stream can bind `sensor.>`. It must lead with a
+// literal token: a wildcard-leading filter overlaps every other, and JetStream
+// refuses overlapping streams.
 //
-// No `{location}`, because things move. The subject is resolved from a Thing's
-// CURRENT location, so a relocated camera would start publishing under new
-// subjects, its history split across two sites and its NATS permissions aimed at
-// the old one. Uniqueness never needed the location: a Thing code is unique in
-// its organization, and the organization is the NATS account. `{location}` stays
-// a supported variable for a Thing Type that opts in with an explicit prefix
-// (fixed equipment such as a freezer bank), and resolveRolePattern below still
-// wildcards it when no location is supplied.
+// No `{location}`, because things move and the subject would move with them.
+// A Thing code is already unique in its org, which is the NATS account. A Thing
+// Type can still opt into `{location}` with an explicit prefix.
 export const DEFAULT_PREFIX = `${VAR_THING_TYPE_CODE}.${VAR_THING}`
 
 export interface ThingContext {
@@ -61,10 +52,8 @@ export function resolveThing(tmpl: string, ctx: ThingContext): string {
   return applyReplacements(tmpl, pairs)
 }
 
-// A variable token still present after resolution. On a Thing's own page this
-// means a context value was missing (no location for a `{location}` prefix, an
-// organization without a code) and the subject shown is not one the device can
-// actually use. On the type form, where no Thing exists, it is expected.
+// A variable token left after resolution. On a Thing's page it means a context
+// value was missing and the subject is unusable; on the type form it is expected.
 const UNRESOLVED = /\{(org|location|thing|thing_type_code)\}/
 
 export function hasUnresolved(subject: string): boolean {
@@ -84,22 +73,19 @@ export interface OperationSubject {
   capability: string
   subject: string
   /**
-   * The two halves of `subject`, resolved: the type's prefix, shared by every
-   * operation of the type, and this operation's own suffix ('' when it has
-   * none). `subject` is exactly `prefix + '.' + suffix`, or `prefix` alone, so
-   * a view can draw the shared half quietly without re-parsing the string.
+   * The resolved halves of `subject`: the type's shared prefix and this
+   * operation's suffix ('' if none). `subject` is exactly `prefix.suffix`, or
+   * `prefix` alone.
    */
   prefix: string
   suffix: string
 }
 
-// Speaking order: what the device sends, then what it answers. Anything not
-// listed (a capability added later) sorts last rather than disappearing.
+// What the device sends, then what it answers. Unlisted capabilities sort last.
 const CAPABILITY_ORDER = ['publish', 'request', 'subscribe', 'reply']
 
-// Every operation of a type as the full subject it resolves to for `ctx` —
-// the list a Thing page and the type form both show, so the two cannot
-// disagree about what a device speaks on.
+// Every operation of a type with its resolved subject. Shared by the Thing page
+// and the type form so they agree.
 export function resolveOperationSubjects(
   prefix: string | undefined | null,
   operations: OperationLike[],
@@ -109,9 +95,8 @@ export function resolveOperationSubjects(
     const i = CAPABILITY_ORDER.indexOf(c)
     return i === -1 ? CAPABILITY_ORDER.length : i
   }
-  // Resolving the halves separately gives the same string as resolving the
-  // joined template: every variable is a whole token and `.` never sits inside
-  // one, so no substitution can span the join.
+  // Resolving the halves separately is safe: no variable contains a `.`, so
+  // no substitution can span the join.
   const head = resolveThing(join(prefix, ''), ctx)
   return [...operations]
     .sort((a, b) => rank(a.capability) - rank(b.capability) || a.name.localeCompare(b.name))

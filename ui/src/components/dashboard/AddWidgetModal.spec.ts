@@ -6,16 +6,8 @@ import AddWidgetModal from './AddWidgetModal.vue'
 import { WIDGETS, WIDGET_CATEGORIES } from './widgets'
 import { WIDGET_TYPES } from '@/types/dashboard'
 
-// The palette used to be sixteen hand-written <button> blocks; it is now a loop
-// over WIDGETS. Most of what that object says is compile-checked —
-// `Record<WidgetType, …>` refuses a missing type, and `category` must be one of
-// WIDGET_CATEGORIES — but nothing checks that the loop puts them on screen, and
-// a widget absent from this modal cannot be added to a dashboard at all. That
-// is the one failure here with no partial version: the widget simply does not
-// exist as far as anyone using the console is concerned.
-//
-// This is the only component test outside the two form views, and it is here
-// because the component was rewritten, not to chase coverage.
+// A widget missing from this palette cannot be added at all. The types catch a
+// missing WIDGETS entry; this checks that the loop puts every one on screen.
 
 const open = (props: Record<string, unknown> = {}) =>
   mount(AddWidgetModal, {

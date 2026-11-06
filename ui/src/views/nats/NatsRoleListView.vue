@@ -13,7 +13,6 @@ import ListPager from '@/components/ui/ListPager.vue'
 
 const router = useRouter()
 
-// Pagination
 const {
   items: roles,
   page,
@@ -26,10 +25,7 @@ const {
   prevPage,
 } = usePagination<NatsRole>('nats_roles', 20)
 
-// Search query
-// Search runs on the SERVER. The client-side pass this replaces filtered the
-// twenty records already on screen, so a match on page three answered "No
-// results found" -- which is not the same claim at all.
+// Server-side, so a match beyond the current page is found.
 const { searchQuery, filter: searchFilter } = useServerSearch(
   ['name', 'description'],
   () => {
@@ -38,15 +34,10 @@ const { searchQuery, filter: searchFilter } = useServerSearch(
   },
 )
 
-// The active sort, in PocketBase's own syntax ('name', '-created'). It rides in
-// queryOptions rather than being passed at the call site, for the same reason the
-// filter does: the pager buttons reuse that object, and a sort that is not in it
-// is a sort that page two forgets.
 const sort = ref('')
 
-// One options object, passed to EVERY call into usePagination, the pager
-// buttons included -- passing only expand/sort there drops the filter and
-// page two comes back unfiltered.
+// Pass this to every usePagination call, the pager included, or page two
+// loses the filter and sort.
 const queryOptions = computed(() => ({
   filter: searchFilter.value,
   sort: sort.value,
@@ -54,15 +45,13 @@ const queryOptions = computed(() => ({
 
 function onSort(next: string) {
   sort.value = next
-  page.value = 1 // a new order makes the old page number meaningless
+  page.value = 1
   loadRoles()
 }
 
-// Column configuration
 const columns: Column<NatsRole>[] = [
   // 'auto', not omitted: omitting it means 28% for column 0 (see Column.width).
-  // This is the only free-text column here -- name plus a clamped description --
-  // so it takes the slack and every other column keeps exactly what it declares.
+  // The only free-text column, so it takes the slack.
   {
     key: 'name',
     sortable: 'name',
@@ -95,16 +84,10 @@ const columns: Column<NatsRole>[] = [
   },
 ]
 
-/**
- * Load roles from API
- */
 async function loadRoles() {
   await load(queryOptions.value)
 }
 
-/**
- * Handle row click
- */
 function handleRowClick(role: NatsRole) {
   router.push(`/nats/roles/${role.id}`)
 }
@@ -190,7 +173,6 @@ onMounted(() => {
         :loading="loading"
         @row-click="handleRowClick"
       >
-        <!-- Custom cell for name -->
         <template #cell-name="{ item }">
           <div>
             <div class="font-medium">
@@ -202,7 +184,6 @@ onMounted(() => {
           </div>
         </template>
         
-        <!-- Custom mobile card for name -->
         <template #card-name="{ item }">
           <div>
             <div class="font-semibold text-base">
@@ -214,7 +195,6 @@ onMounted(() => {
           </div>
         </template>
         
-        <!-- Custom cell for default (badge) -->
         <template #cell-is_default="{ item }">
           <span v-if="item.is_default" class="badge badge-primary badge-sm">
             Default
@@ -222,7 +202,6 @@ onMounted(() => {
           <span v-else class="text-base-content/40">—</span>
         </template>
         
-        <!-- Actions -->
         <template #actions="{ item }">
           <router-link 
             :to="`/nats/roles/${item.id}/edit`" 
@@ -233,7 +212,6 @@ onMounted(() => {
         </template>
       </ResponsiveList>
       
-      <!-- Pagination -->
       <ListPager
         :page="page"
         :total-pages="totalPages"

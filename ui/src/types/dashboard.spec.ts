@@ -10,22 +10,18 @@ import { TWIN_BUCKET } from '@/utils/twin'
 
 const POSITION = { x: 0, y: 100 }
 
-// Every widget type, from one list, so a new type cannot be tested by
-// forgetting to test it.
+// Every widget type, so a new one is tested automatically.
 const ALL: readonly WidgetType[] = WIDGET_TYPES
 
 describe('createDefaultWidget', () => {
-  // A widget the palette can add but that gets no defaults renders as an empty
-  // body with no error -- the failure mode this whole file exists to catch,
-  // since `vue-tsc && vite build` stays green through it.
+  // A widget with no defaults renders an empty body with no error, and
+  // `vue-tsc && vite build` stays green.
   it.each(ALL)('produces a usable widget for %s', (type) => {
     const w = createDefaultWidget(type, POSITION)
 
     expect(w.type).toBe(type)
     expect(w.id).toMatch(/^widget_/)
-    // markdown is deliberately untitled — it renders its own heading, so a
-    // title bar above it is duplication. Every other type needs one, because a
-    // widget with no title is unidentifiable on a grid of them.
+    // markdown is deliberately untitled; it renders its own heading.
     if (type !== 'markdown') {
       expect(w.title).toBeTruthy()
     }
@@ -35,14 +31,9 @@ describe('createDefaultWidget', () => {
     expect(w.y).toBe(POSITION.y)
   })
 
-  // Each type's own config object has to be present, or its config modal opens
-  // onto undefined and the widget cannot be set up at all.
-  //
-  // WidgetConfig is a discriminated union now, so the compiler already refuses
-  // a WIDGET_DEFAULTS entry that omits its config object. This stays as the
-  // runtime half: the entry can still be present and build the wrong shape, and
-  // a dashboard arriving from imported JSON has never been checked by anything.
-  // The keys are plain strings because `keyof` a union is only its shared keys.
+  // Without its config object a widget's config modal opens onto undefined. The
+  // compiler checks WIDGET_DEFAULTS; this is the runtime half. The keys are plain
+  // strings because `keyof` a union is only its shared keys.
   const CONFIG_KEY: Record<WidgetType, string> = {
     chart: 'chartConfig',
     text: 'textConfig',
@@ -70,18 +61,14 @@ describe('createDefaultWidget', () => {
     expect(w[key], `${type} has no ${key}`).toBeDefined()
   })
 
-  // The kvtable default is documented behaviour, not an arbitrary value: it
-  // points at the reported-state twin bucket so the widget shows something the
-  // moment it is added. This was silently overwritten with an empty bucket by a
-  // second defaults function that ran afterwards.
+  // Documented behaviour: a new kvtable shows something the moment it is added.
   it('points a new kvtable at the reported-state twin bucket', () => {
     const w = createDefaultWidget('kvtable', POSITION)
     expect(w.kvtableConfig?.kvBucket).toBe(TWIN_BUCKET)
     expect(w.kvtableConfig?.keyPattern).toBe('thing.>')
   })
 
-  // Types that read a value out of a payload need a data source and a path, or
-  // the widget is added in a state that cannot resolve anything.
+  // Types that read a payload value need a data source to resolve anything.
   it.each(['text', 'stat', 'gauge', 'chart'] as const)(
     '%s is created with a subscription data source',
     (type) => {
@@ -90,17 +77,15 @@ describe('createDefaultWidget', () => {
     },
   )
 
-  // Each series reads the whole payload. A widget-level jsonPath on a new chart
-  // would hand every series an already-extracted value, and `$.value` on that
-  // finds nothing -- a chart created empty.
+  // Series read the whole payload; a widget-level jsonPath would pre-extract it
+  // and the chart would start empty.
   it('creates a chart with one series and no widget-level jsonPath', () => {
     const w = createDefaultWidget('chart', POSITION)
     expect(w.jsonPath).toBeUndefined()
     expect(w.chartConfig?.series).toEqual([{ label: 'Value', path: '$.value' }])
   })
 
-  // Buffered types must carry a bound. An unbounded buffer on a kiosk dashboard
-  // is a slow memory leak.
+  // An unbounded buffer on a kiosk dashboard is a slow memory leak.
   it.each(['console', 'streamtable'] as const)('%s is created with a bounded buffer', (type) => {
     const w = createDefaultWidget(type, POSITION)
     expect(w.buffer?.maxCount).toBeGreaterThan(0)

@@ -10,10 +10,8 @@ import {
   zoneSpans,
 } from './gaugeScale'
 
-// Every failure here is a quiet wrong answer rather than a crash -- a fill that
-// runs past the end of its track, a value that falls between two zones and
-// takes the fallback colour, a boolean drawn as a full gauge. Nothing in CI
-// renders a gauge, so this is the only place any of it is checked.
+// Every failure here is a silent wrong answer, and nothing in CI renders a
+// gauge, so this is the only check.
 
 const R = { min: 0, max: 100 }
 
@@ -71,8 +69,7 @@ describe('valueFraction', () => {
   })
 
   it('is 0 rather than Infinity for an invalid range', () => {
-    // The caller shows an error instead of a bar, but this must not be NaN:
-    // NaN reaches a CSS width and the fill silently disappears.
+    // Must not be NaN: NaN in a CSS width makes the fill disappear.
     expect(valueFraction(50, { min: 10, max: 10 })).toBe(0)
   })
 })
@@ -112,8 +109,7 @@ describe('zoneColor', () => {
   })
 
   it('takes the FIRST match at a shared boundary rather than guessing', () => {
-    // 60 is in both the 0-60 and 60-80 bands, which is how everyone writes
-    // adjacent zones. Order is the author's, so the earlier zone wins.
+    // 60 is in both the 0-60 and 60-80 bands; the earlier zone wins.
     expect(zoneColor(60, zones, R, 'fallback')).toBe('green')
   })
 

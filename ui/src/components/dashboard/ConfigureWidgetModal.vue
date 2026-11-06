@@ -1,14 +1,12 @@
 <template>
   <Teleport to="body">
     <div v-if="modelValue && widgetId" class="modal-overlay" @click.self="close">
-      <!-- CHANGED: .modal -> .nd-modal -->
       <div class="nd-modal" :class="{ 'modal-large': widgetType === 'map' }">
         <div class="modal-header">
           <h3>Configure Widget</h3>
           <button class="close-btn" @click="close">✕</button>
         </div>
         <div class="modal-body">
-          <!-- Common Title -->
           <ConfigCommon :form="form" :errors="errors" />
           
           <!-- Data Source (Shared by visualization widgets) -->
@@ -23,7 +21,6 @@
             show-system-filter
           />
 
-          <!-- Widget Specific Config (Dynamic) -->
           <component 
             v-if="activeConfigComponent"
             :is="activeConfigComponent"
@@ -84,7 +81,6 @@ const { form, errors, widgetType, activeConfigComponent, showDataSourceConfig, i
   backdrop-filter: blur(2px);
 }
 
-/* CHANGED: .modal -> .nd-modal */
 .nd-modal {
   background: oklch(var(--b1));
   border: 1px solid oklch(var(--b3));

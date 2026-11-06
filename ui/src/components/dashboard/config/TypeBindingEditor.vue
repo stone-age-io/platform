@@ -251,10 +251,8 @@ const atItemLimit = computed(
 // --- state source -----------------------------------------------------------
 
 /**
- * `none` is the absence of `stateSource`, not a third stored mode. Storing
- * "none" would mean a binding could carry a half-filled source that nothing
- * reads, and the widget would have to decide whether to believe the mode or the
- * fields.
+ * `none` is the absence of `stateSource`, not a stored mode, so a binding never
+ * carries a half-filled source that nothing reads.
  */
 const stateMode = computed<FloorPlanStateMode | 'none'>({
   get: () => props.binding.stateSource?.mode ?? 'none',

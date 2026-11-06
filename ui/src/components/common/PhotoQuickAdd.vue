@@ -1,37 +1,13 @@
-<!-- ui/src/components/common/PhotoQuickAdd.vue -->
 <script setup lang="ts">
 /**
- * The empty photo slot on a thing or location DETAIL view, for someone who can
- * fill it: a dashed plate where RecordPhoto would be, opening a small dialog
- * that uploads one photo and saves it at once.
+ * The empty photo slot on a thing or location detail view: a dashed plate (not
+ * a skeleton, which reads as loading) that uploads one photo and saves at once,
+ * like MetadataCard's quick edit. The caller shows it only under
+ * `can.manageInventory`. Add only; replacing or removing is the edit form's job.
  *
- * WRITERS ONLY. The caller shows this under `can.manageInventory` and nothing
- * otherwise, so a reader still sees what RecordPhoto promises -- no photo, no
- * plate, the fields taking the full width. An empty box tells someone who
- * cannot fill it nothing at all. That is the half of the earlier "no empty
- * state" decision that still holds; the half that changed is that the person
- * standing at the device with a phone is usually the one who can add it, and
- * the edit form was three taps away.
- *
- * NOT A SKELETON. A skeleton says "loading", and an empty slot that looks like
- * it is still loading reads as a broken page. This is a dashed outline with a
- * label, which reads as a place to put something.
- *
- * SAVES IMMEDIATELY, like MetadataCard's quick edit, because that is what a
- * control on a detail view does here. The edit forms stage the photo until Save
- * instead; the two share ImageUploadField, the picker, and nothing else -- one
- * component switching between immediate and staged on a prop would be the
- * mode flag RecordPhoto shed.
- *
- * THE BODY IS THE PHOTO AND NOTHING ELSE, and that matters for `things`: the
- * member branch of its updateRule freezes several fields, and multipart has no
- * null and no way to omit, so a FormData carrying more than `photo` could clear
- * one of them. A body with one field leaves every other field absent, which the
- * rule reads as unchanged. Section 23 of scripts/test-authz.sh asserts that a
- * member's photo-only multipart update is allowed.
- *
- * Add only, no replace or remove: the photo's own dialog is for looking, and
- * changing a photo that exists is the edit form's job.
+ * The body is `photo` and nothing else. Multipart cannot omit a field, and the
+ * member branch of things.updateRule freezes several, so any other field could
+ * clear one. Section 23 of scripts/test-authz.sh asserts this upload is allowed.
  */
 import { ref } from 'vue'
 import { pb } from '@/utils/pb'
@@ -55,8 +31,7 @@ const toast = useToast()
 
 const open = ref(false)
 const file = ref<File | null>(null)
-// ImageUploadField's removal model. Always false here -- there is no stored
-// photo to remove -- but the field still emits it.
+// Always false (no stored photo), but ImageUploadField still emits it.
 const removed = ref(false)
 const saving = ref(false)
 
@@ -84,15 +59,12 @@ async function save() {
   }
 }
 
-// Escape is safe here: the worst it loses is a picked file, which is picked
-// again in two taps. Not one of the one-time-secret dialogs useEscapeKey
-// warns about.
+// Escape is safe: it loses at most a picked file, not a one-time secret.
 useEscapeKey(open, close)
 </script>
 
 <template>
-  <!-- 140px, RecordPhoto's plate size, so adding a photo does not move the
-       fields beside it. -->
+  <!-- 140px, RecordPhoto's plate size, so adding a photo does not shift the layout. -->
   <button
     type="button"
     class="w-[140px] h-[140px] rounded-lg border-2 border-dashed border-base-300 text-base-content/60 flex flex-col items-center justify-center gap-1 flex-shrink-0 hover:border-primary hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary transition-colors"
@@ -102,7 +74,6 @@ useEscapeKey(open, close)
     <span class="text-sm">Add photo</span>
   </button>
 
-  <!-- Teleported, the same daisyUI `modal-open` shape RecordPhoto uses. -->
   <Teleport to="body">
     <dialog v-if="open" class="modal modal-open">
       <div class="modal-box max-w-sm">

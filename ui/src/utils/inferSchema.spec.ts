@@ -2,10 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { inferSchema } from './inferSchema'
 import { isFormCompatible } from '@/components/things/schemaFields'
 
-// The invariant worth pinning is not the shape of any one inference — it is that
-// what comes out stays editable in SchemaBuilder. `applyInferred` toasts "review
-// before saving" and drops the user straight into the Form tab, so an inferred
-// schema the form refuses is a contradiction in a single click.
+// The invariant: an inferred schema stays editable in SchemaBuilder, since
+// `applyInferred` drops the user straight into the Form tab.
 
 describe('inferSchema', () => {
   it('infers a flat sample the builder can edit', () => {
@@ -31,10 +29,8 @@ describe('inferSchema', () => {
   })
 
   it('infers string for a null, so the sample stays editable in the form', () => {
-    // The literal truth is {type: 'null'}, which the builder has no type for —
-    // it would fail isFormCompatible and raise the banner on a fresh inference.
-    // A null in a sample means "present and empty when I looked", not "only ever
-    // null".
+    // {type: 'null'} would fail isFormCompatible. A null in a sample means
+    // "present and empty", not "only ever null".
     const schema = inferSchema({ note: null })
     expect(schema.properties.note).toEqual({ type: 'string' })
     expect(isFormCompatible(schema)).toBe(true)
@@ -55,8 +51,7 @@ describe('inferSchema', () => {
   })
 
   it('still yields anyOf for a mixed array, which the form correctly refuses', () => {
-    // Not a gap to close: the builder has no way to say "one of these", so the
-    // banner pointing at the JSON tab is the honest answer.
+    // Expected: the builder cannot represent "one of these".
     const schema = inferSchema({ readings: [1, 'high'] })
     expect(schema.properties.readings.items.anyOf).toHaveLength(2)
     expect(isFormCompatible(schema)).toBe(false)

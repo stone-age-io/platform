@@ -1,16 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import { targetDimensions, MAX_DIMENSION } from './imageResize'
 
-/**
- * Only the pure half. The canvas half of imageResize cannot be tested in this
- * suite at all -- vitest.config.ts runs node, and jsdom does not implement
- * canvas.toBlob -- which is precisely why every decision lives here instead of
- * inside the drawing code.
- */
+// Only the pure half: jsdom has no canvas.toBlob.
 describe('targetDimensions', () => {
   it('leaves an image that is already small enough alone', () => {
-    // null, not the original size: the caller uses it to skip re-encoding
-    // entirely, and a small PNG through a canvas comes out a larger JPEG.
+    // null, not the original size: the caller uses it to skip re-encoding.
     expect(targetDimensions(800, 600)).toBeNull()
     expect(targetDimensions(MAX_DIMENSION, MAX_DIMENSION)).toBeNull()
   })
@@ -21,15 +15,14 @@ describe('targetDimensions', () => {
   })
 
   it('preserves aspect ratio within a pixel', () => {
-    // 4032x3024 is an iPhone photo, the case this exists for.
+    // 4032x3024 is an iPhone photo.
     const t = targetDimensions(4032, 3024)!
     expect(Math.max(t.width, t.height)).toBe(1600)
     expect(Math.abs(t.width / t.height - 4032 / 3024)).toBeLessThan(0.01)
   })
 
   it('never rounds an extreme ratio down to zero', () => {
-    // A panorama: 20000x50 scales the short edge to 4px, and Math.round of
-    // anything under 0.5 would be 0 -- a zero-sized canvas throws.
+    // A zero-sized canvas throws, so the short edge never rounds to 0.
     const t = targetDimensions(20000, 50)!
     expect(t.width).toBe(1600)
     expect(t.height).toBeGreaterThanOrEqual(1)

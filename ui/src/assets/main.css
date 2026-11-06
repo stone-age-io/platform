@@ -4,32 +4,20 @@
 @tailwind components;
 @tailwind utilities;
 
-/* index.html paints <body> a fixed dark #0a0a0a for the pre-mount loader. Once
-   the themed app is up, the body has to follow the theme instead — otherwise a
-   short page (or a mobile overscroll bounce) reveals a black band behind the
-   shell in the light theme. base-200 matches MainLayout's <main>. */
+/* index.html paints <body> dark for the pre-mount loader; once mounted it must
+   follow the theme, or overscroll shows a black band in light mode. base-200
+   matches MainLayout's <main>. */
 body {
   background-color: oklch(var(--b2));
 }
 
-/* No dark-mode basemap filter here on purpose.
- *
- * CARTO's dark_all needed a brightness/contrast lift to keep roads legible at
- * z18. Its replacement, OpenFreeMap's fiord, is a designed dark style and is
- * already exposed correctly. The filter is not merely unnecessary now — it is
- * harmful: L.maplibreGL renders into .leaflet-tile-pane, the same pane the rule
- * targeted, so it would wash out the whole basemap. See the style notes in
- * composables/useLeafletMap.ts. */
+/* No dark-mode basemap filter on purpose: the fiord style is already dark, and
+ * a filter on .leaflet-tile-pane would wash out the MapLibre layer drawn there
+ * (composables/useLeafletMap.ts). */
 
-/* Keep the basemap attribution to one line.
- *
- * Leaflet anchors attribution bottom-right and every map here puts the zoom
- * control at bottomleft (ThingMapViz, LocationMapViz, MapWidget), so a credit
- * long enough to wrap grows upward and leftward straight across those buttons.
- * Dashboard widgets are the narrow case, and they are the ones that lose.
- *
- * Truncated rather than abbreviated: the credit is a licence obligation, so the
- * full text stays in the DOM, and hover or keyboard focus expands it. */
+/* Keep the basemap attribution to one line, or it wraps across the bottom-left
+ * zoom control in narrow widgets. Truncated, not shortened: the credit is a
+ * licence obligation, so hover or focus expands the full text. */
 .leaflet-control-attribution {
   max-width: calc(100% - 4rem);
   white-space: nowrap;
@@ -44,23 +32,13 @@ body {
   overflow: visible;
 }
 
-/* Custom scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
-/* Custom scrollbar styling.
- *
- * Two declarations of the same intent, because no engine implements both.
- * Firefox has only the standard `scrollbar-*` properties; Safari and older
- * Chrome have only the `::-webkit-scrollbar` pseudo-elements. Dropping either
- * one leaves half the browsers with the stock OS scrollbar, which against the
- * dark theme is a bright band down the side of every scrollable pane.
- *
- * `scrollbar-width` does not inherit (`scrollbar-color` does), so this has to
- * be `*` rather than `:root` to reach nested scroll containers the way the
- * WebKit block already does. Firefox has no scrollbar hover state, so the
- * `:hover` rule below has no standard counterpart. */
+/* Scrollbars: Firefox reads only the standard `scrollbar-*` properties, Safari
+ * and older Chrome only `::-webkit-scrollbar`, so both are needed. `*`, not
+ * `:root`, because `scrollbar-width` does not inherit. */
 * {
   scrollbar-width: thin;
   scrollbar-color: oklch(var(--bc) / 0.2) transparent;
@@ -84,22 +62,9 @@ body {
   background: oklch(var(--bc) / 0.3);
 }
 
-/* Baseline control font size: 14px, matching daisyUI's own `.textarea` and the
- * `text-sm` on the labels around it. daisyUI sets bare `.input` and `.select`
- * to 1rem and only its `-md` size modifiers to 0.875rem, and nothing here
- * passes a size modifier, so without this rule every text field would sit two
- * pixels above its own label.
- *
- * It lives in the components layer ON PURPOSE. This used to be a plain
- * `input, textarea, select { font-size: 0.875rem !important }`, which beat the
- * utilities as well as daisyUI: nineteen mono editors across ten files
- * (JSON metadata, NATS publish/subscribe permissions, activation JWTs, KV
- * values, Nebula host config) asked for `text-xs` and silently rendered at
- * 14px, because a Tailwind utility is not `!important` and loses to one that
- * is. Putting the default in `@layer components` gets the cascade to say what
- * was meant all along: later than daisyUI's components, earlier than any
- * utility, so `.input` is overridden and `text-xs` is not. If you ever need to
- * reach for `!important` here again, the rule is in the wrong layer. */
+/* Controls at 14px to match `.textarea` and the `text-sm` labels (daisyUI makes
+ * bare `.input`/`.select` 1rem). In `@layer components` so it overrides daisyUI
+ * but not utilities like `text-xs`. Never `!important` here. */
 @layer components {
   .input,
   .textarea,
@@ -108,30 +73,9 @@ body {
   }
 }
 
-/* A badge is a pill around a value, and daisyUI pins its HEIGHT: `.badge` is
- * `height: 1.25rem` (`-xs` .75, `-sm` 1, `-lg` 1.5) with no overflow handling.
- * So the moment its text wraps, the second line is painted BELOW the pill it is
- * supposed to be inside -- the value hangs out the bottom with no background
- * under it, which reads as a rendering fault rather than a long name.
- *
- * It needs a value long enough to wrap and a container narrow enough to make it,
- * which is why it hid: ten badges across seven files hold a THING or LOCATION
- * TYPE NAME, and "Access-Controlled Door" in the `grid-cols-2` gutter of a
- * detail view is exactly that. Measured at 300px, the pill stayed 20px tall
- * while its text needed 40.
- *
- * min-height keeps every single-line badge pixel-identical -- this changes only
- * the ones that were already broken. Deliberately NOT `max-width: 100%`, which
- * was tried and is worse: it caps the pill at the container while the text keeps
- * its own width, so instead of hanging below the pill the text hangs out the
- * SIDES of it. Where wrapping is not allowed at all -- a list card's cell sets
- * `white-space: nowrap` on the way down -- nothing changes either, because the
- * badge stays one line and the cell clips pill and text together, which is what
- * a truncating cell is supposed to look like.
- *
- * Same layer as the control font size above, for the same reason: later than
- * daisyUI's components, earlier than any utility, so a view that really wants a
- * fixed-height badge can still say so with `h-4`. */
+/* daisyUI fixes badge height, so wrapped text hangs below the pill. min-height
+ * keeps single-line badges identical. Not `max-width: 100%`: the text then
+ * overflows the sides instead. Components layer, so `h-4` still wins. */
 @layer components {
   .badge {
     height: auto;
@@ -151,32 +95,10 @@ body {
   }
 }
 
-/* A modal's button row cannot wrap, so the button that does not fit is simply
- * gone. `.modal-action` is `display: flex` with `justify-content: flex-end`
- * and no `flex-wrap`, and `.btn` is `flex-shrink: 0`, so three ordinary
- * buttons in a 360px modal need more width than they have and something has to
- * give.
- *
- * What gives is worse than a scrollbar, and worth knowing because it is
- * counter-intuitive: with `justify-content: flex-end` the overflow goes out the
- * START edge, not the end. So it is the LEFTMOST button that loses its left
- * half -- "This record's history" renders as "is record's history" -- and
- * because that overflow is at the start of an `overflow: auto` box, a browser
- * will not let you scroll to it. The control is not clipped-but-reachable, it
- * is unreachable. Measured at 393px and 360px on the activity dialog and the
- * NATS user dialog, which both carry three buttons.
- *
- * The gap replaces spacing rather than adding to it. daisyUI spaces these with
- * Tailwind's `space-x-2` pattern -- a `margin-left` on every child after the
- * first -- which is applied by SIBLING ORDER and not by visual row, so turning
- * on `flex-wrap` alone would put a stray left margin on the first button of the
- * second row and leave no row gap at all. Zeroing that margin and using a real
- * `gap` is identical at 0.5rem horizontally and adds the row gap wrapping
- * needs.
- *
- * It is free where it is not needed: a two-button row measured 48px tall and
- * one row at every width, before and after, and at 768px even the three-button
- * rows are unchanged. Only a row that was already broken moves. */
+/* Let modal button rows wrap. Unwrapped, `justify-content: flex-end` overflows
+ * out the start edge, leaving the leftmost button clipped and unreachable on a
+ * phone. daisyUI's sibling `margin-left` spacing is swapped for `gap`, which
+ * also spaces wrapped rows. */
 @layer components {
   .modal-action {
     flex-wrap: wrap;
@@ -188,10 +110,8 @@ body {
   }
 }
 
-/* The one place `!important` IS load-bearing: iOS Safari zooms the viewport
- * when a focused control's font size is under 16px, and it has to beat the
- * `text-xs` above to stop that. Scoped to the widths where it can happen —
- * unscoped, it was the reason the desktop rule existed to claw it back. */
+/* `!important` is needed here: iOS Safari zooms on focus below 16px, so this
+ * must beat `text-xs`. Phone widths only. */
 @media (max-width: 767px) {
   input,
   textarea,
@@ -200,17 +120,8 @@ body {
   }
 }
 
-/* Honour a reduced-motion preference app-wide.
- *
- * ConfirmDialog has carried its own version of this since it was written; this
- * generalises it to the toast transitions, the sidebar collapse, the dashboard
- * grid's drag animations and every `transition-*` class in the app.
- *
- * `.loading` is exempt from the iteration clamp deliberately. Reduced motion
- * means "do not animate decoration", not "freeze the one element whose whole
- * job is to show that work is still in progress" — a spinner stopped at frame
- * one reads as a hung page, which is a worse outcome than the movement. It is
- * slowed rather than stopped for the same reason. */
+/* Honour reduced motion app-wide. `.loading` is exempt and only slowed: a
+ * frozen spinner reads as a hung page. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

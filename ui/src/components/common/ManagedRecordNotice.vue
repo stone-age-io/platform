@@ -1,11 +1,8 @@
-<!-- ui/src/components/common/ManagedRecordNotice.vue -->
 <script setup lang="ts">
 /**
  * Explains why a platform-provisioned NATS export/import is not editable here.
- *
- * One component rather than the same paragraph in six places (two list views,
- * two detail views, two form views). See utils/managedExports.ts for how these
- * records are recognised and which fields actually get rewritten.
+ * utils/managedExports.ts says how these records are recognised and which
+ * fields get rewritten.
  */
 import { computed } from 'vue'
 import { managedSource } from '@/utils/managedExports'

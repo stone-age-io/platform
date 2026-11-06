@@ -4,11 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { useEscapeKey } from './useEscapeKey'
 
-// jsdom, because the whole subject is a real `keydown` travelling up to
-// `window` and the deference rule reads `event.defaultPrevented` off it. A
-// stubbed listener map would assert the stub, not the behaviour: the bug this
-// guards against is two modals closing on one keypress, which only shows up
-// when the events are actually dispatched.
+// jsdom: the deference rule needs real `keydown` events bubbling to `window`.
 
 const scopes: Array<ReturnType<typeof effectScope>> = []
 
@@ -71,8 +67,6 @@ describe('useEscapeKey', () => {
     expect(onEscape).not.toHaveBeenCalled()
   })
 
-  // The reason the stack exists: a quick-add modal opened from inside a form
-  // view. One press must unwind one layer, not collapse both.
   it('closes only the innermost of two open modals', () => {
     const outer = vi.fn()
     const inner = vi.fn()
@@ -90,9 +84,7 @@ describe('useEscapeKey', () => {
     expect(outer).toHaveBeenCalledOnce()
   })
 
-  // ConfirmDialog and RecordPicker both handle their own Escape and
-  // preventDefault it. Without this, confirming a delete from inside a modal
-  // would cancel the confirm AND close the modal underneath it.
+  // As ConfirmDialog and RecordPicker do.
   it('defers to a handler closer to the event that already consumed the key', () => {
     const onEscape = vi.fn()
     register(ref(true), onEscape)

@@ -24,12 +24,10 @@ const deleting = ref(false)
 
 const networkId = route.params.id as string
 
-// Derived Stats
 const totalHosts = computed(() => hosts.value.length)
 const totalLighthouses = computed(() => hosts.value.filter(h => h.is_lighthouse).length)
 const activeHosts = computed(() => hosts.value.filter(h => h.active).length)
 
-// Columns for Attached Hosts List
 const hostColumns: Column<NebulaHost>[] = [
   { key: 'hostname', label: 'Hostname', mobileLabel: 'Host' },
   { key: 'overlay_ip', label: 'Overlay IP', mobileLabel: 'IP' },
@@ -49,12 +47,10 @@ const hostColumns: Column<NebulaHost>[] = [
 async function loadNetwork() {
   loading.value = true
   try {
-    // 1. Get Network
     network.value = await pb.collection('nebula_networks').getOne<NebulaNetwork>(networkId, {
       expand: 'ca_id',
     })
 
-    // 2. Get Attached Hosts
     hosts.value = await pb.collection('nebula_hosts').getFullList<NebulaHost>({
       filter: `network_id = "${networkId}"`,
       sort: 'overlay_ip',
@@ -75,9 +71,7 @@ async function handleDelete() {
     details: 'All hosts in this network will lose connectivity.',
     confirmText: 'Delete',
     variant: 'danger',
-    // The name, with no code fallback: nebula_networks has no code column,
-    // and name is required by both the schema and the type -- so unlike the
-    // other gated deletes there is no blank case to fall through to.
+    // No code column here, and name is required, so no fallback is needed.
     requireText: network.value.name,
   })
   if (!confirmed) return
@@ -101,13 +95,11 @@ onMounted(() => {
 
 <template>
   <div class="space-y-6">
-    <!-- Loading State -->
     <div v-if="loading" class="flex justify-center p-12">
       <span class="loading loading-spinner loading-lg"></span>
     </div>
     
     <template v-else-if="network">
-      <!-- Header -->
       <div class="flex flex-col gap-4">
         <div class="breadcrumbs text-sm">
           <ul>
@@ -118,7 +110,6 @@ onMounted(() => {
         <div class="flex flex-col sm:flex-row justify-between items-start gap-4">
           <div class="flex items-center gap-3">
             <h1 class="text-3xl font-bold break-words">{{ network.name }}</h1>
-            <!-- Status Dot -->
             <div class="flex items-center gap-1.5 px-3 py-1 bg-base-200 rounded-full">
               <span class="w-2 h-2 rounded-full" :class="network.active ? 'bg-success' : 'bg-error'"></span>
               <span class="text-xs font-medium">{{ network.active ? 'Active' : 'Inactive' }}</span>
@@ -132,10 +123,8 @@ onMounted(() => {
         </div>
       </div>
       
-      <!-- Content Grid -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         
-        <!-- Left Column: Info -->
         <div class="space-y-6">
           <BaseCard title="Basic Information">
             <dl class="space-y-4">
@@ -170,7 +159,6 @@ onMounted(() => {
           </BaseCard>
         </div>
         
-        <!-- Right Column: Stats & Addressing -->
         <div class="space-y-6">
           <BaseCard title="Network Utilization">
             <div class="grid grid-cols-2 gap-4 mb-4">
@@ -199,7 +187,6 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- Bottom: Attached Hosts -->
       <BaseCard title="Attached Hosts" :no-padding="true">
         <ResponsiveList
           :items="hosts"

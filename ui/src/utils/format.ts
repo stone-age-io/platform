@@ -1,11 +1,6 @@
 import { format, formatDistanceToNow } from 'date-fns'
 import { parseTimestamp } from './timestamp'
 
-/**
- * Format bytes to human-readable string
- * @param bytes - Number of bytes
- * @param decimals - Number of decimal places (default: 2)
- */
 export function formatBytes(bytes: number, decimals = 2): string {
   if (!+bytes) return '0 Bytes'
 
@@ -18,11 +13,7 @@ export function formatBytes(bytes: number, decimals = 2): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`
 }
 
-/**
- * Format date to local string
- * @param date - Date string or Date object
- * @param formatStr - date-fns format string (default: 'PPpp')
- */
+/** `formatStr` is a date-fns format string. */
 export function formatDate(date: string | Date, formatStr = 'PPpp'): string {
   try {
     const d = typeof date === 'string' ? new Date(date) : date
@@ -32,14 +23,10 @@ export function formatDate(date: string | Date, formatStr = 'PPpp'): string {
   }
 }
 
-/**
- * Format date to relative time (e.g., "2 hours ago", "in 5 days")
- * Uses date-fns to correctly handle both past and future dates.
- */
+/** e.g. "2 hours ago", "in 5 days". */
 export function formatRelativeTime(date: string | Date): string {
   try {
     const d = typeof date === 'string' ? new Date(date) : date
-    // addSuffix: true adds "ago" for past dates or "in" for future dates
     return formatDistanceToNow(d, { addSuffix: true })
   } catch (error) {
     return 'Invalid date'
@@ -47,23 +34,14 @@ export function formatRelativeTime(date: string | Date): string {
 }
 
 /**
- * A table cell's value as epoch ms, or null when it is not a timestamp.
- *
- * This used to have its own parser, which disagreed with the one messages are
- * stamped with: a nanosecond epoch (Go's UnixNano) threw a RangeError inside
- * the table's computed and blanked the whole table, microseconds rendered tens
- * of thousands of years out, and 0, "", a seconds value sent as a string, or
- * junk all showed as "less than a minute ago" because they fell back to now.
- * A cell now shows "-" for anything that is not a time.
+ * A table cell's value as epoch ms, or null when it is not a timestamp. Uses
+ * the same parser messages are stamped with; never falls back to now.
  */
 function cellTimestamp(val: unknown): number | null {
   if (val instanceof Date) return Number.isNaN(val.getTime()) ? null : val.getTime()
   return parseTimestamp(val)
 }
 
-/**
- * Format a KV table column value based on its configured format.
- */
 export function formatColumnValue(value: any, columnFormat: string, formatOptions?: string): string {
   if (value === null || value === undefined) return '-'
 
@@ -87,9 +65,8 @@ export function formatColumnValue(value: any, columnFormat: string, formatOption
 }
 
 /**
- * How long ago something happened, as short as a widget header can afford:
- * "now", "12s ago", "4m ago", "3h ago", "2d ago". A negative age (a device
- * clock running ahead of this one) reads as "now" rather than "in 3s".
+ * Short age for a widget header: "now", "12s ago", "4m ago", "3h ago", "2d ago".
+ * A negative age (device clock ahead) reads as "now".
  */
 export function formatAge(ms: number): string {
   const s = Math.floor(ms / 1000)
@@ -100,18 +77,12 @@ export function formatAge(ms: number): string {
   return `${Math.floor(s / 86400)}d ago`
 }
 
-/**
- * Truncate string with ellipsis
- */
 export function truncate(str: string, length: number): string {
   if (str.length <= length) return str
   return str.substring(0, length) + '...'
 }
 
-/**
- * Format enum/constant to readable string
- * Example: 'create_request' -> 'Create Request'
- */
+/** 'create_request' -> 'Create Request' */
 export function formatConstant(str: string): string {
   return str
     .split('_')

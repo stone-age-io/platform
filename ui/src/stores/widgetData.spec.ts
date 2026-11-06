@@ -3,11 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useWidgetDataStore } from './widgetData'
 
-// A time window was a `maxAge` that initializeBuffer stored and nothing ever
-// read. These pin that it now ages messages out, and that it does so by
-// TIMESTAMP rather than position: a timestamp may come from the payload or from
-// JetStream, so arrival order is not time order and a front-trim would drop the
-// wrong messages.
+// `maxAge` ages messages out by timestamp, not position: timestamps may come
+// from the payload or JetStream, so arrival order is not time order.
 
 const NOW = Date.parse('2026-09-23T12:00:00Z')
 const MIN = 60_000
@@ -56,10 +53,9 @@ describe('widgetData time window', () => {
   })
 })
 
-// Buffers are kept warm across navigation and variable changes
-// (unsubscribeAllWidgets(true)). Two ways that went wrong: a variable change
-// kept device A's data and appended device B's after it, and returning to a
-// dashboard let the JetStream replay re-add everything the buffer still held.
+// Buffers stay warm across navigation and variable changes
+// (unsubscribeAllWidgets(true)): a source change must drop old data, and a
+// JetStream replay must not re-add what the buffer holds.
 describe('widgetData kept buffers', () => {
   beforeEach(() => setActivePinia(createPinia()))
 

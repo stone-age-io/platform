@@ -1,10 +1,6 @@
-// ui/src/types/services.ts
-
 /**
- * One endpoint of a NATS micro service: its `$SRV.INFO` description, with its
- * numbers from `$SRV.STATS` when that reply arrived. The numbers are null
- * rather than 0 when it did not: "no reply" and "no requests" are different
- * answers.
+ * One endpoint of a NATS micro service: its `$SRV.INFO` description plus
+ * `$SRV.STATS` numbers, which are null (not 0) when no STATS reply arrived.
  */
 export interface ServiceEndpoint {
   name: string

@@ -22,10 +22,8 @@ const { confirm } = useConfirm()
 
 const deleting = ref(false)
 
-// Delete lives here rather than on the list row: a row button is aimed by
-// position, and position moves under sort, search and pagination. This form is
-// this collection's only detail surface, so it is also the only other place it
-// could go.
+// Delete lives here, not on the list row: a row button is aimed by position,
+// which moves under sort, search and pagination.
 async function handleDelete() {
   if (!id) return
   const confirmed = await confirm({
@@ -57,13 +55,10 @@ const form = ref({
   prefix: '',
 })
 
-// Inventory metadata schema, authored by MetadataSchemaCard. Null means the type
-// declares no fields and the Location form falls back to free-form key/value rows.
+// Null means no declared fields; the Location form falls back to free-form rows.
 const metadataSchema = ref<Record<string, any> | null>(null)
 const metadataSchemaCard = ref<InstanceType<typeof MetadataSchemaCard> | null>(null)
 
-// Captured on load so the heading can show when this record was created and
-// last changed; undefined on the create path, where the list does not render.
 const createdAt = ref<string | undefined>()
 const updatedAt = ref<string | undefined>()
 
@@ -131,10 +126,8 @@ onMounted(() => {
         </ul>
       </div>
       <h1 class="text-3xl font-bold">{{ isEdit ? 'Edit' : 'Create' }} Location Type</h1>
-      <!-- thing_types, location_types and thing_type_operations are in the
-           activity feed (hooks/activity.go) but have no detail view, so this
-           form is their detail surface and the only place a feed entry can be
-           correlated against the record itself. -->
+      <!-- No detail view exists, so this form is where an activity-feed entry
+           (hooks/activity.go) is correlated against the record. -->
       <dl v-if="isEdit" class="grid grid-cols-2 gap-4 max-w-sm mt-3">
         <RecordTimestamps :created="createdAt" :updated="updatedAt" />
       </dl>
@@ -143,7 +136,6 @@ onMounted(() => {
     <form @submit.prevent="submit" class="space-y-6">
       
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-        <!-- Left Column -->
         <BaseCard title="Identity">
           <div class="space-y-4">
             <div class="form-control">
@@ -160,7 +152,6 @@ onMounted(() => {
           </div>
         </BaseCard>
 
-        <!-- Right Column -->
         <BaseCard title="Details">
           <div class="space-y-4">
             <div class="form-control">
@@ -177,7 +168,6 @@ onMounted(() => {
         noun="place"
       />
 
-      <!-- Actions -->
       <div class="flex justify-end gap-2">
         <button type="button" class="btn btn-ghost" @click="router.back()">Cancel</button>
         <button type="submit" class="btn btn-primary" :disabled="loading">

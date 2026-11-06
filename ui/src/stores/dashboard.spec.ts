@@ -4,14 +4,9 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createDefaultWidget } from '@/types/dashboard'
 import { useDashboardStore } from './dashboard'
 
-// Import/export had no coverage, and a bad import loses a user's work silently:
-// the `replace` strategy clears every local dashboard before writing, and the
-// limit check decides whether anything is written at all. Nothing in the build
-// or the type checker touches any of it.
-//
-// localStorage is stubbed rather than left absent. saveToStorage swallows its
-// own errors, so without a stub these tests would pass through the failure
-// branch and prove nothing about the path that actually runs in a browser.
+// A bad import silently loses work: `replace` clears every local dashboard
+// before writing. localStorage is stubbed, not absent, because saveToStorage
+// swallows its errors and the tests would otherwise only cover the failure path.
 function stubLocalStorage() {
   const store = new Map<string, string>()
   ;(globalThis as any).localStorage = {
@@ -64,14 +59,11 @@ describe('dashboard export/import round trip', () => {
     const got = reimported.localDashboards[0]
     expect(got.name).toBe('Cold Chain')
     expect(got.widgets).toHaveLength(1)
-    // Widget config has to survive, or an imported dashboard looks right and
-    // shows nothing.
+    // Widget config must survive, or the import looks right and shows nothing.
     const imported = got.widgets[0]
     const seeded = original.widgets[0]
     expect(imported.type).toBe('kvtable')
-    // WidgetConfig is narrowed by `type`, so reading kvtableConfig needs the
-    // check rather than a `?.`. The expect above is what proves the type; this
-    // is how the compiler is told.
+    // Narrows the WidgetConfig union for the compiler; the expect above is the test.
     if (imported.type !== 'kvtable' || seeded.type !== 'kvtable') throw new Error('not a kvtable widget')
     expect(imported.kvtableConfig.kvBucket).toBe(seeded.kvtableConfig.kvBucket)
   })
@@ -92,9 +84,8 @@ describe('dashboard export/import round trip', () => {
     expect(a.widgets[0].id).not.toBe(b.widgets[0].id)
   })
 
-  // storage / kvKey / kvRevision describe where a dashboard LIVED, not what it
-  // is. Exporting them would make an imported copy claim to be a shared
-  // dashboard backed by a KV key it does not own.
+  // storage / kvKey / kvRevision say where a dashboard lived; an imported copy
+  // must not claim a KV key it does not own.
   it('strips the storage location from the exported file', () => {
     const store = freshStore()
     const dashboard = seedDashboard(store, 'Local One')
@@ -158,9 +149,7 @@ describe('dashboard import safety', () => {
     expect(store.localDashboards.map((d) => d.name)).toEqual(['Good'])
   })
 
-  // The limit is checked BEFORE anything is written, which is the part that
-  // matters: a partial import that then hit the limit would leave the user with
-  // some of their dashboards replaced and some not.
+  // The limit is checked before anything is written, so an import never half-applies.
   it('refuses an import that would exceed the limit, and writes nothing', () => {
     const store = freshStore()
     const many = Array.from({ length: 30 }, (_, i) => ({ name: `d${i}`, widgets: [] }))
@@ -207,8 +196,7 @@ describe('dashboard import safety', () => {
   })
 })
 
-// A KV dashboard lives in the bucket of the organization being left. Keeping it
-// active across a switch drew one tenant's layout over the other's bus.
+// A KV dashboard belongs to the organization being left.
 describe('leaveRemoteDashboard', () => {
   it('drops an active KV dashboard for a local one', () => {
     const store = freshStore()
@@ -265,8 +253,7 @@ describe('which dashboard opens on load', () => {
       lastSelectedDashboard: { id: 'northwind', storage: 'kv' },
     })
     const store = reload(storage)
-    // The bug: the first local dashboard opened and overwrote lastSelected,
-    // so the watcher found nothing shared to load.
+    // No local dashboard opens, so lastSelected still points the watcher at the shared one.
     expect(store.activeDashboard).toBeNull()
     expect(JSON.parse(storage.get('nats_dashboard_settings')!).lastSelectedDashboard)
       .toEqual({ id: 'northwind', storage: 'kv' })

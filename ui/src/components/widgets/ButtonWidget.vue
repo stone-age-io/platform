@@ -43,7 +43,6 @@
       </button>
     </template>
     
-    <!-- Response Modal -->
     <ResponseModal
       v-model="showResponseModal"
       :title="config.title"
@@ -75,18 +74,15 @@ const natsStore = useNatsStore()
 const dashboardStore = useDashboardStore()
 const { semanticColors } = useDesignTokens()
 
-// State
 const showSuccess = ref(false)
 const showError = ref(false)
 const isLoading = ref(false)
 
-// Response Modal State
 const showResponseModal = ref(false)
 const responseData = ref('')
 const responseStatus = ref<'success' | 'error'>('success')
 const responseLatency = ref(0)
 
-// Config
 const defaultLabel = computed(() => props.config.buttonConfig?.label || 'Publish')
 const buttonColor = computed(() => props.config.buttonConfig?.color || semanticColors.value.primary)
 const actionType = computed(() => props.config.buttonConfig?.actionType || 'publish')
@@ -362,7 +358,6 @@ function adjustColorOpacity(hex: string, opacity: number) {
   100% { transform: scale(4); opacity: 0; }
 }
 
-/* Spinners */
 .spinner {
   width: 16px;
   height: 16px;

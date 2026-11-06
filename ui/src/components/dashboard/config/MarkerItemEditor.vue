@@ -15,7 +15,6 @@
     </div>
     
     <div class="item-body">
-      <!-- Item Type -->
       <div class="form-row">
         <label>Type</label>
         <select :value="item.type" @change="handleTypeChange" class="form-input">
@@ -28,7 +27,6 @@
         </select>
       </div>
       
-      <!-- Label -->
       <div class="form-row">
         <label>Label</label>
         <input 
@@ -40,7 +38,6 @@
         />
       </div>
       
-      <!-- Publish Item Fields -->
       <template v-if="item.type === 'publish'">
         <div class="form-row">
           <label>Action Type</label>
@@ -93,7 +90,6 @@
         </div>
       </template>
       
-      <!-- Switch Item Fields -->
       <template v-if="item.type === 'switch'">
         <div class="form-row">
           <label>Mode</label>
@@ -107,7 +103,6 @@
           </select>
         </div>
         
-        <!-- KV Mode -->
         <template v-if="switchConfig.mode === 'kv'">
           <div class="form-row">
             <label>KV Bucket</label>
@@ -136,7 +131,6 @@
           </div>
         </template>
         
-        <!-- Core Mode -->
         <template v-if="switchConfig.mode === 'core'">
           <div class="form-row">
             <label>Publish Subject</label>
@@ -164,7 +158,6 @@
           </div>
         </template>
         
-        <!-- Payload fields (both modes) -->
         <div class="form-row-pair">
           <div class="form-row">
             <label>ON Payload</label>
@@ -188,7 +181,6 @@
           </div>
         </div>
         
-        <!-- Labels -->
         <div class="form-row-pair">
           <div class="form-row">
             <label>ON Label</label>
@@ -212,7 +204,6 @@
           </div>
         </div>
         
-        <!-- Confirm toggle -->
         <div class="form-row">
           <label class="checkbox-label">
             <input 
@@ -225,7 +216,6 @@
         </div>
       </template>
 
-      <!-- Text Item Fields -->
       <template v-if="item.type === 'text'">
         <div class="form-row">
           <label>Subject</label>
@@ -240,7 +230,6 @@
           <div v-if="errors?.subject" class="error-text">{{ errors.subject }}</div>
         </div>
 
-        <!-- JetStream Toggle -->
         <div class="form-row">
           <label class="checkbox-label">
             <input 
@@ -252,7 +241,6 @@
           </label>
         </div>
 
-        <!-- JetStream Options -->
         <template v-if="textConfig.useJetStream">
           <div class="form-row">
             <label>Deliver Policy</label>
@@ -304,7 +292,6 @@
         </div>
       </template>
 
-      <!-- KV Item Fields -->
       <template v-if="item.type === 'kv'">
         <div class="form-row">
           <label>KV Bucket</label>
@@ -343,7 +330,6 @@
           />
         </div>
       </template>
-      <!-- Slider Item Fields -->
       <template v-if="item.type === 'slider'">
         <div class="form-row">
           <label>Mode</label>
@@ -488,7 +474,6 @@
         </div>
       </template>
 
-      <!-- Gauge Item Fields -->
       <template v-if="item.type === 'gauge'">
         <div class="form-row">
           <label>Mode</label>
@@ -652,9 +637,9 @@ const kvConfig = computed<MapItemKvConfig>(() => {
   }
 })
 
-// The fallbacks mirror createDefaultItem, so an item whose config object is
-// missing -- which is any row arriving from a dashboard exported before these
-// types existed -- edits as a blank one rather than throwing on a read.
+// The fallbacks mirror createDefaultItem, so an item with no config object (a
+// dashboard exported before these types existed) edits as a blank one instead
+// of throwing.
 const sliderConfig = computed<MapItemSliderConfig>(() =>
   props.item.sliderConfig || { mode: 'kv', min: 0, max: 100, step: 1, defaultValue: 0 })
 
@@ -667,12 +652,10 @@ const switchLabels = computed(() => {
 
 const onPayloadStr = computed(() => {
   const val = switchConfig.value.onPayload
-  // If it's an object, stringify it
   if (typeof val === 'object' && val !== null) {
     return JSON.stringify(val)
   }
-  // If it's already a string (or number/boolean), return as string
-  // This prevents double-encoding strings like "{" -> "\"{""
+  // Anything else as a string, so a string like "{" is not double-encoded.
   return String(val ?? '')
 })
 
@@ -724,15 +707,13 @@ function updateSwitchLabel(which: 'on' | 'off', value: string) {
 function updatePayload(which: 'on' | 'off', value: string) {
   let parsed: any = value
   
-  // Try to parse. If it looks like JSON (starts with { or [), try to parse.
-  // If valid, save as object.
-  // If invalid, SAVE AS STRING.
+  // If it looks like JSON ({ or [), save the parsed object when valid and the
+  // raw string when not.
   const trimmed = value.trim()
   if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
     try {
       parsed = JSON.parse(value)
     } catch {
-      // Keep as string if parse fails
       parsed = value
     }
   } else {

@@ -1,4 +1,3 @@
-<!-- ui/src/components/layout/AppSidebar.vue -->
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { Building2, History, LayoutDashboard, LogOut, MapPin, Moon, Network, Package, RadioTower, ScrollText, Settings, Sun, Tags, Unplug, Users } from '@lucide/vue'
@@ -26,11 +25,9 @@ const isLargeScreen = useMediaQuery('(min-width: 1024px)')
 // Computed: Only allow compact mode if user wants it AND we are on desktop
 const effectiveCompact = computed(() => uiStore.sidebarCompact && isLargeScreen.value)
 
-// Modal State
 const showNatsModal = ref(false)
 const showServerInfo = ref(false)
 
-// Org Search State
 const orgSearchQuery = ref('')
 
 // Dropdown State (org and user are independent)
@@ -64,9 +61,8 @@ const menuItems = computed(() => {
     ]
   }
 
-  // Only show what this role can actually reach. The capability table lives in
-  // stores/auth.ts and the router guards on the same values, so a member no
-  // longer sees NATS/Nebula nav that would bounce them back to the dashboard.
+  // Only show what this role can reach: the router guards on the same
+  // capability table (stores/auth.ts).
   const can = authStore.can
 
   const items: any[] = [
@@ -82,9 +78,8 @@ const menuItems = computed(() => {
     )
   }
 
-  // Beside the inventory it describes, and gated on its own capability so the
-  // line says what it means. Every role that reaches Things and Locations also
-  // reaches this.
+  // Beside the inventory it describes, gated on its own capability. Every role
+  // that reaches Things and Locations also reaches this.
   if (can.viewActivity) items.push({ label: 'Activity', icon: History, path: '/activity' })
 
   if (can.manageInfrastructure) {
@@ -283,7 +278,6 @@ const serverInfoJson = computed(() => {
   return JSON.stringify(natsStore.nc.info, null, 2)
 })
 
-// NATS Connection Controls
 const canConnect = computed(() => {
   return authStore.isAuthenticated
     && authStore.currentMembership?.nats_user
@@ -304,18 +298,15 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
 </script>
 
 <template>
-  <!-- h-full (= the .drawer-side's 100dvh, not h-screen/100vh) caps the sidebar at
-       the visible viewport — on a mobile browser 100vh exceeds the dvh drawer-side,
-       which forced a small scroll of the account footer. The nav below is the only
-       scroller (flex-1 min-h-0), keeping the brand header and account footer pinned. -->
+  <!-- h-full (the drawer-side's 100dvh), not h-screen: on a mobile browser 100vh
+       exceeds the drawer-side and scrolled the account footer. The nav is the only
+       scroller (flex-1 min-h-0), so the brand header and footer stay pinned. -->
   <aside
     class="bg-base-100 h-full flex flex-col border-r border-base-300 transition-all duration-300 ease-in-out z-20"
     :class="effectiveCompact ? 'w-20 min-w-[5rem]' : 'w-72 min-w-[18rem]'"
   >
 
-    <!-- ====================================================================== -->
     <!-- TOP: BRAND + ORG SELECTOR -->
-    <!-- ====================================================================== -->
     <div class="flex-none p-3 pb-0 flex flex-col gap-2">
 
       <!-- Brand + Toggle -->
@@ -346,7 +337,6 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
         class="dropdown"
         :class="effectiveCompact ? '' : 'dropdown-bottom w-full'"
       >
-        <!-- Trigger -->
         <div
           ref="orgTriggerRef"
           @click="toggleOrgDropdown"
@@ -354,25 +344,19 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
           :class="{ 'justify-center': effectiveCompact }"
           role="button"
         >
-          <!-- The organization's own mark, falling back to its initial. This is
-               the only place a tenant's logo appears in the chrome, and in
-               compact mode it is the ONLY org identity on screen at all -- which
-               is exactly why a single letter was not enough: two organizations
-               beginning with the same letter were indistinguishable at the
-               moment identity matters most. -->
+          <!-- The organization's own mark, falling back to its initial. In compact
+               mode it is the only org identity on screen, and a letter alone could
+               not tell two organizations apart. -->
           <OrgLogo :org="authStore.currentOrg" :size="32" />
 
-          <!-- Org Info -->
           <div v-show="!effectiveCompact" class="flex flex-col truncate flex-1 text-left min-w-0">
             <span class="text-[10px] uppercase tracking-wider text-base-content/50 font-semibold leading-tight">Organization</span>
             <span class="font-semibold text-sm truncate leading-tight">{{ authStore.currentOrg?.name || 'Select Org' }}</span>
           </div>
 
-          <!-- Chevron -->
           <svg v-show="!effectiveCompact" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 256 256" class="opacity-50 flex-shrink-0"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" fill="currentColor"/></svg>
         </div>
 
-        <!-- Dropdown Menu -->
         <Teleport to="body" :disabled="!effectiveCompact">
           <ul
             v-if="isOrgDropdownOpen"
@@ -382,12 +366,10 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
             :style="effectiveCompact ? orgDropdownPos : undefined"
           >
 
-            <!-- Header -->
             <li class="menu-title px-3 py-2 bg-base-200/30 text-xs font-bold uppercase tracking-wider border-b border-base-200">
               Switch Organization
             </li>
 
-            <!-- Search Input -->
             <div class="px-2 py-2 border-b border-base-200">
               <input
                 v-model="orgSearchQuery"
@@ -398,7 +380,6 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
               />
             </div>
 
-            <!-- SCROLLABLE LIST -->
             <div class="max-h-64 overflow-y-auto scrollbar-thin">
               <li v-for="membership in filteredMemberships" :key="membership.id">
                 <a
@@ -406,10 +387,9 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
                   :class="{ 'active': authStore.currentOrgId === membership.organization }"
                   class="justify-between rounded-none px-4 py-2 border-b border-base-200/50"
                 >
-                  <!-- The dot is SELECTION, the logo is IDENTITY; they are not
-                       the same signal and the row needs both. The organization
-                       record is already expanded on every membership, so a mark
-                       per row costs nothing but the image. -->
+                  <!-- The dot is selection, the logo is identity; the row needs both.
+                       The organization is already expanded on every membership, so
+                       a logo costs only the image. -->
                   <div class="flex items-center gap-2 truncate">
                     <span class="w-2 h-2 rounded-full flex-shrink-0" :class="authStore.currentOrgId === membership.organization ? 'bg-current' : 'bg-transparent border border-base-content/30'"></span>
                     <OrgLogo :org="membership.expand?.organization" :size="20" fallback="blank" />
@@ -423,7 +403,6 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
               </li>
             </div>
 
-            <!-- Footer Action -->
             <div v-if="authStore.canManageOrganizations" class="border-t border-base-300 bg-base-100 p-1">
               <li>
                 <router-link to="/organizations/new" class="text-xs" @click="closeOrgDropdown">
@@ -438,14 +417,11 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
       <div class="divider my-0"></div>
     </div>
 
-    <!-- ====================================================================== -->
     <!-- NAVIGATION (Scrollable) -->
-    <!-- ====================================================================== -->
     <nav class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 pb-2">
       <ul class="menu p-0 gap-1 w-full">
         <li v-for="item in menuItems" :key="item.label">
 
-          <!-- Parent Item -->
           <details v-if="item.children" :open="isActive(item.path) && !effectiveCompact">
             <summary
               :class="{ 'active': isActive(item.path) }"
@@ -476,7 +452,6 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
             </ul>
           </details>
 
-          <!-- Single Item -->
           <router-link
             v-else
             :to="item.path"
@@ -498,13 +473,10 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
       </ul>
     </nav>
 
-    <!-- ====================================================================== -->
     <!-- BOTTOM: NATS STATUS + USER -->
-    <!-- ====================================================================== -->
     <div class="flex-none p-3 pt-0 flex flex-col gap-2">
       <div class="divider my-0"></div>
 
-      <!-- NATS Status Pill -->
       <div
         @click="showNatsModal = true"
         class="flex items-center px-3 py-1.5 bg-base-100 border border-base-200 rounded text-xs cursor-pointer hover:border-base-300 hover:shadow-sm transition-all group select-none"
@@ -526,7 +498,6 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
         class="dropdown"
         :class="effectiveCompact ? '' : 'dropdown-top w-full'"
       >
-        <!-- Trigger -->
         <div
           ref="userTriggerRef"
           @click="toggleUserDropdown"
@@ -534,24 +505,18 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
           :class="{ 'justify-center': effectiveCompact }"
           role="button"
         >
-          <!-- User Avatar -->
-          <!-- "U" rather than a computed first-letter: UserAvatar takes the
-               initial from name-or-email itself, so a fallback derived from the
-               name can never be reached. This one covers only the moment before
-               the user record has hydrated. -->
+          <!-- A literal "U": UserAvatar takes the initial from name or email itself,
+               so this covers only the moment before the user record hydrates. -->
           <UserAvatar :user="authStore.user" :size="32" fallback-initial="U" />
 
-          <!-- User Info -->
           <div v-show="!effectiveCompact" class="flex flex-col truncate flex-1 text-left min-w-0">
             <span class="font-semibold text-sm truncate leading-tight">{{ authStore.user?.name || 'User' }}</span>
             <span v-if="(authStore.user as any)?.email" class="text-xs text-base-content/60 truncate leading-tight">{{ (authStore.user as any).email }}</span>
           </div>
 
-          <!-- Chevron (rotated since menu opens upward) -->
           <svg v-show="!effectiveCompact" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 256 256" class="opacity-50 flex-shrink-0 rotate-180"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z" fill="currentColor"/></svg>
         </div>
 
-        <!-- Dropdown Menu -->
         <Teleport to="body" :disabled="!effectiveCompact">
           <ul
             v-if="isUserDropdownOpen"
@@ -582,13 +547,10 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
       </div>
     </div>
 
-    <!-- ====================================================================== -->
     <!-- NATS MODAL (Teleported) -->
-    <!-- ====================================================================== -->
     <Teleport to="body">
       <dialog class="modal" :class="{ 'modal-open': showNatsModal }">
         <div class="modal-box max-w-2xl">
-          <!-- Header -->
           <div class="flex justify-between items-center mb-4">
             <h3 class="font-bold text-lg flex items-center gap-2">
               <RadioTower :size="22" /> NATS Connection
@@ -596,7 +558,6 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
             <button @click="showNatsModal = false" class="btn btn-sm btn-circle btn-ghost" aria-label="Close">✕</button>
           </div>
 
-          <!-- Connection Status & Controls -->
           <div class="flex flex-wrap items-center justify-between gap-3 mb-4 p-3 bg-base-200 rounded-box">
             <div class="flex items-center gap-2">
               <span class="w-2.5 h-2.5 rounded-full shrink-0" :class="natsStatusColor"></span>
@@ -632,19 +593,15 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
             </div>
           </div>
 
-          <!-- Error Message -->
           <div v-if="natsStore.lastError" class="alert alert-error mb-4 text-sm">
             <span>{{ natsStore.lastError }}</span>
           </div>
 
-          <!-- No Identity Warning -->
           <div v-if="!authStore.currentMembership?.nats_user" class="alert alert-warning mb-4 text-sm">
             <span>No NATS identity linked to this organization. Configure one in Settings.</span>
           </div>
 
-          <!-- Connected State: Show Server Info -->
           <div v-if="natsStore.isConnected" class="space-y-3">
-            <!-- Stats -->
             <div class="grid grid-cols-2 gap-3">
               <div class="bg-base-200 rounded-box p-3 text-center">
                 <div class="text-xs text-base-content/60 mb-1">RTT</div>
@@ -656,7 +613,6 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
               </div>
             </div>
 
-            <!-- Server Info JSON (collapsible) -->
             <div class="bg-base-200 rounded-box overflow-hidden">
               <button
                 @click="showServerInfo = !showServerInfo"
@@ -671,7 +627,6 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
             </div>
           </div>
 
-          <!-- Disconnected State -->
           <div v-else-if="natsStore.status === 'disconnected'" class="text-center py-8">
             <Unplug :size="40" :stroke-width="1.5" class="mx-auto text-base-content/40" />
             <p class="text-sm opacity-60 mt-2">
@@ -681,7 +636,6 @@ useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
             </p>
           </div>
 
-          <!-- Footer -->
           <div class="modal-action mt-6">
             <router-link to="/settings" class="btn btn-ghost" @click="showNatsModal = false">
               Settings

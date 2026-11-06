@@ -21,14 +21,13 @@ const routes: RouteRecordRaw[] = [
     component: MainLayout,
     meta: { requiresAuth: true },
     children: [
-      // Visualizer is the home page
       {
         path: '',
         name: 'Visualizer',
         meta: { title: 'Dashboard' },
         component: () => import('@/views/dashboard/VisualizerView.vue'),
       },
-      // Organizations (Operators and Super Users)
+      // Organizations
       {
         path: 'organizations',
         name: 'AdminOrgList',
@@ -130,13 +129,11 @@ const routes: RouteRecordRaw[] = [
       { path: 'nebula/hosts/:id/edit', name: 'NebulaHostEdit', component: () => import('@/views/nebula/NebulaHostFormView.vue'), meta: { title: 'Edit Host', requiresCapability: 'manageInfrastructure' } },
       
       // Audit
-      // The tenant activity feed. A capability rather than requiresOperator:
-      // `activity` IS org-scoped, unlike audit_logs below. The capability is
-      // navigation only -- the read rule in schema.json is the boundary.
+      // A capability rather than requiresOperator: `activity` is org-scoped,
+      // unlike audit_logs. Navigation only; the schema.json read rule is the boundary.
       { path: 'activity', name: 'Activity', component: () => import('@/views/activity/ActivityView.vue'), meta: { title: 'Activity', requiresCapability: 'viewActivity' } },
 
-      // audit_logs has no organization field, so its read rule is operators only.
-      // Without this gate the page loads and renders an empty list for everyone else.
+      // audit_logs has no organization field, so only operators can read it.
       { path: 'audit', name: 'AuditLogs', component: () => import('@/views/audit/AuditLogView.vue'), meta: { title: 'Audit Log', requiresOperator: true } },
       
       // Organization
@@ -156,18 +153,13 @@ const routes: RouteRecordRaw[] = [
       { path: 'settings', name: 'Settings', component: () => import('@/views/settings/UserSettingsView.vue') , meta: { title: 'Settings' } },
     ],
   },
-  // Catch-all: redirect unknown paths to home
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 
-// The widget gallery — every widget rendered against fixtures, no NATS, no
-// login, no dashboard. See views/dev/WidgetGalleryView.vue for why it exists.
-//
-// `import.meta.env.DEV` is replaced with the literal `false` in a production
-// build, so this whole block and the dynamic import inside it are dropped by
-// the bundler: the gallery is absent from the shipped app rather than merely
-// unreachable from it. Spliced in before the catch-all, which would otherwise
-// swallow the path.
+// The widget gallery (views/dev/WidgetGalleryView.vue). It has no auth guard, so
+// it must stay inside `import.meta.env.DEV`: a production build drops the block
+// and the view from the bundle. Spliced in before the catch-all, which would
+// otherwise swallow the path.
 if (import.meta.env.DEV) {
   routes.splice(routes.length - 1, 0, {
     path: '/dev/widgets',
@@ -182,35 +174,26 @@ const router = createRouter({
   routes,
 })
 
-// Vue Router 5 deprecates the next() callback (VUE_ROUTER_R0025) in favour of
-// returning the decision: a path string redirects, false aborts, and returning
-// nothing lets the navigation through.
+// Vue Router 5 deprecates next() (VUE_ROUTER_R0025): return a path to redirect,
+// false to abort, nothing to allow.
 router.beforeEach(async (to) => {
   const authStore = useAuthStore()
 
-  // Wait for auth hydration before reading anything off the store.
-  //
-  // Installing the router starts the initial navigation immediately, so without
-  // this the FIRST guard run of a cold load raced main.ts's hydration: the token
-  // is in localStorage and `user` is set synchronously, so isAuthenticated
-  // passed -- but memberships arrive over the network, so every capability below
-  // read false and every gated route bounced to '/'. That made deep links and
-  // browser-refresh-on-any-gated-page silently land on the dashboard, while the
-  // sidebar (reading the same capabilities, a tick later) showed the very link
-  // that had just been refused.
-  //
-  // Memoized in the store, so this is free on every navigation after the first.
+  // Must await hydration before reading a capability. The initial navigation
+  // starts as soon as the router is installed; `user` is set synchronously but
+  // memberships arrive over the network, so without this every capability reads
+  // false on a cold load and every gated deep link or refresh bounces to '/'.
+  // Memoized in the store, so later navigations cost nothing.
   await authStore.initializeFromAuth()
 
   if (to.meta.requiresAuth !== false && !authStore.isAuthenticated) {
-    // Send them where they were going once they are signed in, rather than
-    // dropping them on the dashboard -- the whole point of a working deep link.
+    // Carry the deep link through login. LoginView accepts ?redirect= only as a
+    // relative in-app path, or it would be an open redirect.
     return to.fullPath === '/' ? '/login' : { path: '/login', query: { redirect: to.fullPath } }
   }
 
-  // Dashboard users reach the Visualizer at '/' and their own settings, nothing
-  // else. There is no separate route tree for them: '/' is already the Visualizer,
-  // and VisualizerView strips its chrome off the ROLE rather than off the path.
+  // Dashboard users reach only '/' and /settings. VisualizerView strips its
+  // chrome by role, not by path, so they need no separate route tree.
   if (authStore.isDashboardUser && to.meta.requiresAuth !== false) {
     const allowed = ['/', '/settings']
     const permitted = allowed.some(p => to.path === p || (p !== '/' && to.path.startsWith(p + '/')))
@@ -223,15 +206,12 @@ router.beforeEach(async (to) => {
     return '/'
   }
 
-  // Operator routes: accessible to operators and super users
   if (to.meta.requiresOperator && !authStore.canManageOrganizations) {
     return '/'
   }
 
-  // Capability routes. The capability -> role table lives in stores/auth.ts so
-  // the sidebar and individual views resolve access the same way this does.
-  // This is navigation convenience, not enforcement: the server's API rules are
-  // the boundary, and scripts/test-authz.sh is what proves them.
+  // The capability table is in stores/auth.ts, shared with the sidebar. This is
+  // navigation, not enforcement: the server's API rules are the boundary.
   if (to.meta.requiresCapability && !authStore.isSuperAdmin) {
     const capability = to.meta.requiresCapability as keyof typeof authStore.can
     if (!authStore.can[capability]) {
@@ -242,20 +222,9 @@ router.beforeEach(async (to) => {
 
 
 /**
- * Keep the browser tab in step with the route.
- *
- * main.ts used to set document.title once, to the branding name, and nothing
- * ever changed it again -- so every tab of the console read the same word. In
- * a tool people keep four or five tabs of (a stream, a KV bucket, the host
- * they are debugging) that makes the tab strip useless.
- *
- * The title lives in each route meta rather than in a name -> title table off
- * to the side, so a route and its title are added, renamed and deleted
- * together. A route without one falls back to the bare app name.
- *
- * Exported because main.ts has to call it once more after branding resolves:
- * the first navigation is already settled by then, and appName until that
- * point is the compiled-in default.
+ * Sets document.title from the route's `meta.title`, falling back to the app name.
+ * Exported because main.ts calls it again once branding resolves, after the
+ * first navigation has already used the compiled-in default name.
  */
 export function applyDocumentTitle(route = router.currentRoute.value) {
   const appName = useBrandingStore().appName

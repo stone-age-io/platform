@@ -1,29 +1,11 @@
 /**
- * Infer a starting JSON Schema from a sample document.
+ * Infer a draft JSON Schema from a sample document, for the user to review.
+ * Every key in the sample is marked required, since one sample cannot show
+ * which are optional.
  *
- * Authoring a schema by hand is the tedious half of describing a record type,
- * and the sample is almost always to hand — a device's payload, a row exported
- * from the system being replaced. This turns one into a draft to edit rather
- * than a blank form.
- *
- * It came from MessageSchemaFormView, which was removed with the
- * `message_schemas` collection. The function itself was never specific to that
- * collection: a metadata_schema is the same kind of document, authored on the
- * thing type and location type forms, so the helper moved here instead of going
- * with its old home.
- *
- * DRAFT, not truth. Every key present in the sample is marked required, because
- * a sample cannot show which keys are optional — one sample is one observation,
- * not a population. Review is part of the flow, which is why the callers say so
- * when they apply it.
- *
- * The output has to stay editable in SchemaBuilder, or `applyInferred` lands the
- * user on the incompatible banner in the same click that told them to review the
- * result. A null sample value therefore infers `string` rather than the literal
- * truth `{type: 'null'}`: a null in a sample means "this key exists and was
- * empty when I looked", not "this key may only ever be null", and the builder
- * has no null type to render it with. Mixed-type arrays still yield `anyOf` and
- * still trip the banner — that one is genuinely outside what the form can say.
+ * The output must stay editable in SchemaBuilder, so a null infers `string`
+ * (the builder has no null type). Mixed-type arrays still yield `anyOf`, which
+ * the form genuinely cannot represent.
  */
 export function inferSchema(value: any): Record<string, any> {
   if (value === null) return { type: 'string' }
@@ -48,8 +30,7 @@ export function inferSchema(value: any): Record<string, any> {
       : { type: 'object', properties }
   }
 
-  // Recognised string formats, so a date lands as a date picker in the form
-  // renderer rather than a text box.
+  // Formats, so e.g. a date renders as a date picker.
   if (typeof value === 'string') {
     if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value)) return { type: 'string', format: 'date-time' }
     if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return { type: 'string', format: 'date' }

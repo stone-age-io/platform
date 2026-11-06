@@ -1,6 +1,5 @@
 <template>
   <div class="publisher-widget" :class="{ 'card-layout': layoutMode === 'card' }">
-    <!-- Top Bar: Subject & History -->
     <div class="pub-header">
       <div class="input-group">
         <input
@@ -13,7 +12,6 @@
           @keyup.enter="focusPayload"
         />
 
-        <!-- History Dropdown -->
         <div class="history-dropdown" v-if="history.length > 0">
           <button class="history-btn" @click="showHistory = !showHistory" title="Recent Messages" aria-label="Recent messages">
             <History :size="16" aria-hidden="true" />
@@ -40,7 +38,6 @@
       </div>
     </div>
 
-    <!-- Middle: Payload Editor -->
     <div class="pub-body">
       <textarea
         ref="payloadInput"
@@ -51,7 +48,6 @@
       ></textarea>
     </div>
 
-    <!-- Bottom: Actions -->
     <div class="pub-footer">
       <div class="status-text" :class="statusType">
         {{ statusMessage }}
@@ -79,7 +75,6 @@
     <!-- Overlay for History Menu Click-away -->
     <div v-if="showHistory" class="click-overlay" @click="showHistory = false"></div>
 
-    <!-- Response Modal -->
     <ResponseModal
       v-model="showResponse"
       :title="responseTitle"
@@ -117,7 +112,6 @@ const dashboardStore = useDashboardStore()
 const authStore = useAuthStore()
 const { updateWidgetConfiguration } = useWidgetOperations()
 
-// State
 const subject = ref('')
 const payload = ref('')
 const isSending = ref(false)
@@ -126,23 +120,18 @@ const statusType = ref<'info' | 'success' | 'error'>('info')
 const showHistory = ref(false)
 const payloadInput = ref<HTMLTextAreaElement | null>(null)
 
-// Response Modal
 const showResponse = ref(false)
 const responseTitle = ref('')
 const responseData = ref('')
 const responseStatus = ref<'success' | 'error'>('success')
 const responseLatency = ref(0)
 
-// Config Access
 const cfg = computed(() => props.config.publisherConfig || {})
 const history = computed(() => cfg.value.history || [])
 
-// Thing Type binding — when thingId + thingTypeOperationId are set, the subject
-// auto-resolves from the Thing's context against its type's prefix and the
-// operation's suffix. The payload stays free text: the operation used to carry a
-// message_schemas relation that rendered a typed form here, but that collection
-// never validated anything and was dropped, so the schema-driven payload went
-// with it.
+// Thing Type binding: with thingId + thingTypeOperationId set, the subject
+// resolves from the Thing's context against its type's prefix and the
+// operation's suffix. The payload stays free text.
 const boundOperation = ref<ThingTypeOperation | null>(null)
 
 const boundMode = computed(() => !!cfg.value.thingId && !!cfg.value.thingTypeOperationId)
@@ -187,7 +176,6 @@ async function loadBinding() {
   }
 }
 
-// Actions
 function focusPayload() {
   payloadInput.value?.focus()
 }
@@ -218,7 +206,6 @@ function addToHistory(sub: string, pay: string) {
     ...history.value
   ].slice(0, 10) // Keep last 10
 
-  // Persist to widget config
   updateWidgetConfiguration(props.config.id, {
     publisherConfig: {
       ...cfg.value,
@@ -240,7 +227,6 @@ async function handleSend(mode: 'publish' | 'request') {
   isSending.value = true
   setStatus('Sending...', 'info')
 
-  // Resolve variables
   const finalSubject = resolveTemplate(subject.value, dashboardStore.currentVariableValues)
   const rawPayload = payload.value
   const finalPayloadStr = resolveTemplate(rawPayload, dashboardStore.currentVariableValues)
@@ -286,7 +272,6 @@ function setStatus(msg: string, type: 'info' | 'success' | 'error') {
   statusType.value = type
 }
 
-// Initialize
 onMounted(async () => {
   if (boundMode.value) {
     await loadBinding()
@@ -375,7 +360,6 @@ watch(
   background: rgba(255, 255, 255, 0.1);
 }
 
-/* History Dropdown */
 .history-menu {
   position: absolute;
   top: 100%;
@@ -453,7 +437,6 @@ watch(
   z-index: 90;
 }
 
-/* Body */
 .pub-body {
   flex: 1;
   display: flex;
@@ -481,7 +464,6 @@ watch(
   border-color: var(--color-accent);
 }
 
-/* Footer */
 .pub-footer {
   padding: 8px;
   border-top: 1px solid var(--border);

@@ -2,9 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { useThresholds } from './useThresholds'
 import type { ThresholdRule } from '@/types/dashboard'
 
-// matchThreshold was split out of evaluateThresholds so the state timeline can
-// read a rule's label as well as its colour. Text, stat and kv still call
-// evaluateThresholds and must see exactly what they saw before.
+// evaluateThresholds (text, stat, kv) must stay the colour of matchThreshold.
 
 const rule = (id: string, operator: ThresholdRule['operator'], value: string, color: string, label?: string): ThresholdRule =>
   ({ id, operator, value, color, label })
@@ -44,8 +42,7 @@ describe('useThresholds', () => {
   })
 })
 
-// > >= < <= used to fall back to comparing TEXT, and letters sort after digits,
-// so `> 40` coloured "idle", "fault" and every other word red.
+// Ordering operators must not compare text: letters sort after digits.
 describe('ordering operators', () => {
   const { matchThreshold } = useThresholds()
   const hot = [rule('h', '>', '40', 'red')]

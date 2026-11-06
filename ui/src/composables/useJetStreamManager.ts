@@ -1,4 +1,3 @@
-// ui/src/composables/useJetStreamManager.ts
 import { jetstreamManager } from '@nats-io/jetstream'
 import type { StreamInfo, ConsumerInfo, JetStreamAccountStats, PurgeOpts, PurgeResponse, StoredMsg } from '@nats-io/jetstream'
 import { Kvm, type KV, type KvStatus } from '@nats-io/kv'
@@ -26,9 +25,7 @@ import {
 // parseHumanDuration lives in utils/duration.ts so the dashboard shares it.
 export { parseHumanDuration }
 
-/**
- * Format nanoseconds to human-readable duration.
- */
+/** Human-readable duration; negative means 'unlimited'. */
 export function formatNanos(nanos: number): string {
   if (!nanos || nanos === 0) return '0'
   if (nanos < 0) return 'unlimited'
@@ -67,10 +64,7 @@ export function formatNanos(nanos: number): string {
   return parts.join(' ') || '0'
 }
 
-/**
- * Format nanoseconds to human form suitable for re-editing in forms.
- * Returns the most compact single-unit representation.
- */
+/** The most compact single-unit form (e.g. '2h'), for re-editing in a form. */
 export function nanosToFormValue(nanos: number): string {
   if (!nanos || nanos === 0) return '0'
   if (nanos % NANOS_PER_DAY === 0) return `${nanos / NANOS_PER_DAY}d`
@@ -80,9 +74,6 @@ export function nanosToFormValue(nanos: number): string {
   return formatNanos(nanos)
 }
 
-/**
- * Format millis to human form suitable for forms.
- */
 export function millisToFormValue(ms: number): string {
   if (!ms || ms === 0) return '0'
   return nanosToFormValue(ms * NANOS_PER_MS)
@@ -485,9 +476,7 @@ export function useJetStreamManager() {
   }
 
   return {
-    // Account
     getAccountInfo,
-    // Streams
     listStreams,
     getStreamInfo,
     createStream,
@@ -495,17 +484,14 @@ export function useJetStreamManager() {
     deleteStream,
     purgeStream,
     getRecentMessages,
-    // Consumers
     listConsumers,
     deleteConsumer,
     pauseConsumer,
     resumeConsumer,
-    // KV Buckets
     listKvBuckets,
     getKvBucketStatus,
     createKvBucket,
     deleteKvBucket,
-    // Helpers
     parseHumanDuration,
     formatNanos,
     nanosToFormValue,

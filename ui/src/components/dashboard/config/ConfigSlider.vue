@@ -11,7 +11,6 @@
       </div>
     </div>
 
-    <!-- KV Mode Fields -->
     <template v-if="form.sliderMode === 'kv'">
       <ConfigKvSource
         :form="form"
@@ -22,7 +21,6 @@
       />
     </template>
 
-    <!-- CORE Mode Fields -->
     <template v-if="form.sliderMode === 'core'">
       <div class="form-group">
         <label>Publish Subject</label>

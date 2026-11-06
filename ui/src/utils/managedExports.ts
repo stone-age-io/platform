@@ -1,48 +1,34 @@
-// ui/src/utils/managedExports.ts
-//
-// Identifies the NATS export/import pair that the platform provisions for a
-// managed organization, so the console can present them as read-only instead of
-// offering edits that quietly do nothing.
+// Identifies the platform-provisioned NATS export/import pairs so the console
+// shows them read-only.
 //
 // Mirrors `managedExportName` and `hubImportName` in
-// hooks/managed_org_exports.go -- KEEP THE TWO IN STEP. The Go side is the
-// source of truth; it is a compile-time constant there, not configuration, so
-// there is nothing to fetch at runtime. (`nats.managed_export_subject` is
-// configurable; the record NAMES are not.)
+// hooks/managed_org_exports.go -- KEEP THE TWO IN STEP (Go tests read this
+// file). The names are Go constants, not configuration.
 //
-// WHY MATCH ON THE NAME: because `account_id` + `name` is the exact identity
-// `ensureManagedExports` looks the records up by. A record a tenant hand-made
-// under this name would be adopted by the reconciler on the next org save, so
-// the console marking it managed is not a false positive -- it is early notice.
+// Matching on the name is exact: `account_id` + `name` is the identity
+// `ensureManagedExports` looks records up by, so a tenant-made record with this
+// name would be adopted on the next org save anyway.
 //
-// WHAT ACTUALLY REVERTS: `reconcile` rewrites only the fields in its desired
-// list -- subject, type, description, organization, token_req and
-// allowed_importers on the export (both exports are private to the one account
-// they serve); subject, type, description, organization, account and
-// local_subject on the import. `advertise`, `allow_trace` and the
-// service-response fields are create-only and an edit to them WOULD persist. The console still treats the whole record as read-only:
-// splitting one form into a reconciled half and a durable half would need a
-// per-field story in three views, and hand-tuning half of a platform-provisioned
-// pipeline is not a thing to make easy. The banner names the fields that revert
-// rather than claiming the record is frozen, because that is the true claim.
+// `reconcile` reverts only: subject, type, description, organization,
+// token_req and allowed_importers on the export; subject, type, description,
+// organization, account and local_subject on the import. Other fields
+// (`advertise`, `allow_trace`, service-response) would persist, but the console
+// treats the whole record as read-only. The banner names the reverting fields.
 
 /** The export's name, in the managed organization's own NATS account. */
 export const MANAGED_EXPORT_NAME = 'helpdesk-events'
 
 /**
- * The hub-side import is named `<export>-<organization id>`. Matching the id
- * shape rather than just the prefix keeps a tenant's own `helpdesk-events-eu`
- * editable: only the server builds the 15-character form.
+ * The hub-side import is `<export>-<organization id>`. Matching the id shape,
+ * not just the prefix, keeps a tenant's own `helpdesk-events-eu` editable.
  */
 const MANAGED_IMPORT_RE = new RegExp(`^${MANAGED_EXPORT_NAME}-[a-z0-9]{15}$`)
 
 /**
- * The inventory-events pair (hooks/inventory_exports.go): the export sits on
- * the operator account as `inventory-<organization id>`, the import on each
- * organization's own account as `inventory-events`. Mirrors
- * `inventoryExportName` and `inventoryImportName` -- KEEP THEM IN STEP. Same
- * id-shaped match as the helpdesk import, so a hand-made `inventory-eu` stays
- * editable.
+ * The inventory-events pair: the export `inventory-<organization id>` on the
+ * operator account, the import `inventory-events` on each org's account.
+ * Mirrors `inventoryExportName` and `inventoryImportName` in
+ * hooks/inventory_exports.go -- KEEP THEM IN STEP.
  */
 export const INVENTORY_IMPORT_NAME = 'inventory-events'
 const INVENTORY_EXPORT_RE = /^inventory-[a-z0-9]{15}$/

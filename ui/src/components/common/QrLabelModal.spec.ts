@@ -6,20 +6,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import QrLabelModal from './QrLabelModal.vue'
 import { useAuthStore } from '@/stores/auth'
 
-// The second exception to this suite's no-mounting rule, for the same reason as
-// ConfirmDialog: what is under test IS the DOM contract. This component's whole
-// job is turning N records into N printable boxes, and the ways it can go wrong
-// are structural -- a record dropped without a word, a label rendered once for a
-// list of ten, a symbol re-encoded on every tick of a detail view's live data.
+// Mounted, an exception to the no-mounting rule: the DOM contract (N records in,
+// N labels out) is the subject.
 //
-// What NO test here can cover is the print output. Pagination, the mm geometry
-// and the @page box are decided by a print engine that jsdom does not have and
-// that a headless browser will not show us. Those need a test print on real
-// stock; everything below is the half that can be pinned.
+// Print output (pagination, mm geometry, the @page box) cannot be tested here;
+// it needs a test print on real stock.
 
 const { toDataURL } = vi.hoisted(() => ({
-  // jsdom has no canvas, so the real encoder cannot run. The payload is echoed
-  // back so a test can still prove WHICH code reached WHICH label.
+  // jsdom has no canvas. Echo the payload so a test can see which code reached
+  // which label.
   toDataURL: vi.fn(async (text: string) => `data:image/png;base64,${text}`),
 }))
 vi.mock('qrcode', () => ({ default: { toDataURL } }))
@@ -36,8 +31,7 @@ async function open(records: Rec[]) {
   return wrapper
 }
 
-// The component teleports to <body>, so its markup is NOT inside the mounted
-// wrapper's tree -- wrapper.find() cannot see any of it. Query the document.
+// The component teleports to <body>, so query the document, not the wrapper.
 const pages = () => Array.from(document.querySelectorAll('.qr-label-page'))
 const text = (sel: string) => document.querySelector(sel)?.textContent?.replace(/\s+/g, ' ').trim() ?? ''
 
@@ -66,7 +60,6 @@ describe('QrLabelModal', () => {
     expect(pages()).toHaveLength(3)
     expect(text('h3')).toBe('Labels (3)')
 
-    // Each symbol carries its own record's code -- not the first one three times.
     const srcs = Array.from(document.querySelectorAll<HTMLImageElement>('.qr-label-page img')).map(
       (img) => img.src,
     )
@@ -77,9 +70,7 @@ describe('QrLabelModal', () => {
     ])
   })
 
-  // A code is optional, so a filtered set will contain records that cannot carry
-  // a label. Printing the rest is right; doing it silently is not -- the tech
-  // finds out at the site, with a stack that is short and no idea which two.
+  // A silent drop is only discovered at the site.
   it('prints the records that have a code and names the ones it skipped', async () => {
     await open([THING('A-1'), { code: '', name: 'Nameless Sensor', kind: 'thing' }, THING('C-3')])
 
@@ -99,19 +90,14 @@ describe('QrLabelModal', () => {
     expect(document.querySelector<HTMLButtonElement>('.btn-primary')?.disabled).toBe(true)
   })
 
-  // The single-record message is the one a person hits by accident, from a
-  // detail view, so it says what to do rather than counting to one.
   it('tells a single codeless record to get a code', async () => {
     await open([{ code: '', name: 'Untagged', kind: 'thing' }])
 
     expect(text('.alert')).toContain('This record has no code')
   })
 
-  // `records` is an array literal in the parent template, so its identity changes
-  // on every parent re-render -- and a detail view re-renders whenever its live
-  // NATS data ticks. Watching the array itself would re-encode every symbol on
-  // each tick. This is the guard on that; it fails if the watch moves back to
-  // `() => props.records`.
+  // `records` is a new array on every parent re-render (each live-data tick on a
+  // detail view). Fails if the watch moves back to `() => props.records`.
   it('does not re-encode when the parent re-renders with the same codes', async () => {
     const w = await open([THING('A-1'), THING('B-2')])
     expect(toDataURL).toHaveBeenCalledTimes(2)
@@ -149,8 +135,7 @@ describe('QrLabelModal', () => {
     }
     const orgLines = () => Array.from(document.querySelectorAll('.qr-label-org')).map((el) => el.textContent?.trim())
 
-    // Thing codes are unique only within an organization, so the org code is
-    // what makes a sticker unambiguous across customers.
+    // Thing codes are unique only within an organization.
     it('prints the organization code on every label', async () => {
       inOrg({ code: 'acme', name: 'Acme Facilities' })
       await open([THING('A-1'), THING('A-2')])
@@ -173,8 +158,7 @@ describe('QrLabelModal', () => {
     })
   })
 
-  // The sizing arithmetic is fitCodePt's spec; this pins that the label uses it
-  // per record rather than one size for the whole batch.
+  // The arithmetic is fitCodePt's spec; this pins that sizing is per record.
   it('prints a short code larger than a long one in the same batch', async () => {
     await open([THING('AHU-1'), THING('S01-AHU-SUPPLY-FAN-03')])
 

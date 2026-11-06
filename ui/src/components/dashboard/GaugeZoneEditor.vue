@@ -8,7 +8,6 @@
       <div v-for="(zone, index) in modelValue" :key="index" class="zone-row">
         <span class="row-label">Range:</span>
         
-        <!-- Min value -->
         <input 
           v-model.number="zone.min" 
           type="number" 
@@ -19,7 +18,6 @@
         
         <span class="row-separator">to</span>
         
-        <!-- Max value -->
         <input 
           v-model.number="zone.max" 
           type="number" 
@@ -30,7 +28,6 @@
         
         <span class="row-label">Color:</span>
         
-        <!-- Color picker -->
         <select 
           v-model="zone.color" 
           class="input-select color" 
@@ -47,7 +44,6 @@
           <option value="var(--muted)" style="color: var(--muted)">Muted</option>
         </select>
         
-        <!-- Delete -->
         <button class="btn-icon danger" @click="removeZone(index)" title="Remove Zone">
           ✕
         </button>
@@ -201,7 +197,6 @@ function removeZone(index: number) {
   border-color: var(--color-accent);
 }
 
-/* Responsive */
 @media (max-width: 600px) {
   .zone-row {
     flex-direction: column;

@@ -1,4 +1,3 @@
-<!-- ui/src/components/nats/KvDashboard.vue -->
 <script setup lang="ts">
 import { ArrowLeft, Database, TriangleAlert } from '@lucide/vue'
 import { ref, computed, onMounted, watch } from 'vue'
@@ -37,11 +36,10 @@ const props = withDefaults(defineProps<{
   baseKey?: string
   title?: string
   /**
-   * Companion bucket holding DESIRED values for the same keys (`twin_desired`).
-   * When set, this browser becomes the digital-twin view: each key gains a
-   * desired counterpart, the reported side goes read-only because the edge owns
-   * it, and rows are marked according to whether the assertion holds. Omit it
-   * and everything below behaves exactly as the general key browser always has.
+   * Companion bucket of DESIRED values for the same keys (`twin_desired`). When
+   * set, this is the digital-twin view: each key gains a desired counterpart,
+   * the reported side goes read-only (the edge owns it), and rows are marked by
+   * whether the assertion holds. Omit it for the general key browser.
    */
   desiredBucket?: string
 }>(), {
@@ -81,11 +79,9 @@ const inputValue = ref('')
 const valueParseError = ref('')
 
 /**
- * Which side the editor is pointed at. Only meaningful in twin mode; the
- * general browser stays on 'reported' forever and never renders the toggle.
- *
- * In twin mode the reported side is READ-ONLY — the edge owns it, so an edit
- * would be overwritten on the next sync. Desired is the writable half.
+ * Which side the editor is pointed at. Twin mode only: the general browser
+ * stays on 'reported'. In twin mode reported is read-only, because the edge
+ * owns it and an edit would be overwritten on the next sync.
  */
 const editorTarget = ref<'reported' | 'desired'>('reported')
 const editorReadOnly = computed(() => twinMode.value && editorTarget.value === 'reported')
@@ -104,12 +100,7 @@ const activeRevision = computed(() =>
   editorTarget.value === 'desired' ? selectedDesired.value?.entry.revision : selectedEntry.value?.revision,
 )
 
-/**
- * When the value on the open side was last written. NATS carries it on every
- * entry; the pane was showing a revision number and no clock, which answers
- * "how many times" but never "how long ago" — the question people actually have
- * about a desired value someone else set.
- */
+/** When the value on the open side was last written: "how long ago", not just which revision. */
 const editorStamp = computed(() => {
   if (!twinMode.value || isAddingNew.value) return ''
   const e = editorTarget.value === 'desired' ? selectedDesired.value?.entry : selectedEntry.value
@@ -125,10 +116,8 @@ function displayKey(fullKey: string) {
 }
 
 /**
- * Three states, not two. 'unreported' is its own case because "the device
- * disagrees" and "the device has never said anything" want different words —
- * folding them together produced a differs marker naming a path that existed on
- * neither side.
+ * 'unreported' is its own state: "the device disagrees" and "the device has
+ * never said anything" need different words.
  */
 type TwinStatus = 'agrees' | 'differs' | 'unreported'
 
@@ -153,10 +142,9 @@ const driftCount = computed(
 )
 
 /**
- * Show the values, not the path names. "Differs on: mode" makes the reader go
- * look both values up; `"auto" → "manual"` is the same width and is the answer.
- * A top-level scalar comes back from twinDrift with an empty path, so it renders
- * as a bare pair with nothing to label.
+ * Show the values, not the path names: `"auto" → "manual"` is the answer. A
+ * top-level scalar comes back from twinDrift with an empty path, so it renders
+ * as a bare pair.
  */
 function driftPairs(key: string): { path: string; reported: any; desired: any }[] {
   const d = desiredState.value.get(key)
@@ -179,9 +167,8 @@ interface TwinMarker {
 }
 
 /**
- * The row annotation, resolved once per key rather than branched in the
- * template. Rows without a desired value get null and render nothing at all —
- * the quiet case stays quiet.
+ * The row annotation, resolved once per key. Rows without a desired value get
+ * null and render nothing.
  */
 function twinMarker(key: string): TwinMarker | null {
   const d = desiredState.value.get(key)
@@ -215,10 +202,9 @@ function twinMarker(key: string): TwinMarker | null {
 const allEntries = computed<KvEntryWithId[]>(() => {
   const out = Array.from(entries.value.values()).map(entry => ({ ...entry, id: entry.key }))
 
-  // A desired value set for a property the device has never reported still has
-  // to appear, or it silently vanishes the moment you save it. Such rows carry
-  // `value: undefined`, which `isReported()` below distinguishes from a value
-  // that genuinely IS undefined-ish (null renders as null).
+  // A desired value for a property the device has never reported must still
+  // appear, or it vanishes the moment it is saved. Such rows carry
+  // `value: undefined`, which `isReported()` tells apart from a real value.
   if (twinMode.value) {
     for (const [key, d] of desiredKv.entries.value) {
       if (entries.value.has(key)) continue
@@ -227,8 +213,7 @@ const allEntries = computed<KvEntryWithId[]>(() => {
   }
 
   out.sort((a, b) => a.key.localeCompare(b.key))
-  // Resolved here so both the table and the tree read one field instead of each
-  // re-deriving the same three-way branch inline.
+  // Resolved here so the table and the tree read one field.
   return twinMode.value ? out.map(e => ({ ...e, twin: twinMarker(e.key) })) : out
 })
 
@@ -237,9 +222,8 @@ function isReported(key: string): boolean {
 }
 
 /**
- * Twin-state filter. Lives alongside the text filter rather than inside it, so
- * "show me what differs" does not need a magic search term. Ignored entirely
- * outside twin mode, where every row's `twin` is undefined anyway.
+ * Twin-state filter, kept apart from the text filter so "show me what differs"
+ * needs no magic search term. Ignored outside twin mode.
  */
 const twinFilter = ref<'all' | 'desired' | 'differs'>('all')
 
@@ -512,11 +496,7 @@ async function handleDelete() {
   }
 }
 
-/**
- * History belongs to a bucket, so it has to follow the Reported/Desired toggle.
- * Reading the reported bucket while the pane showed the desired value produced
- * a revision list that silently described the other side.
- */
+/** History belongs to a bucket, so it follows the Reported/Desired toggle. */
 async function loadHistory(key: string) {
   historyLoading.value = true
   expandedRevisions.value = new Set()
@@ -544,10 +524,8 @@ async function restoreRevision(rev: KvEntryWithId) {
     toast.error('Cannot restore a deletion event')
     return
   }
-  // Restore writes back to the bucket the history came from. Once history
-  // started following the Reported/Desired toggle, an unconditional `put` here
-  // would have taken an old DESIRED revision and written it into the REPORTED
-  // bucket — the one side the twin view declares read-only.
+  // Restore writes back to the bucket the history came from, so it must never
+  // write into the read-only reported side.
   if (editorReadOnly.value) return
   const confirmed = await confirm({
     title: 'Restore Revision',
@@ -610,7 +588,6 @@ function previewValue(val: any): string {
       <span class="loading loading-spinner text-primary"></span>
     </div>
 
-    <!-- Bucket Not Initialized -->
     <div v-else-if="!exists && !error" class="text-center py-12 px-4">
       <Database :size="40" :stroke-width="1.5" class="mx-auto text-base-content/30 mb-3" />
       <h3 class="font-bold text-lg">Bucket Not Initialized</h3>
@@ -620,7 +597,6 @@ function previewValue(val: any): string {
       <button @click="createBucket()" class="btn btn-primary btn-sm">Initialize Bucket</button>
     </div>
 
-    <!-- Error -->
     <div v-else-if="error" class="text-center py-12 px-4">
       <TriangleAlert :size="40" :stroke-width="1.5" class="mx-auto text-warning mb-3" />
       <h3 class="font-bold text-lg">Failed to load bucket</h3>
@@ -628,7 +604,6 @@ function previewValue(val: any): string {
       <button @click="init()" class="btn btn-sm">Retry</button>
     </div>
 
-    <!-- Main Layout -->
     <div v-else class="kv-layout">
 
       <!-- LEFT: Property List -->
@@ -689,29 +664,12 @@ function previewValue(val: any): string {
           <span v-if="viewMode === 'tree'" class="opacity-40 ml-auto">{{ filteredEntries.length }} keys</span>
         </div>
 
-        <!-- FLAT VIEW.
-
-             This was a three-column <table>, and a table is the wrong shape for
-             it on anything narrow: two of the three columns hold unbounded
-             strings -- a dotted key path and an arbitrary JSON value -- so there
-             is no width at which both fit beside each other. On a 393px phone
-             the table laid itself out 469px wide inside a 359px card and gave
-             the key column 74px, which broke 'thing.GW-KC-01.status' into five
-             one-word lines and left the rest to a horizontal scrollbar.
-
-             It is the same grid in both places, with only the track list
-             changing: key and revision share the top line and the value takes
-             the one below on a phone, all three sit in a row from `lg` up. One
-             set of markup rather than a table plus a card, because the value
-             cell is a six-branch v-if plus the twin marker, and two copies of
-             that is the drift waiting to happen.
-
-             Worth saying it was not only a phone problem, because it reads like
-             one. The editor pane is a fixed 420px, so the list on a 1280px
-             desktop is about 522px wide, and the `max-w-xs` on the value took
-             344px of that. Every key wrapped there too. Over the same four rows:
-             164px now against 264px before on the desktop, 235px against 453px
-             on the phone. -->
+        <!-- FLAT VIEW. A grid, not a table: the key path and the JSON value are
+             both unbounded strings, so no width fits them side by side. One grid
+             in both places, only the track list changing: key and revision on
+             top and the value below on a phone, one row from `lg` up. One set of
+             markup, because the value cell is a six-branch v-if plus the twin
+             marker. -->
         <div v-if="viewMode === 'flat'" class="flex-1 overflow-y-auto">
           <div class="kv-cols hidden lg:grid sticky top-0 bg-base-100 z-10 shadow-sm px-3 py-3 text-xs font-semibold">
             <div class="kv-k">Property</div>
@@ -737,20 +695,13 @@ function previewValue(val: any): string {
                   </span>
                   <span v-else-if="item.value === null" class="badge badge-sm badge-ghost">null</span>
                   <span v-else-if="typeof item.value === 'number'" class="text-xs font-mono font-medium">{{ item.value }}</span>
-                  <!-- No max-width here any more. It was `max-w-xs` (20rem),
-                       wider than a phone's whole card, so the cell demanded
-                       320px and squeezed the key column to 74px. The grid track
-                       bounds it now and `truncate` cuts it to whatever that
-                       track actually is. -->
+                  <!-- No max-width: the grid track bounds it and `truncate` cuts to that track. -->
                   <span v-else-if="isObject(item.value)" class="text-[10px] font-mono text-base-content/70 truncate block">{{ JSON.stringify(item.value) }}</span>
                   <span v-else class="text-xs font-medium truncate block">{{ item.value }}</span>
 
-                    <!-- Twin marker: only rows that carry an assertion show one,
-                         and it shows the desired VALUE rather than a word about
-                         it wherever the value is a primitive. `ml-auto` pins it
-                         to the right of the cell in every case — hanging it off
-                         the value left it at a different x on every row,
-                         depending on how long the value happened to be. -->
+                    <!-- Twin marker: only rows that carry an assertion, showing the
+                         desired value itself when it is a primitive. `ml-auto` pins
+                         it right, so it sits at the same x on every row. -->
                   <span v-if="item.twin" class="flex items-center gap-1.5 shrink-0 ml-auto pl-2">
                     <span v-if="item.twin.agrees" class="text-success leading-none" :title="item.twin.title">✓</span>
                     <template v-else>
@@ -804,10 +755,8 @@ function previewValue(val: any): string {
                 </span>
                 <span v-else-if="row.node.entry.value === null" class="badge badge-sm badge-ghost shrink-0">null</span>
                 <span v-else class="text-xs text-base-content/70 truncate min-w-0 flex-1 font-mono">{{ previewValue(row.node.entry.value) }}</span>
-                <!-- Marker and revision travel together in one right-anchored
-                     group. Two separate `ml-auto` siblings would split the free
-                     space between them instead of both hugging the right edge,
-                     and the marker's x would still wander per row. -->
+                <!-- Marker and revision in one right-anchored group: two `ml-auto`
+                     siblings would split the free space and the marker would wander. -->
                 <span class="flex items-center gap-1.5 shrink-0 ml-auto pl-2">
                   <template v-if="row.node.entry.twin">
                     <span v-if="row.node.entry.twin.agrees" class="text-success leading-none" :title="row.node.entry.twin.title">✓</span>
@@ -863,9 +812,8 @@ function previewValue(val: any): string {
 
           <div class="flex-1 overflow-y-auto p-5">
             <div v-if="selectedEntry || isAddingNew" class="space-y-6">
-              <!-- Twin mode: which side of the pair the editor is pointed at.
-                   Reported is read-only because the edge owns it — an edit here
-                   would be overwritten on the next sync. -->
+              <!-- Twin mode: which side the editor points at. Reported is read-only
+                   because the edge owns it. -->
               <div v-if="twinMode && !isAddingNew" class="join w-full">
                 <button
                   class="join-item btn btn-xs flex-1"
@@ -882,12 +830,9 @@ function previewValue(val: any): string {
                 </button>
               </div>
 
-              <!-- The difference itself, not a sentence about it. Naming the
-                   paths ("Differs on: mode") sends the reader off to look both
-                   values up; showing `"auto" → "manual"` is the same width and
-                   is the answer. Deliberately never "pending": nothing in this
-                   platform applies desired values to devices, so state the
-                   difference and predict nothing. -->
+              <!-- The difference itself (`"auto" → "manual"`), not path names.
+                   Never "pending": nothing in this platform applies desired values
+                   to devices, so state the difference and predict nothing. -->
               <div
                 v-if="twinMode && editorTarget === 'desired' && selectedDesired && selectedDesired.status !== 'agrees'"
                 class="rounded-lg border border-warning/40 bg-warning/5 px-3 py-2.5"
@@ -977,12 +922,10 @@ function previewValue(val: any): string {
                 </div>
               </div>
 
-              <!-- History -->
               <div v-if="!isAddingNew" class="pt-4 border-t border-base-300">
                 <div class="flex justify-between items-center mb-4">
-                  <!-- Name the side. History comes from whichever bucket the
-                       toggle points at, and an unlabelled list of revisions
-                       looks identical either way. -->
+                  <!-- Name the side: history comes from whichever bucket the toggle
+                       points at, and the list looks identical either way. -->
                   <span class="text-[10px] font-bold uppercase opacity-50">
                     {{ twinMode ? `${editorTarget} history` : 'Revision History' }}
                   </span>
@@ -999,7 +942,6 @@ function previewValue(val: any): string {
                   >
                     <div class="absolute -left-[4.5px] top-2 w-2 h-2 rounded-full bg-base-300 group-hover:bg-primary transition-colors"></div>
 
-                    <!-- Row header: clickable to expand -->
                     <div
                       class="flex items-center gap-2 cursor-pointer rounded hover:bg-base-200/50 px-1 py-1 -mx-1"
                       @click="rev.operation !== 'DEL' && rev.operation !== 'PURGE' && toggleRevision(rev.id)"
@@ -1014,7 +956,6 @@ function previewValue(val: any): string {
                       <span class="text-[10px] font-mono text-base-content/50 shrink-0" :title="formatDate(rev.created)">{{ formatRelativeTime(rev.created) }}</span>
                     </div>
 
-                    <!-- Expanded full value -->
                     <div
                       v-if="expandedRevisions.has(rev.id) && rev.operation !== 'DEL' && rev.operation !== 'PURGE'"
                       class="mt-2 ml-1 mr-1 rounded border border-base-300 bg-base-200/40 overflow-hidden"
@@ -1068,27 +1009,16 @@ function previewValue(val: any): string {
 }
 
 /*
-  The flat view's row shape, shared by the rows and by the header above them so
-  the two cannot drift. Only the track list changes between the two layouts; the
-  named areas do the rest.
+  The flat view's row shape, shared by the rows and the header so they cannot
+  drift. Only the track list changes between layouts; the named areas do the
+  rest. On a phone the key and revision share the top line, the value below.
 
-  On a phone the key and the revision share the top line and the value gets the
-  one below, which is what lets a 26-character dotted key sit on ONE line in
-  265px instead of five lines in 74px.
+  The desktop split is measured and favours the key: the value is truncated at
+  every ratio tried, while a key that does not fit wraps and costs a line. Past
+  5fr/4fr the value shrinks with nothing gained.
 
-  The desktop split is measured rather than picked, and it leans the opposite
-  way to the obvious one. The list pane is only about 522px wide once the 420px
-  editor sits beside it, so the instinct is to give the value the larger share
-  because it holds the longer string. That is backwards: the value is truncated
-  at EVERY ratio tried, so width spent on it buys nothing you can read, while a
-  key that does not fit wraps and costs the row a whole extra line. Biasing to
-  the key was worth 24px over five rows and took the wrapped-key count from one
-  to none; going further than 5fr/4fr squeezed the value with nothing to show
-  for it.
-
-  The revision track is a fixed 4rem rather than auto on purpose: auto is sized
-  per row, so a five-digit revision and a six-digit one would leave the header's
-  Rev label sitting over neither of them.
+  The revision track is a fixed 4rem, not auto: auto sizes per row, so the
+  header's Rev label would sit over neither a five- nor a six-digit revision.
 */
 .kv-cols {
   grid-template-columns: minmax(0, 1fr) 4rem;

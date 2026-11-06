@@ -6,13 +6,11 @@
     :title="dashboard.name"
   >
     <div class="item-content">
-      <!-- Icon -->
       <div class="item-icon">
         <House v-if="isStartup" :size="18" aria-label="Startup dashboard" />
         <LayoutDashboard v-else :size="18" aria-hidden="true" />
       </div>
       
-      <!-- Info -->
       <div class="item-info">
         <div class="item-name">{{ dashboard.name }}</div>
         <div class="item-meta">
@@ -20,7 +18,6 @@
         </div>
       </div>
       
-      <!-- Actions menu -->
       <div class="item-actions" @click.stop>
         <button 
           class="action-btn"
@@ -31,14 +28,12 @@
           ⋮
         </button>
         
-        <!-- Dropdown menu -->
         <div v-if="showMenu" class="action-menu">
           <button class="menu-item" @click="handleSetStartup">
             <House class="menu-icon" :size="16" aria-hidden="true" />
             <span class="menu-text">Set as Startup</span>
           </button>
           
-          <!-- Share to KV (Only if enabled and connected) -->
           <button 
             v-if="dashboardStore.enableSharedDashboards && natsStore.isConnected"
             class="menu-item" 
@@ -239,7 +234,6 @@ onUnmounted(() => {
   color: var(--text);
 }
 
-/* Action Menu Dropdown */
 .action-menu {
   position: absolute;
   top: 100%;

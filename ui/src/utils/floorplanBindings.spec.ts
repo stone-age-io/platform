@@ -15,12 +15,9 @@ import {
 } from './floorplanBindings'
 import type { FloorPlanTypeBinding, MapMarkerItem } from '@/types/dashboard'
 
-// Nothing renders in CI (ui/CLAUDE.md), so these are the only guard this
-// widget gets. They cover the four decisions whose failure is SILENT on a real
-// plan -- a subscription that covers nothing, a message matched to the wrong
-// marker, an item that publishes a literal {thing}, and a dead device still
-// drawn green -- because every one of those renders as a plan that simply never
-// changes colour.
+// The only guard this widget gets (nothing renders in CI). Each failure here is
+// silent: a subscription covering nothing, a message matched to the wrong
+// marker, a literal {thing} published, a dead device still drawn green.
 
 const ctx: FloorPlanContext = { orgCode: 'acme', locationCode: 'BLDG-A' }
 
@@ -58,8 +55,7 @@ describe('subscription subjects', () => {
   })
 
   it('the per-thing subject matches what the subscription covers', () => {
-    // The point of the pair: a message arriving on the wildcard has to be
-    // findable under the key the marker computes, or markers never light up.
+    // A message arriving on the wildcard must be findable under the marker's key.
     const pattern = bindingSubscriptionSubject(binding(), doorType, ctx)!
     const concrete = bindingSubjectForThing(binding(), doorType, door, ctx)!
     const re = new RegExp('^' + pattern.split('.').map(t => (t === '*' ? '[^.]+' : t)).join('\\.') + '$')
@@ -199,8 +195,7 @@ describe('resolveItemsForThing', () => {
   })
 
   it('resolves the gauge row in whichever mode it is not using too', () => {
-    // Both are resolved regardless of mode: the operator can switch a row
-    // from core to kv in the editor without the unused half going stale.
+    // Both are resolved so switching a row's mode in the editor keeps working.
     expect(out[5].gaugeConfig?.subject).toBe('door.DOOR-01.level')
     expect(out[5].gaugeConfig?.kvKey).toBe('thing.DOOR-01.level')
   })
@@ -210,9 +205,8 @@ describe('resolveItemsForThing', () => {
   })
 
   it('gives every thing its own item ids', () => {
-    // Load-bearing: MarkerItem* subscribe under `marker-text-${item.id}`, so a
-    // shared id would have sixty doors share one buffer and all show whichever
-    // published last.
+    // MarkerItem* subscribe under `marker-text-${item.id}`; a shared id means a
+    // shared buffer.
     const other = resolveItemsForThing(items, doorType, { ...door, id: 'rec_2', code: 'DOOR-02' }, ctx)
     expect(out[0].id).not.toBe(other[0].id)
     expect(new Set([...out, ...other].map(i => i.id)).size).toBe(12)
@@ -257,7 +251,7 @@ describe('markerStateFor', () => {
   })
 
   it('goes stale BEFORE matching, so a dead device is never drawn green', () => {
-    // The whole point of the ordering: `secure` is still the last value.
+    // `secure` is still the last value.
     const s = markerStateFor(b, 'secure', now - 61_000, now)
     expect(s).toMatchObject({ color: 'grey', label: 'No contact', stale: true, blink: false })
   })

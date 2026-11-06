@@ -1,8 +1,6 @@
-<!-- ui/src/components/dashboard/DashboardSidebar.vue -->
 <template>
   <div class="sidebar-container">
     <aside class="sidebar">
-      <!-- ... (Header and Tabs remain the same) ... -->
       <div class="sidebar-header">
         <h2 class="sidebar-title">Dashboards</h2>
         <button 
@@ -31,9 +29,7 @@
         </button>
       </div>
       
-      <!-- Dashboard list -->
       <div class="sidebar-body">
-        <!-- ... (Body content remains the same) ... -->
         <template v-if="activeTab === 'local'">
           <div v-if="dashboards.length === 0" class="empty-state">
             <LayoutDashboard class="empty-icon" :size="48" :stroke-width="1.25" aria-hidden="true" />
@@ -81,7 +77,6 @@
         </template>
       </div>
       
-      <!-- Footer with actions -->
       <div class="sidebar-footer">
         <div v-if="activeTab === 'local'" class="storage-indicator" :class="storageClass">
           <div class="storage-bar-bg">
@@ -137,7 +132,6 @@
       </div>
     </aside>
     
-    <!-- Modals (Teleported) -->
     <!-- Rename Modal -->
     <Teleport to="body">
       <div v-if="showRename" class="sidebar-modal-overlay" @click.self="showRename = false">
@@ -289,7 +283,6 @@
               Select a JSON file exported from NATS Dashboard
             </div>
             
-            <!-- Import results -->
             <div v-if="importResults" class="import-results">
               <div v-if="importResults.success > 0" class="result-success">
                 ✓ Imported {{ importResults.success }} dashboard{{ importResults.success !== 1 ? 's' : '' }}
@@ -340,22 +333,18 @@ const emit = defineEmits(['close'])
 const dashboardStore = useDashboardStore()
 const natsStore = useNatsStore()
 
-// Sidebar state
 const activeTab = ref<'local' | 'shared'>('local')
 
-// Rename state
 const showRename = ref(false)
 const renameId = ref<string | null>(null)
 const renameName = ref('')
 const renameInput = ref<HTMLInputElement | null>(null)
 
-// Duplicate Local state
 const showDuplicateLocal = ref(false)
 const duplicateLocalId = ref<string | null>(null)
 const duplicateLocalName = ref('')
 const duplicateLocalInput = ref<HTMLInputElement | null>(null)
 
-// Share/Create/Duplicate Remote state
 const showShareModal = ref(false)
 const modalMode = ref<'share' | 'create' | 'duplicate'>('share')
 const shareForm = ref({
@@ -365,16 +354,13 @@ const shareForm = ref({
   mode: 'existing' as 'existing' | 'new'
 })
 
-// Import state
 const showImport = ref(false)
 const importResults = ref<{ success: number; skipped: number; errors: string[] } | null>(null)
 
-// Delete confirmation state
 const showConfirmDelete = ref(false)
 const deleteId = ref<string | null>(null)
 const deleteType = ref<'local' | 'remote'>('local')
 
-// Computed
 const dashboards = computed(() => dashboardStore.localDashboards)
 const remoteKeys = computed(() => dashboardStore.remoteKeys)
 const knownFolders = computed(() => dashboardStore.knownFolders)
@@ -425,8 +411,6 @@ const deleteConfirmMessage = computed(() => {
   return `This will permanently delete the dashboard.`
 })
 
-// --- Actions ---
-
 function closeSidebar() {
   emit('close')
 }
@@ -443,8 +427,7 @@ function selectRemoteDashboard(key: string) {
 
 function createNewDashboard() {
   if (activeTab.value === 'local') {
-    // The rename modal with no id is the create modal: the browser's own
-    // prompt() looked like nothing else in the console.
+    // With no id, the rename modal doubles as the create modal.
     openNameModal(null, 'New Dashboard')
   } else {
     shareForm.value = {
@@ -667,12 +650,7 @@ watch(() => dashboardStore.activeDashboard?.storage, (storage) => {
 </script>
 
 <style scoped>
-/* 
-   Updated for Drawer Layout
-   The parent wrapper handles width and positioning.
-   This component just needs to fill the wrapper.
-*/
-
+/* The parent drawer wrapper sets width and position; this fills it. */
 .sidebar-container {
   height: 100%;
   width: 100%;
@@ -680,11 +658,7 @@ watch(() => dashboardStore.activeDashboard?.storage, (storage) => {
   flex-direction: column;
 }
 
-/* 
-  MODAL FIX: 
-  Use a unique class name and enforce fixed positioning with high z-index.
-  This ensures the modal breaks out of any stacking context.
-*/
+/* Fixed with a high z-index so the modal escapes any stacking context. */
 .sidebar-modal-overlay {
   position: fixed !important;
   top: 0;
@@ -712,8 +686,6 @@ watch(() => dashboardStore.activeDashboard?.storage, (storage) => {
   flex-direction: column;
   max-height: 80vh;
 }
-
-/* ... (rest of the styles remain unchanged) ... */
 
 .sidebar {
   width: 100%;

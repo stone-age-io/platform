@@ -1,10 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-// Minimal JSON Schema form: renders top-level primitive properties of an
-// object schema. Nested objects / arrays fall back to a JSON textarea so the
-// user can still edit them. Scope matches the plan's "common case" goal —
-// complex schemas can upgrade later without changing the contract.
+// Minimal JSON Schema form: top-level primitive properties of an object schema.
+// Nested objects and arrays fall back to a JSON textarea.
 
 interface Props {
   schema: any
@@ -63,12 +61,9 @@ function isPrimitive(f: Field): boolean {
   return ['string', 'integer', 'number', 'boolean'].includes(f.type)
 }
 
-// Every control in here hands back a string — <input> and <select> both do —
-// so the schema's declared type is the only thing that decides what gets
-// STORED. It matters beyond tidiness: this document is written to `metadata`
-// and read back off the bus by firmware and rule-router, so an integer field
-// holding `"3"` is a type mismatch at the far end of the wire, not a display
-// bug. The enum <select> used to skip this and store its option text verbatim.
+// Every control returns a string, so the schema type decides what is stored.
+// Firmware and rule-router read this document off the bus, where `"3"` for an
+// integer is a type mismatch. The enum <select> goes through this too.
 function castOnInput(f: Field, raw: string): any {
   if (f.type === 'integer') {
     const n = parseInt(raw, 10)
@@ -81,10 +76,7 @@ function castOnInput(f: Field, raw: string): any {
   return raw
 }
 
-// A number input's step defaults to 1, so a schema-declared `number` would
-// reject 20.5 as invalid and block the surrounding form's submit — which is why
-// MetadataEditor's free-form number row already sets this. Only `integer`
-// actually wants whole numbers.
+// The default step of 1 would make 20.5 invalid and block the form's submit.
 function stepFor(f: Field): string {
   return f.type === 'integer' ? '1' : 'any'
 }
@@ -112,7 +104,6 @@ function rangeHint(f: Field): string {
         </span>
       </label>
 
-      <!-- Enum → select -->
       <select
         v-if="f.enumValues && f.enumValues.length"
         class="select select-bordered select-sm"
@@ -124,9 +115,7 @@ function rangeHint(f: Field): string {
         <option v-for="opt in f.enumValues" :key="String(opt)" :value="opt">{{ opt }}</option>
       </select>
 
-      <!-- Boolean → toggle, with the literal value beside it. The payload this
-           builds is read by a NATS subscriber, so show `true`/`false` rather than
-           leaving the reader to infer it from a switch position. -->
+      <!-- Shows the literal true/false, since a NATS subscriber reads the value. -->
       <label v-else-if="f.type === 'boolean'" class="flex items-center gap-2">
         <input
           type="checkbox"
@@ -138,11 +127,9 @@ function rangeHint(f: Field): string {
         <code class="text-xs text-base-content/60">{{ modelValue[f.name] ? 'true' : 'false' }}</code>
       </label>
 
-      <!-- Primitive scalar → typed input. Deliberately no `required`, `min` or
-           `max` attribute: the host form runs browser validation, so each of
-           those would block the save, and the schema is a hint, not a rule (see
-           utils/metadataDoc.ts). `required` shows as the asterisk above and a
-           range as the text below. -->
+      <!-- Deliberately no `required`, `min` or `max`: browser validation would
+           block the save, and the schema is a hint (utils/metadataDoc.ts). They
+           show as the asterisk and the range text instead. -->
       <input
         v-else-if="isPrimitive(f)"
         :type="inputType(f)"
@@ -153,7 +140,6 @@ function rangeHint(f: Field): string {
         @input="setField(f.name, castOnInput(f, ($event.target as HTMLInputElement).value))"
       />
 
-      <!-- Fallback (object / array / unknown) → JSON textarea -->
       <textarea
         v-else
         class="textarea textarea-bordered font-mono text-xs"

@@ -11,7 +11,6 @@
       </div>
     </div>
 
-    <!-- KV Mode Fields -->
     <template v-if="form.switchMode === 'kv'">
       <ConfigKvSource
         :form="form"
@@ -24,7 +23,6 @@
       />
     </template>
 
-    <!-- CORE Mode Fields -->
     <template v-if="form.switchMode === 'core'">
       <div class="form-group">
         <label>Publish Subject</label>

@@ -21,8 +21,7 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 const searchQuery = ref('')
 
-// Alphabetical by default. JetStream answers in whatever order it holds them,
-// which is stable enough to look deliberate and arbitrary enough to be useless.
+// Alphabetical by default; JetStream order is arbitrary.
 const sort = ref('name')
 
 const filteredBuckets = computed(() => {
@@ -34,11 +33,8 @@ const filteredBuckets = computed(() => {
   )
 })
 
-// Client-side sort, over the filtered set and BEFORE the slice -- sorting
-// paginatedBuckets would order rows that were already the wrong twenty, on page
-// one as much as page two, and hide it entirely on any account whose buckets fit
-// on a single page. Safe here only because listKvBuckets() returns the whole
-// account: see utils/clientSort.
+// Sort before the slice. Safe client-side only because listKvBuckets() returns
+// the whole account (see utils/clientSort).
 const sortedBuckets = computed(() => sortBy(filteredBuckets.value, sort.value))
 
 const currentPage = ref(1)
@@ -53,18 +49,15 @@ watch(searchQuery, () => { currentPage.value = 1 })
 
 function onSort(next: string) {
   sort.value = next
-  currentPage.value = 1 // a new order makes the old page number meaningless
+  currentPage.value = 1
 }
 
 const columns: Column<KvBucketSummary>[] = [
   // 'auto', not omitted: omitting it means 28% for column 0 (see Column.width).
-  // This is the only free-text column here -- name plus a clamped description --
-  // so it takes the slack and every other column keeps exactly what it declares.
+  // The only free-text column, so it takes the slack.
   { key: 'name', sortable: 'name', width: 'auto', label: 'Name', mobileLabel: 'Name' },
-  // `-` on the three "how big" columns so the first click opens on the end
-  // worth looking at. TTL keeps plain ascending: 0 renders as "None", and
-  // descending would open on the buckets that never expire, which is the least
-  // interesting answer the column has.
+  // `-` on the "how big" columns opens on the largest. TTL stays ascending:
+  // descending would open on the never-expiring (0) buckets.
   { key: 'values', sortable: '-values', width: '8rem', label: 'Keys', mobileLabel: 'Keys', format: (v: number) => v.toLocaleString() },
   { key: 'bytes', sortable: '-bytes', width: '8rem', label: 'Size', mobileLabel: 'Size', format: (v: number) => formatBytes(v) },
   { key: 'history', sortable: '-history', width: '7rem', label: 'History', mobileLabel: 'History' },
@@ -200,7 +193,6 @@ watch(() => natsStore.isConnected, (connected) => {
           </template>
         </ResponsiveList>
 
-        <!-- Pagination -->
         <ListPager
           v-if="filteredBuckets.length > itemsPerPage"
           :page="currentPage"

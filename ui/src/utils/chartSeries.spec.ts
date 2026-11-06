@@ -2,9 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { seriesPoints, numericPoints, buildSegments, stableColorIndex } from './chartSeries'
 import type { BufferedMessage } from '@/stores/widgetData'
 
-// A chart can be fed by one payload carrying every row, or by several subjects
-// publishing the same shape. One rule has to serve both, and it is these tests
-// that say so -- ChartWidget itself is never rendered in CI.
+// A chart is fed by one payload carrying every row, or by several subjects
+// publishing the same shape; one rule serves both. ChartWidget is not rendered in CI.
 
 function m(timestamp: number, raw: unknown, subject = 'pumps.snapshot', value?: unknown): BufferedMessage {
   return { timestamp, raw, subject, value: value ?? raw }
@@ -20,8 +19,7 @@ describe('seriesPoints', () => {
     expect(seriesPoints(buf, { label: 'S2', path: '$.s2.flow' })).toEqual([[1, 20], [2, 21]])
   })
 
-  // The case the subject filter exists for: the path alone cannot tell
-  // S1 from S2 when both publish {"running": ...}.
+  // The path alone cannot tell S1 from S2 when both publish {"running": ...}.
   it('separates subjects that publish an identical shape', () => {
     const buf = [
       m(1, { running: true }, 'pumps.s1.state'),
@@ -51,8 +49,7 @@ describe('seriesPoints', () => {
     expect(seriesPoints(buf, { label: '', path: '$.a' })).toEqual([[1, 1], [3, 3]])
   })
 
-  // Timestamps come from payloads or JetStream, so arrival order is not time
-  // order; a line drawn in arrival order doubles back across the axis.
+  // Timestamps come from payloads or JetStream, so arrival order is not time order.
   it('returns points in time order whatever order they arrived in', () => {
     const buf = [m(30, { v: 3 }), m(10, { v: 1 }), m(20, { v: 2 })]
     expect(seriesPoints(buf, { label: '', path: '$.v' }).map(p => p[0])).toEqual([10, 20, 30])
@@ -89,8 +86,7 @@ describe('buildSegments', () => {
     ])
   })
 
-  // A state that has not changed for ten minutes is the normal case; ending
-  // the last segment at its own start would draw it as nothing at all.
+  // An unchanged state is the normal case, not missing data.
   it('runs the last segment to now', () => {
     expect(buildSegments([[10, true]], NOW)).toEqual([{ start: 10, end: NOW, value: true }])
   })

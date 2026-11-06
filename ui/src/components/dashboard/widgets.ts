@@ -1,31 +1,13 @@
-// ui/src/components/dashboard/widgets.ts
+// Every static fact about a widget type, in one object. Background in ui/CLAUDE.md
+// ("Widgets live in one object").
 //
-// Every static fact about a widget type, in one object.
+// A map, not a plugin system: no import.meta.glob, manifest, self-registration
+// or schema-driven forms. `Record<WidgetType, WidgetDefinition>` is the
+// checklist: a type with no entry, or an entry missing a required field, is a
+// compile error.
 //
-// WHAT THIS REPLACED. Adding a widget used to mean editing six places in three
-// directories, two of which failed in silence: a 16-case `switch` in
-// WidgetContainer.vue, a `Record<WidgetType, Component>` of config panels in
-// useWidgetForm.ts, two `WidgetType[]` arrays deciding which data-source panel
-// a widget gets, two hardcoded `Set`s of strings deciding how it behaves on a
-// phone, and a hand-written <button> in AddWidgetModal.vue. Forget the Sets and
-// nothing errors — the widget just behaves wrong on a phone. Forget the palette
-// entry and the widget cannot be added at all.
-//
-// THIS IS A MAP, NOT A PLUGIN SYSTEM. There is no `import.meta.glob`, no
-// manifest file, no self-registration and no config-schema-driven form
-// generation. Those would be a framework to maintain forever for sixteen widget
-// types that change about twice a year. An object literal is less code than
-// what it replaced, it reads top to bottom, and "where does this widget come
-// from" is answered by reading it rather than by understanding a mechanism.
-//
-// THE TYPE IS THE CHECKLIST. `Record<WidgetType, WidgetDefinition>` means a
-// type added to WIDGET_TYPES with no entry here is a compile error, and a
-// required field left off an entry is a compile error. That is the whole point:
-// every one of the old six touchpoints is now either this file or a compile
-// error pointing at it.
-//
-// ORDER IS LOAD-BEARING. The Add Widget palette renders these in declaration
-// order, grouped by `category` in WIDGET_CATEGORIES order.
+// Order is load-bearing: the Add Widget palette renders in declaration order,
+// grouped by `category` in WIDGET_CATEGORIES order.
 
 import { defineAsyncComponent, type Component } from 'vue'
 import {
@@ -35,9 +17,8 @@ import {
 } from '@lucide/vue'
 import type { WidgetType } from '@/types/dashboard'
 
-// Light widgets, imported eagerly — they are small and a dashboard usually has
-// several. The heavy ones below are deferred so a dashboard without a chart
-// never downloads ECharts.
+// Light widgets are imported eagerly. The heavy ones below are deferred, so a
+// dashboard without a chart never downloads ECharts.
 import TextWidget from '@/components/widgets/TextWidget.vue'
 import ButtonWidget from '@/components/widgets/ButtonWidget.vue'
 import SwitchWidget from '@/components/widgets/SwitchWidget.vue'
@@ -57,10 +38,8 @@ const KvTableWidget = defineAsyncComponent(() => import('@/components/widgets/Kv
 const StreamTableWidget = defineAsyncComponent(() => import('@/components/widgets/StreamTableWidget.vue'))
 const ScannerWidget = defineAsyncComponent(() => import('@/components/widgets/ScannerWidget.vue'))
 
-// Config panels are ALL deferred. They are reachable only by opening the
-// configure modal, and eager imports here would otherwise drag twenty editor
-// components (ConfigMap alone pulls the marker editors) into the chunk that
-// renders a dashboard nobody is editing.
+// Config panels are all deferred: they are needed only in the configure modal,
+// and ConfigMap alone pulls in the marker editors.
 const ConfigText = defineAsyncComponent(() => import('@/components/dashboard/config/ConfigText.vue'))
 const ConfigChart = defineAsyncComponent(() => import('@/components/dashboard/config/ConfigChart.vue'))
 const ConfigStat = defineAsyncComponent(() => import('@/components/dashboard/config/ConfigStat.vue'))
@@ -97,9 +76,8 @@ export interface WidgetDefinition {
   category: WidgetCategory
 
   // --- Locked mobile dashboards ---
-  // A locked mobile dashboard hides widget headers to save vertical space. The
-  // two flags below are the exceptions, and both used to be a Set of strings
-  // nothing checked.
+  // A locked mobile dashboard hides widget headers; these two flags are the
+  // exceptions.
   /** Keep the header (and so the title) on a locked mobile dashboard. */
   mobileTitled: boolean
   /** Offer a full-screen button there too — for widgets too dense to read inline. */

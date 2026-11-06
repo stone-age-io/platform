@@ -1,17 +1,6 @@
-// ui/src/utils/gaugeScale.ts
-//
 // The arithmetic behind a gauge: where a value sits in its range, which zone it
-// lands in, and how to write it down.
-//
-// Extracted from GaugeWidget when the marker panel gained a gauge row. It is
-// pure, so unlike the widget it can actually be tested here -- and every one of
-// these is a quiet wrong-answer rather than a crash: a zone list whose bands do
-// not reach the value, a reversed range that divides by a negative, a value
-// outside its range running the fill past the end of the track. None of that
-// throws, and nothing in CI renders a gauge.
-//
-// The widget and the marker row both draw from this, so the bar in a 280px
-// panel and the arc on a dashboard cannot disagree about what amber means.
+// lands in, and how to write it down. Shared by GaugeWidget and the marker
+// panel's gauge row so they agree, and pure so it can be tested.
 
 export interface GaugeZone {
   min: number
@@ -25,9 +14,8 @@ export interface GaugeRange {
 }
 
 /**
- * A range has to span something. `max <= min` is not a style choice to be
- * rendered oddly -- every fraction below would be negative or infinite -- so
- * callers check this and say so rather than drawing a lie.
+ * `max <= min` makes every fraction below negative or infinite, so callers
+ * check this and show an error instead of drawing.
  */
 export function rangeIsValid(range: GaugeRange): boolean {
   const span = range.max - range.min
@@ -47,11 +35,8 @@ export function valueFraction(value: number | null, range: GaugeRange): number {
 }
 
 /**
- * Each zone as a 0..1 span of the track.
- *
- * Clamped at both ends so a zone list that overruns the range -- 0-120 on a
- * 0-100 gauge, which is what happens when somebody widens the range and
- * forgets the zones -- paints to the end of the track instead of past it.
+ * Each zone as a 0..1 span of the track, clamped so zones that overrun the
+ * range stop at the end of the track.
  */
 export function zoneSpans(
   zones: GaugeZone[] | undefined,
@@ -63,16 +48,9 @@ export function zoneSpans(
 }
 
 /**
- * The colour for a value: the first zone that contains it, else the fallback.
- *
- * FIRST match, not best or narrowest. Overlapping zones are a configuration
- * mistake and picking between them is a judgement this cannot make; taking the
- * first makes the list an order the author controls, the same rule the status
- * widget's mappings follow.
- *
- * Bounds are inclusive at both ends, so adjacent zones written the obvious way
- * (0-60, 60-80) leave no value uncoloured. The overlap at the boundary resolves
- * by the first-match rule above.
+ * The colour for a value: the FIRST zone that contains it (author's order, as
+ * in the status widget's mappings), else the fallback. Bounds are inclusive, so
+ * adjacent zones (0-60, 60-80) leave no gap.
  */
 export function zoneColor(
   value: number | null,
@@ -89,12 +67,8 @@ export function zoneColor(
 }
 
 /**
- * Decimals when the author has not said.
- *
- * Scaled to the magnitude: a temperature reads better as 21.53 than 22, and a
- * packet count worse as 18403.00 than 18403. The widget's own behaviour, kept
- * because changing it would silently reformat every gauge already on a
- * dashboard.
+ * Decimals when the author has not set them, scaled to the magnitude. Changing
+ * this reformats every existing gauge.
  */
 export function defaultDecimals(value: number): number {
   const abs = Math.abs(value)
@@ -110,12 +84,8 @@ export function formatValue(value: number | null, decimals?: number): string {
 }
 
 /**
- * Pull a number out of whatever arrived.
- *
- * A payload may be a bare number, a numeric string, or an object a JSON path
- * has already been applied to. A boolean is deliberately NOT converted: `true`
- * becoming 1 would draw a full gauge for a device reporting a flag, which reads
- * as a measurement rather than as the misconfiguration it is.
+ * A number or numeric string, else null. A boolean is deliberately NOT
+ * converted: `true` as 1 would draw a misconfiguration as a measurement.
  */
 export function toNumber(value: unknown): number | null {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null

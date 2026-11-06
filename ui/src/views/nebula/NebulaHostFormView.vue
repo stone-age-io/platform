@@ -27,42 +27,32 @@ const toast = useToast()
 const hostId = route.params.id as string | undefined
 const isEdit = computed(() => !!hostId && !props.embedded)
 
-// Form data
 const formData = ref({
-  // Identity
   hostname: '',
   email: '',
   password: '',
   passwordConfirm: '',
   
-  // Network
   network_id: '',
-  groups: '', // Managed as string for input
+  groups: '', // comma-separated in the form
   overlay_ip: '',
   
-  // Config
   is_lighthouse: false,
   is_relay: false,
   public_host_port: '',
   active: true,
 
-  // Certificate (optional; empty = network default)
+  // Empty = network default
   validity_years: '',
 
-  // Routing and transport. The list fields are edited as newline-separated
-  // text for the same reason groups is edited as a comma-separated string:
-  // one textarea beats a bespoke chip editor for something an operator pastes
-  // in from their network documentation.
+  // List fields are newline-separated text: operators paste them in.
   unsafe_networks: '',
   preferred_ranges: '',
   unsafe_routes: [] as Array<{ route: string; via: string }>,
   mtu: '',
   tun_device: '',
 
-  // The rest of this host's static_host_map entry, and the two settings that
-  // control what it reports about itself. Newline-separated for the same
-  // reason the others are, except the allow list, which is Nebula's own nested
-  // object and is edited as JSON.
+  // The allow list is Nebula's own nested object, edited as JSON.
   additional_host_ports: '',
   advertise_addrs: '',
   local_allow_list: '',
@@ -74,12 +64,9 @@ function lines(value: string): string[] {
 }
 
 /**
- * A lighthouse and a relay both need a reachable address, for different
- * reasons. Peers read a lighthouse's endpoint out of their own static_host_map;
- * a relay's address is learned at runtime, but without a public_host_port
- * pb-nebula gives it listen.port 0 (ephemeral) while handing every peer its
- * overlay IP as a usable path. The server rejects either case -- this only
- * stops the operator finding out by round trip.
+ * Lighthouses and relays both need public_host_port: peers read a lighthouse's
+ * from their static_host_map, and without one pb-nebula gives a relay an
+ * ephemeral listen port. The server rejects both; this is early feedback.
  */
 const needsPublicEndpoint = computed(
   () => formData.value.is_lighthouse || formData.value.is_relay,
@@ -93,20 +80,15 @@ function removeUnsafeRoute(index: number) {
   formData.value.unsafe_routes.splice(index, 1)
 }
 
-// Relation options
 const networks = ref<NebulaNetwork[]>([])
 
 const networkOptions = computed<PickerOption[]>(() =>
   networks.value.map(n => ({ id: n.id, label: n.name, sublabel: n.cidr_range }))
 )
 
-// State
 const loading = ref(false)
 const loadingOptions = ref(true)
 
-/**
- * Load options (networks)
- */
 async function loadOptions() {
   loadingOptions.value = true
   
@@ -116,7 +98,6 @@ async function loadOptions() {
       filter: 'active = true'
     })
     
-    // Auto-select first network if creating and only one exists
     if (!isEdit.value && networks.value.length === 1) {
       formData.value.network_id = networks.value[0].id
     }
@@ -127,9 +108,6 @@ async function loadOptions() {
   }
 }
 
-/**
- * Load existing host
- */
 async function loadHost() {
   if (!hostId || props.embedded) return
   
@@ -138,7 +116,6 @@ async function loadHost() {
   try {
     const host = await pb.collection('nebula_hosts').getOne<NebulaHost>(hostId)
     
-    // Convert groups array to comma-separated string
     const groupsStr = Array.isArray(host.groups) ? host.groups.join(', ') : ''
     
     formData.value = {
@@ -156,17 +133,14 @@ async function loadHost() {
       validity_years: host.validity_years ? String(host.validity_years) : '',
       unsafe_networks: (host.unsafe_networks || []).join('\n'),
       preferred_ranges: (host.preferred_ranges || []).join('\n'),
-      // Copied, not aliased: editing the rows must not mutate the loaded
-      // record, or a cancelled edit would leave the form's idea of "unchanged"
-      // wrong.
+      // Copied, not aliased, so editing rows does not mutate the loaded record.
       unsafe_routes: (host.unsafe_routes || []).map(r => ({ ...r })),
       mtu: host.mtu ? String(host.mtu) : '',
       tun_device: host.tun_device || '',
       additional_host_ports: (host.additional_host_ports || []).join('\n'),
       advertise_addrs: (host.advertise_addrs || []).join('\n'),
-      // Pretty-printed so an operator can read the rules they are editing. An
-      // empty or absent object shows an empty box rather than "{}", so saving
-      // an untouched form sends nothing and the generated config is unchanged.
+      // Pretty-printed. Empty shows a blank box rather than "{}", so an untouched
+      // save leaves the generated config unchanged.
       local_allow_list: host.local_allow_list && Object.keys(host.local_allow_list).length > 0
         ? JSON.stringify(host.local_allow_list, null, 2)
         : '',
@@ -181,18 +155,12 @@ async function loadHost() {
   linkedThing.value = await findLinkedThing('nebula_host', hostId)
 }
 
-// The Thing this host belongs to, if it is a device's. While that Thing is
-// deactivated the server refuses to make the host active (hooks/active_flag.go),
-// so the toggle is locked and says where the lever is instead of saving into a
-// refusal.
+// While the owning Thing is deactivated the server refuses to activate the host
+// (hooks/active_flag.go), so the toggle is locked and points at the Thing.
 const linkedThing = ref<LinkedThing | null>(null)
 const heldByDeactivatedThing = computed(() => linkedThing.value?.active === false)
 
-/**
- * Handle form submission
- */
 async function handleSubmit() {
-  // Validation: Create mode requires password
   if (!isEdit.value && !formData.value.password) {
     toast.error('Password is required for new hosts')
     return
@@ -203,9 +171,7 @@ async function handleSubmit() {
     return
   }
 
-  // The allow list is the one field the server cannot explain back to the
-  // operator usefully: a parse failure there arrives as a generic 400, so it
-  // is caught here where the text is still in front of them.
+  // Parsed here: the server reports a bad allow list only as a generic 400.
   let localAllowList: Record<string, any> = {}
   if (formData.value.local_allow_list.trim()) {
     try {
@@ -224,7 +190,6 @@ async function handleSubmit() {
   loading.value = true
   
   try {
-    // Process groups string into array
     const groupsArray = formData.value.groups
       .split(',')
       .map(g => g.trim())
@@ -243,31 +208,26 @@ async function handleSubmit() {
       overlay_ip: formData.value.overlay_ip,
       unsafe_networks: lines(formData.value.unsafe_networks),
       preferred_ranges: lines(formData.value.preferred_ranges),
-      // A half-filled row is dropped rather than sent. pb-nebula would reject
-      // it, but an operator who added a row and changed their mind has not
-      // asked for an error.
+      // Half-filled rows are dropped rather than sent for pb-nebula to reject.
       unsafe_routes: formData.value.unsafe_routes
         .map(r => ({ route: r.route.trim(), via: r.via.trim() }))
         .filter(r => r.route && r.via),
       tun_device: formData.value.tun_device.trim(),
-      // Further addresses peers can reach this host at. public_host_port stays
-      // the primary and is never repeated here -- pb-nebula puts it first and
-      // refuses a duplicate.
+      // Never repeat public_host_port here: pb-nebula puts it first and refuses
+      // a duplicate.
       additional_host_ports: lines(formData.value.additional_host_ports),
       advertise_addrs: lines(formData.value.advertise_addrs),
       local_allow_list: localAllowList,
-      // 0 is pb-nebula's "inherit the default", and the schema's Min bound is
-      // short-circuited on it -- so an empty box has to send 0, not null.
+      // 0 means "inherit the default" and skips the schema's Min bound, so
+      // blank sends 0, not null.
       mtu: formData.value.mtu ? parseInt(formData.value.mtu, 10) : 0,
     }
 
-    // Only send validity_years when set; empty lets pb-nebula use its default
-    // (and avoids the schema's min:1 check rejecting a null/0).
+    // Omitted when blank: pb-nebula uses its default, and min:1 would reject 0.
     if (formData.value.validity_years) {
       data.validity_years = parseInt(formData.value.validity_years, 10)
     }
 
-    // Only send password if entered
     if (formData.value.password) {
       data.password = formData.value.password
       data.passwordConfirm = formData.value.passwordConfirm
@@ -314,7 +274,6 @@ onMounted(() => {
 
 <template>
   <div class="space-y-6">
-    <!-- Header: Hidden if Embedded -->
     <div v-if="!embedded">
       <div class="breadcrumbs text-sm">
         <ul>
@@ -327,17 +286,14 @@ onMounted(() => {
       </h1>
     </div>
     
-    <!-- Loading State -->
     <div v-if="loadingOptions" class="flex justify-center p-12">
       <span class="loading loading-spinner loading-lg"></span>
     </div>
     
-    <!-- Form -->
     <form v-else @submit.prevent="handleSubmit" class="space-y-6">
       
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         
-        <!-- Left Column: Identity & Auth -->
         <div class="space-y-6">
           <BaseCard title="Identity">
             <div class="space-y-4">
@@ -409,11 +365,9 @@ onMounted(() => {
           </BaseCard>
         </div>
 
-        <!-- Right Column: Network, Role, Status -->
         <div class="space-y-6">
           <BaseCard title="Network Configuration">
             <div class="space-y-4">
-              <!-- Network -->
               <div class="form-control">
                 <label class="label">
                   <span class="label-text">Network *</span>
@@ -427,7 +381,6 @@ onMounted(() => {
                 />
               </div>
 
-              <!-- Overlay IP (Required) -->
               <div class="form-control">
                 <label class="label">
                   <span class="label-text">Overlay IP *</span>
@@ -446,7 +399,6 @@ onMounted(() => {
                 </label>
               </div>
 
-              <!-- Groups -->
               <div class="form-control">
                 <label class="label">
                   <span class="label-text">Groups</span>
@@ -468,7 +420,6 @@ onMounted(() => {
 
           <BaseCard title="Role & Status">
             <div class="space-y-4">
-              <!-- Is Lighthouse -->
               <div class="form-control">
                 <label class="label cursor-pointer justify-start gap-4">
                   <input 
@@ -485,7 +436,6 @@ onMounted(() => {
                 </label>
               </div>
 
-              <!-- Is Relay -->
               <div class="form-control">
                 <label class="label cursor-pointer justify-start gap-4">
                   <input 
@@ -503,7 +453,6 @@ onMounted(() => {
                 </label>
               </div>
 
-              <!-- Public IP/Port (Conditional) -->
               <div v-if="needsPublicEndpoint" class="form-control pl-8 border-l-2 border-base-300">
                 <label class="label">
                   <span class="label-text">Public Host:Port *</span>
@@ -530,7 +479,6 @@ onMounted(() => {
                 </label>
               </div>
 
-              <!-- Additional addresses (Conditional) -->
               <div v-if="needsPublicEndpoint" class="form-control pl-8 border-l-2 border-base-300">
                 <label class="label">
                   <span class="label-text">Additional Host:Port</span>
@@ -559,7 +507,6 @@ onMounted(() => {
                 </label>
               </div>
 
-              <!-- Active -->
               <div class="form-control">
                 <label class="label cursor-pointer justify-start gap-4">
                   <input
@@ -582,7 +529,6 @@ onMounted(() => {
                 </label>
               </div>
 
-              <!-- Certificate Validity -->
               <div class="form-control">
                 <label class="label">
                   <span class="label-text">Certificate Validity (years)</span>
@@ -606,11 +552,7 @@ onMounted(() => {
         </div>
       </div>
       
-      <!--
-        Routing and transport. Below the two columns rather than inside them:
-        every field here is optional, most hosts need none of it, and putting it
-        alongside the hostname would suggest otherwise.
-      -->
+      <!-- Below the columns: all optional, and most hosts need none of it. -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
 
         <BaseCard title="Gateway Routing">
@@ -802,7 +744,6 @@ onMounted(() => {
         </BaseCard>
       </div>
 
-      <!-- Actions -->
       <div class="flex flex-col sm:flex-row justify-end gap-2 sm:gap-4">
         <button 
           type="button" 

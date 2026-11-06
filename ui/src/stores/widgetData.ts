@@ -7,19 +7,17 @@ export interface BufferedMessage {
   raw?: any
   subject?: string
   // JetStream stream sequence. With the subject it identifies one stored
-  // message exactly (a subject belongs to one stream per account), which is
-  // what lets a replay onto a kept buffer skip what the buffer already holds.
+  // message, so a replay onto a kept buffer can skip what it already holds.
   seq?: number
 }
 
-// CHANGED: messages is now a Ref, allowing granular updates
+// A ref per buffer, so a message only triggers that widget's readers.
 interface WidgetDataBuffer {
   widgetId: string
   messages:  import('vue').Ref<BufferedMessage[]>
   maxCount: number
   maxAge?: number
-  // What filled this buffer (the widget's resolved subjects). Data is kept
-  // warm across navigation, but only while it still describes the same thing.
+  // The widget's resolved subjects; kept data is dropped when this changes.
   source?: string
 }
 
@@ -31,13 +29,12 @@ const MEMORY_LIMITS = {
 }
 
 export const useWidgetDataStore = defineStore('widgetData', () => {
-  // State
-  // CHANGED: Use shallowRef for the Map itself. We rarely add/remove widgets compared to messages.
+  // shallowRef: the Map changes only when widgets come and go; call
+  // triggerRef(buffers) after adding or removing one.
   const buffers = shallowRef<Map<string, WidgetDataBuffer>>(new Map())
   const memoryWarning = ref<string | null>(null)
   const cumulativeCount = ref(0)
-  
-  // Computed
+
   const activeBufferCount = computed(() => buffers.value.size)
   
   const totalBufferedCount = computed(() => {
@@ -59,13 +56,10 @@ export const useWidgetDataStore = defineStore('widgetData', () => {
     return Math.min(percent, 100)
   })
 
-  // Actions
   /**
-   * Create the buffer, or keep an existing one warm. `source` names what
-   * fills it; when an existing buffer was filled from something else -- a
-   * dashboard variable moved `site.{{device}}.temp` from A to B -- its data
-   * describes a different device and is dropped rather than drawn in front of
-   * B's.
+   * Create the buffer, or keep an existing one warm. If `source` differs from
+   * what filled it (e.g. a variable moved `site.{{device}}.temp` to another
+   * device), the old data is dropped.
    */
   function initializeBuffer(widgetId: string, maxCount: number = 100, maxAge?: number, source?: string) {
     const safeMaxCount = Math.min(maxCount, MEMORY_LIMITS.MAX_SINGLE_BUFFER)
@@ -74,12 +68,12 @@ export const useWidgetDataStore = defineStore('widgetData', () => {
     if (!existing) {
       buffers.value.set(widgetId, {
         widgetId,
-        messages: shallowRef([]), // CHANGED: Individual reactive ref
+        messages: shallowRef([]),
         maxCount: safeMaxCount,
         maxAge,
         source,
       })
-      triggerRef(buffers) // Only trigger map structure changes
+      triggerRef(buffers)
     } else if (source !== undefined && existing.source !== source) {
       existing.messages.value = []
       existing.source = source
@@ -107,7 +101,6 @@ export const useWidgetDataStore = defineStore('widgetData', () => {
     for (const buffer of buffers.value.values()) {
       if (buffer.messages.value.length > 100) {
         const toRemove = Math.ceil(buffer.messages.value.length * 0.2)
-        // Direct array mutation on the value
         const newMsgs = buffer.messages.value.slice(toRemove)
         buffer.messages.value = newMsgs
       }
@@ -146,7 +139,6 @@ export const useWidgetDataStore = defineStore('widgetData', () => {
     const currentVal = Number(cumulativeCount.value) || 0
     cumulativeCount.value = currentVal + items.length
 
-    // Group by widget
     const updates = new Map<string, BufferedMessage[]>()
     
     for (const item of items) {
@@ -164,7 +156,6 @@ export const useWidgetDataStore = defineStore('widgetData', () => {
       })
     }
 
-    // Apply updates
     for (const [widgetId, incoming] of updates) {
       let buffer = buffers.value.get(widgetId)
 
@@ -173,25 +164,19 @@ export const useWidgetDataStore = defineStore('widgetData', () => {
         buffer = buffers.value.get(widgetId)!
       }
 
-      // Returning to a dashboard keeps its buffers warm, and the JetStream
-      // consumer then replays history the buffer already holds. Skip stored
-      // messages already present, so a replay fills the gap instead of
-      // doubling everything before it.
+      // A JetStream replay onto a kept buffer repeats what it holds; skip those.
       const newMessages = dropSeen(buffer.messages.value, incoming)
       if (newMessages.length === 0) continue
 
       const max = buffer.maxCount
-      // Work with a copy to avoid intermediate reactivity triggers
       let currentMsgs = buffer.messages.value
       const incomingLen = newMessages.length
 
       let updatedMsgs: BufferedMessage[]
 
       if (incomingLen >= max) {
-        // Incoming flood: just keep newest
         updatedMsgs = newMessages.slice(incomingLen - max)
       } else {
-        // Normal case: make room and push
         const currentLen = currentMsgs.length
         const availableSpace = max - currentLen
         
@@ -203,30 +188,24 @@ export const useWidgetDataStore = defineStore('widgetData', () => {
         }
       }
 
-      // Time window: a filter rather than a front-trim, because a message's
-      // timestamp can come from its payload or from JetStream, so arrival
-      // order is not time order.
+      // Filter, not front-trim: timestamps may come from the payload or
+      // JetStream, so arrival order is not time order.
       if (buffer.maxAge) {
         const cutoff = Date.now() - buffer.maxAge
         updatedMsgs = updatedMsgs.filter(m => m.timestamp >= cutoff)
       }
 
-      // CHANGED: Update the specific ref for this widget only
       buffer.messages.value = updatedMsgs
     }
 
-    // Check memory occasionally
     if (items.length > 100) {
       pruneIfNeeded()
     }
-    
-    // REMOVED: triggerRef(buffers) - No longer needed for data updates!
   }
   
   function getBuffer(widgetId: string): BufferedMessage[] {
     const buffer = buffers.value.get(widgetId)
-    // CHANGED: Return the value of the ref. 
-    // Computed properties using this will now track `buffer.messages`, not `buffers`.
+    // A computed calling this tracks this buffer's ref, not the whole Map.
     return buffer ? buffer.messages.value : []
   }
   

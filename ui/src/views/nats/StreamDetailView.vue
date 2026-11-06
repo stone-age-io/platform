@@ -34,7 +34,7 @@ const purgeSubject = ref('')
 const purging = ref(false)
 const deleting = ref(false)
 
-// Recent messages browser (opt-in — not loaded on mount to keep the page snappy)
+// Recent messages: fetched on demand, not on mount.
 const messages = ref<StoredMessageView[]>([])
 const messagesLoading = ref(false)
 const messagesLoaded = ref(false)
@@ -416,7 +416,6 @@ useEscapeKey(() => !!selectedMessage.value, () => { selectedMessage.value = null
           </div>
         </template>
 
-        <!-- Opt-in: messages are fetched on demand so the initial page load stays snappy -->
         <div v-if="!messagesLoaded && !messagesLoading" class="text-center py-8">
           <Mail :size="40" :stroke-width="1.5" class="mx-auto text-base-content/30" />
           <p class="text-base-content/70 mt-2 mb-4">Browse the most recent messages stored in this stream.</p>

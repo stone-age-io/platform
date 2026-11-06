@@ -1,6 +1,5 @@
 <template>
   <div class="text-widget" :class="{ 'card-layout': layoutMode === 'card' }">
-    <!-- Card Layout -->
     <template v-if="layoutMode === 'card'">
       <div class="card-content">
         <div class="card-info">
@@ -12,7 +11,6 @@
       </div>
     </template>
 
-    <!-- Standard Layout -->
     <template v-else>
       <div 
         class="value-display"

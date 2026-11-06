@@ -11,15 +11,12 @@ const route = useRoute()
 const authStore = useAuthStore()
 const toast = useToast()
 
-// URL Params
 const token = ref('')
 const emailParam = ref('')
 
-// UI State
 const loading = ref(false)
 const mode = ref<'register' | 'login'>('register')
 
-// Form Data
 const form = ref({
   email: '',
   password: '',
@@ -28,7 +25,6 @@ const form = ref({
 })
 
 onMounted(() => {
-  // 1. Extract Token & Email from URL
   const t = route.query.token as string
   if (t) token.value = t
   
@@ -38,23 +34,18 @@ onMounted(() => {
     form.value.email = e
   }
 
-  // 2. Decide Default Mode
-  // If user is already logged in, we don't need forms, just the Action Button (handled in template)
-  // If not logged in, 'register' is usually the best default for invites
 })
 
 async function executeAccept() {
-  // Platform route (hooks/invites.go). Was /api/tenancy/accept-invite, named
-  // after a library that has since been absorbed.
+  // hooks/invites.go
   await pb.send('/api/org/invites/accept', {
     method: 'POST',
     body: { token: token.value },
   })
 
-  // Refresh context to see new org
   await authStore.loadMemberships()
   
-  // Switch to the new org (usually the last one added)
+  // Assumes the new membership is last in the list.
   if (authStore.memberships.length > 0) {
     const newMembership = authStore.memberships[authStore.memberships.length - 1]
     await authStore.switchOrganization(newMembership.organization)
@@ -70,7 +61,7 @@ async function handleAction() {
   loading.value = true
   
   try {
-    // SCENARIO 1: User is already authenticated
+    // Already signed in
     if (authStore.isAuthenticated) {
       await executeAccept()
       toast.success('Invitation accepted!')
@@ -78,37 +69,32 @@ async function handleAction() {
       return
     }
 
-    // SCENARIO 2: New User Registration
+    // New account
     if (mode.value === 'register') {
       if (form.value.password !== form.value.passwordConfirm) {
         throw new Error('Passwords do not match')
       }
 
-      // 1. Create User
       await pb.collection('users').create({
         email: form.value.email,
         password: form.value.password,
         passwordConfirm: form.value.passwordConfirm,
         name: form.value.name,
-        emailVisibility: true, // Useful for team visibility
+        emailVisibility: true,
       })
 
-      // 2. Auto Login
       await authStore.login(form.value.email, form.value.password)
       
-      // 3. Accept Invite
       await executeAccept()
       
       toast.success('Account created and joined!')
       router.push('/')
     } 
     
-    // SCENARIO 3: Existing User Login
+    // Existing account
     else {
-      // 1. Login
       await authStore.login(form.value.email, form.value.password)
       
-      // 2. Accept Invite
       await executeAccept()
       
       toast.success('Welcome back! Invitation accepted.')
@@ -137,7 +123,7 @@ async function handleAction() {
           </p>
         </div>
 
-        <!-- Token Input (Hidden if present in URL, visible if manual entry needed) -->
+        <!-- Manual token entry when the link carried none -->
         <div v-if="!route.query.token" class="form-control mb-4">
           <label class="label"><span class="label-text">Invitation Token</span></label>
           <input v-model="token" type="text" class="input input-bordered font-mono" placeholder="Paste token here..." />
@@ -167,7 +153,6 @@ async function handleAction() {
 
         <!-- STATE 2: NOT LOGGED IN (Auth Forms) -->
         <div v-else>
-          <!-- Tabs -->
           <div role="tablist" class="tabs tabs-boxed mb-6">
             <a role="tab" class="tab" :class="{ 'tab-active': mode === 'register' }" @click="mode = 'register'">Create Account</a>
             <a role="tab" class="tab" :class="{ 'tab-active': mode === 'login' }" @click="mode = 'login'">Log In</a>

@@ -1,8 +1,6 @@
-<!-- ui/src/components/widgets/MarkdownWidget.vue -->
 <template>
   <div class="markdown-widget" :class="{ 'card-layout': layoutMode === 'card', 'is-editing': isEditing }">
     
-    <!-- Edit Toggle (Only visible when Unlocked) -->
     <div v-if="!dashboardStore.isLocked" class="md-toolbar">
       <button 
         class="mode-btn" 
@@ -14,7 +12,6 @@
       </button>
     </div>
 
-    <!-- Edit Mode: Textarea -->
     <div v-if="isEditing" class="editor-container">
       <textarea 
         v-model="localContent" 
@@ -28,7 +25,6 @@
       </div>
     </div>
 
-    <!-- View Mode: Rendered HTML -->
     <div v-else class="markdown-body" v-html="renderedContent"></div>
   </div>
 </template>
@@ -59,13 +55,12 @@ const dataStore = useWidgetDataStore()
 const natsStore = useNatsStore()
 const { updateWidgetConfiguration } = useWidgetOperations()
 
-// State for In-Place Editing
 const isEditing = ref(false)
 const localContent = ref('')
 
 // --- Data Logic ---
 
-// 1. Subscription Data (NATS Core/JetStream)
+// Subscription data (NATS Core/JetStream)
 const buffer = computed(() => {
   if (props.config.dataSource.type !== 'subscription') return []
   return dataStore.getBuffer(props.config.id)
@@ -76,7 +71,7 @@ const latestSubData = computed(() => {
   return buffer.value[buffer.value.length - 1].value
 })
 
-// 2. KV Data — the watcher handles lifecycle, dashboard:refresh, reconnects,
+// KV data: the watcher handles lifecycle, dashboard:refresh, reconnects,
 // and variable changes (it resolves templates internally). Watches nothing
 // when the widget isn't in KV mode.
 const { rows: kvRows } = useNatsKvWatcher(
@@ -113,7 +108,6 @@ watch(kvRows, (map) => {
   }
 })
 
-// 3. Flatten Helper
 function flatten(obj: any, prefix = '', res: Record<string, any> = {}) {
   for (const key in obj) {
     const val = obj[key]
@@ -127,11 +121,9 @@ function flatten(obj: any, prefix = '', res: Record<string, any> = {}) {
   return res
 }
 
-// 4. Combined Variable Context
 const variableContext = computed(() => {
   const globalVars = dashboardStore.currentVariableValues
   
-  // Decide source: Subscription vs KV
   let payload = null
   if (props.config.dataSource.type === 'kv') {
     payload = kvData.value
@@ -139,10 +131,8 @@ const variableContext = computed(() => {
     payload = latestSubData.value
   }
 
-  // If no payload, just return globals
   if (payload === null || payload === undefined) return globalVars
 
-  // Flatten logic
   let payloadVars: Record<string, any> = {}
   
   if (typeof payload === 'object' && payload !== null) {
@@ -165,7 +155,6 @@ const renderedContent = computed(() => {
   // If editing, we still render what's in config, not localContent (until saved)
   const raw = props.config.markdownConfig?.content || ''
   
-  // Resolve using merged context
   const stringContext: Record<string, string> = {}
   for (const [k, v] of Object.entries(variableContext.value)) {
     stringContext[k] = String(v)
@@ -182,19 +171,15 @@ const renderedContent = computed(() => {
 
 function toggleEditMode() {
   if (isEditing.value) {
-    // Save on exit
     saveChanges()
     isEditing.value = false
   } else {
-    // Enter edit mode
-    // Initialize local content from props
     localContent.value = props.config.markdownConfig?.content || ''
     isEditing.value = true
   }
 }
 
 function saveChanges() {
-  // Only save if changed
   if (localContent.value !== props.config.markdownConfig?.content) {
     updateWidgetConfiguration(props.config.id, {
       markdownConfig: {
@@ -219,7 +204,6 @@ function saveChanges() {
   padding: 8px;
 }
 
-/* Toolbar for Edit Button */
 .md-toolbar {
   position: absolute;
   top: 8px;
@@ -254,7 +238,6 @@ function saveChanges() {
   border-color: var(--color-accent);
 }
 
-/* Editor Styles */
 .editor-container {
   flex: 1;
   display: flex;
@@ -295,16 +278,15 @@ function saveChanges() {
   border-radius: 3px;
 }
 
-/* Viewer Styles */
 .markdown-body {
   flex: 1;
   overflow-y: auto;
-  overflow-x: hidden; /* Grug fix: Prevent horizontal scroll on body */
+  overflow-x: hidden;
   padding: 12px;
   color: var(--text);
   font-size: 14px;
   line-height: 1.6;
-  overflow-wrap: break-word; /* Grug fix: Break long words */
+  overflow-wrap: break-word;
   word-wrap: break-word;
 }
 
@@ -333,14 +315,14 @@ function saveChanges() {
   border-radius: 3px;
   font-family: var(--mono);
   font-size: 0.9em;
-  word-break: break-all; /* Grug fix: Break long codes */
+  word-break: break-all;
 }
 
 :deep(pre) {
   background: rgba(0, 0, 0, 0.2);
   padding: 12px;
   border-radius: 6px;
-  overflow-x: auto; /* Grug fix: Scroll code blocks internally */
+  overflow-x: auto;
   margin-bottom: 1em;
 }
 
@@ -374,8 +356,8 @@ function saveChanges() {
   width: 100%;
   border-collapse: collapse;
   margin-bottom: 1em;
-  display: block; /* Grug fix: Allow table to scroll */
-  overflow-x: auto; /* Grug fix: Scroll table internally */
+  display: block;
+  overflow-x: auto;
 }
 
 :deep(th), :deep(td) {

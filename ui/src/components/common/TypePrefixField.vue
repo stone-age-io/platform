@@ -1,12 +1,10 @@
 <script setup lang="ts">
-// The code prefix on a Thing Type or Location Type (ADR 0003 in platform-docs).
-// One component for both forms, because they describe the same rule and two
-// copies of the help text would drift.
+// The code prefix on a Thing Type or Location Type (ADR 0003 in platform-docs),
+// shared so the help text cannot drift between the two forms.
 //
-// The server is the authority: schema.json patterns the field ^[A-Z]{1,4}$ and
-// hooks/codes.go refuses a prefix the other type collection already holds. The
-// input only uppercases and trims as you type, so a lowercase prefix does not
-// fail at save time with nothing pointing at why.
+// The server is the authority (schema.json pattern ^[A-Z]{1,4}$; hooks/codes.go
+// refuses a prefix the other type collection holds). The input only uppercases
+// and trims, so a lowercase prefix does not fail at save with no explanation.
 const props = defineProps<{ kind: 'Thing' | 'Location'; example: string }>()
 const model = defineModel<string>({ default: '' })
 

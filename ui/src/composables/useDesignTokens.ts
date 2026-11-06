@@ -2,17 +2,13 @@ import { computed } from 'vue'
 import { useUIStore } from '@/stores/ui'
 
 /**
- * Design Tokens Composable
- * 
- * Maps Stone Age (DaisyUI) CSS variables to the NATS Dashboard token system.
- * Resolves CSS variables to explicit RGB values for Canvas/ECharts compatibility.
+ * Resolves DaisyUI CSS variables to explicit RGB strings, because Canvas and
+ * ECharts cannot read CSS variables.
  */
 
-// Helper to resolve CSS color string to computed RGB string
 function resolveColor(colorString: string): string {
   if (typeof document === 'undefined') return colorString
-  
-  // Create a temporary element to resolve the color
+
   const el = document.createElement('div')
   el.style.color = colorString
   el.style.display = 'none'
@@ -26,28 +22,16 @@ function resolveColor(colorString: string): string {
 /**
  * Categorical chart series ramp.
  *
- * Chart series identity is NOT taken from the DaisyUI theme. The theme's
- * `secondary` (#64748B / #94A3B8) and `neutral` (#1F2733 / #232A35) are
- * deliberately desaturated for UI chrome, and the ramp used to map series 2 and
- * 4 onto them — two near-grays in the same chart. The theme's `primary` is also
- * the color of every button and link, so reusing it as series 1 conflates
- * "interactive control" with "series identity".
+ * Not taken from the DaisyUI theme: its secondary and neutral are near-grays,
+ * and primary is the colour of every control. Each mode is stepped and
+ * validated for its own surface (#FFFFFF light, #12161D dark) for CVD
+ * separation and contrast.
  *
- * These eight hues are the validated default categorical palette: both modes are
- * separately stepped for their own surface (not an automatic flip of the same
- * hex). Verified against platform's real chart surfaces — base-100 #FFFFFF light
- * and #12161D dark — for the lightness band, chroma floor, adjacent-pair CVD
- * separation (worst ΔE 9.1 light / 8.4 dark against a ≥8 target), the
- * normal-vision floor (19.6 / 19.3 against a ≥15 floor), and contrast.
+ * In light mode aqua, yellow and magenta are under 3:1 against white, so a
+ * chart from this ramp needs a legend or direct labels (ChartWidget has one).
  *
- * Light mode: aqua, yellow and magenta land at 2.2–2.8:1 against white, under
- * the 3:1 bar. That is a documented conditional — it obligates a legend or
- * direct labels so identity never rests on color alone. ChartWidget renders an
- * ECharts legend, which satisfies it; don't ship a chart from this ramp with the
- * legend suppressed.
- *
- * Order is fixed and must not be reordered — color follows the entity, so a
- * filter that drops a series must not repaint the survivors.
+ * Do not reorder: colour follows the series, so dropping one must not repaint
+ * the rest.
  */
 const CHART_SERIES: Record<'light' | 'dark', readonly string[]> = {
   //        blue       orange     aqua       yellow     magenta    green      violet     red
@@ -55,14 +39,11 @@ const CHART_SERIES: Record<'light' | 'dark', readonly string[]> = {
   dark:  ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'],
 }
 
-// Helper to add alpha to an RGB string
 function resolveAlpha(colorString: string, alpha: number): string {
   const rgb = resolveColor(colorString)
-  // Handle "rgb(r, g, b)" -> "rgba(r, g, b, a)"
   if (rgb.startsWith('rgb(')) {
     return rgb.replace('rgb(', 'rgba(').replace(')', `, ${alpha})`)
   }
-  // Handle "rgba(r, g, b, a)" -> replace a
   if (rgb.startsWith('rgba(')) {
     return rgb.replace(/, [\d\.]+\)/, `, ${alpha})`)
   }
@@ -72,12 +53,10 @@ function resolveAlpha(colorString: string, alpha: number): string {
 export function useDesignTokens() {
   const uiStore = useUIStore()
 
-  // Helper to ensure reactivity
+  // The CSS variables are not reactive; each computed reads `theme` so it
+  // re-resolves when the theme changes.
   const theme = computed(() => uiStore.theme)
 
-  /**
-   * Base Colors
-   */
   const baseColors = computed(() => {
     void theme.value 
     return {
@@ -91,15 +70,10 @@ export function useDesignTokens() {
     }
   })
 
-  /**
-   * Semantic Colors
-   */
   const semanticColors = computed(() => {
     void theme.value
     return {
-      // DaisyUI v4 dropped the *-focus palette entries, so --pf/--sf/--af are
-      // undefined and the old oklch(var(--pf)) resolved to an invalid color.
-      // An alpha step gives the hover state without depending on those vars.
+      // DaisyUI v4 has no --pf/--sf/--af focus vars, so hover is an alpha step.
       primary: resolveColor('oklch(var(--p))'),
       primaryHover: resolveAlpha('oklch(var(--p))', 0.85),
       primaryActive: resolveColor('oklch(var(--p))'),
@@ -129,10 +103,6 @@ export function useDesignTokens() {
     }
   })
 
-  /**
-   * Chart Colors
-   * Resolved to RGB for ECharts
-   */
   const chartColors = computed(() => {
     const ramp = CHART_SERIES[theme.value]
     return {
@@ -154,9 +124,6 @@ export function useDesignTokens() {
     }
   })
 
-  /**
-   * Threshold Colors
-   */
   const thresholdColors = computed(() => {
     void theme.value
     return {
@@ -174,9 +141,6 @@ export function useDesignTokens() {
     }
   })
 
-  /**
-   * Status Colors
-   */
   const statusColors = computed(() => {
     void theme.value
     return {
@@ -188,9 +152,6 @@ export function useDesignTokens() {
     }
   })
 
-  /**
-   * Connection Status Colors
-   */
   const connectionColors = computed(() => {
     void theme.value
     return {
@@ -201,9 +162,6 @@ export function useDesignTokens() {
     }
   })
 
-  /**
-   * Chart Styling
-   */
   const chartStyling = computed(() => {
     void theme.value
     return {
@@ -218,16 +176,9 @@ export function useDesignTokens() {
     }
   })
 
-  // --- Helpers ---
-
   /**
-   * Series color for a 1-based series index.
-   *
-   * Past eight series the ramp wraps, which means two series share a hue — the
-   * right fix is at the data layer (fold the tail into "Other", or facet into
-   * small multiples), not by generating a ninth hue here: a generated hue has
-   * passed none of the separation checks the eight above were chosen for.
-   * Wrapping rather than throwing keeps an over-wide chart rendering.
+   * Series colour for a 1-based index. Past eight it wraps rather than
+   * generating an unvalidated hue; fix too many series in the data instead.
    */
   function getChartColor(index: number): string {
     const ramp = CHART_SERIES[theme.value]
@@ -256,7 +207,7 @@ export function useDesignTokens() {
     }
   }
 
-  // Legacy helper compatibility
+  // Legacy aliases of resolveAlpha
   function hexToRgba(hex: string, alpha: number): string {
     return resolveAlpha(hex, alpha)
   }

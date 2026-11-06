@@ -21,13 +21,6 @@ import { encodeString, decodeBytes } from '@/utils/encoding'
 import { resolveTemplate } from '@/utils/variables'
 import type { MapMarkerItem } from '@/types/dashboard'
 
-/**
- * Marker Item: Publish Button
- * 
- * Handles fire-and-forget publish or request/reply pattern.
- * Emits response event for request/reply results.
- */
-
 const props = defineProps<{
   item: MapMarkerItem
 }>()

@@ -1,5 +1,3 @@
-// ui/src/types/jetstream.ts
-
 /** Stream summary for list view */
 export interface StreamSummary {
   id: string            // same as name, needed for ResponsiveList

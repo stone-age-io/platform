@@ -6,28 +6,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import NebulaHostFormView from './NebulaHostFormView.vue'
 import { useAuthStore } from '@/stores/auth'
 
-// The other half of the pair ThingFormView.spec.ts opens: the two forms where
-// the console meets provisioning, and where a silent regression stops somebody
-// putting a device on the network. The reasoning for mounting at all is in that
-// file's header and in vitest.config.ts.
-//
-// WHAT IT PINS. This form's job is almost entirely translation — an operator
-// edits text, pb-nebula needs arrays, integers and a nested object — and every
-// one of those conversions is a place a value can be quietly dropped or sent in
-// a shape the schema rejects with a generic 400:
-//
-//   - groups: one comma-separated box becomes an array;
-//   - the textareas become arrays of trimmed, non-empty lines;
-//   - a half-filled unsafe route is dropped rather than sent;
-//   - an empty MTU sends 0, not null — 0 is pb-nebula's "inherit the default"
-//     and the schema's Min bound is short-circuited on it, so null is rejected;
-//   - validity_years is OMITTED when blank, for the same reason in reverse
-//     (min:1 rejects a null or 0);
-//   - password is omitted when blank, so an edit does not rotate it;
-//   - the allow list is parsed here, because a parse failure on the server
-//     arrives as a 400 with nothing an operator can act on.
-//
-// It does NOT assert on layout, classes or wording.
+// One of the mounted exceptions listed in vitest.config.ts. The form translates
+// text into the arrays, integers and object pb-nebula needs; a wrong shape is a
+// generic 400. It pins:
+//   - groups and the textareas become arrays of trimmed, non-empty entries;
+//   - a half-filled unsafe route is dropped;
+//   - an empty MTU sends 0 (inherit), not null, which the Min bound rejects;
+//   - validity_years is OMITTED when blank (min:1 rejects null or 0);
+//   - a blank password is omitted, so an edit does not rotate it;
+//   - the allow list is parsed client-side.
+// Not layout, classes or wording.
 
 const { getOne, getFullList, getFirstListItem, create, update, push, toast } = vi.hoisted(() => ({
   getOne: vi.fn(),
@@ -113,11 +101,8 @@ async function mountForm(opts: { edit?: boolean } = {}) {
 
 /**
  * Set the input or textarea in the `.form-control` whose label says `label`.
- *
- * By label rather than by placeholder, because several placeholders here are
- * multi-line (they show a one-per-line example), and a newline inside an
- * attribute selector is a syntax error. The label is also what the operator
- * reads, so a test that can no longer find it is describing a real change.
+ * Not by placeholder: several are multi-line, and a newline in an attribute
+ * selector is a syntax error.
  */
 async function fill(wrapper: any, label: string, value: string) {
   const control = wrapper

@@ -2,25 +2,11 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
-// Leaflet does ALL of its positioning from its own stylesheet:
-//
-//   .leaflet-pane, .leaflet-marker-icon, ... { position: absolute; left: 0; top: 0 }
-//
-// Without it every pane computes to `position: static` and the panes stack in
-// normal flow instead of overlaying. The map still draws, the image overlay
-// still appears, nothing throws and no console line is printed -- but the
-// marker pane lands one image-height BELOW the image, where the widget's
-// `overflow: hidden` clips it, and the markers are simply gone.
-//
-// It stayed hidden because a stylesheet is global once ANY module imports it.
-// useLeafletMap.ts always did, so useFloorPlan.ts worked on every screen that
-// happened to mount a geographic map alongside it -- which the location detail
-// view does. The first screen to use a floor plan on its own (the dashboard
-// widget) was the first to see it, and by then "it works on the location page"
-// made the composable look innocent.
-//
-// So: a file that creates a Leaflet map imports Leaflet's CSS itself, rather
-// than relying on a neighbour to have done it.
+// Leaflet positions its panes from its own stylesheet. Without it the panes are
+// static and the marker pane lands below the map, clipped out of view, with no
+// error. A stylesheet is global once any module imports it, so a missing import
+// hides whenever another map is on the same screen. Every file that creates a
+// map imports the CSS itself.
 
 const SRC = join(__dirname, '..')
 
@@ -49,8 +35,7 @@ describe('Leaflet stylesheet', () => {
       if (!IMPORTS_CSS.test(text)) missing.push(relative(SRC, file))
     }
 
-    // If this drops to zero the regex has stopped matching the code and the
-    // test would pass while guarding nothing.
+    // Zero means the regex no longer matches the code and guards nothing.
     expect(creators.length).toBeGreaterThan(0)
     expect(
       missing,

@@ -1,6 +1,5 @@
 <template>
   <div class="marker-detail-panel" :class="{ 'is-mobile': isMobile }">
-    <!-- Header -->
     <div class="panel-header">
       <div class="header-content">
         <MapPin class="marker-icon" :size="20" aria-hidden="true" />
@@ -104,7 +103,6 @@ function getFieldValue(field: DynamicMarkerPopupField): string {
   box-shadow: none;
 }
 
-/* Header */
 .panel-header {
   display: flex;
   align-items: center;
@@ -158,7 +156,6 @@ function getFieldValue(field: DynamicMarkerPopupField): string {
   color: var(--text);
 }
 
-/* Body */
 .panel-body {
   flex: 1;
   overflow-y: auto;
@@ -225,7 +222,6 @@ function getFieldValue(field: DynamicMarkerPopupField): string {
   font-family: var(--mono);
 }
 
-/* Footer */
 .panel-footer {
   padding: 12px 16px;
   border-top: 1px solid var(--border);

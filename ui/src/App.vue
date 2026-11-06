@@ -1,4 +1,3 @@
-<!-- ui/src/App.vue -->
 <script setup lang="ts">
 import { onMounted, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
@@ -24,16 +23,12 @@ const toast = useToast()
 const { state: confirmState, handleConfirm, handleCancel } = useConfirm()
 
 onMounted(() => {
-  // Initialize theme from localStorage.
-  // Auth hydration runs pre-mount in main.ts so the router guard sees a
-  // restored session on the very first navigation.
+  // Auth hydration is not here: it runs pre-mount in main.ts.
   uiStore.initializeTheme()
 })
 
-// 1. Handle Logout
-// Intentionally NOT { immediate: true }: this watcher only reacts to the
-// authenticated -> unauthenticated transition (logout). Firing on initial
-// false would call a redundant disconnect on every logged-out tab open.
+// Logout. Deliberately not immediate: it reacts only to the transition, so a
+// logged-out tab does not disconnect on open.
 watch(() => authStore.isAuthenticated, async (isAuth) => {
   if (!isAuth) {
     try {
@@ -44,23 +39,15 @@ watch(() => authStore.isAuthenticated, async (isAuth) => {
   }
 })
 
-// 2. Handle Login & Org Switching
-// Driven off currentOrgId (not currentMembership) so that identity edits on the
-// settings page don't trigger a reconnect through reactivity — those are handled
-// explicitly by the settings view to avoid racing two reconnect paths.
+// Login and org switching. Watches currentOrgId, not currentMembership, so an
+// identity edit on the settings page (which reconnects itself) does not race a
+// second reconnect. An org change always drops the connection, since the NATS
+// user belongs to the membership; tryAutoConnect reconnects only if enabled.
+// Immediate, so a session restored pre-mount still auto-connects.
 //
-// Org change (including logout) always drops the existing connection: the
-// NATS user lives on the membership record, so the previous org's creds are
-// wrong by definition once the org changes. Reconnect only if auto-connect
-// is enabled — otherwise the user reconnects manually with the new identity.
-//
-// { immediate: true } so that a session restored from localStorage pre-mount
-// (new-tab scenario) still triggers tryAutoConnect on the initial orgId.
-//
-// The two stores that outlive the page are reset here too, on a real switch
-// (prev is undefined only on the immediate first run). Widget buffers are keyed
-// by widget id and subject, and local dashboards are device-wide, so the same
-// keys exist in both orgs and org A's last values would keep drawing in org B.
+// On a real switch (prev is undefined only on the first run) reset the stores
+// that outlive the page: widget buffers and local dashboards use the same keys
+// in every org, so org A's values would keep drawing in org B.
 watch(() => authStore.currentOrgId, async (orgId, prev) => {
   if (prev !== undefined) {
     useWidgetDataStore().clearAllBuffers()
@@ -78,12 +65,9 @@ watch(() => authStore.currentOrgId, async (orgId, prev) => {
 <template>
   <router-view />
 
-  <!-- Toast Container: top-center on mobile, bottom-right on desktop -->
   <div class="toast toast-top toast-center md:toast-top md:toast-end z-[9999] w-full max-w-[calc(100vw-1rem)] md:w-auto md:max-w-sm">
     <TransitionGroup name="toast" tag="div" class="flex flex-col gap-2 w-full">
-      <!-- Errors and warnings interrupt; a success or an info note waits for a
-           pause in what the reader is already doing. role=alert is assertive,
-           role=status is polite. -->
+      <!-- Errors and warnings are role=alert (assertive); the rest role=status (polite). -->
       <div
         v-for="t in toast.toasts.value"
         :key="t.id"
@@ -114,7 +98,6 @@ watch(() => authStore.currentOrgId, async (orgId, prev) => {
     </TransitionGroup>
   </div>
 
-  <!-- Global Confirm Dialog -->
   <ConfirmDialog
     v-model="confirmState.show"
     :title="confirmState.options.title || 'Confirm'"

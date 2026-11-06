@@ -18,56 +18,41 @@ const router = useRouter()
 const toast = useToast()
 const authStore = useAuthStore()
 
-// Reachable by `viewer`, which writes nothing, so Edit needs its own gate.
-// Delete is decommissionInventory (owner/admin) and is no longer on the row --
-// it lives in the danger zone on the detail view.
+// `viewer` reaches this screen and writes nothing, so Edit needs its own gate.
+// Delete lives only in the detail view's danger zone (decommissionInventory).
 const canWrite = computed(() => authStore.can.manageInventory)
 
-// View Mode
 const viewMode = ref<'list' | 'map'>('list')
 
-// Data State
 const allLocations = ref<Location[]>([])
 const loading = ref(false)
 const searchQuery = ref('')
 
-// Pagination State (Client-Side)
+// Search and pagination are client-side: this screen holds every location.
 const currentPage = ref(1)
 const itemsPerPage = 20
 
-// --- List View ---
-
-/**
- * Filter Logic (Client-Side)
- * Searches Name, Code, Description, Type Name, and Parent Name
- */
 const filteredLocations = computed(() => {
   const q = searchQuery.value.toLowerCase().trim()
 
   if (!q) {
-    // Default: Root level only when not searching
+    // Roots only when not searching
     return allLocations.value.filter(l => !l.parent)
   }
 
-  // Flattened search
   return allLocations.value.filter(l => {
     const nameMatch = l.name?.toLowerCase().includes(q)
     const codeMatch = l.code?.toLowerCase().includes(q)
     const descMatch = l.description?.toLowerCase().includes(q)
     const typeMatch = l.expand?.type?.name?.toLowerCase().includes(q)
     const parentMatch = (l.expand?.parent as Location)?.name?.toLowerCase().includes(q)
-    // Metadata matches on keys and values alike: searching "last_inspection"
-    // finds every place that tracks one, and "2026-03" finds the ones inspected
-    // that month. Serialising is what makes both work without knowing the shape.
+    // Serialised so metadata matches on keys and values without knowing the shape.
     const metaMatch = l.metadata ? JSON.stringify(l.metadata).toLowerCase().includes(q) : false
 
     return nameMatch || codeMatch || descMatch || typeMatch || parentMatch || metaMatch
   })
 })
 
-/**
- * Pagination Logic (Client-Side)
- */
 const paginatedLocations = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage
   const end = start + itemsPerPage
@@ -76,15 +61,8 @@ const paginatedLocations = computed(() => {
 
 const totalPages = computed(() => Math.ceil(filteredLocations.value.length / itemsPerPage))
 
-// Labels for the CURRENT FILTER, not the current page -- the same rule as the
-// Things list, and here it needs no fetch because this screen already holds
-// every location.
-//
-// Note what that means when nothing is typed: filteredLocations is ROOTS ONLY,
-// so the button prints roots only. That is deliberate. The alternative -- a
-// button whose count disagrees with the rows on screen -- is the worse
-// surprise, and the search hint above the list already says the view is
-// top-level. One rule: what the list is showing is what prints.
+// Labels print the whole current filter, not the page. With no search that is
+// roots only, deliberately: what the list shows is what prints.
 const showLabelModal = ref(false)
 const labelRecords = computed(() =>
   filteredLocations.value.map((l) => ({
@@ -94,14 +72,9 @@ const labelRecords = computed(() =>
   })),
 )
 
-/**
- * Load All Locations
- */
 async function loadLocations() {
   loading.value = true
   try {
-    // Fetch EVERYTHING.
-    // Optimization: We only need specific fields + expansions.
     allLocations.value = await pb.collection('locations').getFullList<Location>({
       sort: 'name',
       expand: 'type,parent',
@@ -114,7 +87,6 @@ async function loadLocations() {
   }
 }
 
-// Columns
 const columns: Column<Location>[] = [
   { key: 'name', label: 'Name', mobileLabel: 'Name' },
   { key: 'expand.type.name',
@@ -125,12 +97,10 @@ const columns: Column<Location>[] = [
   { key: 'created', width: '8rem', label: 'Created', mobileLabel: 'Created', format: (value) => formatDate(value, 'PP') },
 ]
 
-// Actions
 function handleRowClick(location: Location) {
   router.push(`/locations/${location.id}`)
 }
 
-// Reset page on search
 watch(searchQuery, () => {
   currentPage.value = 1
 })
@@ -142,15 +112,12 @@ onMounted(() => {
 
 <template>
   <div class="space-y-6">
-    <!-- Header & Controls -->
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
 
-      <!-- Left Side: Title & Mobile Toggle -->
       <div class="w-full sm:w-auto">
         <div class="flex justify-between items-center">
           <h1 class="text-3xl font-bold">Locations</h1>
 
-          <!-- Mobile Toggle: Next to title -->
           <div class="join shadow-sm border border-base-300 sm:hidden">
             <button
               class="join-item btn btn-sm px-3"
@@ -173,18 +140,10 @@ onMounted(() => {
         </p>
       </div>
 
-      <!-- Right Side: Desktop Toggle & New Button -->
-      <!-- Every button in this row is `flex-1 sm:flex-initial`, the same idiom the
-           Thing and Location DETAIL views use for their action rows. The New
-           button used to be `w-full sm:w-auto`, which was right while it was
-           alone and wrong the moment Labels joined it: `.btn` carries
-           `flex-shrink: 0`, so it asked for 100% of a row it was sharing and
-           neither button could give any back — the primary action rendered past
-           the right edge of the screen. `flex-1` sets `flex: 1 1 0%`, which
-           restores shrink and splits the row evenly. -->
+      <!-- Buttons are `flex-1 sm:flex-initial`, not `w-full`: `.btn` has
+           `flex-shrink: 0`, so a w-full button sharing the row overflows it. -->
       <div class="flex gap-3 w-full sm:w-auto">
 
-        <!-- Desktop Toggle: Hidden on mobile -->
         <div class="hidden sm:inline-flex join shadow-sm border border-base-300">
           <button
             class="join-item btn"
@@ -218,7 +177,6 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Search (always visible across both modes) -->
     <div class="form-control">
       <input
         v-model="searchQuery"
@@ -238,9 +196,7 @@ onMounted(() => {
       </label>
     </div>
 
-    <!-- LIST VIEW -->
     <div v-if="viewMode === 'list'" class="space-y-6 fade-in">
-      <!-- List Card -->
       <BaseCard :no-padding="true">
         <div v-if="loading && allLocations.length === 0" class="flex justify-center p-12">
           <span class="loading loading-spinner loading-lg"></span>
@@ -306,7 +262,6 @@ onMounted(() => {
             </template>
           </ResponsiveList>
 
-          <!-- Pagination -->
           <ListPager
             v-if="totalPages > 1"
             :page="currentPage"
@@ -321,7 +276,6 @@ onMounted(() => {
       </BaseCard>
     </div>
 
-    <!-- MAP VIEW -->
     <div v-else-if="viewMode === 'map'" class="fade-in">
       <LocationMapViz :search-query="searchQuery" />
     </div>

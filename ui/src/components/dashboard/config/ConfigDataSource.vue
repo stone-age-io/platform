@@ -1,7 +1,6 @@
 <template>
   <div class="config-data-source">
     
-    <!-- MULTI-SUBJECT MODE -->
     <div v-if="allowMultiple" class="form-group">
       <label>NATS Subjects</label>
       <div class="tag-input-container" :class="{ 'has-error': errors.subjects }">
@@ -30,7 +29,6 @@
       </div>
     </div>
 
-    <!-- SINGLE SUBJECT MODE -->
     <div v-else class="form-group">
       <label>NATS Subject</label>
       <input 
@@ -60,7 +58,6 @@
       </div>
     </div>
 
-    <!-- JetStream Toggle -->
     <div class="form-group">
       <label class="checkbox-label">
         <input type="checkbox" v-model="form.useJetStream" />
@@ -68,7 +65,6 @@
       </label>
     </div>
 
-    <!-- JetStream Options -->
     <div v-if="form.useJetStream" class="form-group jetstream-options">
       <label>Deliver Policy</label>
       <select v-model="form.deliverPolicy" class="form-input">
@@ -183,13 +179,11 @@ const sweepsSystem = computed(() =>
 const newSubject = ref('')
 const localSubjects = ref<string[]>([])
 
-// Sync local array with form state
 watch(() => props.form.subjects, (val) => {
   if (val) localSubjects.value = [...val]
   else localSubjects.value = []
 }, { immediate: true })
 
-// Sync array back to form state
 function updateForm() {
   props.form.subjects = [...localSubjects.value]
   // Update legacy field for compatibility
@@ -248,7 +242,6 @@ function handleBackspace() {
   margin-top: 8px;
 }
 
-/* Tag Input Styles */
 .tag-input-container {
   background: var(--input-bg);
   border: 1px solid var(--border);

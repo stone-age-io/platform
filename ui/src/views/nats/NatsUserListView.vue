@@ -15,7 +15,6 @@ import StatusBadge from '@/components/common/StatusBadge.vue'
 
 const router = useRouter()
 
-// Pagination
 const {
   items: users,
   page,
@@ -28,10 +27,7 @@ const {
   prevPage,
 } = usePagination<NatsUser>('nats_users', 20)
 
-// Search query
-// Search runs on the SERVER. The client-side pass this replaces filtered the
-// twenty records already on screen, so a match on page three answered "No
-// results found" -- which is not the same claim at all.
+// Server-side, so a match beyond the current page is found.
 const { searchQuery, filter: searchFilter } = useServerSearch(
   ['nats_username', 'description', 'account_id.name', 'role_id.name'],
   () => {
@@ -40,15 +36,10 @@ const { searchQuery, filter: searchFilter } = useServerSearch(
   },
 )
 
-// The active sort, in PocketBase's own syntax ('name', '-created'). It rides in
-// queryOptions rather than being passed at the call site, for the same reason the
-// filter does: the pager buttons reuse that object, and a sort that is not in it
-// is a sort that page two forgets.
 const sort = ref('')
 
-// One options object, passed to EVERY call into usePagination, the pager
-// buttons included -- passing only expand/sort there drops the filter and
-// page two comes back unfiltered.
+// Pass this to every usePagination call, the pager included, or page two
+// loses the filter and sort.
 const queryOptions = computed(() => ({
   filter: searchFilter.value,
   sort: sort.value,
@@ -57,13 +48,11 @@ const queryOptions = computed(() => ({
 
 function onSort(next: string) {
   sort.value = next
-  page.value = 1 // a new order makes the old page number meaningless
+  page.value = 1
   loadUsers()
 }
 
-// A user carries pb-nats per-user permission overrides when any of its
-// publish/subscribe (allow or deny) lists is non-empty. These merge with the
-// role's permissions, so it's worth flagging at a glance.
+// Any non-empty allow/deny list is an override merged with the role, so flag it.
 function hasOverrides(user: NatsUser): boolean {
   const lists = [
     user.publish_permissions,
@@ -79,7 +68,6 @@ function hasOverrides(user: NatsUser): boolean {
   })
 }
 
-// Column configuration
 const columns: Column<NatsUser>[] = [
   {
     key: 'nats_username',
@@ -117,16 +105,10 @@ const columns: Column<NatsUser>[] = [
   },
 ]
 
-/**
- * Load users from API
- */
 async function loadUsers() {
   await load(queryOptions.value)
 }
 
-/**
- * Handle row click
- */
 function handleRowClick(user: NatsUser) {
   router.push(`/nats/users/${user.id}`)
 }
@@ -212,7 +194,6 @@ onMounted(() => {
         :loading="loading"
         @row-click="handleRowClick"
       >
-        <!-- Custom cell for username -->
         <template #cell-nats_username="{ item }">
           <div>
             <div class="font-medium font-mono flex items-center gap-2">
@@ -229,7 +210,6 @@ onMounted(() => {
           </div>
         </template>
         
-        <!-- Custom mobile card for username -->
         <template #card-nats_username="{ item }">
           <div>
             <div class="font-semibold font-mono text-base flex items-center gap-2">
@@ -246,12 +226,7 @@ onMounted(() => {
           </div>
         </template>
         
-        <!--
-          Status = the active badge plus, when it matters, the JWT expiry. A
-          credential three days from expiry is about to fail as completely as a
-          revoked one, and this is the only screen where an operator would notice
-          before it does.
-        -->
+        <!-- JWT expiry beside the badge: a credential about to expire fails like a revoked one. -->
         <template #cell-active="{ item }">
           <div class="flex flex-wrap items-center gap-1">
             <StatusBadge :active="item.active" />
@@ -266,7 +241,6 @@ onMounted(() => {
           </div>
         </template>
 
-        <!-- Actions -->
         <template #actions="{ item }">
           <router-link 
             :to="`/nats/users/${item.id}/edit`" 
@@ -277,7 +251,6 @@ onMounted(() => {
         </template>
       </ResponsiveList>
       
-      <!-- Pagination -->
       <ListPager
         :page="page"
         :total-pages="totalPages"

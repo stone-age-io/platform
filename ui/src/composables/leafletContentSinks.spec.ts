@@ -2,25 +2,17 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
-// Leaflet 1.9 assigns a STRING tooltip or popup straight to innerHTML
-// (DivOverlay._updateContent). Every map label in this console is data someone
-// else wrote -- a location name any member can set, a KV value a device can set,
-// a marker label from an imported dashboard -- so a string reaching one of these
-// calls is stored XSS, and it has been: member-named locations ran script in
-// the session of any owner who opened the map.
-//
-// Nothing renders Leaflet under vitest (it needs a real layout engine and
-// MapLibre needs WebGL), so this reads the source instead: every content call
-// must take a text node or a caller-built element, in one of the forms below.
-// A new call site that does not match fails here with a pointer to why.
+// Leaflet 1.9 assigns a string tooltip or popup straight to innerHTML, and every
+// map label here is user- or device-written data, so a string is stored XSS.
+// Leaflet cannot render under vitest, so this scans the source: every content
+// call must take a text node or a caller-built element.
 
 const SRC = join(__dirname, '..')
 
 const SINK = /\.(bindTooltip|bindPopup|setTooltipContent|setPopupContent)\s*\(\s*([^,)\r\n]*)/g
 const ALLOWED_ARG = /^(textElement\(|popup$)/
 
-// Not global: these are tested against whole files repeatedly, and a /g
-// regex carries lastIndex between calls.
+// Not /g: a global regex carries lastIndex between .test() calls.
 const DIV_ICON = /L\.divIcon\s*\(/
 const STRING_HTML = /\bhtml\s*:\s*[`'"]/
 
@@ -49,19 +41,14 @@ describe('Leaflet content sinks', () => {
         }
       }
     }
-    // If this drops to zero the regex has stopped matching the code, and the
-    // test would pass while guarding nothing.
+    // Zero means the regex no longer matches the code and guards nothing.
     expect(calls).toBeGreaterThan(0)
     expect(offenders, 'pass textElement(...) or a built element; see useLeafletMap.ts').toEqual([])
   })
 
-  // divIcon html is the same sink. It is called in exactly ONE file, which
-  // passes an ELEMENT rather than a string -- Leaflet 1.9 has
-  // `if (options.html instanceof Element) { ...appendChild }` and only falls
-  // back to innerHTML for a string. Allowing that one audited file is the
-  // same shape as allowing `textElement(` above rather than a hole in the
-  // rule: every other file is still refused outright, and a STRING html is
-  // refused everywhere, that file included.
+  // divIcon html is the same sink. Only this one audited helper may call it,
+  // and it passes an Element, which Leaflet appends instead of using innerHTML.
+  // String html is refused everywhere, the helper included.
   const ICON_HELPER = join('utils', 'leafletIcon.ts')
 
   it('does not accept an html: option (divIcon and friends are the same sink)', () => {

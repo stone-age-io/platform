@@ -10,7 +10,7 @@ describe('missedSince', () => {
     expect(missedSince([a, b], [a, b, c, d])).toEqual({ count: 2, atLeast: false })
   })
 
-  // The bug: a full buffer keeps its length, so length arithmetic said 0.
+  // A full buffer keeps its length, so length arithmetic would say 0.
   it('still counts once the buffer is full and rotating', () => {
     const a = m(1), b = m(2), c = m(3), d = m(4), e = m(5)
     const snapshot = [a, b, c]      // buffer of 3, full

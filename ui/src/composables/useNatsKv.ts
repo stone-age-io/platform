@@ -13,11 +13,9 @@ export interface KvEntry {
 }
 
 /**
- * useNatsKv handles interactions with a NATS Key-Value bucket.
- * @param bucketName Defaults to the org-wide `twin` bucket. See utils/twin.ts
- *                   for the key convention.
- * @param baseKey Optional prefix (e.g., 'thing.S01'). If provided, the watcher
- *                and writers will be scoped to this prefix.
+ * Watches and writes a NATS KV bucket, optionally scoped to a key prefix.
+ * @param bucketName Defaults to the org's `twin` bucket (key convention in utils/twin.ts).
+ * @param baseKey Optional prefix (e.g. 'thing.S01') for the watcher and writers.
  */
 export function useNatsKv(bucketName: string = TWIN_BUCKET, baseKey?: string) {
   const natsStore = useNatsStore()
@@ -26,7 +24,6 @@ export function useNatsKv(bucketName: string = TWIN_BUCKET, baseKey?: string) {
   const encoder = new TextEncoder()
   const decoder = new TextDecoder()
 
-  // State
   const kv = ref<KV | null>(null)
   const entries = ref<Map<string, KvEntry>>(new Map())
   const loading = ref(false)
@@ -60,7 +57,7 @@ export function useNatsKv(bucketName: string = TWIN_BUCKET, baseKey?: string) {
         throw e
       }
 
-      // Stale check: another init() was called while we awaited open()
+      // Stale: another init() ran while we awaited open().
       if (thisGeneration !== initGeneration) return
 
       exists.value = true
@@ -88,7 +85,6 @@ export function useNatsKv(bucketName: string = TWIN_BUCKET, baseKey?: string) {
       const filter = baseKey ? `${baseKey}.>` : '>'
       const iter = await kv.value.watch({ key: filter })
 
-      // Stale check: another init/stop happened while we awaited watch()
       if (generation !== initGeneration) {
         try { iter.stop() } catch {}
         return
@@ -121,14 +117,10 @@ export function useNatsKv(bucketName: string = TWIN_BUCKET, baseKey?: string) {
     }
   }
 
-  /**
-   * Puts a value into KV.
-   * If baseKey is 'thing.S01' and propName is 'temp', key will be 'thing.S01.temp'
-   */
+  /** Writes JSON to `baseKey.propName`, or to `propName` if it is already a full key. */
   async function put(propName: string, value: any) {
     if (!kv.value) return
     try {
-      // Prevent double prefixing if the full key was passed
       const fullKey = (baseKey && !propName.startsWith(baseKey)) 
         ? `${baseKey}.${propName}` 
         : propName
@@ -175,9 +167,8 @@ export function useNatsKv(bucketName: string = TWIN_BUCKET, baseKey?: string) {
     if (!natsStore.nc) return
     loading.value = true
     try {
-      // Retention comes from one shared definition so that whichever creator
-      // gets here first — this button, or the agent on an edge box — produces
-      // the same bucket. See utils/twin.ts.
+      // Shared config, so this and the edge agent create the same bucket,
+      // whichever gets there first. See utils/twin.ts.
       const kvm = new Kvm(natsStore.nc)
       await kvm.create(bucketName, {
         ...TWIN_BUCKET_CONFIG,

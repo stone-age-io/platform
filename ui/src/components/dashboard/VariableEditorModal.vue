@@ -1,7 +1,6 @@
 <template>
   <Teleport to="body">
     <div v-if="modelValue" class="modal-overlay" @click.self="close">
-      <!-- CHANGED: .modal -> .nd-modal -->
       <div class="nd-modal">
         <div class="modal-header">
           <h3>Dashboard Variables</h3>
@@ -165,7 +164,6 @@ function formatUsage(name: string) {
   backdrop-filter: blur(2px);
 }
 
-/* CHANGED: .modal -> .nd-modal */
 .nd-modal {
   background: oklch(var(--b1));
   border: 1px solid oklch(var(--b3));

@@ -40,8 +40,7 @@ export function useFloorPlan() {
   // Fit-to-plan fits the image, not the markers: a plan is a fixed sheet.
   let imageBounds: L.LatLngBounds | null = null
 
-  // Detach handlers and drop all markers — used on re-render, re-init, and cleanup.
-  // off() releases the click/dragend closures (which capture the parent's emit).
+  // off() releases the click/dragend closures, which capture the parent's emit.
   const clearMarkers = () => {
     markerInstances.forEach(m => m.off())
     markerLayer.value?.clearLayers()
@@ -57,9 +56,8 @@ export function useFloorPlan() {
 
     map.value = L.map(containerId, {
       crs: L.CRS.Simple, // pixel coordinate space (1 unit = 1 image pixel)
-      // Fractional zoom. With Leaflet's default snap of 1 every wheel tick is
-      // a whole level (2x), and fitBounds rounds DOWN to a whole level, which
-      // leaves up to half the widget empty around a "fitted" plan.
+      // Fractional zoom: with the default snap of 1, fitBounds rounds down a
+      // whole level and can leave half the widget empty.
       zoomSnap: 0,
       zoomDelta: 0.5,          // the +/- buttons and keyboard
       wheelPxPerZoomLevel: 120, // about half a level per wheel tick

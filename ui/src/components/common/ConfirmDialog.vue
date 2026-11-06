@@ -2,14 +2,8 @@
   <Teleport to="body">
     <div v-if="modelValue" class="confirm-overlay" @click.self="cancel">
       <!--
-        role="dialog" + aria-modal tell a screen reader this is a modal and that
-        the rest of the page is inert; aria-labelledby/describedby are what it
-        reads out on arrival. Without them this was an anonymous <div> standing
-        between the user and every destructive action in the product.
-
-        tabindex="-1" makes the container focusable so focus can land HERE on
-        open rather than on a button. That is deliberate for a confirm: nothing
-        is pre-selected, so Enter does not delete anything, and the first Tab
+        tabindex="-1" lets focus land on the container on open, not on a button:
+        nothing is pre-selected, so Enter cannot confirm, and the first Tab
         reaches Cancel because it comes first in the DOM.
       -->
       <div
@@ -24,8 +18,7 @@
         @keydown="onKeydown"
       >
         <div class="confirm-header">
-          <!-- Decorative: the variant is already conveyed by the title and the
-               message, so announcing an emoji would just add noise. -->
+          <!-- Decorative: the title and message already convey the variant. -->
           <component :is="icon" class="confirm-icon" :size="28" aria-hidden="true" />
           <h3 :id="titleId" class="confirm-title">{{ title }}</h3>
         </div>
@@ -35,11 +28,8 @@
           <p v-if="details" class="confirm-details">{{ details }}</p>
 
           <!--
-            The typed gate. The required string is rendered rather than merely
-            described, and stays selectable: the point is to make you read which
-            record this is, not to test your typing. It is deliberately NOT a
-            <form> -- Enter inside a bare input does nothing, so there is no
-            submit path that could bypass the disabled check below.
+            The typed gate shows the string (selectable) so the reader sees which
+            record this is. Deliberately not a <form>, so Enter has no submit path.
           -->
           <div v-if="requireText" class="confirm-gate">
             <label :for="gateId" class="confirm-gate-label">
@@ -95,18 +85,14 @@ interface Props {
   cancelText?: string
   variant?: 'danger' | 'warning' | 'info'
   /**
-   * When set, the confirm button stays disabled until the user types this
-   * string exactly. Reserved for deletes that cannot be undone by re-creating
-   * the record -- a Thing, a Location, a Nebula host, a Nebula network, a NATS
-   * user, an organization. Cheap and reversible actions do not get it: friction
-   * that has not been earned only teaches people to type past it.
+   * Keeps confirm disabled until the user types this string exactly. Only for
+   * deletes that re-creating the record cannot undo (Thing, Location, Nebula
+   * host/network, NATS user, organization); unearned friction teaches people
+   * to type past it.
    *
-   * The caller passes a record's `code` where there is one and its name where
-   * there is not, because `code` is optional on every collection that has one.
-   * A gate that silently disappears on some records is worse than no gate --
-   * which is why the fallback is spelled out at each call site rather than
-   * inferred here, and why the one collection whose name is REQUIRED
-   * (nebula_networks) passes it with no fallback at all.
+   * Callers pass `code`, falling back to the name, because `code` is optional
+   * and a gate that vanishes on some records is worse than none. The fallback
+   * is spelled out at each call site, not inferred here.
    */
   requireText?: string
 }
@@ -133,8 +119,6 @@ const icon = computed(() => {
 
 const variantClass = computed(() => `variant-${props.variant}`)
 
-// Unique per instance, so two dialogs on a page cannot both claim the same
-// aria-labelledby target.
 const uid = useId()
 const titleId = `confirm-title-${uid}`
 const messageId = `confirm-message-${uid}`
@@ -143,42 +127,26 @@ const gateId = `confirm-gate-${uid}`
 const dialogEl = ref<HTMLElement | null>(null)
 const gateEl = ref<HTMLInputElement | null>(null)
 
-// What the user has typed into the gate, if there is one.
 const typed = ref('')
 
-// Trimmed but NOT case-folded: surrounding whitespace is a paste artefact,
-// while a different case is a different string and the reader should see that
-// it did not match. With no gate this is always true, so the disabled binding
-// on the confirm button needs no second branch.
+// Trimmed (paste artefacts) but not case-folded. Always true with no gate.
 const gateOpen = computed(() => !props.requireText || typed.value.trim() === props.requireText)
 
-// What had focus before the dialog opened, so it can be given back. Without
-// this, dismissing a confirm drops focus to the top of the document and a
-// keyboard user has to tab back to wherever they were — which on a list view
-// means tabbing past every row.
+// Restored on close, so a keyboard user is not dropped to the top of the page.
 let previouslyFocused: HTMLElement | null = null
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
-// No visibility filtering, deliberately. Everything inside this dialog is
-// rendered by v-if and is on screen whenever the dialog exists, so there is
-// nothing hidden to skip — and the usual test for it, `offsetParent !== null`,
-// is wrong in two ways that matter: it reports null for anything inside a
-// position:fixed subtree in some engines, and it is null for EVERY element
-// under jsdom, which has no layout. Filtering on it silently emptied the list
-// and turned the trap into a no-op.
+// No visibility filtering: nothing in here is hidden, and `offsetParent` is null
+// inside position:fixed in some engines and for every element under jsdom, so
+// filtering on it would empty the list and disable the trap.
 function focusableElements(): HTMLElement[] {
   if (!dialogEl.value) return []
   return Array.from(dialogEl.value.querySelectorAll<HTMLElement>(FOCUSABLE))
 }
 
-// Escape cancels, and Tab is trapped inside the dialog.
-//
-// The trap is the part that makes aria-modal honest: it claims the rest of the
-// page is inert, and without trapping Tab focus walks straight out of the
-// dialog into a page the user cannot see, still able to activate whatever it
-// lands on.
+// Escape cancels. Tab is trapped, because aria-modal claims the page is inert.
 function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
     event.preventDefault()
@@ -210,16 +178,12 @@ watch(
   async (open) => {
     if (open) {
       previouslyFocused = document.activeElement as HTMLElement | null
-      // Every open starts from empty, or a cancelled delete would leave the
-      // gate satisfied for the next record the same dialog is reused for --
-      // and it IS reused: one instance in App.vue serves the whole console.
+      // One instance in App.vue serves the whole console, so a cancelled gate
+      // must not stay satisfied for the next record.
       typed.value = ''
       await nextTick()
-      // With a gate, focus its input: a text field is not a pre-selected
-      // action, Enter inside it does nothing, and the alternative is making
-      // the user Tab to the only control they have to touch. Without one, the
-      // container rather than a button, per the template comment -- nothing is
-      // pre-selected, so Enter cannot confirm by accident.
+      // Focus the gate input if there is one (Enter does nothing there),
+      // otherwise the container, never a button.
       if (props.requireText && gateEl.value) {
         gateEl.value.focus()
         return
@@ -234,17 +198,14 @@ watch(
 function restoreFocus() {
   const target = previouslyFocused
   previouslyFocused = null
-  // Only if it is still in the document — the confirmed action may well have
-  // removed the row whose button opened this.
+  // The confirmed action may have removed the opener.
   if (target && target.isConnected) target.focus()
 }
 
 onBeforeUnmount(restoreFocus)
 
 function confirm() {
-  // The button is already disabled while the gate is closed. This is the same
-  // check again because a disabled attribute is a rendering detail and this
-  // function is the actual door.
+  // Rechecked here: the disabled attribute is only a rendering detail.
   if (!gateOpen.value) return
   emit('confirm')
   emit('update:modelValue', false)
@@ -292,7 +253,6 @@ function cancel() {
   to { transform: translateY(0); opacity: 1; }
 }
 
-/* Variant border colors */
 .confirm-dialog.variant-danger { border-color: oklch(var(--er)); }
 .confirm-dialog.variant-warning { border-color: oklch(var(--wa)); }
 .confirm-dialog.variant-info { border-color: oklch(var(--in)); }
@@ -309,7 +269,6 @@ function cancel() {
   flex-shrink: 0;
 }
 
-/* The emoji brought their own colour; the icon takes the variant's. */
 .variant-danger .confirm-icon { color: oklch(var(--er)); }
 .variant-warning .confirm-icon { color: oklch(var(--wa)); }
 .variant-info .confirm-icon { color: oklch(var(--in)); }
@@ -386,10 +345,8 @@ function cancel() {
 .btn-confirm.variant-info { background: oklch(var(--in)); }
 .btn-confirm.variant-info:hover { background: oklch(var(--in) / 0.8); }
 
-/* A shut gate drops the variant colour entirely rather than dimming it: a
-   40%-opacity red still reads as an armed destructive button, which is the one
-   thing this state must not say. The :hover pair has to be overridden too, or
-   the variant rules above light it back up on the way past. */
+/* A shut gate drops the variant colour (a dimmed red still reads as armed).
+   :hover is overridden too, or the variant rules relight it. */
 .btn-confirm:disabled,
 .btn-confirm:disabled:hover {
   opacity: 0.4;
@@ -433,9 +390,8 @@ function cancel() {
   outline-offset: 1px;
 }
 
-/* A keyboard user must be able to see which button they are about to press,
-   and this dialog is where that matters most. The container takes focus on
-   open and gets no ring, because it is not actionable. */
+/* Buttons get a visible ring; the container takes focus on open but gets none,
+   since it is not actionable. */
 .btn-secondary:focus-visible,
 .btn-confirm:focus-visible {
   outline: 2px solid oklch(var(--bc));
@@ -458,7 +414,6 @@ function cancel() {
   }
 }
 
-/* Mobile adjustments */
 @media (max-width: 600px) {
   .confirm-dialog {
     width: 95%;

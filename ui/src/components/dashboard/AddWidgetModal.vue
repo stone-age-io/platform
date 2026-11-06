@@ -1,7 +1,6 @@
 <template>
   <Teleport to="body">
     <div v-if="modelValue" class="modal-overlay" @click.self="close">
-      <!-- CHANGED: .modal -> .nd-modal -->
       <div class="nd-modal">
         <div class="modal-header">
           <h3>Add Widget</h3>
@@ -38,12 +37,8 @@ defineProps<{
   modelValue: boolean
 }>()
 
-// This palette was sixteen hand-written <button> blocks, which made it the
-// seventh place a new widget had to be added — and the one whose omission is
-// total, since a widget missing from here cannot be added at all.
-//
-// Order comes from the declaration order of WIDGETS (object key order), not
-// from WIDGET_TYPES, which is sorted for its own reasons.
+// Order is the declaration order of WIDGETS (object key order), not
+// WIDGET_TYPES, which is sorted for its own reasons.
 const categories = computed(() => {
   const all = Object.entries(WIDGETS) as [WidgetType, WidgetDefinition][]
   return WIDGET_CATEGORIES.map(name => ({
@@ -84,7 +79,6 @@ function selectType(type: WidgetType) {
   backdrop-filter: blur(2px);
 }
 
-/* CHANGED: .modal -> .nd-modal */
 .nd-modal {
   background: oklch(var(--b1));
   border: 1px solid oklch(var(--b3));

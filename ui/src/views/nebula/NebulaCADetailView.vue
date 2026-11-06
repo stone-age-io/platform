@@ -23,30 +23,17 @@ const isValid = computed(() => {
 })
 
 /**
- * A CA cannot be renewed, only rotated -- and rotation is a three-step procedure
- * with a wait in the middle that nothing can compress, because it has to outlast
- * every host fetching a config nobody told it to fetch. So the countdown is
- * worth showing well before it is urgent: by the time a CA is a fortnight out,
- * the remedy no longer fits.
- *
- * Hence CA_EXPIRY_WARNING_DAYS (90) rather than the 30-day default this module
- * uses for renewable credentials. The CA belongs to this organization and only
- * its owners and admins can rotate it, so this page is the surface that reaches
- * the party able to act -- /api/ready and /metrics reach the platform operator,
- * who cannot.
+ * A CA cannot be renewed, only rotated, and rotation has a wait that cannot be
+ * shortened. Hence CA_EXPIRY_WARNING_DAYS (90), not the 30-day default. Only the
+ * org's owners and admins can rotate, so this page is where the warning must
+ * reach them (/api/ready and /metrics reach only the platform operator).
  */
 const expiry = computed(() => expiryState(ca.value?.expires_at, CA_EXPIRY_WARNING_DAYS))
 const expiryText = computed(() => expiryLabel(ca.value?.expires_at, CA_EXPIRY_WARNING_DAYS))
 
 /**
- * Where the rotation panel goes.
- *
- * It is the rarest thing anyone does on this page and it was sitting at the top
- * of it, ahead of the two cards people actually come here to read. Rotation
- * earns the top slot only when there is something to act on: a procedure already
- * in flight, or an expiry close enough that starting one is the remedy.
- * Otherwise it drops into the column beside the certificate, which had dead
- * space anyway.
+ * The rotation panel goes on top only when there is something to act on (a
+ * rotation in flight, or expiry near); otherwise it sits beside the certificate.
  */
 const rotationProminent = computed(
   () => caRotationState(ca.value) !== 'idle' || expiry.value === 'expiring' || expiry.value === 'expired',
@@ -102,26 +89,16 @@ onMounted(() => {
 
 <template>
   <div class="space-y-6">
-    <!-- Loading State -->
     <div v-if="loading" class="flex justify-center p-12">
       <span class="loading loading-spinner loading-lg"></span>
     </div>
 
     <!--
-      Empty State.
-
-      There is deliberately no "Provision CA" button. The one that used to sit
-      here POSTed to nebula_ca, whose createRule is nil -- superuser only -- while
-      this route is gated on manageInfrastructure, so it was refused for every
-      caller who could reach the screen and could never have worked.
-
-      The honest content is who can act. A CA is created with the organization
-      (hooks/org_provisioning.go), so a missing one means provisioning FAILED
-      rather than that a step was skipped; and because that hook is
-      create-if-missing and bound to update as well as create, the retry is
-      re-saving the organization -- an operator action, since
-      organizations.updateRule is operator-only. A tenant owner cannot fix this
-      from here whatever button we draw.
+      Deliberately no "Provision CA" button: nebula_ca.createRule is nil
+      (superuser only). A CA is created with the organization
+      (hooks/org_provisioning.go, create-if-missing on every save), so the fix is
+      an operator re-saving the organization; organizations.updateRule is
+      operator-only.
     -->
     <div v-else-if="!ca" class="text-center py-12">
       <KeyRound :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
@@ -137,7 +114,6 @@ onMounted(() => {
     </div>
 
     <template v-else>
-      <!-- Header -->
       <div class="flex flex-col gap-4">
         <div class="breadcrumbs text-sm">
           <ul>
@@ -178,10 +154,8 @@ onMounted(() => {
       <!-- Rotation, when it is the thing to act on. See rotationProminent. -->
       <CaRotationPanel v-if="rotationProminent" :ca="ca" @rotated="loadCA" />
 
-      <!-- Content Grid -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
 
-        <!-- Left Column: Info -->
         <div class="space-y-6">
           <BaseCard title="Basic Information">
             <dl class="space-y-4">
@@ -210,11 +184,10 @@ onMounted(() => {
             </dl>
           </BaseCard>
 
-          <!-- The quiet case, filling the column the tall certificate card leaves. -->
+          <!-- The quiet case. See rotationProminent. -->
           <CaRotationPanel v-if="!rotationProminent" :ca="ca" @rotated="loadCA" />
         </div>
 
-        <!-- Right Column: Certificate -->
         <div class="space-y-6">
           <BaseCard title="Public Certificate">
             <div class="space-y-4">

@@ -1,4 +1,3 @@
-// ui/src/stores/nats.ts
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { 
@@ -14,37 +13,24 @@ import type { NatsUser } from '@/types/pocketbase'
 const STORAGE_URLS = 'stone_age_nats_urls'
 const STORAGE_AUTOCONNECT = 'stone_age_nats_autoconnect'
 
-// Last resort, used only when the deployment configured nothing. ws:// rather
-// than wss:// because it matches the listener `nats export` actually generates
-// (websocket { port: 9222, no_tls: true }), and because this default only ever
-// applies to local development, which is served over http where a browser
-// permits ws://. Production sets nats.websocket_urls in config.yaml.
+// Used only when the deployment configured nothing (local development). ws://
+// matches the no_tls listener `nats export` generates.
 const FALLBACK_URL = 'ws://localhost:9222'
 
 export const useNatsStore = defineStore('nats', () => {
   const authStore = useAuthStore()
   const toast = useToast()
 
-  // State
-  const nc = ref<NatsConnection | null>(null)
+  const nc =ref<NatsConnection | null>(null)
   const status = ref<'disconnected' | 'connecting' | 'connected' | 'reconnecting'>('disconnected')
   const lastError = ref<string | null>(null)
   const autoConnect = ref(false)
 
-  // Server URLs come from three tiers, in strict priority:
-  //
-  //   1. userUrls    — this device's override (localStorage)
-  //   2. defaultUrls — the deployment's setting (config.yaml, via /api/client-config)
-  //   3. FALLBACK_URL — compiled in, development only
-  //
-  // The override REPLACES the defaults; the two are never merged. Two reasons,
-  // both load-bearing. First, nats-core shuffles the server list by default
-  // (noRandomize is false), so a merged list is a pool picked from at random,
-  // not a priority order. Second, the reason a device overrides at all is to
-  // talk to its local leaf node instead of the hub — and those are different
-  // JetStream domains holding different data under the same bucket names. A
-  // merged list would make *which dataset you are looking at* a coin flip per
-  // connect and per reconnect.
+  // Server URLs, in priority order: userUrls (this device's override, in
+  // localStorage), defaultUrls (config.yaml via /api/client-config), FALLBACK_URL.
+  // The override REPLACES the defaults, never merges: nats-core shuffles the
+  // server list, and an override usually points at a leaf node, a different
+  // JetStream domain from the hub, so a merged list picks a dataset at random.
   const defaultUrls = ref<string[]>([])
   const userUrls = ref<string[]>([])
   let defaultsLoaded = false
@@ -57,26 +43,18 @@ export const useNatsStore = defineStore('nats', () => {
 
   const usingOverride = computed(() => userUrls.value.length > 0)
 
-  // Stats
   const rtt = ref<number | null>(null)
   const reconnectCount = ref(0)
   let statsInterval: number | null = null
 
-  // Monotonically incremented on every connect/disconnect. Async work captures
-  // the generation it started in and aborts (or throws away its result) if a
-  // newer op has superseded it. Prevents stale creds from binding when the user
-  // rapidly switches orgs or edits identity.
+  // Bumped on every connect/disconnect. Async work captures it and aborts if a
+  // newer op superseded it, so stale creds never bind after a quick org switch.
   let opGen = 0
 
   const isConnected = computed(() => status.value === 'connected')
 
-  // Fetch the deployment's URLs once per session. Authenticated (the route is
-  // bound to RequireAuth), so it is called from loadSettings rather than at app
-  // boot — by the time anything connects, auth is hydrated.
-  //
-  // A failure is not fatal and deliberately does NOT mark the defaults as
-  // loaded: an unreachable route at login should not leave the session stuck on
-  // the fallback when opening Settings would have retried successfully.
+  // Once per session, from loadSettings rather than app boot, because the route
+  // requires auth. A failure leaves defaultsLoaded false so a later call retries.
   async function loadDefaults() {
     if (defaultsLoaded) return
     try {
@@ -91,9 +69,7 @@ export const useNatsStore = defineStore('nats', () => {
   }
 
   async function loadSettings() {
-    // An absent key means "no override" — the deployment default applies. Note
-    // that an existing key from before this setting existed is read as an
-    // override, which is the correct reading: somebody typed it deliberately.
+    // An absent key means no override.
     const savedUrls = localStorage.getItem(STORAGE_URLS)
     let parsed: unknown = null
     if (savedUrls) {
@@ -114,8 +90,7 @@ export const useNatsStore = defineStore('nats', () => {
   }
 
   function saveSettings() {
-    // No override is stored as an ABSENT key rather than an empty array, so
-    // "has this device been overridden?" stays a single unambiguous check.
+    // No override is an absent key, never an empty array.
     if (userUrls.value.length) {
       localStorage.setItem(STORAGE_URLS, JSON.stringify(userUrls.value))
     } else {
@@ -124,9 +99,8 @@ export const useNatsStore = defineStore('nats', () => {
     localStorage.setItem(STORAGE_AUTOCONNECT, String(autoConnect.value))
   }
 
-  // Adding a URL starts (or extends) this device's override. It never appends
-  // to the deployment defaults — see the comment on defaultUrls for why the two
-  // must not be merged. Multiple entries here mean "peers of one cluster".
+  // Starts or extends this device's override, never the defaults (see
+  // serverUrls). Multiple entries mean peers of one cluster.
   function addUrl(url: string) {
     if (!url) return
     if (!userUrls.value.includes(url)) {
@@ -135,9 +109,7 @@ export const useNatsStore = defineStore('nats', () => {
     }
   }
 
-  // Only ever removes a device URL; the deployment defaults are read-only in
-  // the UI. Removing the last one drops the override and the defaults apply
-  // again, which is the same end state as resetToDefaults().
+  // Device URLs only; removing the last one restores the defaults.
   function removeUrl(url: string) {
     userUrls.value = userUrls.value.filter(u => u !== url)
     saveSettings()
@@ -148,8 +120,8 @@ export const useNatsStore = defineStore('nats', () => {
     saveSettings()
   }
 
-  // Tear down any existing connection. Inline (not via disconnect()) so callers
-  // like connect() can sequence teardown→setup under a single generation.
+  // Separate from disconnect() so connect() can tear down and set up under one
+  // generation.
   async function teardownExisting() {
     if (statsInterval) {
       clearInterval(statsInterval)
@@ -167,17 +139,14 @@ export const useNatsStore = defineStore('nats', () => {
     }
   }
 
-  // --- CONNECT LOGIC ---
   async function connect(specificUrl?: string) {
     const myGen = ++opGen
 
     await teardownExisting()
     if (myGen !== opGen) return  // superseded during teardown
 
-    // serverUrls always yields at least the compiled-in fallback, so this guard
-    // is a backstop rather than a normal path. Kept because wsconnect() with an
-    // empty list silently dials its own localhost default instead of failing,
-    // which is a far worse thing to debug than an explicit toast.
+    // A backstop (serverUrls always has the fallback): wsconnect() with an
+    // empty list silently dials its own localhost default.
     const servers = specificUrl ? [specificUrl] : serverUrls.value
     if (!servers.length) {
       if (myGen === opGen) {
@@ -285,9 +254,8 @@ export const useNatsStore = defineStore('nats', () => {
           console.error('NATS Error:', s)
           break
         case 'close':
-          // The client gave up for good (e.g. repeated auth errors after the
-          // credential was revoked or the org suspended). A local disconnect()
-          // bumps opGen first, so it returns above and never lands here.
+          // The client gave up (e.g. credential revoked, org suspended). A local
+          // disconnect() bumps opGen first, so it never lands here.
           status.value = 'disconnected'
           window.dispatchEvent(new Event('nats:closed'))
           break

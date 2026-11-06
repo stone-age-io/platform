@@ -4,7 +4,6 @@
     <!-- MOBILE / CARD LAYOUT -->
     <template v-if="layoutMode === 'card'">
       <div class="card-content" :class="{ 'is-disabled': isDisabled }">
-        <!-- Header Row: Title and Value -->
         <div class="card-header">
           <div class="card-title">{{ config.title }}</div>
           <div class="card-value-display">
@@ -13,7 +12,6 @@
           </div>
         </div>
 
-        <!-- Slider Row -->
         <div 
           class="card-slider-wrapper"
           @mousedown.stop
@@ -37,7 +35,6 @@
           />
         </div>
 
-        <!-- Labels Row (New) -->
         <div class="card-slider-labels">
           <span>{{ cfg.min }}{{ cfg.unit }}</span>
           <span>{{ cfg.max }}{{ cfg.unit }}</span>
@@ -128,7 +125,6 @@ const cfg = computed(() => props.config.sliderConfig)
 const mode = computed(() => cfg.value.mode || 'core')
 const isDisabled = computed(() => !natsStore.isConnected)
 
-// Resolved configuration
 const resolvedConfig = computed(() => {
   const vars = dashboardStore.currentVariableValues
   return {
@@ -327,7 +323,6 @@ watch(() => natsStore.isConnected, (connected) => {
   else cleanup()
 })
 
-// Watch for config OR variables changing
 watch([() => props.config.sliderConfig, () => dashboardStore.currentVariableValues], () => {
   cleanup()
   if (natsStore.isConnected) initialize()
@@ -548,11 +543,7 @@ watch([() => props.config.sliderConfig, () => dashboardStore.currentVariableValu
   z-index: 5;
 }
 
-/* 
-   CARD LAYOUT OVERRIDE 
-   Grug say: On mobile card, make status cover whole widget.
-   No overlap. Just big clear message.
-*/
+/* Card layout: the status covers the whole widget, one clear message. */
 .slider-widget.card-layout .publish-status {
   bottom: auto;
   top: 0;

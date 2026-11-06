@@ -22,7 +22,6 @@ const emit = defineEmits<{
     class="absolute top-0 bottom-0 right-0 z-[500] flex flex-col bg-base-100 border-l border-base-300 shadow-xl"
     :class="isMobile ? 'left-0 w-full border-l-0' : 'w-80'"
   >
-    <!-- Header -->
     <div class="flex items-center justify-between p-4 border-b border-base-300 bg-base-200/30 shrink-0">
       <div class="flex items-center gap-3 min-w-0">
         <Wrench :size="18" class="inline-block shrink-0" />
@@ -31,7 +30,6 @@ const emit = defineEmits<{
       <button class="btn btn-sm btn-circle btn-ghost shrink-0" aria-label="Close" @click="emit('close')">✕</button>
     </div>
 
-    <!-- Drag toggle -->
     <label class="flex items-center justify-between gap-3 p-4 border-b border-base-300 cursor-pointer shrink-0">
       <span class="flex flex-col">
         <span class="text-sm font-medium">Drag to reposition</span>
@@ -45,7 +43,6 @@ const emit = defineEmits<{
       />
     </label>
 
-    <!-- Lists -->
     <div class="flex-1 overflow-y-auto">
       <!-- Not on plan -->
       <div class="p-3">

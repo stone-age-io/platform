@@ -1,12 +1,9 @@
-// ui/src/utils/floorplanBindings.ts
+// Everything the floor plan widget decides about a binding, as pure functions
+// so they can be tested (nothing renders in CI).
 //
-// Everything the floor plan widget decides about a binding, as pure functions,
-// so floorplanBindings.spec.ts can reach it (nothing renders in CI).
-//
-// Subject substitution belongs to utils/subjectResolver.ts. This file only
-// picks which resolution a caller wants: `resolveRolePattern` wildcards
-// {thing} for the one subscription a binding needs, and `resolveThing` gives
-// one Thing's concrete subject, which is how a message is matched to a marker.
+// Substitution belongs to subjectResolver.ts. `resolveRolePattern` wildcards
+// {thing} for a binding's one subscription; `resolveThing` gives one Thing's
+// concrete subject, which is how a message is matched to a marker.
 
 import {
   join,
@@ -20,7 +17,6 @@ import type {
   StatusMapping,
 } from '@/types/dashboard'
 
-/** The fields of a Thing this file needs. */
 export interface BindableThing {
   id: string
   code?: string
@@ -29,7 +25,6 @@ export interface BindableThing {
   floorplan_position?: { x: number; y: number }
 }
 
-/** The fields of a Thing Type this file needs. */
 export interface BindableType {
   id: string
   code?: string
@@ -42,9 +37,7 @@ export interface FloorPlanContext {
   locationCode: string
 }
 
-// ---------------------------------------------------------------------------
-// Subjects and keys
-// ---------------------------------------------------------------------------
+// --- Subjects and keys ---
 
 /** The binding's subject template. `join` supplies the default prefix. */
 export function bindingTemplate(
@@ -129,9 +122,7 @@ export function thingContext(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Panel items
-// ---------------------------------------------------------------------------
+// --- Panel items ---
 
 /**
  * Resolve every addressing field on a marker item. A config left out of this
@@ -199,11 +190,8 @@ export function resolveItemsForThing(
   return items.map(item => ({ ...resolveItem(item, tctx), id: `${item.id}__${thing.id}` }))
 }
 
-// ---------------------------------------------------------------------------
-// Marker state
-// ---------------------------------------------------------------------------
+// --- Marker state ---
 
-/** One reading for one marker: what arrived, and when. */
 export interface StateSample {
   value: unknown
   timestamp: number
@@ -238,9 +226,8 @@ export function displayValue(value: unknown): string {
 }
 
 /**
- * Value plus arrival time to a marker's colour and label, resolved the same
- * way StatusWidget does. Staleness is checked before the value: a device that
- * went quiet an hour ago must not keep drawing its last colour.
+ * A marker's colour and label, resolved as StatusWidget does. Staleness is
+ * checked first, so a quiet device does not keep drawing its last colour.
  */
 export function markerStateFor(
   binding: FloorPlanTypeBinding | undefined,
@@ -294,7 +281,7 @@ export function bindingForThing(
   return bindings.find(b => b.thingTypeId === thing.type)
 }
 
-/** True when a Thing has a complete position on its location's floor plan. */
+/** True when a Thing has both x and y on its location's floor plan. */
 export function isPlaced<T extends BindableThing>(
   t: T,
 ): t is T & { floorplan_position: { x: number; y: number } } {

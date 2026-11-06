@@ -11,31 +11,25 @@ const authStore = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 
-// Every page under this layout reads data scoped to the active organization, so
-// a switch remounts the page rather than asking each one to notice. A fresh
-// component starts on page one with an empty search and loads in its own
-// onMounted, exactly as if it had been navigated to. Pages need no org-change
-// handling of their own: there used to be a window event with 18 hand-copied
-// handlers, and they had drifted (only one reset the page number).
+// Every page here reads data scoped to the active organization, so an org
+// switch remounts the page instead of each page handling it: it starts on page
+// one with an empty search and loads in its own onMounted.
 //
-// The switch goes through the router rather than around it, so the guard in
-// router/index.ts judges the page against the NEW role. Admin in one
-// organization and viewer in the next, on NATS Users, lands on `/` exactly as a
-// fresh visit would, instead of a remounted page the role cannot use. One guard,
-// not a second copy of it here. A page that passes is the same location, which
-// the router reuses rather than remounts, so the key does that part.
+// The switch goes through the router, so the guard in router/index.ts judges the
+// page against the NEW role: admin in one organization and viewer in the next,
+// on NATS Users, lands on `/` as a fresh visit would. A page that passes is the
+// same location, which the router reuses rather than remounts, so the key does
+// that part.
 //
 // A record page (any route with a param: /things/:id, /nats/streams/:name/edit)
-// goes to the list its path sits under instead. Its record belongs to the
-// organization being left, so a remount could only fail -- a not-found toast,
-// then the page's own redirect. The router's catch-all sends a prefix with no
-// route to `/`.
+// goes to the list its path sits under instead, since its record belongs to the
+// organization being left. The router's catch-all sends a prefix with no route
+// to `/`.
 //
-// Two transitions are deliberately different. Null to an organization (the
-// first one chosen at sign-in) leaves no organization behind, so even a record
-// page stays put. An organization to null is logout: remounting then would fire
-// every request of the new page unauthenticated a moment before the redirect to
-// /login, so nothing happens at all.
+// Null to an organization (the first one chosen at sign-in) leaves nothing
+// behind, so even a record page stays put. An organization to null is logout:
+// nothing happens, because a remount would fire the new page's requests
+// unauthenticated just before the redirect to /login.
 const pageKey = ref(0)
 watch(() => authStore.currentOrgId, async (orgId, previous) => {
   if (!orgId) return
@@ -55,12 +49,9 @@ watch(() => authStore.currentOrgId, async (orgId, previous) => {
     <!-- Drawer toggle for mobile -->
     <input id="sidebar-drawer" type="checkbox" class="drawer-toggle" />
 
-    <!-- Main content area -->
     <div class="drawer-content flex flex-col">
-      <!-- Header -->
       <AppHeader />
 
-      <!-- Page content -->
       <main class="flex-1 overflow-y-auto p-4 lg:p-6 bg-base-200">
         <router-view :key="pageKey" />
       </main>

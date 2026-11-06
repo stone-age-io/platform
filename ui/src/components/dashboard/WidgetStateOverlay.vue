@@ -26,8 +26,7 @@
 import type { Component } from 'vue'
 import { Inbox, TriangleAlert } from '@lucide/vue'
 
-// icon: a lucide component, drawn muted in the theme's colour. It was an
-// emoji string, which every OS drew differently and in its own colours.
+// icon: a lucide component, drawn muted in the theme's colour.
 defineProps<{
   state: 'loading' | 'error' | 'empty'
   message?: string

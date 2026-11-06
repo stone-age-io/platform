@@ -1,7 +1,5 @@
-<!-- ui/src/components/widgets/ScannerWidget.vue -->
 <template>
   <div class="scanner-widget" :class="{ 'card-layout': layoutMode === 'card' }">
-    <!-- Idle State -->
     <div v-if="state === 'idle'" class="scanner-idle">
       <div class="idle-scan" @click="startScan">
         <ScanQrCode class="idle-icon" :size="48" :stroke-width="1.5" aria-hidden="true" />
@@ -23,20 +21,17 @@
       </div>
     </div>
 
-    <!-- Scanning State -->
     <div v-else-if="state === 'scanning'" class="scanner-scanning">
       <div :id="readerId" class="scanner-viewfinder"></div>
       <button class="btn btn-sm btn-ghost scanner-cancel" @click="stopScan">Cancel</button>
     </div>
 
-    <!-- Loading State -->
     <div v-else-if="state === 'loading'" class="scanner-loading">
       <span class="loading loading-spinner loading-md"></span>
       <div class="loading-label">Looking up...</div>
       <div class="loading-value font-mono">{{ truncatedValue }}</div>
     </div>
 
-    <!-- Result State -->
     <div v-else-if="state === 'result'" class="scanner-result">
       <div
         class="result-banner"
@@ -71,7 +66,6 @@
           </div>
         </div>
 
-        <!-- PB Result -->
         <div v-if="pbResult !== null" class="result-section">
           <div class="result-section-label">PocketBase</div>
           <div v-for="(rows, idx) in flattenedPbItems" :key="idx" class="result-entries">
@@ -85,7 +79,6 @@
           <div v-if="flattenedPbItems.length === 0" class="text-xs text-base-content/50 italic">No records</div>
         </div>
 
-        <!-- Publish Status -->
         <div v-if="publishedSubject || publishError" class="publish-block">
           <div v-if="publishedSubject" class="publish-success">
             <div class="publish-line">
@@ -111,7 +104,6 @@
       <button class="btn btn-sm btn-primary scanner-again" @click="reset">Scan Again</button>
     </div>
 
-    <!-- Error State -->
     <div v-else-if="state === 'error'" class="scanner-error">
       <div class="error-icon">!</div>
       <div class="error-message">{{ errorMessage }}</div>
@@ -269,9 +261,8 @@ async function startScan() {
       () => {} // ignore per-frame scan misses
     )
     // start() waits on the camera permission prompt. If the widget was removed
-    // or Stop was pressed meanwhile, stopScan() ran while this scanner was not
-    // yet SCANNING, so it skipped stop() and dropped the reference -- and the
-    // camera would now run with nothing left to turn it off.
+    // or Stop pressed meanwhile, stopScan() saw a scanner not yet SCANNING and
+    // skipped stop(), so stop it here or the camera runs with nothing to end it.
     if (unmounted || html5Qrcode !== scanner) {
       try { await scanner.stop() } catch {}
       try { scanner.clear() } catch {}

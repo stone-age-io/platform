@@ -20,15 +20,12 @@ export type SwitchStateValue = 'on' | 'off' | 'pending' | 'unknown'
 /**
  * On/off state for the switch widget and the map marker's switch row.
  *
- * KV mode: the key IS the state, read through useKvKey. A key that is missing
- * (never written, or deleted) reads as the configured default; it used to read
- * as "off" whatever the default said, and a value that was not JSON killed the
- * watch silently. Core mode: the last matching message on the state subject,
- * starting from the default.
+ * KV mode: the key is the state, read through useKvKey; a missing or deleted
+ * key reads as the configured default. Core mode: the last matching message on
+ * the state subject, starting from the default.
  *
  * A toggle shows `pending` until the new state is confirmed, for at most five
- * seconds, and then falls back to the last confirmed state. It used to stay
- * `pending` and show "..." until some later message happened to match.
+ * seconds, then falls back to the last confirmed state.
  */
 export function useSwitchState(configSource: Ref<SwitchStateConfig> | SwitchStateConfig) {
   const natsStore = useNatsStore()

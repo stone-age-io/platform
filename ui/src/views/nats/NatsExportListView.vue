@@ -27,9 +27,7 @@ const {
   prevPage,
 } = usePagination<NatsAccountExport>('nats_account_exports', 20)
 
-// Search runs on the SERVER. The client-side pass this replaces filtered the
-// twenty records already on screen, so a match on page three answered "No
-// results found" -- which is not the same claim at all.
+// Server-side, so a match beyond the current page is found.
 const { searchQuery, filter: searchFilter } = useServerSearch(
   ['name', 'description', 'subject'],
   () => {
@@ -38,15 +36,10 @@ const { searchQuery, filter: searchFilter } = useServerSearch(
   },
 )
 
-// The active sort, in PocketBase's own syntax ('name', '-created'). It rides in
-// queryOptions rather than being passed at the call site, for the same reason the
-// filter does: the pager buttons reuse that object, and a sort that is not in it
-// is a sort that page two forgets.
 const sort = ref('')
 
-// One options object, passed to EVERY call into usePagination, the pager
-// buttons included -- passing only expand/sort there drops the filter and
-// page two comes back unfiltered.
+// Pass this to every usePagination call, the pager included, or page two
+// loses the filter and sort.
 const queryOptions = computed(() => ({
   filter: searchFilter.value,
   sort: sort.value,
@@ -54,7 +47,7 @@ const queryOptions = computed(() => ({
 
 function onSort(next: string) {
   sort.value = next
-  page.value = 1 // a new order makes the old page number meaningless
+  page.value = 1
   loadExports()
 }
 
@@ -214,7 +207,6 @@ onMounted(() => {
           </span>
         </template>
 
-        <!-- Actions -->
         <template #actions="{ item }">
           <router-link
             v-if="isManagedExport(item.name)"
@@ -234,7 +226,6 @@ onMounted(() => {
         </template>
       </ResponsiveList>
 
-      <!-- Pagination -->
       <ListPager
         :page="page"
         :total-pages="totalPages"

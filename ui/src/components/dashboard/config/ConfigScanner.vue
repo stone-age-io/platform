@@ -1,7 +1,5 @@
-<!-- ui/src/components/dashboard/config/ConfigScanner.vue -->
 <template>
   <div class="config-scanner">
-    <!-- Scan Context Section -->
     <div class="config-section">
       <span class="section-title">Scan Context</span>
 
@@ -40,7 +38,6 @@
       </div>
     </div>
 
-    <!-- KV Lookup Section -->
     <div class="config-section">
       <label class="toggle-label">
         <input type="checkbox" v-model="form.scannerKvEnabled" class="checkbox checkbox-sm" />
@@ -134,7 +131,6 @@
       </template>
     </div>
 
-    <!-- PocketBase Lookup (Optional) -->
     <div class="config-section">
       <label class="toggle-label">
         <input type="checkbox" v-model="form.scannerPbEnabled" class="checkbox checkbox-sm" />
@@ -189,7 +185,6 @@
       </template>
     </div>
 
-    <!-- Publish Section -->
     <div class="config-section">
       <label class="toggle-label">
         <input type="checkbox" v-model="form.scannerPublishEnabled" class="checkbox checkbox-sm" />
@@ -220,7 +215,6 @@
       </template>
     </div>
 
-    <!-- Behavior Section -->
     <div class="config-section">
       <span class="section-title">Behavior</span>
 

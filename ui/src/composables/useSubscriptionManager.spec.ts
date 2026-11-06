@@ -5,14 +5,8 @@ import { useNatsStore } from '@/stores/nats'
 import { useWidgetDataStore } from '@/stores/widgetData'
 import { useSubscriptionManager } from './useSubscriptionManager'
 
-// Every live value on every dashboard flows through this module, and it was
-// wholly untested: refcounted listeners, a shared key for core subjects, two
-// different transports, and reconnect handling. `vue-tsc && vite build` stays
-// green through any bug in here.
-//
-// Node environment, so `window` does not exist -- the manager attaches its
-// reconnect/close listeners to it. A stub is enough: nothing here asserts on
-// event delivery, only that subscribing does not require a DOM.
+// Node environment: the manager attaches its reconnect listeners to `window`,
+// so a stub is enough. Nothing here asserts on event delivery.
 const listeners = new Map<string, Set<(e: unknown) => void>>()
 function stubWindow() {
   listeners.clear()
@@ -30,8 +24,7 @@ function stubWindow() {
   }
 }
 
-// A core subscription is an async iterable that can be closed. That is the
-// whole surface the manager uses, so it is the whole surface the fake needs.
+// The manager uses only a closable async iterable, so that is all the fake is.
 function fakeSubscription() {
   let closed = false
   return {
@@ -42,8 +35,7 @@ function fakeSubscription() {
       closed = true
     },
     async *[Symbol.asyncIterator]() {
-      // Never yields, never returns: a live subscription with no traffic. The
-      // manager consumes this in a detached loop, so it must not be awaited.
+      // A live subscription with no traffic. Consumed in a detached loop.
       await new Promise(() => {})
     },
   }
@@ -84,8 +76,7 @@ describe('useSubscriptionManager', () => {
     await manager.subscribe('widget-a', config)
     await manager.subscribe('widget-b', config)
 
-    // Core subjects are keyed by subject alone, deliberately: two widgets
-    // watching the same subject should share one server-side subscription.
+    // Core subjects are keyed by subject alone, so widgets share one subscription.
     expect(nc.subscribeCalls).toEqual(['sensor.temp'])
     expect(manager.isSubscribed('widget-a', config)).toBe(true)
     expect(manager.isSubscribed('widget-b', config)).toBe(true)
@@ -154,8 +145,6 @@ describe('useSubscriptionManager', () => {
   })
 })
 
-// Every widget that reads a field out of a payload goes through this, so a
-// change in its behaviour changes what every dashboard displays.
 describe('extractJsonPath', () => {
   it('reads a value at a JSON path', () => {
     const { manager } = setup()
@@ -181,14 +170,12 @@ describe('extractJsonPath', () => {
   })
 })
 
-// The filter lives on the LISTENER, because core subscriptions are shared by
-// subject: move it onto the subscription and two widgets on `>` would silently
-// take whichever setting subscribed first.
+// The filter is per listener: core subscriptions are shared by subject, so on
+// the subscription two widgets on `>` would get whichever subscribed first.
 describe('hideSystemSubjects', () => {
   const TRAFFIC = ['$JS.API.CONSUMER.INFO.x', '_INBOX.abc.1', 'sensor.temp', '$KV.twin.thing.a.temp']
 
-  // A subscription that delivers TRAFFIC once released: the gate lets every
-  // widget attach before the first message arrives.
+  // Delivers traffic once released, so every widget attaches first.
   function trafficSetup() {
     setActivePinia(createPinia())
     stubWindow()
@@ -237,8 +224,8 @@ describe('hideSystemSubjects', () => {
     await manager.subscribe('twin', { type: 'subscription', subject: '$KV.twin.>', hideSystemSubjects: true })
     await deliver()
 
-    // The fake ignores the subject and delivers everything; what matters is
-    // that asking for a `$` prefix by name is never second-guessed.
+    // The fake delivers everything; the point is that an explicit `$` subject
+    // is never filtered.
     expect(seenBy('twin')).toEqual(TRAFFIC)
   })
 })

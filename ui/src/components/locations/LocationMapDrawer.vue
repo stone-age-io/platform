@@ -6,12 +6,9 @@ import { pb } from '@/utils/pb'
 import type { Location, Thing } from '@/types/pocketbase'
 
 /**
- * A location folded onto a site's pin, with its depth below that site.
- *
- * Depth is relative to the site rather than absolute, because the site is the
- * root of what this pin represents -- an intermediate ancestor with no
- * coordinates is skipped on the map, so indenting to an absolute depth would
- * start the list at an arbitrary offset with nothing above it to explain it.
+ * A location folded onto a site's pin, with its depth below that site. Relative,
+ * not absolute: unmapped intermediate ancestors are skipped on the map, so an
+ * absolute depth would start the list at an unexplained offset.
  */
 export interface SiteDescendant {
   location: Location
@@ -41,13 +38,10 @@ const things = ref<Thing[]>([])
 const loadingThings = ref(false)
 
 /**
- * Things anywhere in the site's subtree, not just on the site record itself.
- *
- * The pin represents the whole subtree, so "what is at this building" has to
- * include the rooms -- a sensor is almost never attached to the building
- * record. Chunked because the filter rides in a query string: a site with a few
- * hundred rooms would otherwise build a URL long enough for a proxy to reject,
- * and it would present as an empty Things tab rather than as an error.
+ * Things anywhere in the site's subtree, not just on the site record: a sensor
+ * is almost never attached to the building itself. Chunked because the filter
+ * rides in a query string, and a site with a few hundred rooms would build a URL
+ * a proxy rejects, which shows as an empty Things tab rather than an error.
  */
 const THINGS_FILTER_CHUNK = 50
 
@@ -103,14 +97,10 @@ function goToThing(id: string) {
 }
 
 /**
- * Keyed on the site id in detail mode and on null in list mode -- NOT on the id
- * alone, which silently skipped the fetch in the one path that matters most.
- * `single` is `locations[0]`, so picking the first site out of the cluster it
- * already headed leaves the id unchanged while the mode flips from list to
- * detail: the watcher never fired and the Things tab kept the empty array that
- * list mode had just set. It failed as "No things" on a site that has several.
- *
- * `immediate` covers the mount, so the two entry paths cannot drift apart.
+ * Keyed on the site id in detail mode and on null in list mode, NOT on the id
+ * alone: picking the first site of the cluster it headed keeps the id (`single`
+ * is `locations[0]`) while the mode flips to detail, so an id-only key never
+ * fetches and the tab shows "No things". `immediate` covers the mount.
  */
 watch(
   () => (isList.value ? null : single.value?.id),
@@ -172,7 +162,6 @@ watch(
 
     <!-- Body (single / detail mode) -->
     <template v-else>
-      <!-- Tabs -->
       <div class="tabs tabs-bordered shrink-0 px-2">
         <button
           class="tab tab-sm"
@@ -235,9 +224,8 @@ watch(
             >
               <div class="min-w-0 flex-1">
                 <div class="font-medium text-sm truncate">{{ t.name || 'Unnamed' }}</div>
-                <!-- Where it actually is, when that is not the site itself. This
-                     tab now spans the subtree, so a bare name would leave "which
-                     room" unanswerable from the drawer. -->
+                <!-- Where it actually is, when that is not the site itself: the tab
+                     spans the subtree, so a bare name would not say which room. -->
                 <div
                   v-if="t.location && t.location !== single.id && t.expand?.location"
                   class="text-[11px] text-base-content/60 truncate"
@@ -260,7 +248,6 @@ watch(
         </div>
       </div>
 
-      <!-- Footer -->
       <div class="p-3 border-t border-base-300 bg-base-200/30 shrink-0">
         <router-link :to="`/locations/${single.id}`" class="btn btn-sm btn-ghost w-full">
           View Details

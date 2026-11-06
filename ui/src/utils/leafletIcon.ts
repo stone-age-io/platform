@@ -1,9 +1,7 @@
-// ui/src/utils/leafletIcon.ts
-//
-// The one place `L.divIcon` is called. Its `html` option is an innerHTML sink
-// for a string, but Leaflet 1.9 appends an Element instead, so this helper only
-// takes an element. leafletContentSinks.spec.ts bans divIcon everywhere else.
-// Build the element with createElement / createElementNS and textContent.
+// The one place `L.divIcon` is called (leafletContentSinks.spec.ts bans it
+// elsewhere). Its `html` option is an innerHTML sink for a string, but Leaflet
+// 1.9 appends an Element, so this takes only an element. Build it with
+// createElement / createElementNS and textContent.
 
 import L from 'leaflet'
 

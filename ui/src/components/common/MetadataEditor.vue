@@ -1,4 +1,3 @@
-<!-- ui/src/components/common/MetadataEditor.vue -->
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import JsonSchemaForm from './JsonSchemaForm.vue'
@@ -6,40 +5,19 @@ import JsonViewer from './JsonViewer.vue'
 import { useToast } from '@/composables/useToast'
 import { describedKeys, undescribedEntries, mergeRows } from '@/utils/metadataDoc'
 
-// MetadataEditor — edits (or displays) a free-form `metadata` object with a
-// Form / JSON toggle, following the contract MetadataSchemaCard already
-// established for schema documents: the form is a convenience over the
-// document, the JSON view is always the escape hatch, and anything the form
-// cannot represent says so instead of silently dropping it.
+// Edits (or, with `disabled`, displays) a free-form `metadata` object with a
+// Form / JSON toggle. As in MetadataSchemaCard, the form is a convenience over
+// the document, the JSON view is the escape hatch, and anything the form cannot
+// represent says so instead of dropping it.
 //
-// Two form modes, chosen by whether a schema was supplied:
+// With a schema (a type's `metadata_schema`), JsonSchemaForm renders the keys it
+// describes and key/value rows hold everything else. The schema is a hint, not a
+// contract (utils/metadataDoc.ts). Without one, rows only.
 //
-//   schema given → JsonSchemaForm renders typed inputs for the keys the
-//     schema describes, and key/value rows below it hold everything else. This
-//     is the thing_types / location_types `metadata_schema` path: an admin
-//     describes the fields usually tracked for a class of record, and a member
-//     fills in a form. The schema is a HINT — a record may carry keys it does
-//     not name, and nothing blocks a save on it. See utils/metadataDoc.ts.
+// Nesting is per key: an object or array row gets a JSON textarea. No tree
+// editor; the JSON tab already handles nesting.
 //
-//   no schema → key/value rows only. The generic fallback, and the only mode
-//     available to a type with no schema.
-//
-// NESTING is handled per key, not by a recursive editor. A row whose value is
-// an object or array gets a small JSON textarea — exactly what JsonSchemaForm
-// already does for its own non-primitive properties. A tree editor was the
-// obvious alternative and is not worth it: the JSON tab already edits nesting
-// perfectly, and the real complaint was never "I can't author a nested object",
-// it was that ONE nested key used to disable the row editor for every flat key
-// in the document. Per-row typing fixes that; a tree would fix it at ten times
-// the size.
-//
-// With `disabled`, the same component is the read-only viewer used on the
-// detail pages, so the locked and unlocked states of a record's metadata cannot
-// drift apart in layout or in what they choose to show.
-//
-// The model is an OBJECT, not a JSON string. The form views used to hold
-// metadata as text and JSON.parse it at submit, which is why an invalid blob
-// was only caught after the user hit Save.
+// The model is an object, not a JSON string, so invalid JSON is caught before Save.
 
 interface Props {
   modelValue: Record<string, any> | null
@@ -47,11 +25,7 @@ interface Props {
   schema?: any
   /** Read-only: renders the viewer used by the detail pages. */
   disabled?: boolean
-  /**
-   * Show the field count in the toolbar. MetadataCard sets this false because
-   * its own header already carries the count — the collapsed card needs it
-   * there, and rendering it twice was visible on every detail page.
-   */
+  /** Show the field count in the toolbar. MetadataCard turns it off (its header has one). */
   showCount?: boolean
 }
 
@@ -84,16 +58,13 @@ let suppressNextWatch = false
 const doc = computed<Record<string, any>>(() => props.modelValue ?? {})
 const isEmpty = computed(() => Object.keys(doc.value).length === 0)
 
-// Does this document have a schema to render typed fields from? An empty or
-// property-less schema is treated as absent — JsonSchemaForm would render
-// nothing and the user would have no way to add a field.
+// A property-less schema counts as absent, or the user could not add a field.
 const hasSchema = computed(() => {
   const s = props.schema
   return !!(s && s.type === 'object' && s.properties && Object.keys(s.properties).length > 0)
 })
 
-// The keys the schema form owns. The rows own everything else — all of it when
-// there is no schema.
+// The keys the schema form owns; the rows own everything else.
 const described = computed(() => describedKeys(props.schema))
 
 function isContainer(v: any): boolean {
@@ -104,8 +75,7 @@ function inferType(v: any): RowType {
   if (isContainer(v)) return 'json'
   if (typeof v === 'boolean') return 'boolean'
   if (typeof v === 'number') return 'number'
-  // An ISO calendar date round-trips through <input type="date"> unchanged, so
-  // treating it as a date is safe; anything else stays text.
+  // Only an ISO calendar date round-trips through <input type="date"> unchanged.
   if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return 'date'
   return 'text'
 }
@@ -123,8 +93,8 @@ function rowsFromDoc(d: Record<string, any>): Row[] {
   })
 }
 
-// The schema is watched too: the Thing form swaps it when the type picker
-// changes, and the rows must then give up or take over keys accordingly.
+// The schema is watched too: the Thing form swaps it when the type changes, and
+// the rows must give up or take over keys.
 watch(
   [() => props.modelValue, () => props.schema],
   () => {
@@ -139,8 +109,7 @@ function refreshJsonFromDoc() {
   jsonText.value = isEmpty.value ? '' : JSON.stringify(doc.value, null, 2)
 }
 
-// Rows → document, keeping the schema-described keys as they stand. The merge
-// rules (blank keys skipped, last duplicate wins) live in mergeRows.
+// Rows to document, keeping the schema-described keys. Merge rules: mergeRows.
 function emitFromRows() {
   suppressNextWatch = true
   emit('update:modelValue', mergeRows(doc.value, described.value, rows.value))
@@ -175,8 +144,7 @@ function setRowKey(i: number, key: string) {
   emitFromRows()
 }
 
-// An emptied number input reports NaN, which is not JSON — store '' so the key
-// round-trips as an empty value rather than serialising to null behind the user.
+// An emptied number input reports NaN, which would serialise to null; store ''.
 function numberOrBlank(n: number): number | string {
   return Number.isNaN(n) ? '' : n
 }
@@ -186,10 +154,8 @@ function setRowValue(i: number, value: any) {
   emitFromRows()
 }
 
-// `json` rows keep their own text buffer so a half-typed object isn't parsed on
-// every keystroke. Parse on input, but only emit when it succeeds — the last
-// good value stays in the model, and commit() refuses to save while any row is
-// still in error.
+// Emits only when the text parses, so the last good value stays in the model;
+// commit() refuses while any row is in error.
 function setRowJson(i: number, raw: string) {
   const r = rows.value[i]
   r.text = raw
@@ -213,8 +179,7 @@ function setRowJson(i: number, raw: string) {
   }
 }
 
-// Changing a row's type re-casts the value it already holds, so switching
-// text→number on "42" keeps 42 rather than blanking the field.
+// Re-casts the current value, so text to number on "42" keeps 42.
 function setRowType(i: number, type: RowType) {
   const r = rows.value[i]
   const old = r.value
@@ -230,8 +195,7 @@ function setRowType(i: number, type: RowType) {
   }
 
   r.text = undefined
-  // Leaving `json`: an object has no sensible scalar cast (String() yields
-  // "[object Object]"), so start the new type empty rather than write nonsense.
+  // Leaving `json`: an object has no scalar cast, so start empty.
   if (wasContainer) {
     r.value = type === 'boolean' ? false : ''
   } else if (type === 'number') {
@@ -274,8 +238,8 @@ function onJsonBlur() {
   }
 }
 
-// Same semantics as MetadataSchemaCard.switchTab: leaving JSON with a parse
-// error is refused, because the alternative is discarding what the user typed.
+// As in MetadataSchemaCard.switchTab: leaving JSON with a parse error is
+// refused, rather than discarding what the user typed.
 function switchTab(tab: 'form' | 'json') {
   if (tab === activeTab.value) return
   if (activeTab.value === 'json') {
@@ -291,8 +255,7 @@ function switchTab(tab: 'form' | 'json') {
   activeTab.value = tab
 }
 
-// Read-only rendering. Ordered schema-first so a described field keeps a stable
-// position, with its schema title as the label when it has one.
+// Read-only: schema-described fields first, labelled with their schema title.
 const viewEntries = computed(() => {
   const entries = Object.entries(doc.value)
   if (!hasSchema.value) return entries.map(([k, v]) => ({ key: k, label: k, value: v }))
@@ -310,10 +273,8 @@ const viewEntries = computed(() => {
     }))
 })
 
-// Booleans render as `true` / `false`, not Yes/No. These values are read back out
-// of NATS KV by firmware and rule-router, so the display should say what is
-// actually stored — a reader comparing the console against a subscriber's payload
-// should not have to translate.
+// Booleans show as `true` / `false`, not Yes/No: firmware and rule-router read
+// these values, so show what is stored.
 function displayValue(v: any): string {
   if (v === null || v === undefined || v === '') return '—'
   if (typeof v === 'boolean') return v ? 'true' : 'false'
@@ -321,11 +282,8 @@ function displayValue(v: any): string {
   return String(v)
 }
 
-// A record with many keys would otherwise make the read-only list unusably long
-// (and, on the Thing detail page, push the Live State card below the fold — the
-// card this replaced capped itself at 500px for exactly that reason). Filtering
-// is offered above a threshold rather than always, so the common short document
-// keeps a clean header.
+// The read-only filter appears only above a threshold, so short documents keep
+// a clean header.
 const viewFilter = ref('')
 const FILTER_THRESHOLD = 10
 
@@ -341,8 +299,8 @@ const filteredViewEntries = computed(() => {
   )
 })
 
-// The parent calls this before submitting so a JSON tab left mid-edit is
-// committed (or the save is refused) rather than silently ignored.
+// The parent calls this before submitting, so a JSON tab left mid-edit is
+// committed or the save is refused.
 function commit(): boolean {
   if (activeTab.value === 'json') {
     onJsonBlur()
@@ -387,8 +345,7 @@ defineExpose({ commit })
 
     <!-- ---------- Form / Fields tab ---------- -->
     <template v-if="activeTab === 'form'">
-      <!-- Read-only viewer (detail pages). Same tab pair as the editor, so the
-           locked and unlocked states of a record look like each other. -->
+      <!-- Read-only viewer (detail pages). -->
       <template v-if="disabled">
         <div v-if="isEmpty" class="text-sm text-base-content/60 italic">
           No metadata recorded.
@@ -409,13 +366,9 @@ defineExpose({ commit })
             No field matches “{{ viewFilter }}”.
           </div>
 
-          <!-- Capped and scrolled from `sm` up, unbounded below it. The cap keeps
-               a long document from pushing whatever follows it on the page (Live
-               State, on the Thing detail) below the fold — but on touch, a
-               bounded scroller inside a scrolling page is a trap: the swipe goes
-               to whichever of the two the thumb landed on. On mobile the card's
-               collapse solves the same problem without that cost, so the cap
-               would only be buying a second copy of a fix we already have. -->
+          <!-- Capped from `sm` up so a long document does not push the rest of
+               the page down. Unbounded on mobile: a nested scroller traps the
+               swipe, and MetadataCard's collapse already solves it there. -->
           <dl v-else class="divide-y divide-base-300 sm:max-h-[500px] sm:overflow-y-auto custom-scrollbar">
             <div
               v-for="e in filteredViewEntries"
@@ -437,8 +390,6 @@ defineExpose({ commit })
         </template>
       </template>
 
-      <!-- Editor. With a schema: typed fields for the keys it describes, then
-           the same key/value rows for everything else. Without one: rows only. -->
       <template v-else>
         <template v-if="hasSchema">
           <JsonSchemaForm
@@ -459,23 +410,12 @@ defineExpose({ commit })
           a service date, an asset tag, a warranty reference.
         </div>
 
-        <!-- Capped and scrolled from `sm` up, for the same reason and with the
-             same mobile exception as the read-only list above. Unbounded here
-             means the header's Save can scroll away, which is what the mobile
-             action bar at the foot of MetadataCard is for. -->
+        <!-- Capped from `sm` up, as above. On mobile the header's Save can scroll
+             away, hence MetadataCard's bottom action bar. -->
         <div v-if="rows.length" class="space-y-2 mb-3 sm:max-h-[500px] sm:overflow-y-auto custom-scrollbar sm:pr-1">
-          <!-- One field per row on a wide screen; two lines on a narrow one.
-               Four controls do not fit in ~330px: at `flex-1` each, the key and
-               the value ended up ~81px wide apiece while the type select took
-               112px — the dropdown was wider than the data. Stacked, the key gets
-               the full width it needs (they are long and mono, and they are what
-               you scan), and type sits next to the value it types.
-
-               The two wrappers are `sm:contents`, so above `sm` they dissolve and
-               the four controls are direct children of the same single flex line
-               this row has always been. One markup path, not two. The delete
-               button's DOM position is inside the first wrapper, hence
-               `sm:order-last` to put it back on the right at desktop. -->
+          <!-- One line on a wide screen, two on a narrow one (four controls do not
+               fit). The wrappers are `sm:contents`, so above `sm` the controls
+               share one flex line; `sm:order-last` puts delete back on the right. -->
           <div
             v-for="(r, i) in rows"
             :key="i"
@@ -516,17 +456,13 @@ defineExpose({ commit })
                 <option value="json">Object</option>
               </select>
 
-              <!-- An Object row's textarea wraps to a line of its own on mobile:
-                   sharing with the 96px select left it 159px wide, which renders
-                   `{ "key": "value",` four characters at a time. Every other type
-                   fits beside the select. -->
+              <!-- An Object row's textarea gets its own line on mobile; beside the
+                   select it is too narrow to read. -->
               <div
                 class="form-control flex-1 min-w-0"
                 :class="{ 'basis-full sm:basis-auto': r.type === 'json' }"
               >
-                <!-- The literal stored value sits next to the toggle: this is what
-                     a NATS subscriber will read back, so show it rather than
-                     Yes/No. -->
+                <!-- The literal stored value, which is what a subscriber reads. -->
                 <label v-if="r.type === 'boolean'" class="flex items-center gap-2 h-8">
                   <input
                     type="checkbox"
@@ -551,7 +487,6 @@ defineExpose({ commit })
                   :value="r.value"
                   @input="setRowValue(i, numberOrBlank(($event.target as HTMLInputElement).valueAsNumber))"
                 />
-                <!-- Nested object / array: a JSON textarea for this key alone. -->
                 <template v-else-if="r.type === 'json'">
                   <textarea
                     class="textarea textarea-bordered textarea-sm font-mono text-xs w-full"
@@ -595,8 +530,7 @@ defineExpose({ commit })
           No metadata recorded.
         </div>
         <div v-else class="bg-base-200 rounded-lg p-4 border border-base-300 overflow-hidden">
-          <!-- Horizontal scroll stays at every width — a JSON line is as long as
-               it is. The vertical cap is desktop-only, as above. -->
+          <!-- Horizontal scroll at every width; the vertical cap is `sm` up only. -->
           <div class="overflow-x-auto sm:max-h-[500px] sm:overflow-y-auto custom-scrollbar">
             <JsonViewer :data="modelValue" class="text-sm leading-relaxed" />
           </div>

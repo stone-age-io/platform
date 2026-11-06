@@ -1,6 +1,5 @@
 <template>
   <div class="console-widget" :class="{ 'card-layout': layoutMode === 'card' }">
-    <!-- Toolbar -->
     <div class="console-toolbar">
       <div class="toolbar-left">
         <button 
@@ -37,7 +36,6 @@
       </div>
     </div>
 
-    <!-- Log List -->
     <div 
       class="console-body" 
       ref="scrollContainer"
@@ -56,7 +54,6 @@
         :key="msg.timestamp + '-' + index"
         class="log-entry"
       >
-        <!-- Header Row: Time & Subject -->
         <div class="log-header">
           <span v-if="showTimestamp" class="log-time">
             {{ formatTime(msg.timestamp) }}
@@ -72,7 +69,6 @@
           </span>
         </div>
         
-        <!-- Content Row: Payload -->
         <div class="log-content">
           <div 
             class="content-wrapper" 
@@ -89,12 +85,10 @@
       </div>
     </div>
     
-    <!-- New Messages Toast (when paused) -->
     <div v-if="isPaused && missedCount > 0" class="new-msgs-toast" @click="togglePause">
       {{ missedLabel }} new messages ↓
     </div>
 
-    <!-- Copy Feedback Toast -->
     <Transition name="fade">
       <div v-if="copyFeedback" class="copy-toast">
         {{ copyFeedback }}
@@ -122,29 +116,23 @@ const props = withDefaults(defineProps<{
 const dataStore = useWidgetDataStore()
 const scrollContainer = ref<HTMLElement | null>(null)
 
-// State
 const isPaused = ref(false)
 const filterText = ref('')
 const expandAll = ref(false)
 const pausedMessages = ref<any[]>([]) // Snapshot when paused
 const copyFeedback = ref<string | null>(null)
 
-// Config
 const showTimestamp = computed(() => props.config.consoleConfig?.showTimestamp ?? true)
 
-// Data Source
 const buffer = computed(() => dataStore.getBuffer(props.config.id))
 
-// Computed Messages
 const displayMessages = computed(() => {
-  // If paused, use the snapshot. If not, use live buffer.
   const source = isPaused.value ? pausedMessages.value : buffer.value
   
   if (!filterText.value) return source
   
   const term = filterText.value.toLowerCase()
   return source.filter(msg => {
-    // Match against subject or value
     const valStr = typeof msg.value === 'object' ? JSON.stringify(msg.value) : String(msg.value)
     const subjectStr = msg.subject || ''
     return valStr.toLowerCase().includes(term) || subjectStr.toLowerCase().includes(term)
@@ -158,14 +146,11 @@ const missed = computed(() =>
 const missedCount = computed(() => missed.value.count)
 const missedLabel = computed(() => `${missed.value.count}${missed.value.atLeast ? '+' : ''}`)
 
-// Actions
 function togglePause() {
   isPaused.value = !isPaused.value
   if (isPaused.value) {
-    // Freeze current state
     pausedMessages.value = [...buffer.value]
   } else {
-    // Resume: jump to bottom
     scrollToBottom()
   }
 }
@@ -181,11 +166,11 @@ function toggleExpand() {
 
 async function copyText(text: string, feedback: string) {
   try {
-    // 1. Try Modern API (HTTPS / Localhost)
+    // Clipboard API: secure contexts only (HTTPS or localhost)
     if (navigator.clipboard && navigator.clipboard.writeText) {
       await navigator.clipboard.writeText(text)
     } 
-    // 2. Fallback for HTTP Dev Server (Old Magic)
+    // Fallback for plain HTTP
     else {
       const textArea = document.createElement("textarea")
       textArea.value = text
@@ -219,7 +204,6 @@ function showFeedback(msg: string) {
   }, 1500)
 }
 
-// Helpers
 function formatTime(ts: number) {
   const d = new Date(ts)
   const time = d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -244,7 +228,6 @@ function scrollToBottom() {
   })
 }
 
-// Watchers
 watch(buffer, () => {
   if (!isPaused.value) {
     scrollToBottom()
@@ -252,7 +235,7 @@ watch(buffer, () => {
 })
 
 function handleRefresh() {
-  // Grug say: refresh means show new data, not stay stuck on old snapshot.
+  // A refresh shows new data, not the paused snapshot.
   isPaused.value = false
   pausedMessages.value = []
 }
@@ -351,7 +334,6 @@ onUnmounted(() => {
   scroll-behavior: smooth;
 }
 
-/* Log Entry Container */
 .log-entry {
   display: flex;
   flex-direction: column;
@@ -364,7 +346,6 @@ onUnmounted(() => {
   background: rgba(255, 255, 255, 0.05);
 }
 
-/* Header Row: Time & Subject */
 .log-header {
   display: flex;
   align-items: baseline;
@@ -395,7 +376,6 @@ onUnmounted(() => {
   opacity: 1;
 }
 
-/* Content Row */
 .log-content {
   padding-left: 4px;
   min-width: 0;

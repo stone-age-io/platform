@@ -1,4 +1,3 @@
-// ui/src/composables/useWidgetOperations.ts
 import { useDashboardStore } from '@/stores/dashboard'
 import { useWidgetDataStore } from '@/stores/widgetData'
 import { useNatsStore } from '@/stores/nats'
@@ -8,20 +7,10 @@ import { resolveTemplate } from '@/utils/variables'
 import { parseDurationMs } from '@/utils/duration'
 import type { WidgetType, WidgetConfig, DataSourceConfig } from '@/types/dashboard'
 
-// What each widget is ACTUALLY subscribed to, exactly as it was subscribed.
-//
-// Unsubscribing used to re-derive the subjects from the widget's config and
-// the current variable values -- but both unsubscribe paths run after the
-// thing they depend on has already changed. A variable watcher fires once
-// `{{device}}` is already B, so it unsubscribed from B (never subscribed) and
-// left A running: the widget went on receiving device A. A dashboard switch
-// fires once `activeWidgets` is already the new dashboard's, so the old
-// dashboard's widgets were never unsubscribed at all. Map markers also lost
-// `useJetStream` on the way out and missed their own subscription key.
-//
-// Recording the configs at subscribe time makes unsubscribe exact, whatever
-// has changed since. Module-level because every caller of this composable
-// must see the same record.
+// Each widget's subscriptions, recorded exactly as subscribed. Unsubscribe uses
+// this record, never a re-derivation: by the time a variable watcher or a
+// dashboard switch unsubscribes, the variables and `activeWidgets` have already
+// changed. Module-level so every caller shares it.
 const activeSubscriptions = new Map<string, DataSourceConfig[]>()
 
 function subscriptionKey(c: DataSourceConfig): string {
@@ -40,27 +29,25 @@ export function useWidgetOperations() {
     const widget = dashboardStore.getWidget(widgetId)
     if (!widget) return
 
-    // 1. Grug check: Is existing data too stale for the JetStream window?
+    // Buffered data older than the replay window would leave a gap in the chart.
     if (widget.dataSource.useJetStream && widget.dataSource.deliverPolicy === 'by_start_time') {
       const buffer = dataStore.getBuffer(widgetId)
       if (buffer.length > 0) {
         const latest = buffer[buffer.length - 1]
         const windowMs = parseDurationMs(replayWindow(widget)) ?? DEFAULT_REPLAY_WINDOW_MS
-        // If the gap is bigger than the replay window, wipe it to avoid chart gaps
         if (Date.now() - latest.timestamp > windowMs) {
           dataStore.clearBuffer(widgetId)
         }
       }
     }
 
-    // 2. Standard initialization. Only a chart ages its buffer out: text, stat
-    // and friends show the LATEST value, which must survive however old it is.
+    // Only a chart ages out its buffer; other widgets show the latest value,
+    // however old.
     const maxAge = widget.type === 'chart'
       ? parseDurationMs(widget.chartConfig?.window) ?? undefined
       : undefined
-    // The RESOLVED subjects name what fills the buffer. Data survives a round
-    // trip to another page, but not a variable change that points the widget
-    // at a different device -- that data would be drawn as if it were B's.
+    // The buffer is keyed on the resolved subjects, so it survives leaving the
+    // page but not a variable change to another device.
     const source = getWidgetSubjects(widget)
       .map(s => resolveTemplate(s, dashboardStore.currentVariableValues))
       .join('\n')
@@ -76,9 +63,7 @@ export function useWidgetOperations() {
       for (const config of mapMarkerConfigs(widget.mapConfig.markers)) wanted.push({ config })
     }
 
-    // Drop whatever this widget was subscribed to and no longer wants (a
-    // variable moved its subject), then subscribe to the rest. Subscribing to
-    // something already held is a no-op in the manager.
+    // Drop what is no longer wanted, then subscribe (a no-op for one already held).
     const wantedKeys = new Set(wanted.map(w => subscriptionKey(w.config)))
     for (const old of activeSubscriptions.get(widgetId) ?? []) {
       if (!wantedKeys.has(subscriptionKey(old))) subManager.unsubscribe(widgetId, old)
@@ -98,9 +83,7 @@ export function useWidgetOperations() {
     return out
   }
 
-  // A chart with a time window replays exactly that window: one setting, so
-  // the replay start and the buffer age cannot disagree. Every other widget
-  // (and a chart without a window) keeps the data source's own timeWindow.
+  // A chart's window is also its replay window, so the two cannot disagree.
   function replayWindow(widget: WidgetConfig): string | undefined {
     if (widget.type === 'chart' && widget.chartConfig?.window) return widget.chartConfig.window
     return widget.dataSource.timeWindow
@@ -135,8 +118,7 @@ export function useWidgetOperations() {
     return []
   }
 
-  // Works from the record, not the widget: the widget may already be deleted,
-  // on another dashboard, or pointing at new subjects.
+  // Uses the record, not the widget, which may be deleted or changed by now.
   function unsubscribeWidget(widgetId: string, keepData: boolean = false) {
     for (const config of activeSubscriptions.get(widgetId) ?? []) {
       subManager.unsubscribe(widgetId, config)
@@ -157,8 +139,7 @@ export function useWidgetOperations() {
     }
   }
 
-  // Everything subscribed, not just the active dashboard's widgets: on a
-  // dashboard switch `activeWidgets` is already the NEW dashboard's.
+  // Everything recorded too: on a dashboard switch `activeWidgets` is already the new one's.
   function unsubscribeAllWidgets(keepData: boolean = false) {
     const ids = new Set(activeSubscriptions.keys())
     for (const widget of dashboardStore.activeWidgets) {
@@ -178,11 +159,7 @@ export function useWidgetOperations() {
 
   function createWidget(type: WidgetType) {
     const position = { x: 0, y: 100 }
-    // createDefaultWidget is the ONLY source of a new widget's defaults.
-    // A second applyWidgetDefaults used to run here and win on every
-    // conflict, which quietly reverted the newer values above -- kvtable
-    // lost its reported-state twin bucket, and button, switch and slider
-    // lost the cmd.thing/twin_desired subjects for older placeholders.
+    // createDefaultWidget is the only source of defaults; do not layer more here.
     const widget = createDefaultWidget(type, position)
     dashboardStore.addWidget(widget)
     if (natsStore.isConnected && needsSubscription(type, widget)) {

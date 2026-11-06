@@ -14,10 +14,8 @@ import BaseCard from '@/components/ui/BaseCard.vue'
 import ResponsiveList from '@/components/ui/ResponsiveList.vue'
 import SubjectChip from '@/components/common/SubjectChip.vue'
 
-// One service and every instance of it answering now. The page is keyed on the
-// service NAME because that is stable; an instance id is random per start, so
-// an instance gets a modal rather than a URL that would break on its next
-// restart.
+// Keyed on the service name, which is stable. An instance id is random per
+// start, so an instance gets a modal rather than a URL.
 
 const route = useRoute()
 const natsStore = useNatsStore()

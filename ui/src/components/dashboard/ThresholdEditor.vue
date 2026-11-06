@@ -8,7 +8,6 @@
       <div v-for="(rule, index) in modelValue" :key="rule.id" class="threshold-row" :class="{ 'with-label': showLabel }">
         <span class="row-label">If val</span>
         
-        <!-- Operator -->
         <select v-model="rule.operator" class="input-select operator">
           <option value=">">&gt;</option>
           <option value=">=">&ge;</option>
@@ -18,7 +17,6 @@
           <option value="!=">!=</option>
         </select>
         
-        <!-- Value -->
         <input 
           v-model="rule.value" 
           type="text" 
@@ -28,7 +26,6 @@
         
         <span class="row-label">then</span>
         
-        <!-- Color Picker -->
         <select 
           v-model="rule.color" 
           class="input-select color" 
@@ -54,7 +51,6 @@
           placeholder="Label (optional)"
         />
 
-        <!-- Delete -->
         <button class="btn-icon danger" @click="removeRule(index)" title="Remove Rule">
           ✕
         </button>
@@ -72,8 +68,7 @@ import type { ThresholdRule } from '@/types/dashboard'
 
 const props = defineProps<{
   modelValue: ThresholdRule[]
-  // Only the state timeline shows a label; every other caller's rules are
-  // colour-only and look exactly as they did.
+  // Only the state timeline shows a label; other callers' rules are colour-only.
   showLabel?: boolean
 }>()
 

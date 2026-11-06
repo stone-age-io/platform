@@ -70,18 +70,11 @@
 import type { StatusMapping } from '@/types/dashboard'
 
 /**
- * The value-to-colour rows, in one place.
+ * The value-to-colour rows, shared by ConfigStatus and the floor plan bindings
+ * so the two editors cannot drift: a dashboard saved in either renders in both.
  *
- * Extracted from ConfigStatus.vue when the floor plan widget needed the same
- * editor for a binding's marker state. A second hand-written copy is how two
- * editors of one thing drift -- one grows a colour the other does not offer,
- * one stops defaulting `blink` -- and a dashboard saved in either has to render
- * in both. The markup is ConfigStatus's unchanged; only the model moved from a
- * flat form field to a prop.
- *
- * The array is mutated in place rather than emitted. Both callers hold it
- * inside a larger object they are already editing by reference (the widget form
- * state, a binding), so an emit would be a copy they then have to put back.
+ * The array is mutated in place, not emitted: both callers already hold it by
+ * reference inside the object they are editing.
  */
 const props = defineProps<{
   mappings: StatusMapping[]

@@ -52,9 +52,6 @@ const hasPermissionOverrides = computed(() => {
 
 const userId = route.params.id as string
 
-/**
- * Load user details
- */
 async function loadUser() {
   loading.value = true
   try {
@@ -71,15 +68,11 @@ async function loadUser() {
   linkedThing.value = await findLinkedThing('nats_user', userId)
 }
 
-// The Thing this identity belongs to, if it is a device's. While that Thing is
-// deactivated the server refuses Re-enable (hooks/active_flag.go), so the page
-// points at the Thing instead of offering a button that fails.
+// While a linked Thing is deactivated the server refuses Re-enable
+// (hooks/active_flag.go), so the page points at the Thing instead.
 const linkedThing = ref<LinkedThing | null>(null)
 const heldByDeactivatedThing = computed(() => linkedThing.value?.active === false)
 
-/**
- * Handle delete
- */
 async function handleDelete() {
   if (!user.value) return
   const confirmed = await confirm({
@@ -104,9 +97,7 @@ async function handleDelete() {
   }
 }
 
-/**
- * Trigger Regeneration
- */
+// Same key, so old copies of the file keep working.
 async function confirmRegenerate() {
   if (!user.value) return
 
@@ -132,15 +123,9 @@ async function confirmRegenerate() {
 }
 
 /**
- * Revoke the user's currently distributed credentials and issue replacements.
- *
- * This is the "these credentials leaked" button, not a suspend. pb-nats
- * (rotateUserCredentials) generates a NEW key pair, adds the OLD public key to
- * the account's revocation list (embedded in the account JWT), and mints a
- * fresh .creds for the new key. Every copy of the old file is rejected at once
- * and for good; the user stays active, and the new file has to be delivered to
- * the legitimate holder. Suspending is `active` false, which revokes without
- * reissuing — for a device that is the Thing's own active flag.
+ * The "credentials leaked" button, not a suspend: pb-nats puts the old public
+ * key on the account revocation list and issues a new key and .creds. The user
+ * stays active. Suspending is `active` false (for a device, the Thing's flag).
  */
 async function confirmRevoke() {
   if (!user.value) return
@@ -166,11 +151,8 @@ async function confirmRevoke() {
   }
 }
 
-/**
- * Re-enable a revoked/inactive user by marking them active and issuing a fresh
- * JWT. The new credentials carry a later issue time so NATS accepts them, while
- * any previously revoked credentials stay permanently invalid.
- */
+// The fresh JWT's later issue time gets past the revocation cutoff; revoked
+// credentials stay invalid.
 async function confirmReenable() {
   if (!user.value) return
 
@@ -259,7 +241,6 @@ onMounted(() => {
       <!-- Details Grid -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         
-        <!-- Left Column: Identity -->
         <div class="space-y-6">
           <BaseCard title="Identity & Permissions">
             <dl class="space-y-4">
@@ -356,14 +337,12 @@ onMounted(() => {
           </BaseCard>
         </div>
 
-        <!-- Right Column: Security -->
         <div class="space-y-6">
           <BaseCard>
             <template #header>
               <div class="flex flex-wrap justify-between items-center gap-2 mb-4">
                 <h2 class="card-title">Security & Credentials</h2>
                 <div class="flex flex-wrap gap-2">
-                  <!-- Active user: download / rotate / revoke -->
                   <template v-if="user.active">
                     <button
                       v-if="user.creds_file"
@@ -390,9 +369,7 @@ onMounted(() => {
                       Revoke
                     </button>
                   </template>
-                  <!-- Revoked / inactive user: re-enable with fresh credentials.
-                       Not for a deactivated Thing's identity: the server
-                       refuses it, and the notice below names the Thing. -->
+                  <!-- Not for a deactivated Thing's identity: the server refuses it. -->
                   <button
                     v-else-if="!heldByDeactivatedThing"
                     @click="confirmReenable"

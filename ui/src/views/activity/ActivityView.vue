@@ -1,19 +1,10 @@
 <script setup lang="ts">
 import { HistoryIcon, RefreshCw, SearchX } from '@lucide/vue'
 /**
- * The tenant activity feed: who changed what in the console, and when.
- *
- * NOT the audit log. AuditLogView reads `audit_logs`, which is operator-only,
- * carries full before/after record snapshots, and has no organization column.
- * This reads `activity`, which is org-scoped, stores no record values at all,
- * and only describes the five collections every role in an organization can
- * already read. The two look similar and are different products -- see
- * hooks/activity.go for the invariant that decides what is in here.
- *
- * Read-only by construction: the collection's create, update and delete rules
- * are all nil, so there is nothing to offer an action for. The row click opens
- * a detail dialog rather than navigating, because an entry is not a record --
- * the thing it describes may since have been deleted.
+ * The tenant activity feed. Not the audit log: `activity` is org-scoped and
+ * stores no record values (hooks/activity.go decides what is in it), while
+ * `audit_logs` is operator-only. Its write rules are all nil, so it is
+ * read-only. A row opens a dialog, not the record, which may since be deleted.
  */
 import { ref, computed, onMounted } from 'vue'
 import { usePagination } from '@/composables/usePagination'
@@ -33,9 +24,7 @@ const {
   load, nextPage, prevPage,
 } = usePagination<Activity>('activity', 25)
 
-// `actor` and `resource_id` are plain ids, not relations, so there is nothing
-// to expand -- search the snapshotted labels instead, which is also what the
-// list renders.
+// `actor` and `resource_id` are plain ids, not relations; search the snapshotted labels.
 const { searchQuery, filter: searchFilter } = useServerSearch(
   ['actor_label', 'resource_label', 'resource', 'action'],
   () => { page.value = 1; loadEntries() },
@@ -43,11 +32,8 @@ const { searchQuery, filter: searchFilter } = useServerSearch(
 
 const sort = ref('-created')
 
-// "Everything that happened to this one record", set from the detail dialog.
-// It is a SECOND filter rather than a search term because `resource_id` is an
-// id and the search box matches labels: searching for a label would also catch
-// every other record that happens to share the name, which is the opposite of
-// what someone tracing one device wants.
+// One record's history, set from the detail dialog. A separate filter on
+// `resource_id`, not a search term: a label search also matches namesakes.
 const focusedResource = ref<{ id: string; label: string } | null>(null)
 
 const resourceFilter = computed(() =>
@@ -56,13 +42,11 @@ const resourceFilter = computed(() =>
     : undefined,
 )
 
-// ONE computed, passed to every call including the pager. Passing a subset to
-// nextPage() silently drops the filter on page two.
+// Pass this to every call, including the pager, or page two loses the filter.
 const queryOptions = computed(() => {
   const parts = [searchFilter.value, resourceFilter.value].filter(Boolean)
   return {
-    // Parenthesised before joining: the search filter is itself a chain of ORs,
-    // and `a ~ x || b ~ x && resource_id = y` is not the query anyone meant.
+    // Parenthesised: the search filter is itself a chain of ORs.
     filter: parts.length ? parts.map(p => `(${p})`).join(' && ') : undefined,
     sort: sort.value,
   }
@@ -79,21 +63,9 @@ function onSort(next: string) {
 }
 
 const columns: Column<Activity>[] = [
-  // Widths are CSS values, not Tailwind classes: ResponsiveList binds them to
-  // `style="width: …"`, so `w-44` here is a declaration the browser drops and
-  // the column silently falls back to its share of the fixed layout.
-  //
-  // "What" is the one column left un-widthed, so it absorbs the slack -- it
-  // holds record names, which is the only free-text content here. "Who" used to
-  // share that job and should not have: it holds a person's name, which is
-  // bounded, so on a wide screen it took a quarter of the table and left a gap
-  // between a name and the badge beside it that the eye had to travel. 16rem
-  // fits a long name plus the "platform" badge a superuser actor carries.
-  //
-  // "Kind" keeps 10rem despite holding one short badge: the longest noun in
-  // RESOURCE_ROUTES below is "thing operation", and in a fixed-layout table a
-  // badge that does not fit wraps INSIDE the badge rather than widening the
-  // column.
+  // Widths are CSS values, not Tailwind classes (ResponsiveList binds them to
+  // `style`). "What" is left un-widthed to absorb the slack. "Kind" needs 10rem
+  // for "thing operation": in a fixed layout a badge wraps inside itself.
   { key: 'created', label: 'When', sortable: '-created', width: '11rem' },
   { key: 'actor_label',
     cardWide: true, label: 'Who', sortable: 'actor_label', width: '16rem' },
@@ -117,10 +89,6 @@ function actionBadge(action: string): string {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Detail dialog
-// ---------------------------------------------------------------------------
-
 const selected = ref<Activity | null>(null)
 
 function openDetails(entry: Activity) {
@@ -135,21 +103,11 @@ function closeDetails() {
 }
 
 /**
- * Where a feed entry's record lives, keyed by the product noun the server
- * snapshotted into `resource` (the values of `activityCollections` in
- * hooks/activity.go).
- *
- * Each entry carries the capability its route is gated on, NOT the one that got
- * the reader onto this screen. The feed is readable by every role in an
- * organization, but the three type collections have no detail view -- their
- * only route is the edit form behind `manageDefinitions` -- so a `viewer`
- * offered that link would be bounced to `/` by the router guard. Same rule as
- * the Delete buttons on the inventory lists: gate a control on the capability
- * that matches its rule, not the one that matches its screen.
- *
- * An unrecognised noun yields no link, which is the right failure: `resource`
- * is a snapshot, so rows written before a noun was renamed still say the old
- * word and must not resolve to a guess.
+ * Route per `resource` noun (the values of `activityCollections` in
+ * hooks/activity.go). Each carries the capability its route is gated on, not
+ * this screen's: the type collections only have an edit form behind
+ * `manageDefinitions`, so a `viewer` would be bounced. An unknown noun (e.g.
+ * one since renamed) yields no link.
  */
 const RESOURCE_ROUTES: Record<string, { path: (id: string) => string; capability: 'viewInventory' | 'manageDefinitions' }> = {
   'thing': { path: (id) => `/things/${id}`, capability: 'viewInventory' },
@@ -159,9 +117,6 @@ const RESOURCE_ROUTES: Record<string, { path: (id: string) => string; capability
   'thing operation': { path: (id) => `/things/operations/${id}/edit`, capability: 'manageDefinitions' },
 }
 
-// The link, or null. Null for a deleted record (there is nothing to open), for
-// a noun with no route, for an entry with no resource id, and for a reader
-// without the capability that route needs.
 const recordLink = computed(() => {
   const entry = selected.value
   if (!entry || !entry.resource_id || entry.action === 'deleted') return null
@@ -223,10 +178,7 @@ onMounted(() => {
       </label>
     </div>
 
-    <!-- The one-record filter, set from the detail dialog. It is a separate
-         control from the search box because it is a different question, and it
-         is visible because a filter the reader cannot see is a feed that looks
-         empty for no reason. -->
+    <!-- Shown so a hidden filter never makes the feed look empty. -->
     <div v-if="focusedResource" class="alert alert-info py-2">
       <span class="text-sm">
         Showing activity for <strong>{{ focusedResource.label }}</strong>
@@ -249,8 +201,7 @@ onMounted(() => {
       </div>
     </BaseCard>
 
-    <!-- Empty State. Guarded on the filters: with a server-side filter an empty
-         result means "no match", not "nothing has happened here". -->
+    <!-- Empty State (with a filter set, empty means no match instead) -->
     <BaseCard v-else-if="entries.length === 0 && !searchQuery && !focusedResource">
       <div class="text-center py-12">
         <HistoryIcon :size="48" :stroke-width="1.5" class="mx-auto text-base-content/30" />
@@ -288,9 +239,6 @@ onMounted(() => {
         @update:sort="onSort"
         @row-click="openDetails"
       >
-        <!-- Relative on top, exact underneath -- the same shape AuditLogView
-             uses, and the reason this screen can be read beside a record's
-             Created / Last updated without converting anything. -->
         <template #cell-created="{ item }">
           <div class="flex flex-col">
             <span class="font-medium">{{ formatRelativeTime(item.created) }}</span>
@@ -336,38 +284,12 @@ onMounted(() => {
       />
     </BaseCard>
 
-    <!-- Details Modal.
-         The feed row is deliberately narrow -- when / who / did / what / kind --
-         and everything the row cannot hold lives here: the exact timestamp, the
-         actor and record IDS (which are what a support conversation actually
-         needs), and the two things you can DO with an entry -- one of which now
-         sits beside the title rather than in the footer, see below. -->
+    <!-- Details Modal -->
     <dialog id="activity_modal" class="modal">
       <div class="modal-box w-11/12 max-w-2xl">
-        <!--
-          "Open record" lives up here rather than in the footer, because three
-          buttons in a `modal-action` do not fit on a phone and the way they
-          fail is ugly: the row wraps, and since it is right-aligned the result
-          is a staircase -- two buttons on one line and one on the next, or the
-          reverse. Measured against the built stylesheet it did that at 320,
-          360 AND 393px, which is to say on every phone. Two buttons cannot make
-          that shape at any width, including 320px.
-
-          So the third one moved, and this is a better home rather than merely a
-          free one: it is the only control here that navigates AWAY -- the other
-          two refilter the feed behind the dialog and dismiss it -- the arrow
-          says so, and the top of the dialog is the one place that looks the
-          same on a phone as on a desktop.
-
-          Full-size `btn` rather than `btn-sm`: both lay out identically at
-          every width measured, and `btn-sm` is 32px, which is under the 44px
-          touch target the rest of this pass has been holding to. The full one
-          is 48px and needs no rule to help it.
-
-          flex-wrap for the reason the connectivity card has it: at 320px the
-          title and the button do not share a line, and wrapping costs nothing
-          at any width where they do.
-        -->
+        <!-- "Open record" sits here, not in the footer: three footer buttons wrap
+             into a staircase on every phone width. Full-size `btn` for a 44px+
+             touch target. -->
         <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
           <h3 class="font-bold text-lg">Activity Details</h3>
           <router-link v-if="recordLink" :to="recordLink" class="btn btn-primary">
@@ -387,10 +309,7 @@ onMounted(() => {
               <span class="font-bold opacity-70">Who</span>
               <span>
                 {{ selected.actor_label || 'unknown' }}
-                <!-- `superuser` is not a tenant role: a platform operator acting
-                     through the PocketBase dashboard bypasses every API rule, so
-                     an entry attributed to one is saying something different from
-                     an entry attributed to a member. -->
+                <!-- A superuser acts through the PocketBase dashboard and bypasses every API rule. -->
                 <span v-if="selected.actor_type === 'superuser'" class="badge badge-ghost badge-xs ml-1">
                   platform
                 </span>
@@ -415,11 +334,7 @@ onMounted(() => {
 
             <div class="flex flex-col md:col-span-2">
               <span class="font-bold opacity-70">Record</span>
-              <!-- A SNAPSHOT of the name at the time of the write, not a live
-                   join: hooks/activity.go stores the label precisely so the line
-                   keeps reading correctly after a rename or a delete. Saying so
-                   matters -- a reader who assumes it is live will think the feed
-                   is stale when it is being accurate. -->
+              <!-- A snapshot taken at write time (hooks/activity.go), not a live join. -->
               <span>{{ selected.resource_label || 'unnamed' }}</span>
               <code v-if="selected.resource_id" class="text-xs opacity-60">{{ selected.resource_id }}</code>
               <span class="text-xs opacity-60 italic">

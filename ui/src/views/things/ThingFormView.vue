@@ -1,4 +1,3 @@
-<!-- ui/src/views/things/ThingFormView.vue -->
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -28,9 +27,7 @@ const toast = useToast()
 const thingId = route.params.id as string | undefined
 const isEdit = computed(() => !!thingId)
 
-// Form data
 const formData = ref({
-  // Basic
   name: '',
   description: '',
   code: '',
@@ -46,60 +43,47 @@ const formData = ref({
   nats_user: '',
   nebula_host: '',
 
-  // Meta. An object (or null), not a JSON string — MetadataEditor owns the
-  // text representation and refuses to hand back anything unparseable, so the
-  // old "parse at submit and toast on failure" step is gone.
+  // An object (or null), not a JSON string: MetadataEditor owns the text and
+  // never hands back anything unparseable.
   metadata: null as Record<string, any> | null,
 })
 
 const metadataEditor = ref<InstanceType<typeof MetadataEditor> | null>(null)
 
-// Photo state (edit mode only -- see the photo in Basic Information for why).
-// The loaded record is kept whole: ImageUploadField resolves its own URL,
-// because every file field is protected and needs a file token.
+// Photo state, edit mode only. The record is kept whole because ImageUploadField
+// resolves its own (protected, file-token) URL from it.
 const loadedThing = ref<Thing | null>(null)
 const photoFile = ref<File | null>(null)
 const photoRemoved = ref(false)
 
-// The inventory schema declared by the selected thing type, if it has one.
-// Absent (the common case today) means MetadataEditor shows free-form
-// key/value rows. Changing the type re-renders the form but never discards
-// values — extra keys are surfaced and preserved.
+// Null means free-form key/value rows. Changing the type never discards values;
+// keys the new schema lacks are kept.
 const selectedTypeMetadataSchema = computed(() => {
   const t = thingTypes.value.find(x => x.id === formData.value.type)
   return t?.metadata_schema || null
 })
 
-// Whether this caller may attach or mint NATS/Nebula identities. Members hold
-// inventory rights but not identity rights (things.createRule freezes
-// nats_user/nebula_host for them), and they cannot read nats_users or
-// nebula_hosts at all — so for them the identity UI would offer options the API
-// won't return and writes the API will refuse.
+// Members cannot read nats_users/nebula_hosts, and things.createRule freezes
+// nats_user/nebula_host for them, so the identity UI is owner/admin only.
 const canManageIdentities = computed(() => authStore.can.manageInfrastructure)
 
 // Only owner/admin may set a Thing's password (things.manageRule).
 const canSetThingPassword = computed(() => authStore.can.decommissionInventory)
 
-// Whether the right-hand column has any card to show. Spelled out from the two
-// capabilities rather than assumed from one, because they are separate entries
-// in the capability map and need not always travel together.
+// Checks both capabilities: they are separate entries in the capability map.
 const hasIdentityColumn = computed(
   () => canManageIdentities.value || (isEdit.value && canSetThingPassword.value),
 )
 
-// Provisioning modes (create mode only). The default follows the capability: a
-// member auto-provisioning would fail on the nats_users create, which is what
-// made Thing creation impossible for them in the UI even though the API allows it.
+// Create mode only. The default follows the capability: a member's auto-provision
+// would fail on the nats_users create.
 const natsMode = ref<ProvisionMode>(canManageIdentities.value ? 'auto' : 'none')
 const nebulaMode = ref<ProvisionMode>('none')
 
-// Auto-provision config
 const autoNatsRoleId = ref('')
 const autoNebulaNetworkId = ref('')
 const autoNebulaOverlayIp = ref('')
 
-// Description of the selected thing type, shown under the select. Falls back to
-// the subject prefix so the hint is still useful for a type with no description.
 const selectedTypeHint = computed(() => {
   const t = thingTypes.value.find(x => x.id === formData.value.type)
   if (!t) return ''
@@ -117,13 +101,11 @@ const exampleCode = computed(() => {
   return prefix ? `${prefix}-9KD-4PX` : '9KD-4PX'
 })
 
-// Relation options
 const thingTypes = ref<ThingType[]>([])
 const locations = ref<LocationNode[]>([])
 const natsUsers = ref<NatsUser[]>([])
 const nebulaHosts = ref<NebulaHost[]>([])
 
-// Auto-provision options
 const natsRoles = ref<NatsRole[]>([])
 const nebulaNetworks = ref<NebulaNetwork[]>([])
 const orgNatsAccount = ref<NatsAccount | null>(null)
@@ -161,37 +143,27 @@ const nebulaNetworkOptions = computed<PickerOption[]>(() =>
   nebulaNetworks.value.map(n => ({ id: n.id, label: n.name, sublabel: n.cidr_range }))
 )
 
-// State
 const loading = ref(false)
 const loadingOptions = ref(true)
 
-// Success modal
 const showSuccessModal = ref(false)
 const successCredentials = ref({ email: '', password: '' })
 
-// Quick Add modal state
 const showNatsModal = ref(false)
 const showNebulaModal = ref(false)
 const showLocationModal = ref(false)
 
-// Preview of the login the server will derive for the Thing. The route builds the
-// authoritative value from the organization's CODE (hooks/thing_routes.go,
-// orgSlugFor) — this is display only, so the operator sees the shape before
-// submitting.
+// Display only. The server derives the real login from the org code
+// (hooks/thing_routes.go, orgSlugFor).
 const thingEmail = computed(() => {
   if (!formData.value.code) return ''
   return `${formData.value.code}@${authStore.currentOrg?.code || ''}.thing.local`
 })
 
-// The code used to be slugified from the name here. It is now generated by the
-// server when left blank, under the type's prefix (hooks/codes.go). There is no
-// client-side generator, deliberately: a code is frozen and printed, so a second
-// implementation that drifted would be wrong permanently.
+// No client-side code generator, deliberately. The server generates a blank code
+// under the type's prefix (hooks/codes.go); a code is frozen and printed, so a
+// second implementation that drifted would be wrong permanently.
 
-
-/**
- * Load form options
- */
 async function loadOptions() {
   loadingOptions.value = true
 
@@ -204,9 +176,8 @@ async function loadOptions() {
     thingTypes.value = typesRes
     locations.value = flattenLocationTree(locsRes)
 
-    // Identity options are owner/admin-only reads. Fetching them as a member
-    // returns their own personal NATS identity as the sole option (nats_users is
-    // row-scoped to the caller) and empty Nebula lists, so don't ask.
+    // Owner/admin-only reads. A member would get only their own NATS identity
+    // and empty Nebula lists.
     if (!canManageIdentities.value) return
 
     const [natsRes, nebulaRes, rolesRes, networksRes] = await Promise.all([
@@ -221,19 +192,17 @@ async function loadOptions() {
     natsRoles.value = rolesRes
     nebulaNetworks.value = networksRes
 
-    // Auto-select defaults for roles
     const defaultRole = natsRoles.value.find(r => r.is_default)
     if (defaultRole) autoNatsRoleId.value = defaultRole.id
     if (nebulaNetworks.value.length === 1) autoNebulaNetworkId.value = nebulaNetworks.value[0].id
 
-    // Fetch org's NATS account
     if (authStore.currentOrgId) {
       try {
         orgNatsAccount.value = await pb.collection('nats_accounts').getFirstListItem<NatsAccount>(
           `organization = "${authStore.currentOrgId}" && active = true`
         )
       } catch {
-        // No NATS account for this org — auto-provision won't work
+        // No NATS account: auto-provision is unavailable
         orgNatsAccount.value = null
       }
     }
@@ -244,9 +213,6 @@ async function loadOptions() {
   }
 }
 
-/**
- * Load existing thing for editing
- */
 async function loadThing() {
   if (!thingId) return
 
@@ -277,9 +243,6 @@ async function loadThing() {
   }
 }
 
-/**
- * Handle form submission
- */
 async function handleSubmit() {
   // Commit a JSON tab left mid-edit. Returns false (and toasts) if it doesn't
   // parse, so a bad blob blocks the save instead of being dropped from it.
@@ -293,18 +256,13 @@ async function handleSubmit() {
 }
 
 /**
- * Handle create.
- *
- * One call to POST /api/org/things (hooks/thing_routes.go), which creates the
- * Thing and mints any requested identities inside a single transaction. This used
- * to be three separate client calls with no rollback, so a failure on the last one
- * orphaned a signed NATS credential — and it never set `active`, so the Thing it
- * produced could not authenticate. The server also owns the account lookup, the
- * default role, the email shape, and the Thing's password.
+ * One call to POST /api/org/things (hooks/thing_routes.go): the Thing and any
+ * requested identities in a single transaction. Keep it one call; separate client
+ * calls have no rollback. The server owns the account lookup, default role, email
+ * shape and the Thing's password.
  */
 async function handleCreate() {
-  // Client-side checks for the auto paths, so the operator sees the problem
-  // before a round trip. The route re-checks all of these.
+  // Early feedback only; the route re-checks all of these.
   if (natsMode.value === 'auto') {
     if (!orgNatsAccount.value) {
       toast.error('No NATS account found for this organization. Cannot auto-provision.')
@@ -372,9 +330,6 @@ async function handleCreate() {
   }
 }
 
-/**
- * Handle update (edit mode)
- */
 async function handleUpdate() {
   if (formData.value.password && formData.value.password !== formData.value.passwordConfirm) {
     toast.error('Passwords do not match')
@@ -393,10 +348,9 @@ async function handleUpdate() {
       metadata: formData.value.metadata,
     }
 
-    // Send the identity relations only if this caller may change them. The member
-    // branch of things.updateRule requires `nats_user:changed = false`, and a
-    // field absent from the body counts as unchanged — sending it is what turns a
-    // legitimate inventory edit into a 404.
+    // Only send the identity relations if this caller may change them. The member
+    // branch of things.updateRule requires `nats_user:changed = false`, and only
+    // an ABSENT field counts as unchanged; sending it 404s a member's edit.
     if (canManageIdentities.value) {
       data.nats_user = formData.value.nats_user || null
       data.nebula_host = formData.value.nebula_host || null
@@ -409,19 +363,10 @@ async function handleUpdate() {
 
     await pb.collection('things').update(thingId!, data)
 
-    // The photo goes in its OWN request, deliberately, rather than being folded
-    // into the body above.
-    //
-    // That body's null-vs-ABSENT distinction is load-bearing: the member branch
-    // of things.updateRule requires `nats_user:changed = false`, and a field
-    // omitted from a JSON body counts as unchanged. FormData has no way to omit
-    // a field and no null -- everything is a string, and an empty one CLEARS
-    // the field. Rebuilding this body as FormData would therefore turn a
-    // member's ordinary inventory edit into a 404, which is the exact failure
-    // the comment above already warns about.
-    //
-    // Sent after the main update, so a failure here costs the photo rather than
-    // the edit.
+    // The photo is a separate request and must stay one. The body above relies on
+    // null-vs-absent; FormData can neither omit a field nor send null (an empty
+    // string clears it), so a FormData body would 404 a member's edit. Sent
+    // second, so a failure costs the photo rather than the edit.
     if (photoFile.value || photoRemoved.value) {
       const photoData = new FormData()
       photoData.append('photo', photoFile.value ?? '')
@@ -442,7 +387,6 @@ async function handleUpdate() {
   }
 }
 
-// Success modal actions
 function copyCredentials() {
   const text = `Email: ${successCredentials.value.email}\nPassword: ${successCredentials.value.password}`
   navigator.clipboard.writeText(text)
@@ -454,7 +398,6 @@ function closeSuccessModal() {
   router.push('/things')
 }
 
-// Handlers for Quick Add Success (link mode)
 function onNatsCreated(record: NatsUser) {
   natsUsers.value.push(record)
   natsUsers.value.sort((a, b) => a.nats_username.localeCompare(b.nats_username))
@@ -482,10 +425,8 @@ onMounted(() => {
   }
 })
 
-// Escape closes these; see useEscapeKey for why the dialogs do not get it
-// from the browser and which ones are deliberately left out.
-// showSuccessModal is deliberately absent: it carries the one-time device
-// password, and losing it to a stray keypress means re-provisioning.
+// See useEscapeKey. showSuccessModal is deliberately absent: it shows the
+// one-time device password.
 useEscapeKey(showNatsModal, () => { showNatsModal.value = false })
 useEscapeKey(showNebulaModal, () => { showNebulaModal.value = false })
 useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
@@ -493,7 +434,6 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
 
 <template>
   <div class="space-y-6">
-    <!-- Header -->
     <div>
       <div class="breadcrumbs text-sm">
         <ul>
@@ -506,43 +446,28 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
       </h1>
     </div>
 
-    <!-- Loading State -->
     <div v-if="loadingOptions" class="flex justify-center p-12">
       <span class="loading loading-spinner loading-lg"></span>
     </div>
 
-    <!-- Form -->
     <form v-else @submit.prevent="handleSubmit" class="space-y-6">
 
-      <!-- Laid out like the detail view, so a field is edited where it is
-           read: what the Thing IS on the left (Basic Information with its
-           photo, Metadata), how it CONNECTS on the right (Authentication, NATS,
-           Nebula). On a phone that also puts the inventory first, which is all
-           a member ever sees here. -->
+      <!-- Laid out like the detail view: what the Thing is on the left, how it
+           connects on the right. On a phone the inventory comes first. -->
       <div
         class="grid grid-cols-1 gap-6 items-start"
         :class="hasIdentityColumn ? 'lg:grid-cols-2' : 'max-w-3xl'"
       >
 
-        <!-- Left Column: what the Thing is -->
         <div class="space-y-6">
           <BaseCard title="Basic Information">
             <div class="space-y-4">
               <!--
-                The photo sits beside Name and Description, where the detail
-                view shows it, rather than in a card of its own -- above them
-                on a phone, as there. Beside those two only: the rows below
-                hold paired inputs that need the card's full width.
-
-                EDIT ONLY. Creating a Thing goes through POST /api/org/things,
-                a JSON provisioning route that writes the Thing and its
-                NATS/Nebula identities in one server-side transaction. It
-                cannot carry a multipart upload, and bolting a second client
-                call onto it is exactly the pattern that route exists to have
-                removed -- three unguarded calls whose partial failure orphaned
-                a signed credential. It also matches how the photo gets taken:
-                the record is created at a desk, the device is photographed
-                where it is installed, usually another day and another person.
+                Photo beside Name and Description only, as on the detail view;
+                the rows below need the card's full width.
+                Edit only: create goes through the JSON transaction route
+                POST /api/org/things, which cannot carry a multipart upload
+                (feature 19 in ui/CLAUDE.md).
               -->
               <div class="flex flex-col sm:flex-row sm:items-start gap-5">
                 <div v-if="isEdit" class="shrink-0 sm:order-last">
@@ -628,9 +553,7 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
                       A type cannot be changed once set. To fix a wrong one, delete and recreate the Thing.
                     </span>
                   </label>
-                  <!-- Type names are often terse codes. Anyone who can pick a type
-                       can also read its description, so show it rather than making
-                       them go and look the definition up. -->
+                  <!-- Anyone who can pick a type can read its description. -->
                   <label v-if="selectedTypeHint" class="label">
                     <span class="label-text-alt text-base-content/60">{{ selectedTypeHint }}</span>
                   </label>
@@ -650,9 +573,6 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
                   clear-label="No location"
                   empty-text="No locations yet."
                 >
-                  <!-- Quick-add lives in the panel rather than beside it: the
-                       moment you discover the location is missing is the moment
-                       you are looking at the list. -->
                   <template #footer="{ close }">
                     <button
                       type="button"
@@ -665,7 +585,6 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
                 </RecordPicker>
               </div>
 
-              <!-- Email preview (create mode only) -->
               <div v-if="!isEdit && formData.code" class="bg-base-200 rounded-lg p-3">
                 <span class="text-xs text-base-content/50 uppercase block mb-1">Generated Identity</span>
                 <span class="font-mono text-sm select-all break-all">{{ thingEmail }}</span>
@@ -682,12 +601,9 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
           </BaseCard>
         </div>
 
-        <!-- Right Column: identities. Every card here is owner/admin only, so
-             for a member this column is absent and the grid above is a single
-             column instead of half a page of nothing. -->
+        <!-- Identities: every card is owner/admin only, so a member gets one column. -->
         <div v-if="hasIdentityColumn" class="space-y-6">
 
-          <!-- Authentication: Edit mode only -->
           <!-- Setting a Thing password is owner/admin only (things.manageRule). -->
           <BaseCard v-if="isEdit && canSetThingPassword" title="Authentication">
             <div class="space-y-4">
@@ -731,9 +647,7 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
             </div>
           </BaseCard>
 
-          <!-- NATS Connectivity -->
           <BaseCard v-if="canManageIdentities" title="NATS Connectivity">
-            <!-- Mode tabs (create mode only) -->
             <div v-if="!isEdit" class="tabs tabs-boxed mb-4">
               <a class="tab tab-sm sm:tab-md flex-1 min-w-0 truncate" :class="{ 'tab-active': natsMode === 'auto' }" @click="natsMode = 'auto'">
                 Auto-Provision
@@ -746,7 +660,6 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
               </a>
             </div>
 
-            <!-- Auto mode -->
             <div v-if="!isEdit && natsMode === 'auto'" class="space-y-4">
               <div v-if="!orgNatsAccount" class="alert alert-warning">
                 <span>No NATS account found for this organization. Auto-provisioning unavailable.</span>
@@ -778,7 +691,6 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
               </template>
             </div>
 
-            <!-- Link mode (create) or dropdown (edit) -->
             <div v-if="(isEdit) || (!isEdit && natsMode === 'link')" class="space-y-4">
               <div class="form-control">
                 <label v-if="isEdit" class="label">
@@ -810,15 +722,12 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
               </div>
             </div>
 
-            <!-- None mode -->
             <div v-if="!isEdit && natsMode === 'none'" class="text-sm text-base-content/50 py-2">
               No NATS connectivity. This Thing will be an asset/inventory record only.
             </div>
           </BaseCard>
 
-          <!-- Nebula Connectivity -->
           <BaseCard v-if="canManageIdentities" title="Nebula Connectivity">
-            <!-- Mode tabs (create mode only) -->
             <div v-if="!isEdit" class="tabs tabs-boxed mb-4">
               <a class="tab tab-sm sm:tab-md flex-1 min-w-0 truncate" :class="{ 'tab-active': nebulaMode === 'auto' }" @click="nebulaMode = 'auto'">
                 Auto-Provision
@@ -831,7 +740,6 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
               </a>
             </div>
 
-            <!-- Auto mode -->
             <div v-if="!isEdit && nebulaMode === 'auto'" class="space-y-4">
               <div class="form-control">
                 <label class="label">
@@ -871,7 +779,6 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
               </div>
             </div>
 
-            <!-- Link mode (create) or dropdown (edit) -->
             <div v-if="(isEdit) || (!isEdit && nebulaMode === 'link')" class="space-y-4">
               <div class="form-control">
                 <label v-if="isEdit" class="label">
@@ -903,7 +810,6 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
               </div>
             </div>
 
-            <!-- None mode -->
             <div v-if="!isEdit && nebulaMode === 'none'" class="text-sm text-base-content/50 py-2">
               No Nebula VPN connectivity.
             </div>
@@ -931,7 +837,6 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
       </StickyFormActions>
     </form>
 
-    <!-- Success Modal (create only) -->
     <Teleport to="body">
       <dialog class="modal" :class="{ 'modal-open': showSuccessModal }">
         <div class="modal-box">
@@ -958,14 +863,11 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
             <button class="btn btn-primary" @click="copyCredentials">Copy & Close</button>
           </div>
         </div>
-        <!-- No click-to-close: this is the only time the password is shown,
-             and a stray click on the dim area loses it exactly as the Escape
-             key this dialog deliberately leaves out would. -->
+        <!-- No click-to-close: this is the only time the password is shown. -->
         <div class="modal-backdrop"></div>
       </dialog>
     </Teleport>
 
-    <!-- Quick Add Modals (for Link mode) -->
     <dialog class="modal" :class="{ 'modal-open': showNatsModal }">
       <div class="modal-box w-11/12 max-w-3xl">
         <div class="flex justify-between items-center mb-4">

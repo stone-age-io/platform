@@ -45,20 +45,13 @@ const childrenByParent = computed(() => {
 
 /**
  * The pin a location belongs to: its OUTERMOST mapped ancestor, or itself when
- * nothing above it has coordinates.
+ * nothing above it has coordinates. A campus, its buildings, floors and rooms sit
+ * within metres of each other, so one pin per record is a pile; interior
+ * geography is what `floorplan` and `floorplan_position` are for.
  *
- * This is the whole change. A campus, its buildings, their floors and their
- * rooms all carry coordinates within a few metres of each other, so one pin per
- * record is a pile at every address -- and "Room 302" is not a fact at map
- * scale anyway. Interior geography is what `floorplan` and `floorplan_position`
- * are for.
- *
- * Outermost rather than "no parent", because whether the root is mapped is a
- * tenant modelling choice we do not control. Put coordinates on the buildings
- * and not on the campus and a roots-only rule shows an empty map with no
- * explanation; this rule promotes the buildings instead. Intermediate ancestors
- * without coordinates are walked THROUGH, not stopped at, so a room under an
- * unmapped floor still folds onto its building.
+ * Outermost, not "no parent": whether the root is mapped is the tenant's choice,
+ * and a roots-only rule shows an empty map when only the buildings are mapped.
+ * Unmapped intermediate ancestors are walked through, not stopped at.
  */
 function siteIdFor(l: Location): string | null {
   let outermost: string | null = isMapped(l) ? l.id : null
@@ -111,13 +104,9 @@ function matchesQuery(l: Location, q: string): boolean {
 }
 
 /**
- * Sites when idle; every matching mapped location when searching.
- *
- * The flatten mirrors the list view, which shows roots only until you type and
- * then searches the whole tree -- and the two share one search box on one
- * screen, so a map that folded while the list flattened would put two
- * disagreeing counts side by side. The stacking that reintroduces is exactly
- * what the clustering below is for.
+ * Sites when idle; every matching mapped location when searching. This mirrors
+ * the list view, which shares the search box and flattens while searching, so
+ * the two never show disagreeing counts. Clustering handles the stacking.
  */
 const markerLocations = computed(() => {
   const q = props.searchQuery.toLowerCase().trim()
@@ -129,9 +118,8 @@ const isSearching = computed(() => props.searchQuery.trim().length > 0)
 
 const markersForMap = computed<MapMarkerInput[]>(() =>
   markerLocations.value.map(l => {
-    // The folded count belongs on the tooltip only when the pin actually covers
-    // those records. While searching it does not -- a matching sub-location is
-    // its own pin -- so the number would be a claim about the map that is false.
+    // The folded count goes on the tooltip only when the pin covers those
+    // records. While searching, a matching sub-location is its own pin.
     const folded = isSearching.value ? 0 : subtreeOf(l.id).length
     return {
       id: l.id,
@@ -202,10 +190,8 @@ async function loadData() {
 
   loading.value = true
   try {
-    // Every location, not just the mapped ones. Folding needs the full ancestor
-    // chain -- an unmapped floor between a mapped room and its mapped building
-    // has to be walked through -- and the drawer's subtree needs the unmapped
-    // rooms, which are real places whether or not anyone gave them a latitude.
+    // Every location, not just the mapped ones: folding walks through unmapped
+    // ancestors, and the drawer's subtree lists unmapped rooms.
     locations.value = await pb.collection('locations').getFullList<Location>({
       expand: 'type,parent',
     })
@@ -233,15 +219,12 @@ watch(markersForMap, (next) => {
 onMounted(async () => {
   checkMobile()
   window.addEventListener('resize', checkMobile)
-  // The basemap before the data, deliberately. The tiles do not depend on the
-  // inventory, so awaiting loadData() first put a getFullList round trip (plus
-  // two relation expansions) in front of MapLibre's own chain -- style, then
-  // TileJSON, then glyphs and sprite, then tiles -- and the map sat as a flat
-  // sheet of theme colour for all of it.
+  // The basemap before the data, deliberately: the tiles do not depend on the
+  // inventory, so awaiting loadData() first only held MapLibre's own chain
+  // (style, TileJSON, glyphs and sprite, tiles) behind a getFullList.
   //
-  // onClusterClick both enables clustering and takes over the click: folding
-  // handles pins stacked by hierarchy, and this handles pins stacked by
-  // geography -- adjacent sites that no amount of folding will separate.
+  // onClusterClick enables clustering and takes over the click: folding handles
+  // pins stacked by hierarchy, clustering those stacked by geography.
   initMap(mapContainerId, {
     isDarkMode: uiStore.theme === 'dark',
     onClusterClick: handleClusterClick,
@@ -262,10 +245,8 @@ onUnmounted(() => {
 
     <!-- Stats Overlay (Top Left) -->
     <div class="absolute top-4 left-4 z-[400]">
-      <!-- Two counts, because one pin is no longer one location. Saying only
-           "12 mapped" over a folded map would quietly redefine what the number
-           counts; naming the folded records keeps the badge honest about what
-           is on screen and what is behind it. -->
+      <!-- Two counts, because one pin is no longer one location: the badge names
+           the folded records as well as the pins. -->
       <div class="badge badge-lg bg-base-100/90 backdrop-blur border-base-300 shadow-sm gap-2">
         <MapPin :size="16" class="inline-block shrink-0" />
         <template v-if="isSearching">
@@ -296,7 +277,6 @@ onUnmounted(() => {
     <!-- Leaflet Target -->
     <div :id="mapContainerId" class="absolute inset-0 z-0" @click="handleMapClick"></div>
 
-    <!-- Loading Overlay -->
     <div v-if="loading" class="absolute inset-0 z-10 bg-base-100/50 backdrop-blur-sm flex items-center justify-center">
       <span class="loading loading-spinner loading-lg text-primary"></span>
     </div>
@@ -345,8 +325,7 @@ onUnmounted(() => {
 :deep(.marker-selected) {
   filter: hue-rotate(180deg) saturate(1.5) drop-shadow(0 0 8px rgba(116, 128, 255, 0.8));
 }
-/* Cluster marker theme-aware overrides (three shades of primary). These shipped
-   before clustering was ever switched on here and were inert until now. */
+/* Cluster marker theme-aware overrides (three shades of primary). */
 :deep(.marker-cluster) { background-color: oklch(var(--p) / 0.25); }
 :deep(.marker-cluster div) { background-color: oklch(var(--p) / 0.7); color: oklch(var(--pc)); font-weight: 600; }
 :deep(.marker-cluster-medium div) { background-color: oklch(var(--p) / 0.85); }

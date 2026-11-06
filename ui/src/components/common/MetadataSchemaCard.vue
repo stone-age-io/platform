@@ -1,4 +1,3 @@
-<!-- ui/src/components/common/MetadataSchemaCard.vue -->
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useToast } from '@/composables/useToast'
@@ -7,24 +6,12 @@ import SchemaBuilder from '@/components/things/SchemaBuilder.vue'
 import { inferSchema } from '@/utils/inferSchema'
 import { useEscapeKey } from '@/composables/useEscapeKey'
 
-// MetadataSchemaCard — authors a type's `metadata_schema`: the JSON Schema
-// describing what is tracked about each record of that type. Used identically by
-// the thing type and location type forms, which is why it is a component rather
-// than a copy in each.
+// Authors a thing or location type's `metadata_schema`, the JSON Schema that
+// MetadataEditor renders on the record form.
 //
-// Reuses SchemaBuilder + a JSON tab because this IS a JSON Schema document —
-// the only difference from any other is where it is stored and what reads it
-// (MetadataEditor on the Thing/Location form).
-//
-// "Infer from sample" came from MessageSchemaFormView, which was removed with
-// the message_schemas collection. It was never specific to that collection, and
-// pasting a sample beats hand-authoring a schema wherever one is written, so it
-// moved here rather than being deleted with its old home.
-//
-// Emits a normalised value: `{type: 'object', ...}` when there is at least one
-// property, or null when there are none. A builder with no properties yields
-// `{type: 'object', properties: {}}`, which is not a schema — storing null
-// instead is what makes the record form fall back to free-form key/value rows.
+// Emits `{type: 'object', ...}` when there is at least one property, else null.
+// Null, not an empty schema, is what makes the record form fall back to
+// free-form key/value rows.
 
 interface Props {
   modelValue: Record<string, any> | null
@@ -39,9 +26,8 @@ const emit = defineEmits<{
 
 const toast = useToast()
 
-// The builder only recognises a node that says `type: 'object'`, so an empty or
-// reset document has to carry it — otherwise a blank schema is reported as one
-// using $ref/anyOf/deep nesting, which is that check's catch-all branch.
+// The builder only recognises a node with `type: 'object'`; without it a blank
+// schema is reported as unsupported.
 const EMPTY_DOC = (): Record<string, any> => ({ type: 'object', properties: {} })
 
 const doc = ref<Record<string, any>>(EMPTY_DOC())
@@ -49,7 +35,6 @@ const activeTab = ref<'form' | 'json'>('form')
 const jsonText = ref('')
 const jsonError = ref('')
 
-// Infer-from-sample modal
 const showInferModal = ref(false)
 const sampleText = ref('')
 const sampleError = ref('')
@@ -58,9 +43,8 @@ let suppressNextWatch = false
 
 const fieldCount = computed(() => Object.keys(doc.value?.properties || {}).length)
 
-// Seed the local document from the prop. Only on a genuine external change —
-// our own emits are suppressed, or every keystroke in the builder would round
-// trip through the parent and reset the cursor.
+// Our own emits are suppressed, or every builder keystroke would round-trip
+// through the parent and reset the cursor.
 watch(
   () => props.modelValue,
   (v) => {
@@ -99,8 +83,7 @@ function onJsonBlur() {
       return
     }
     jsonError.value = ''
-    // Fill in an omitted top-level type. A schema that names its own wins the
-    // spread, so this only affects one pasted without it.
+    // Fills in an omitted top-level type; a schema's own `type` wins the spread.
     doc.value = { type: 'object', ...parsed }
   } catch (err: any) {
     jsonError.value = err.message
@@ -140,18 +123,16 @@ function applyInferred() {
     return
   }
 
-  // REPLACES the document rather than merging into it. A merge would leave
-  // properties from the previous schema that the sample says nothing about,
-  // which is a schema nobody authored; the builder is right there for adding
-  // fields back.
+  // Replaces rather than merges: a merge would keep old properties the sample
+  // says nothing about.
   doc.value = { type: 'object', ...inferSchema(parsed) }
   refreshJson()
   showInferModal.value = false
   toast.success('Fields inferred from sample — review before saving')
 }
 
-// Called by the parent before submit, so a JSON tab left mid-edit is committed
-// (or the save refused) rather than silently ignored.
+// The parent calls this before submit, so a JSON tab left mid-edit is committed
+// or the save is refused.
 function commit(): boolean {
   if (activeTab.value === 'json') {
     onJsonBlur()
@@ -165,8 +146,7 @@ function commit(): boolean {
 
 defineExpose({ commit })
 
-// Escape closes these; see useEscapeKey for why the dialogs do not get it
-// from the browser and which ones are deliberately left out.
+// See useEscapeKey for why dialogs need this.
 useEscapeKey(showInferModal, () => { showInferModal.value = false })
 </script>
 

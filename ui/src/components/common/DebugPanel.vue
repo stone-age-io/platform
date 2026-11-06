@@ -8,7 +8,6 @@
         </div>
         
         <div class="panel-body">
-          <!-- Connection Section -->
           <section class="debug-section">
             <h4>Connection</h4>
             <div class="stat-grid">
@@ -34,7 +33,6 @@
             <div v-if="natsStore.lastError" class="error-box">{{ natsStore.lastError }}</div>
           </section>
           
-          <!-- Subscription Manager Section -->
           <section class="debug-section">
             <h4>Subscription Manager</h4>
             <div class="stat-grid">
@@ -70,7 +68,6 @@
               </div>
             </div>
             
-            <!-- Subscription List -->
             <div v-if="subStats.subscriptions.length > 0" class="sub-list">
               <div class="sub-list-header">Active Subscriptions</div>
               <div 
@@ -91,7 +88,6 @@
             </div>
           </section>
           
-          <!-- Buffer Stats Section -->
           <section class="debug-section">
             <h4>Data Buffers</h4>
             <div class="stat-grid">
@@ -113,7 +109,6 @@
               </div>
             </div>
             
-            <!-- Memory Usage Bar -->
             <div class="memory-bar-container">
               <div class="memory-bar-label">Memory Usage: {{ dataStore.memoryUsagePercent.toFixed(1) }}%</div>
               <div class="memory-bar">
@@ -128,7 +123,6 @@
             <div v-if="dataStore.hasMemoryWarning" class="warning-box">{{ dataStore.memoryWarning }}</div>
           </section>
           
-          <!-- Dashboard Stats -->
           <section class="debug-section">
             <h4>Dashboard</h4>
             <div class="stat-grid">
@@ -153,7 +147,6 @@
             </div>
           </section>
           
-          <!-- Actions -->
           <section class="debug-section">
             <h4>Actions</h4>
             <div class="action-buttons">
@@ -192,7 +185,6 @@ const subManager = getSubscriptionManager()
 const subStats = ref(subManager.getStats())
 const storageSize = ref(dashboardStore.getStorageSize())
 
-// Refresh stats when panel opens
 watch(() => props.modelValue, (open) => {
   if (open) refreshStats()
 })

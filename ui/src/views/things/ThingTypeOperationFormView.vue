@@ -10,15 +10,10 @@ import BaseCard from '@/components/ui/BaseCard.vue'
 import RecordTimestamps from '@/components/common/RecordTimestamps.vue'
 import type { ThingTypeCapability, ThingTypeOperation } from '@/types/pocketbase'
 
-// An operation is a verb a Thing Type declares: a name, what kind of exchange it
-// is, and the subject suffix it lands on. It used to carry a relation to a
-// message_schemas record describing its payload; that collection was dropped
-// (nothing validated against it, and only the Publisher widget's payload form
-// ever read it), so this form is now one card rather than two.
-//
-// Rendered both as a route and embedded in the Thing Type form's quick-add
-// modal, which is why `embedded` suppresses the heading and swaps navigation for
-// events.
+// An operation is a verb a Thing Type declares: a name, the kind of exchange, and
+// the subject suffix it lands on. Also embedded in the Thing Type form's
+// quick-add modal, where `embedded` hides the heading and emits events instead
+// of navigating.
 
 const props = defineProps<{
   embedded?: boolean
@@ -40,13 +35,11 @@ const { confirm } = useConfirm()
 
 const deleting = ref(false)
 
-// Delete lives here rather than on the list row: a row button is aimed by
-// position, and position moves under sort, search and pagination. This form is
-// this collection's only detail surface, so it is also the only other place it
-// could go.
+// Delete lives here, not on the list row: a row button is aimed by position,
+// which moves under sort, search and pagination.
 async function handleDelete() {
-  // isEdit, not id: this view is ALSO embedded as a modal inside the thing-type
-  // form, where route.params.id is a thing_type id and belongs to nothing here.
+  // isEdit, not id: when embedded in the thing-type form, route.params.id is a
+  // thing_type id.
   if (!isEdit.value || !id) return
   const confirmed = await confirm({
     title: 'Delete Operation',
@@ -79,8 +72,6 @@ const form = ref({
 
 const availableCapabilities: ThingTypeCapability[] = ['publish', 'subscribe', 'request', 'reply']
 
-// Captured on load so the heading can show when this record was created and
-// last changed; undefined on the create path, where the list does not render.
 const createdAt = ref<string | undefined>()
 const updatedAt = ref<string | undefined>()
 
@@ -155,10 +146,8 @@ onMounted(async () => {
         </ul>
       </div>
       <h1 class="text-3xl font-bold">{{ isEdit ? 'Edit' : 'Create' }} Operation</h1>
-      <!-- thing_types, location_types and thing_type_operations are in the
-           activity feed (hooks/activity.go) but have no detail view, so this
-           form is their detail surface and the only place a feed entry can be
-           correlated against the record itself. -->
+      <!-- No detail view exists, so this form is where an activity-feed entry
+           (hooks/activity.go) is correlated against the record. -->
       <dl v-if="isEdit" class="grid grid-cols-2 gap-4 max-w-sm mt-3">
         <RecordTimestamps :created="createdAt" :updated="updatedAt" />
       </dl>
