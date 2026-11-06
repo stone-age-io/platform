@@ -98,7 +98,7 @@ import TypeBindingEditor from './TypeBindingEditor.vue'
 import { useAuthStore } from '@/stores/auth'
 import { pb } from '@/utils/pb'
 import { FLOORPLAN_LIMITS, type FloorPlanTypeBinding } from '@/types/dashboard'
-import type { FloorPlanContext } from '@/utils/floorplanBindings'
+import { isPlaced, type FloorPlanContext } from '@/utils/floorplanBindings'
 import type { WidgetFormState } from '@/types/config'
 import type { Location, Thing, ThingType } from '@/types/pocketbase'
 
@@ -124,12 +124,8 @@ const ctx = computed<FloorPlanContext>(() => ({
 }))
 
 /**
- * How many placed things each type has on the chosen plan.
- *
- * Shown on each binding so an author can tell a binding that matches nothing
- * from one that is simply not publishing yet. Those look identical on the plan
- * itself — both are markers that never change colour — and that is the whole
- * reason this count is here.
+ * Placed things per type, shown on each binding so an author can tell a
+ * binding that matches nothing from one whose devices are not publishing yet.
  */
 const matchCounts = computed(() => {
   const counts = new Map<string, number>()
@@ -196,10 +192,7 @@ async function loadThings(locationId: string) {
       filter: pb.filter('location = {:id}', { id: locationId }),
     })
     if (seq !== thingsSeq) return
-    placedThings.value = list.filter(t => {
-      const p = t.floorplan_position
-      return !!p && typeof p.x === 'number' && typeof p.y === 'number'
-    })
+    placedThings.value = list.filter(isPlaced)
   } catch {
     if (seq !== thingsSeq) return
     placedThings.value = []

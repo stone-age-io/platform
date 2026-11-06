@@ -1,22 +1,12 @@
 // ui/src/utils/floorplanBindings.ts
 //
-// Everything the floor plan widget decides about a binding, as pure functions.
+// Everything the floor plan widget decides about a binding, as pure functions,
+// so floorplanBindings.spec.ts can reach it (nothing renders in CI).
 //
-// WHY THIS FILE EXISTS SEPARATELY. Vitest here runs in node and nothing renders
-// in CI (ui/CLAUDE.md, Testing), so the only parts of this widget that can be
-// guarded are the ones that take data in and give data back. Those are exactly
-// the parts that are easy to get wrong: which subject one subscription has to
-// cover, which message belongs to which marker, and what a value means once it
-// arrives. Keeping them here rather than inside the component is what makes
-// floorplanBindings.spec.ts possible.
-//
-// THE SUBJECT CONTRACT IS NOT REIMPLEMENTED HERE. utils/subjectResolver.ts owns
-// it and PublisherWidget already uses it; this file only decides which of its
-// two resolutions a caller wants. `resolveRolePattern` turns {thing} into `*`
-// and gives the ONE subscription a binding needs; `resolveThing` gives the
-// concrete subject for one Thing, which is how a message out of that shared
-// buffer is matched back to a marker. Writing either substitution by hand here
-// would be a second copy of a contract documented elsewhere.
+// Subject substitution belongs to utils/subjectResolver.ts. This file only
+// picks which resolution a caller wants: `resolveRolePattern` wildcards
+// {thing} for the one subscription a binding needs, and `resolveThing` gives
+// one Thing's concrete subject, which is how a message is matched to a marker.
 
 import {
   join,
@@ -30,7 +20,7 @@ import type {
   StatusMapping,
 } from '@/types/dashboard'
 
-/** The fields of a Thing this file needs. Narrower than the record on purpose. */
+/** The fields of a Thing this file needs. */
 export interface BindableThing {
   id: string
   code?: string
@@ -46,11 +36,9 @@ export interface BindableType {
   subject_prefix?: string
 }
 
-/** What the widget knows that is the same for every marker on it. */
+/** What is the same for every marker on the plan. Codes, never ids. */
 export interface FloorPlanContext {
-  /** The organization CODE, never its id: ids for storage, codes for addressing. */
   orgCode: string
-  /** The location CODE, for a Thing Type whose prefix opts into {location}. */
   locationCode: string
 }
 
@@ -58,14 +46,7 @@ export interface FloorPlanContext {
 // Subjects and keys
 // ---------------------------------------------------------------------------
 
-/**
- * The subject template a binding resolves against, before any Thing is known.
- *
- * `join` supplies DEFAULT_PREFIX when the type has no `subject_prefix` of its
- * own, which is the same fallback the Thing detail view and the Publisher
- * widget show, so a binding configured here addresses what those pages say it
- * will.
- */
+/** The binding's subject template. `join` supplies the default prefix. */
 export function bindingTemplate(
   binding: FloorPlanTypeBinding,
   type: BindableType | undefined,
@@ -75,12 +56,8 @@ export function bindingTemplate(
 }
 
 /**
- * The one subscription that covers every Thing of this type.
- *
- * This is the whole reason a floor plan can carry 200 markers. `MapWidget`
- * subscribes per item, which is right for ten markers and wrong here: sixty
- * doors with two bindings each would be 120 subscriptions, and the per-type
- * config makes sixty doors the easy case rather than the hard one.
+ * The one subscription that covers every Thing of this type. One per binding
+ * rather than one per marker is what makes a 200-marker cap affordable.
  */
 export function bindingSubscriptionSubject(
   binding: FloorPlanTypeBinding,
@@ -108,7 +85,7 @@ export function bindingSubjectForThing(
   return resolveThing(tmpl, thingContext(type, thing, ctx))
 }
 
-/** The KV key prefix one watcher needs to cover every Thing of this type. */
+/** The KV key pattern one watcher needs to cover every Thing of this type. */
 export function bindingKvPattern(
   binding: FloorPlanTypeBinding,
   type: BindableType | undefined,
@@ -136,12 +113,8 @@ export function bindingKvKeyForThing(
 }
 
 /**
- * A Thing's own context for substitution.
- *
- * `thing.code ?? thing.id` matches what the Publisher widget does: a Thing
- * created before codes existed still addresses something rather than leaving
- * `{thing}` literal in a subject nobody can subscribe to. The code is the right
- * answer whenever there is one, because that is what the device publishes under.
+ * A Thing's substitution context. Falls back to the id for a Thing with no
+ * code, as the Publisher widget does, so {thing} never stays literal.
  */
 export function thingContext(
   type: BindableType | undefined,
@@ -161,22 +134,15 @@ export function thingContext(
 // ---------------------------------------------------------------------------
 
 /**
- * The string fields on a marker item that address something and so need
- * resolving.
- *
- * Every config object with a subject or a key has to be listed here. A new
- * item type whose config is left out fails SILENTLY and uniformly: the row
- * subscribes to a literal `{thing}`, which is a legal subject nothing ever
- * publishes on, so it renders as a row that is simply always empty.
- * floorplanBindings.spec.ts asserts each one.
+ * Resolve every addressing field on a marker item. A config left out of this
+ * list fails silently (it subscribes to a literal `{thing}`), so the spec
+ * asserts each one.
  */
 function resolveItem(item: MapMarkerItem, ctx: ThingContext): MapMarkerItem {
   const r = (v: string | undefined) => (v ? resolveThing(v, ctx) : v)
   const out: MapMarkerItem = { ...item }
 
   if (out.subject) out.subject = resolveThing(out.subject, ctx)
-  // The payload too: a command body that names the device it is for is the
-  // ordinary case, and leaving it literal would publish `{thing}` to a device.
   if (out.payload) out.payload = resolveThing(out.payload, ctx)
 
   if (out.textConfig) {
@@ -219,13 +185,9 @@ function resolveItem(item: MapMarkerItem, ctx: ThingContext): MapMarkerItem {
 }
 
 /**
- * A binding's items, addressed at one Thing.
- *
- * The item id is suffixed with the Thing's id. Every MarkerItem* component
- * subscribes under an id derived from `item.id` (`marker-text-${item.id}`), so
- * leaving the binding's own id on sixty copies of one item would have sixty
- * doors share one subscription and one buffer — every door showing whichever
- * one published last.
+ * A binding's items, addressed at one Thing. The id gets the Thing's id
+ * appended: item components subscribe under `item.id`, so sixty doors sharing
+ * one id would share one buffer.
  */
 export function resolveItemsForThing(
   items: MapMarkerItem[],
@@ -255,15 +217,8 @@ export interface MarkerState {
 }
 
 /**
- * The colour a marker falls back to with nothing to show.
- *
- * A LITERAL, not a theme token, and that is the whole point: `var(--muted)` is
- * near-white at half opacity on the dark theme, which is invisible on the white
- * sheet of an architectural drawing. A marker sits on an image the operator
- * uploaded, so nothing in the console's palette predicts its backdrop. This is
- * a mid neutral that reads on white paper and on a dark plan alike, and the
- * glyph's own halo and hairline (components/widgets/floorplan/markerIcon.ts)
- * carry the contrast the colour cannot.
+ * The colour for "nothing to show". A literal, not a theme token: a marker
+ * sits on an uploaded image, not on the console (see markerIcon.ts).
  */
 export const NEUTRAL_MARKER = '#8b9099'
 
@@ -283,12 +238,9 @@ export function displayValue(value: unknown): string {
 }
 
 /**
- * Value plus arrival time to a marker's colour and label.
- *
- * Staleness is checked FIRST and that order is the point: a camera that stopped
- * publishing an hour ago still has `online` as its last value, and a plan that
- * keeps drawing it green is worse than one that draws nothing. Same reason
- * StatusWidget checks in this order, and the thresholds are its fields.
+ * Value plus arrival time to a marker's colour and label, resolved the same
+ * way StatusWidget does. Staleness is checked before the value: a device that
+ * went quiet an hour ago must not keep drawing its last colour.
  */
 export function markerStateFor(
   binding: FloorPlanTypeBinding | undefined,
@@ -296,17 +248,12 @@ export function markerStateFor(
   timestamp: number | null,
   now: number,
 ): MarkerState {
-  if (!binding) return UNKNOWN_STATE
+  if (!binding || timestamp === null) return UNKNOWN_STATE
 
   const showStale = binding.showStale ?? true
   const threshold = binding.stalenessThreshold || 60_000
-  const stale = timestamp === null || (showStale && now - timestamp > threshold)
-
-  if (timestamp === null) return UNKNOWN_STATE
-
-  if (stale) {
+  if (showStale && now - timestamp > threshold) {
     return {
-      // Same reason as NEUTRAL_MARKER: a stale marker still has to be seen.
       color: binding.staleColor || NEUTRAL_MARKER,
       label: binding.staleLabel || 'Stale',
       blink: false,
@@ -316,7 +263,6 @@ export function markerStateFor(
 
   const valStr = displayValue(value)
   const mappings: StatusMapping[] = binding.mappings || []
-  // Exact first, then the catch-all, exactly as StatusWidget resolves it.
   const match = mappings.find(m => m.value === valStr) || mappings.find(m => m.value === '*')
 
   if (match) {
@@ -337,12 +283,8 @@ export function markerStateFor(
 }
 
 /**
- * Which binding applies to a Thing. First match wins.
- *
- * Two bindings on one Thing Type is a configuration mistake rather than a
- * merge: the second would fight the first for the marker's colour on every
- * message. The config panel is where that is prevented; this is only what
- * happens if it arrives anyway in an imported dashboard.
+ * Which binding applies to a Thing. First match wins: two bindings on one type
+ * is a config mistake (the editor prevents it), not something to merge.
  */
 export function bindingForThing(
   bindings: FloorPlanTypeBinding[],
@@ -352,11 +294,10 @@ export function bindingForThing(
   return bindings.find(b => b.thingTypeId === thing.type)
 }
 
-/** The Things that can be drawn: placed, and within the cap. */
-export function placedThings<T extends BindableThing>(things: T[], max: number): T[] {
-  const placed = things.filter(t => {
-    const p = t.floorplan_position
-    return !!p && typeof p.x === 'number' && typeof p.y === 'number'
-  })
-  return placed.slice(0, max)
+/** True when a Thing has a complete position on its location's floor plan. */
+export function isPlaced<T extends BindableThing>(
+  t: T,
+): t is T & { floorplan_position: { x: number; y: number } } {
+  const p = t.floorplan_position
+  return !!p && typeof p.x === 'number' && typeof p.y === 'number'
 }

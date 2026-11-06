@@ -1,24 +1,9 @@
 // ui/src/utils/leafletIcon.ts
 //
-// The ONE place `L.divIcon` is called.
-//
-// `divIcon`'s `html` option is the same sink as a string tooltip: Leaflet
-// assigns it with `div.innerHTML = options.html` (DivIcon.createIcon). It is
-// banned everywhere else by leafletContentSinks.spec.ts, for the reason that
-// file records -- member-named locations once ran script in the session of any
-// owner who opened the map.
-//
-// Leaflet 1.9 takes an ELEMENT there as well as a string:
-//
-//     if (options.html instanceof Element) { empty(div); div.appendChild(options.html) }
-//
-// so a caller-built element skips innerHTML altogether. That is the only form
-// this helper accepts, and it is why the guard allows this file and no other:
-// the same shape as `textElement()` being the sanctioned argument for tooltips.
-//
-// A caller builds its element with createElement / createElementNS and sets any
-// text with textContent. Never assemble markup as a string and parse it back --
-// that is the sink again with extra steps.
+// The one place `L.divIcon` is called. Its `html` option is an innerHTML sink
+// for a string, but Leaflet 1.9 appends an Element instead, so this helper only
+// takes an element. leafletContentSinks.spec.ts bans divIcon everywhere else.
+// Build the element with createElement / createElementNS and textContent.
 
 import L from 'leaflet'
 
@@ -32,8 +17,7 @@ export interface ElementIconOptions {
 
 export function elementIcon(el: HTMLElement | SVGElement, opts: ElementIconOptions): L.DivIcon {
   return L.divIcon({
-    // Typed as string by @types/leaflet, which predates the Element branch
-    // above. The cast is to the type definition, not past a check.
+    // @types/leaflet types html as string only; Leaflet itself accepts an Element.
     html: el as unknown as string,
     className: opts.className,
     iconSize: opts.iconSize,

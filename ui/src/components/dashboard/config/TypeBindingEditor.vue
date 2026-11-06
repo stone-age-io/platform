@@ -204,18 +204,19 @@ import {
   type MapMarkerItem,
   type StatusMapping,
 } from '@/types/dashboard'
-import { bindingSubscriptionSubject, type FloorPlanContext } from '@/utils/floorplanBindings'
-import { hasUnresolved, join, resolveThing } from '@/utils/subjectResolver'
+import {
+  bindingKvKeyForThing,
+  bindingKvPattern,
+  bindingSubjectForThing,
+  bindingSubscriptionSubject,
+  type FloorPlanContext,
+} from '@/utils/floorplanBindings'
+import { hasUnresolved } from '@/utils/subjectResolver'
 import type { ThingType } from '@/types/pocketbase'
 
 /**
- * One per-Thing-Type binding.
- *
- * The binding object is MUTATED IN PLACE rather than emitted back. It lives
- * inside the widget form state the config panel already holds by reference, so
- * an emit would be a copy the parent has to splice back in — which is what
- * MarkerEditor does for markers, and the reason that file carries three
- * array-copying helpers this one does not need.
+ * One per-Thing-Type binding. The binding is mutated in place: it lives in the
+ * form state the config panel already holds by reference.
  */
 
 const props = defineProps<{
@@ -314,51 +315,40 @@ const stalenessThreshold = computed<number>({
 
 // --- preview ----------------------------------------------------------------
 
+/** A stand-in Thing for the preview's example line. */
+const EXAMPLE_THING = { id: 'example', code: 'THING-01' }
+
 /**
- * What this binding will actually watch.
- *
- * Worth the twenty lines: every way of getting a binding wrong — a type with no
- * subject prefix, an organization with no code, a key template missing
- * {thing} — fails the same silent way at runtime, as a plan whose markers never
- * change colour. Here it is visible before saving.
+ * What this binding will actually watch, through the same helpers the widget
+ * uses. A wrong binding otherwise shows up only as markers that never change.
  */
 const preview = computed(() => {
   const src = props.binding.stateSource
   if (!src) return null
+  const b = props.binding
+  const type = thingType.value
 
+  let pattern: string | null
+  let example: string | null
   if (src.mode === 'subject') {
-    const pattern = bindingSubscriptionSubject(props.binding, thingType.value, props.ctx)
-    if (!pattern) return null
-    const example = resolveThing(join(thingType.value?.subject_prefix, src.subjectSuffix || ''), {
-      org: props.ctx.orgCode,
-      location: props.ctx.locationCode,
-      thing: 'THING-01',
-      thingTypeCode: thingType.value?.code,
-    })
-    return { pattern, example, unresolved: unresolvedNote(pattern) }
+    pattern = bindingSubscriptionSubject(b, type, props.ctx)
+    example = bindingSubjectForThing(b, type, EXAMPLE_THING, props.ctx)
+  } else {
+    const key = bindingKvPattern(b, type, props.ctx)
+    const exampleKey = bindingKvKeyForThing(b, type, EXAMPLE_THING, props.ctx)
+    pattern = key && `${src.kvBucket} / ${key}`
+    example = exampleKey && `${src.kvBucket} / ${exampleKey}`
   }
+  if (!pattern) return null
 
-  if (!src.kvBucket || !src.kvKeyTemplate) return null
-  const pattern = `${src.kvBucket} / ${src.kvKeyTemplate.split('{thing}').join('*')}`
-  const example = `${src.kvBucket} / ${resolveThing(src.kvKeyTemplate, {
-    org: props.ctx.orgCode,
-    location: props.ctx.locationCode,
-    thing: 'THING-01',
-    thingTypeCode: thingType.value?.code,
-  })}`
-  return {
-    pattern,
-    example,
-    unresolved: src.kvKeyTemplate.includes('{thing}')
-      ? ''
-      : 'This key has no {thing}, so every marker reads the same value.',
+  let unresolved = ''
+  if (src.mode === 'kv' && !src.kvKeyTemplate?.includes('{thing}')) {
+    unresolved = 'This key has no {thing}, so every marker reads the same value.'
+  } else if (hasUnresolved(pattern)) {
+    unresolved = 'Some variables could not be filled in — check the organization and type have codes.'
   }
+  return { pattern, example, unresolved }
 })
-
-function unresolvedNote(subject: string): string {
-  if (!hasUnresolved(subject)) return ''
-  return 'Some variables could not be filled in — check the organization and type have codes.'
-}
 
 // --- items ------------------------------------------------------------------
 

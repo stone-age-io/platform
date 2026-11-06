@@ -3,6 +3,7 @@ import { Wrench } from '@lucide/vue'
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useFloorPlan } from '@/composables/useFloorPlan'
 import { fileUrl } from '@/utils/fileToken'
+import { isPlaced } from '@/utils/floorplanBindings'
 import type { Thing, Location } from '@/types/pocketbase'
 import ThingMapDrawer from '@/components/things/ThingMapDrawer.vue'
 import FloorPlanPositionDrawer from '@/components/map/FloorPlanPositionDrawer.vue'
@@ -25,11 +26,6 @@ const positionMode = ref(false)        // markers draggable; persists across dra
 const showPositionDrawer = ref(false)  // the positioning panel
 const selectedThingId = ref<string | null>(null) // the detail panel (view mode)
 const isMobile = ref(false)
-
-function isPlaced(t: Thing): boolean {
-  const p = t.floorplan_position
-  return !!p && typeof p.x === 'number' && typeof p.y === 'number'
-}
 
 const placedThings = computed(() => props.things.filter(isPlaced))
 const unmappedThings = computed(() => props.things.filter(t => !isPlaced(t)))

@@ -505,11 +505,8 @@ export interface MapWidgetConfig {
 
 // --- Floor Plan Widget ---
 //
-// Markers are INVENTORY: the Things in `locationId` whose `floorplan_position`
-// is set. The widget stores no positions of its own, so the Location detail
-// view stays the one place a device's position is recorded and a dashboard
-// cannot drift from the floor. It is also why this widget needs no placement
-// editor. plans/floorplan-widget.md has the reasoning.
+// Markers are inventory: the Things in `locationId` with a `floorplan_position`.
+// The widget stores no positions. plans/floorplan-widget.md has the reasoning.
 
 export type FloorPlanStateMode = 'subject' | 'kv'
 
@@ -526,16 +523,9 @@ export interface FloorPlanStateSource {
 }
 
 /**
- * One binding, applied to every Thing of a Thing Type in the location.
- *
- * PER TYPE, NOT PER THING. Sixty doors is sixty hand-written subjects and
- * nobody will do that twice, so the widget would go unused at exactly the size
- * it exists for. The template carries the reserved variables and is resolved
- * against each Thing by utils/floorplanBindings.ts, which is also what lets one
- * subscription cover every Thing of the type instead of one per marker.
- *
- * The state fields deliberately mirror StatusWidgetConfig rather than inventing
- * a second value-to-colour vocabulary.
+ * One binding, applied to every Thing of a Thing Type in the location, so sixty
+ * doors are configured once. Templates are resolved per Thing by
+ * utils/floorplanBindings.ts. The state fields mirror StatusWidgetConfig.
  */
 export interface FloorPlanTypeBinding {
   id: string
@@ -561,11 +551,8 @@ export interface FloorPlanWidgetConfig {
 }
 
 export const FLOORPLAN_LIMITS = {
-  // MAP_LIMITS does not transfer: it is sized for hand-placed markers, and
-  // these are inventory. A real building fits inside 200; a mis-scoped
-  // location does not get to open thousands of watchers. The per-binding
-  // subscription (one per template, not one per marker) is what makes a cap
-  // this size affordable at all -- per-item it would have to be ~30.
+  // Larger than MAP_LIMITS: these markers are inventory, and one subscription
+  // per binding (not per marker) keeps 200 affordable.
   MAX_MARKERS: 200,
   MAX_BINDINGS: 10,
   MAX_ITEMS_PER_BINDING: 10,

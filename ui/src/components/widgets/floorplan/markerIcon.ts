@@ -3,52 +3,22 @@ import type L from 'leaflet'
 import { elementIcon } from '@/utils/leafletIcon'
 
 /**
- * The floor plan marker: one shape, coloured by live state.
+ * The floor plan marker: a dot coloured by live state, centred on its position.
  *
- * THE BACKDROP IS NOT THE APP. This is the mistake the first version made and
- * the reason markers were invisible: it styled the glyph with theme tokens, so
- * an unbound marker drew in `var(--muted)` -- which on the dark theme is
- * near-white at half opacity. Perfectly legible against the console's own
- * surface, and completely invisible on the white sheet of an architectural
- * drawing, which is what a floor plan almost always is.
+ * The backdrop is the operator's uploaded image, not the console, so no theme
+ * colour can be trusted to show up on it. The glyph carries its own contrast
+ * instead: a solid body in the state colour (`currentColor`), a white ring so a
+ * dark colour separates on a dark plan, and a dark hairline so a light colour
+ * separates on white paper. Both rings are constants.
  *
- * A marker sits on an image the operator uploaded. Nothing about the theme
- * predicts what colour that image is, and the state colours an operator picks
- * are chosen against the UI too. So the glyph carries its own contrast and does
- * not depend on the state colour being visible at all:
- *
- *   - a SOLID body in the state colour (not a 22% tint, which washed out)
- *   - a white ring around it, so a dark state colour on a dark plan separates
- *   - a dark hairline outside that, so a light state colour on white paper does
- *
- * Both rings are constants, never `currentColor`. Whatever colour the state
- * resolves to -- including a neutral grey for "no data" -- the marker is a
- * visible object on any background. The same reason Leaflet's own pin is a
- * coloured body with a dark outline and a shadow.
- *
- * WHY NOT LEAFLET'S DEFAULT PIN. It is a raster PNG fetched from unpkg
- * (utils/leafletIcons.ts): it cannot be tinted, so it cannot show state at all,
- * and a `dashboard` appliance screen should not need a CDN round trip to draw
- * its own markers. Everything here is inline.
- *
- * WHY A DOT AND NOT A PIN. A pin points at a spot from above it, which is right
- * on a map where the ground is what matters. On a plan the marker IS the
- * device, so it is centred on its own position -- hence `iconAnchor` at the
- * middle rather than at a tip.
- *
- * WHY IT IS BUILT FROM NODES. `divIcon`'s `html` is an innerHTML sink, banned
- * outside utils/leafletIcon.ts by leafletContentSinks.spec.ts. Passing an
- * element skips innerHTML entirely. The markup here is a constant with nothing
- * interpolated into it, so a string would have been safe TODAY -- and that is
- * exactly the argument whoever later wants a device name in the glyph will
- * make. There is no string to add it to. A label belongs in the tooltip, which
- * goes through utils/leafletText.ts.
+ * Not Leaflet's default pin: that is a PNG from unpkg and cannot be tinted.
+ * Built from DOM nodes, so there is no markup string to grow an injection in;
+ * a label belongs in the tooltip.
  */
 
 const SIZE = 30
 const NS = 'http://www.w3.org/2000/svg'
 
-/** The halo and hairline are fixed: see the note above. */
 const RING_LIGHT = 'rgba(255, 255, 255, 0.95)'
 const RING_DARK = 'rgba(17, 17, 17, 0.55)'
 

@@ -7,7 +7,7 @@ import {
   bindingSubscriptionSubject,
   displayValue,
   markerStateFor,
-  placedThings,
+  isPlaced,
   resolveItemsForThing,
   type BindableThing,
   type BindableType,
@@ -311,22 +311,14 @@ describe('bindingForThing', () => {
   })
 })
 
-describe('placedThings', () => {
-  const placed = { id: 'a', floorplan_position: { x: 1, y: 2 } }
-  const unplaced = { id: 'b' }
-  const halfPlaced = { id: 'c', floorplan_position: { x: 1 } as any }
-
-  it('keeps only things with a complete position', () => {
-    expect(placedThings([placed, unplaced, halfPlaced], 10).map(t => t.id)).toEqual(['a'])
+describe('isPlaced', () => {
+  it('needs both coordinates', () => {
+    expect(isPlaced({ id: 'a', floorplan_position: { x: 1, y: 2 } })).toBe(true)
+    expect(isPlaced({ id: 'b' })).toBe(false)
+    expect(isPlaced({ id: 'c', floorplan_position: { x: 1 } as any })).toBe(false)
   })
 
   it('accepts a zero coordinate, which is the top-left corner and not absence', () => {
-    const origin = { id: 'z', floorplan_position: { x: 0, y: 0 } }
-    expect(placedThings([origin], 10)).toHaveLength(1)
-  })
-
-  it('caps at the limit', () => {
-    const many = Array.from({ length: 5 }, (_, i) => ({ id: `t${i}`, floorplan_position: { x: i, y: i } }))
-    expect(placedThings(many, 3)).toHaveLength(3)
+    expect(isPlaced({ id: 'z', floorplan_position: { x: 0, y: 0 } })).toBe(true)
   })
 })

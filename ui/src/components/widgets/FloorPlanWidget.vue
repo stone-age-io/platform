@@ -2,7 +2,7 @@
   <div class="floorplan-widget">
     <div :id="containerId" class="floorplan-container" @click="handleBackgroundClick" />
 
-    <!-- One state source per binding. Renderless; see BindingState.vue. -->
+    <!-- One renderless state source per binding. -->
     <BindingState
       v-for="src in stateSources"
       :key="src.bindingId"
@@ -26,10 +26,8 @@
       <span class="fp-overlay-text">{{ problem }}</span>
     </div>
 
-    <!-- Fit, same affordance the map widget offers. A plan can be panned and
-         zoomed, and on a small dashboard tile it is easy to lose the sheet. -->
     <div v-if="ready" class="fp-controls">
-      <button class="fp-control-btn" title="Fit the whole plan" aria-label="Fit the whole plan" @click="handleFit">
+      <button class="fp-control-btn" title="Fit the whole plan" aria-label="Fit the whole plan" @click="fitToImage">
         <Maximize :size="15" aria-hidden="true" />
       </button>
     </div>
@@ -40,7 +38,7 @@
     </div>
 
     <div v-if="ready && truncated" class="fp-hint fp-hint-left">
-      <span>Showing {{ markers.length }} of {{ placedCount }}</span>
+      <span>Showing {{ markers.length }} of {{ placed.length }}</span>
     </div>
 
     <MarkerDetailPanel
@@ -58,7 +56,6 @@ import { Maximize, MapPin, TriangleAlert } from '@lucide/vue'
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useFloorPlan } from '@/composables/useFloorPlan'
 import { useAuthStore } from '@/stores/auth'
-import { useUIStore } from '@/stores/ui'
 import { pb } from '@/utils/pb'
 import { fileUrl } from '@/utils/fileToken'
 import { floorPlanMarkerIcon } from './floorplan/markerIcon'
@@ -70,8 +67,8 @@ import {
   bindingKvPattern,
   bindingSubjectForThing,
   bindingSubscriptionSubject,
+  isPlaced,
   markerStateFor,
-  placedThings,
   resolveItemsForThing,
   UNKNOWN_STATE,
   type FloorPlanContext,
@@ -82,14 +79,11 @@ import { FLOORPLAN_LIMITS, type MapMarker, type WidgetConfigOf } from '@/types/d
 import type { Location, Thing, ThingType } from '@/types/pocketbase'
 
 /**
- * A Location's floor plan as a dashboard widget, with live state on the Things
- * placed on it.
+ * A Location's floor plan with live state on the Things placed on it.
  *
- * WHAT IT DOES NOT STORE: positions. The markers are the Things in
- * `locationId` whose `floorplan_position` is set, and that field is maintained
- * on the Location detail view. One copy of where a device is, so a dashboard
- * cannot drift from the floor -- and no placement editor to build here.
- * plans/floorplan-widget.md has the rest of the reasoning.
+ * The widget stores no positions: markers are the Things in `locationId` whose
+ * `floorplan_position` is set on the Location page. plans/floorplan-widget.md
+ * has the reasoning.
  */
 
 const props = withDefaults(defineProps<{
@@ -98,7 +92,6 @@ const props = withDefaults(defineProps<{
 }>(), { isFullscreen: false })
 
 const authStore = useAuthStore()
-const uiStore = useUIStore()
 const {
   initFloorPlan,
   renderMarkers,
@@ -131,35 +124,20 @@ const selectedThingId = ref<string | null>(null)
 /** Samples per binding, keyed by resolved subject or KV key. */
 const samplesByBinding = ref<Map<string, Map<string, StateSample>>>(new Map())
 
-/**
- * A clock, so staleness is reached without a message arriving.
- *
- * Nothing else would move: a device that stops publishing produces no event, so
- * a marker computed only from incoming data keeps its last colour forever --
- * the exact failure the stale branch exists to prevent.
- */
+/** Ticks so a device that goes quiet turns stale without a message arriving. */
 const now = ref(Date.now())
 let clock: number | null = null
 
 const ctx = computed<FloorPlanContext>(() => ({
-  // Codes, never ids: ids are for storage, codes for addressing. An org with no
-  // code leaves {org} literal in the subject, visibly unresolved, rather than
-  // inventing a token nothing publishes under.
   orgCode: authStore.currentOrg?.code || '',
   locationCode: location.value?.code || '',
 }))
 
 // --- markers ----------------------------------------------------------------
 
-const placed = computed(() =>
-  things.value.filter(t => {
-    const p = t.floorplan_position
-    return !!p && typeof p.x === 'number' && typeof p.y === 'number'
-  })
-)
-const placedCount = computed(() => placed.value.length)
-const markers = computed(() => placedThings(things.value, FLOORPLAN_LIMITS.MAX_MARKERS))
-const truncated = computed(() => placedCount.value > markers.value.length)
+const placed = computed(() => things.value.filter(isPlaced))
+const markers = computed(() => placed.value.slice(0, FLOORPLAN_LIMITS.MAX_MARKERS))
+const truncated = computed(() => placed.value.length > markers.value.length)
 
 function typeOf(thing: Thing): ThingType | undefined {
   return thing.type ? typesById.value.get(thing.type) : undefined
@@ -215,8 +193,7 @@ const stateSources = computed<StateSourceProps[]>(() => {
 })
 
 function onSamples(bindingId: string, samples: Map<string, StateSample>) {
-  // Replaced rather than mutated: a Map mutated in place is the same object and
-  // the computed below would not re-run.
+  // Replace the Map rather than mutate it, so the computed below re-runs.
   const next = new Map(samplesByBinding.value)
   next.set(bindingId, samples)
   samplesByBinding.value = next
@@ -234,35 +211,26 @@ const markerStates = computed<Map<string, MarkerState>>(() => {
       ? bindingSubjectForThing(binding, type, thing, ctx.value)
       : bindingKvKeyForThing(binding, type, thing, ctx.value)
     const sample = key ? samplesByBinding.value.get(binding.id)?.get(key) : undefined
-    out.set(
-      thing.id,
-      sample
-        ? markerStateFor(binding, sample.value, sample.timestamp, t)
-        : markerStateFor(binding, null, null, t)
-    )
+    out.set(thing.id, markerStateFor(binding, sample?.value ?? null, sample?.timestamp ?? null, t))
   }
   return out
 })
 
 // --- the open panel ---------------------------------------------------------
 
-/**
- * The selected Thing as a MarkerDetailPanel marker.
- *
- * Built here rather than stored: the panel takes the map widget's `MapMarker`
- * shape unchanged, which is what lets all four item components and their editor
- * move over untouched. `lat`/`lon` are zero and the panel's footer no longer
- * prints them for a floor plan -- see MarkerDetailPanel.
- */
+const selectedThing = computed(
+  () => visibleMarkers.value.find(t => t.id === selectedThingId.value) || null
+)
+
+/** The selected Thing in the map widget's `MapMarker` shape, so the panel is reused as is. */
 const selectedMarker = computed<MapMarker | null>(() => {
-  const thing = visibleMarkers.value.find(t => t.id === selectedThingId.value)
+  const thing = selectedThing.value
   if (!thing) return null
   const binding = bindingForThing(bindings.value, thing)
-  const type = typeOf(thing)
   const items = binding
     ? resolveItemsForThing(
         binding.items.slice(0, FLOORPLAN_LIMITS.MAX_ITEMS_PER_BINDING),
-        type,
+        typeOf(thing),
         thing,
         ctx.value
       )
@@ -276,18 +244,13 @@ const selectedMarker = computed<MapMarker | null>(() => {
   }
 })
 
-/**
- * The panel's footer line. A floor plan position is a pixel offset into an
- * image, which tells a reader nothing, so the Thing's code goes there instead:
- * it is what the label on the device says and what its subjects are built from.
- */
+/** The panel footer shows the Thing's code: a pixel position means nothing to a reader. */
 const selectedFooter = computed(() => {
-  const thing = visibleMarkers.value.find(t => t.id === selectedThingId.value)
+  const thing = selectedThing.value
   if (!thing) return null
-  const type = thing ? typeOf(thing) : undefined
   return thing.code
     ? { label: 'Code:', value: thing.code }
-    : { label: 'Type:', value: type?.name || 'Unknown' }
+    : { label: 'Type:', value: typeOf(thing)?.name || 'Unknown' }
 })
 
 // --- loading ----------------------------------------------------------------
@@ -337,12 +300,7 @@ async function load() {
 }
 
 async function drawPlan(loc: Location, seq: number) {
-  // `locations.floorplan` is a PROTECTED file field (feature 18), so its URL
-  // carries a short-lived file token. Resolved HERE, at every init, and never
-  // cached across one: the token lasts 180s and is deliberately non-reactive,
-  // so a widget that re-initialised an hour later with a held URL would get a
-  // 404 with nothing in the console. fileUrl() mints a fresh one; the bug is
-  // keeping the string.
+  // Protected file: mint a fresh token URL on every init, never keep one.
   const imageUrl = await fileUrl({ record: loc, filename: loc.floorplan! })
   if (seq !== loadSeq || unmounted) return
   if (!imageUrl) {
@@ -363,12 +321,8 @@ async function drawPlan(loc: Location, seq: number) {
 }
 
 /**
- * A widget in a grid cell has no height when it mounts, and Leaflet sizes
- * itself from its container at init. Retry until it has one. The `unmounted`
- * guard is why this is a named loop and not a plain setTimeout: the widget can
- * be deleted while a retry is pending, and building a map after cleanup() has
- * run leaks it. Copied from MapWidget, where every line of it is a bug somebody
- * already found.
+ * A grid cell has no height when it mounts and Leaflet sizes itself at init,
+ * so retry until it has one. Same loop as MapWidget.
  */
 function initWhenSized(imageUrl: string, w: number, h: number, seq: number, attempts = 0) {
   if (unmounted || seq !== loadSeq) return
@@ -402,13 +356,7 @@ function tooltipFor(thing: Thing): string {
   return state ? `${name} — ${state.label}` : name
 }
 
-/**
- * Colour and label every marker from the current states.
- *
- * The label is refreshed alongside the colour rather than only at render time:
- * a tooltip built when the layer was drawn keeps naming the state the device
- * had then, which is a word that disagrees with the colour next to it.
- */
+/** Colour and tooltip for every marker, so the hover text matches the colour. */
 function paint() {
   if (!ready.value) return
   for (const thing of visibleMarkers.value) {
@@ -447,21 +395,16 @@ function handleBackgroundClick(event: MouseEvent) {
   }
 }
 
-function handleFit() {
-  fitToImage()
-}
-
 function checkMobile() {
   isMobile.value = window.innerWidth < 768
 }
 
 // --- watchers ---------------------------------------------------------------
 
-// Compared BY VALUE, never deeply. A deep watch here fires whenever the config
-// object is replaced -- a shared dashboard's KV revision arriving, say -- and
-// tears the map down mid-load for nothing. MapWidget carries the same note.
+// Only a new location re-initialises the map. Watched by value, not deeply: a
+// replaced config object (a shared dashboard's KV revision) must not tear it down.
 watch(
-  () => JSON.stringify([cfg.value?.locationId, cfg.value?.showUnbound]),
+  () => cfg.value?.locationId,
   () => {
     cleanup()
     ready.value = false
@@ -470,14 +413,8 @@ watch(
   }
 )
 
-// Bindings change what is subscribed and painted, not what is drawn underneath,
-// so they repaint rather than re-initialise.
-watch(() => JSON.stringify(bindings.value), () => paint())
-
-watch(markerStates, () => paint(), { deep: true })
+watch(markerStates, () => paint())
 watch(visibleMarkers, () => draw())
-// The basemap is an image, so a theme change repaints only the markers.
-watch(() => uiStore.theme, () => paint())
 
 let resizeObserver: ResizeObserver | null = null
 let unmounted = false
@@ -522,10 +459,8 @@ onUnmounted(() => {
 .floorplan-container :deep(.leaflet-top),
 .floorplan-container :deep(.leaflet-bottom) { z-index: 1 !important; }
 
-/* The marker's own colour is an inline style set per state; everything here is
-   shape and motion, so nothing has to know the palette. The fallback is a
-   literal rather than a theme token for the reason NEUTRAL_MARKER gives: this
-   glyph sits on the operator's image, not on the console's surface. */
+/* The state colour is an inline style. The fallback is a literal, as with
+   NEUTRAL_MARKER, because the marker sits on the uploaded image. */
 .floorplan-container :deep(.fp-marker) {
   color: #8b9099;
   transition: color 0.3s ease;
@@ -542,7 +477,6 @@ onUnmounted(() => {
   61%, 100% { opacity: 0.25; }
 }
 
-/* A screen somebody left running should not strobe. */
 @media (prefers-reduced-motion: reduce) {
   .floorplan-container :deep(.fp-state-blink) { animation: none; opacity: 1; }
 }

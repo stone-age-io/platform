@@ -1,10 +1,6 @@
 <template>
-  <!--
-    Renderless. It exists to own a subscription with a component's lifetime,
-    which is the only way to open one per binding when the number of bindings is
-    reactive: a composable cannot be called in a loop, and `useNatsKvWatcher` is
-    a composable. The same shape MarkerItemText uses, one level up.
-  -->
+  <!-- Renderless: owns one binding's subscription for the component's lifetime,
+       since a composable cannot be called in a loop. -->
   <span class="hidden" aria-hidden="true" />
 </template>
 
@@ -21,19 +17,9 @@ import type { DataSourceConfig } from '@/types/dashboard'
 import type { StateSample } from '@/utils/floorplanBindings'
 
 /**
- * ONE subscription for every Thing of a Thing Type.
- *
- * This is the decision the floor plan widget stands on. `MapWidget` subscribes
- * per item, which is right for ten hand-placed markers; here the markers are
- * inventory and the bindings are per type, so sixty doors with two bindings
- * each would be 120 subscriptions and the easy configuration would be the
- * expensive one. Instead the parent resolves the binding's template with
- * `{thing}` wildcarded to `*` and hands it here, and each marker picks its own
- * messages out of the one buffer by its own resolved subject.
- *
- * The component emits a map keyed by subject (or KV key) rather than by Thing.
- * It does not know which Things exist -- that keeps the matching in
- * utils/floorplanBindings.ts, where it is a pure function the tests can reach.
+ * One subscription (or KV watcher) for every Thing of a Thing Type. The parent
+ * passes the wildcarded subject; this emits the latest sample keyed by subject
+ * (or KV key), and the parent matches each key to its marker.
  */
 
 const props = defineProps<{
@@ -46,7 +32,7 @@ const props = defineProps<{
   kvBucket?: string
   kvPattern?: string
   jsonPath?: string
-  /** How many distinct markers this binding feeds, so the buffer can hold one each. */
+  /** How many markers this binding feeds, so the buffer can hold one each. */
   markerCount: number
 }>()
 
@@ -61,13 +47,8 @@ const subManager = getSubscriptionManager()
 
 const subscriptionId = computed(() => `fp-binding-${props.bindingId}`)
 
-/**
- * The buffer has to hold at least one message per marker or markers go dark in
- * rotation: a shared buffer sized for a single widget would evict door 1's last
- * message as soon as door 60 published. Twice the marker count leaves room for
- * a chatty device without pushing a quiet one out, and the floor is for the
- * case where the parent has not counted markers yet.
- */
+// At least one message per marker, or a chatty device evicts a quiet one's
+// last reading. Twice the count leaves headroom.
 const bufferSize = computed(() => Math.min(1000, Math.max(50, props.markerCount * 2)))
 
 // --- subject mode -----------------------------------------------------------
@@ -83,11 +64,8 @@ function buildConfig(): DataSourceConfig | null {
   return { type: 'subscription', subject: resolvedSubject.value, useJetStream: false }
 }
 
-// The config actually subscribed with, captured rather than rebuilt. Rebuilding
-// it at unsubscribe time reads the NEW variable values -- the watcher below runs
-// after they change -- so it unsubscribes from the new subject and leaves the
-// old one feeding this binding. MarkerItemText carries the same note; it is the
-// same bug in the same place.
+// Kept so unsubscribe uses the config actually subscribed with, not one rebuilt
+// from variable values that have already changed (same as MarkerItemText).
 let subscribedConfig: DataSourceConfig | null = null
 
 function subscribe() {
@@ -95,9 +73,8 @@ function subscribe() {
   const config = buildConfig()
   if (!config) return
   dataStore.initializeBuffer(subscriptionId.value, bufferSize.value)
-  // No jsonPath here: the manager would store the extracted value and discard
-  // the subject with it, and the subject is how a message finds its marker.
-  // The path is applied per sample below.
+  // No jsonPath on the subscription: the buffer must keep each message's
+  // subject, which is how it finds its marker. The path is applied below.
   subManager.subscribe(subscriptionId.value, config)
   subscribedConfig = config
 }
@@ -123,8 +100,7 @@ const { rows } = useNatsKvWatcher(kvBucket, kvPattern)
 
 function emitFromBuffer() {
   const out = new Map<string, StateSample>()
-  // Last write wins per subject: the buffer is in arrival order, so walking it
-  // forward leaves each subject holding its most recent message.
+  // The buffer is in arrival order, so the last write per subject wins.
   for (const msg of buffer.value) {
     if (!msg.subject) continue
     out.set(msg.subject, {
@@ -140,7 +116,7 @@ function emitFromRows() {
   for (const [key, row] of rows.value) {
     out.set(key, {
       value: extractJsonPath(row.data, props.jsonPath),
-      timestamp: row.timestamp instanceof Date ? row.timestamp.getTime() : Date.now(),
+      timestamp: row.timestamp.getTime(),
     })
   }
   emit('update', out)
@@ -153,8 +129,8 @@ onMounted(subscribe)
 onUnmounted(unsubscribe)
 
 watch(() => natsStore.isConnected, (connected) => {
-  // Not unsubscribed on disconnect: the manager handles reconnection, and
-  // tearing the buffer down would blank every marker on a brief wobble.
+  // Not unsubscribed on disconnect: the manager reconnects, and dropping the
+  // buffer would blank every marker on a brief wobble.
   if (connected) subscribe()
 })
 
@@ -170,7 +146,6 @@ watch(() => [props.mode, props.subject, props.bindingId], () => {
   subscribe()
 })
 
-// Keep the buffer bound sized to the markers it has to cover.
 watch(bufferSize, (size) => {
   if (props.mode === 'subject' && subscribedConfig) {
     dataStore.updateBufferConfig(subscriptionId.value, size)
