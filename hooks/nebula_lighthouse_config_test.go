@@ -3,7 +3,7 @@ package hooks_test
 import (
 	"testing"
 
-	"github.com/pocketbase/pocketbase/core"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
 	"gopkg.in/yaml.v3"
 )
 

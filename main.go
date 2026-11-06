@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pocketbase/pocketbase"
-	"github.com/pocketbase/pocketbase/core"
-	"github.com/pocketbase/pocketbase/plugins/migratecmd"
+	"ganigeorgiev.com/pocketbase/pocketbase"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
+	"ganigeorgiev.com/pocketbase/pocketbase/plugins/migratecmd"
 	"github.com/spf13/viper"
 
 	pbaudit "github.com/skeeeon/pb-audit"
@@ -237,7 +237,7 @@ func main() {
 	// tenancy code is this" is now the platform version on the line above, which
 	// is the point of absorbing it.
 	app.RootCmd.Version = version.Version + "\n" + version.DependencyLines(
-		"github.com/pocketbase/pocketbase",
+		"ganigeorgiev.com/pocketbase/pocketbase",
 		"github.com/skeeeon/pb-nats",
 		"github.com/skeeeon/pb-nebula",
 		"github.com/skeeeon/pb-audit",

@@ -1,6 +1,6 @@
 package hooks
 
-import "github.com/pocketbase/pocketbase/core"
+import "ganigeorgiev.com/pocketbase/pocketbase/core"
 
 // CollectionFields pairs a collection with fields a caller expects on it.
 type CollectionFields struct {

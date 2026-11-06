@@ -4,8 +4,8 @@ import (
 	"log"
 	"regexp"
 
-	"github.com/pocketbase/pocketbase/core"
-	m "github.com/pocketbase/pocketbase/migrations"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
+	m "ganigeorgiev.com/pocketbase/pocketbase/migrations"
 )
 
 // CodePattern is the validator now on `code` in things, locations, thing_types

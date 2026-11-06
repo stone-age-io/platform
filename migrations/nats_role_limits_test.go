@@ -3,9 +3,9 @@ package migrations_test
 import (
 	"testing"
 
+	"ganigeorgiev.com/pocketbase/dbx"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
 	"github.com/nats-io/jwt/v2"
-	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/core"
 
 	"platform/internal/testutil"
 )

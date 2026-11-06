@@ -45,6 +45,20 @@ and this file starts where the versioned releases do.
   gauge (reads one back as a level bar), alongside the existing text, KV, switch
   and publish rows.
 
+### Changed
+
+- **PocketBase v0.41.1, on its new module path.** PocketBase moved off GitHub
+  to `ganigeorgiev.com` with v0.41.0 and archived the GitHub repository, so
+  `github.com/pocketbase/pocketbase` gets no release after v0.40.6. Every
+  import now reads `ganigeorgiev.com/pocketbase/...`, `dbx` included.
+  pb-audit v0.3.0, pb-nats v0.4.0 and pb-nebula v0.5.0 make the same move and
+  nothing else. They had to move together with this binary: Go treats the two
+  paths as unrelated modules, and a build that mixes them has two `core.App`
+  types and does not compile. `--version` names the new path. Beyond the move,
+  v0.41 adds an `Extra` map to hook events, a `StartBannerFunc` on the serve
+  event, minor mailer fixes, and lowers the default
+  `PB_THUMBS_MAX_SOURCE_PIXELS` from 250 to 100 megapixels.
+
 ### Security
 
 - **A tenant could import another tenant's events.** The platform's own
