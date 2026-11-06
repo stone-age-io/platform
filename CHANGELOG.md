@@ -11,6 +11,14 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-05
+
+Three tenant-isolation fixes: the platform's own NATS exports are private to
+the one account each serves, a Thing no longer answers a password reset, and an
+organization can be deleted only once it is suspended and empty. Also a floor
+plan dashboard widget, and PocketBase v0.41.1 on its new module path. Upgrading
+is `migrate up` (the container does it on start).
+
 ### Upgrading
 
 - **Deleting an organization now needs it suspended and empty.** The delete
@@ -44,6 +52,10 @@ and this file starts where the versioned releases do.
   panel can now carry a slider (writes a number to a KV key or a subject) and a
   gauge (reads one back as a level bar), alongside the existing text, KV, switch
   and publish rows.
+- **A Northwind cold-chain dashboard, in the demo**
+  (`demo/dashboards/northwind-cold-chain.json`). A console export, ready to
+  import, that reads the subjects and twin keys the Northwind rules publish, so
+  the demo has a dashboard alongside its inventory and traffic.
 
 ### Changed
 
@@ -58,6 +70,8 @@ and this file starts where the versioned releases do.
   v0.41 adds an `Extra` map to hook events, a `StartBannerFunc` on the serve
   event, minor mailer fixes, and lowers the default
   `PB_THUMBS_MAX_SOURCE_PIXELS` from 250 to 100 megapixels.
+- **nats-server v2.15.2 and nats.go v1.55.0.** nats-server stays on the v2.15
+  line this platform has run since v0.10.0.
 
 ### Security
 
@@ -97,8 +111,20 @@ and this file starts where the versioned releases do.
 
 - `scripts/test-authz.sh` refuses a Thing password reset while a user one
   succeeds, refuses a member changing a Thing's email, and refuses an
-  organization delete while active and while it holds a location (326
-  checks, from 320).
+  organization delete while active and while it holds a location. It also
+  asserts that the inventory export is private to its tenant's account, and
+  that the tenant's account JWT carries the activation token for its own
+  import (328 checks, from 320).
+
+### Dependencies
+
+Development scope only: nothing here reaches the binary or the console bundle
+at runtime.
+
+- **`minimatch` ^11.0.1 and `glob` ^14.0.2, by override**, off
+  GHSA-g3hv-75wg-m249 and GHSA-3g3m-2fjr-6pw4. Both arrive only through
+  `@vue/test-utils` → `js-beautify`, which pins the vulnerable ranges even in
+  its latest release, so an override is the only fix. `npm audit` is clean.
 
 ## [0.15.0] - 2026-11-03
 
@@ -3097,7 +3123,8 @@ repository public. Each of these was reproduced before being fixed.
 - `scripts/test-authz.sh` grew from 135 to 147 checks, covering the membership
   lifecycle, the code uniqueness constraint, and the frozen leaf-node code.
 
-[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/stone-age-io/platform/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/stone-age-io/platform/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/stone-age-io/platform/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/stone-age-io/platform/compare/v0.13.0...v0.13.1
