@@ -3,8 +3,8 @@ package migrations
 import (
 	"log"
 
-	"github.com/pocketbase/pocketbase/core"
-	m "github.com/pocketbase/pocketbase/migrations"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
+	m "ganigeorgiev.com/pocketbase/pocketbase/migrations"
 )
 
 // schema_update_activity adds the `activity` collection: a tenant-facing feed of

@@ -5,8 +5,8 @@ import (
 	"log"
 	"strings"
 
-	"github.com/pocketbase/pocketbase/core"
-	m "github.com/pocketbase/pocketbase/migrations"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
+	m "ganigeorgiev.com/pocketbase/pocketbase/migrations"
 )
 
 // codeScopedCollections are the collections whose `code` is a per-organization

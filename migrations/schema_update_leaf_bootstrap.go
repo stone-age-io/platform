@@ -3,8 +3,8 @@ package migrations
 import (
 	"log"
 
-	"github.com/pocketbase/pocketbase/core"
-	m "github.com/pocketbase/pocketbase/migrations"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
+	m "ganigeorgiev.com/pocketbase/pocketbase/migrations"
 )
 
 // schema_update_leaf_bootstrap does two unrelated-looking things that were found

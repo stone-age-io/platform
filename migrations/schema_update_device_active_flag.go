@@ -3,8 +3,8 @@ package migrations
 import (
 	"log"
 
-	"github.com/pocketbase/pocketbase/core"
-	m "github.com/pocketbase/pocketbase/migrations"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
+	m "ganigeorgiev.com/pocketbase/pocketbase/migrations"
 )
 
 // schema_update_device_active_flag adds the `active` flag to things, sets the

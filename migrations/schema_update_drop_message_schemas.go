@@ -5,8 +5,8 @@ import (
 	"log"
 	"slices"
 
-	"github.com/pocketbase/pocketbase/core"
-	m "github.com/pocketbase/pocketbase/migrations"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
+	m "ganigeorgiev.com/pocketbase/pocketbase/migrations"
 )
 
 // Drops the half of the Thing Type "contract layer" that nothing consumed:

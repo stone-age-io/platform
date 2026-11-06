@@ -16,7 +16,7 @@ The official web management console for the Stone Age Platform. A "Single Pane o
 *   **QR / Scanning**: `html5-qrcode` camera-based scanner widget; `qrcode` for
     printable labels
 *   **Real-time / Messaging**: [NATS.js](https://github.com/nats-io/nats.js) (Modular: Core, KV, JetStream)
-*   **Backend SDK**: [PocketBase JS SDK](https://github.com/pocketbase/js-sdk)
+*   **Backend SDK**: [PocketBase JS SDK](https://ganigeorgiev.com/pocketbase/js-sdk)
 
 ---
 

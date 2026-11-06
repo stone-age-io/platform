@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/pocketbase/pocketbase/core"
-	m "github.com/pocketbase/pocketbase/migrations"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
+	m "ganigeorgiev.com/pocketbase/pocketbase/migrations"
 )
 
 // schema_update_inventory_photos adds `photo` to things and locations: one

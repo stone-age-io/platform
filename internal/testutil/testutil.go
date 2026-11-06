@@ -17,8 +17,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pocketbase/pocketbase"
-	"github.com/pocketbase/pocketbase/core"
+	"ganigeorgiev.com/pocketbase/pocketbase"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
 
 	pbnats "github.com/skeeeon/pb-nats"
 	pbnebula "github.com/skeeeon/pb-nebula"

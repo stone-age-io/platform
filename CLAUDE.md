@@ -97,7 +97,11 @@ The edge agent is a separate repo — [stone-age-io/agent](https://github.com/st
 ## Tech Stack
 
 ### Backend
-- **Go 1.27.0** with PocketBase 0.40.5
+- **Go 1.27.0** with PocketBase 0.41.1, imported as `ganigeorgiev.com/pocketbase/pocketbase`
+  (so are `dbx` and `ozzo-validation`). The GitHub repository is archived and
+  its last release there is v0.40.6. Never re-add a `github.com/pocketbase/...`
+  import: Go treats it as an unrelated module, and a build with both has two
+  `core.App` types that do not match
 - **Cobra** for CLI commands (bootstrap, NATS management)
 - **Viper** for configuration management
 - **Key libraries**: pb-audit, pb-nats, pb-nebula, nats-io/jwt, slackhq/nebula (tenancy was pb-tenancy until it was absorbed into `hooks/`)

@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/pocketbase/pocketbase/apis"
-	"github.com/pocketbase/pocketbase/tools/router"
+	"ganigeorgiev.com/pocketbase/pocketbase/apis"
+	"ganigeorgiev.com/pocketbase/pocketbase/tools/router"
 )
 
 // An API-rule rejection must be counted as a 4xx.

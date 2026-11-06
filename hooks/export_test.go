@@ -3,7 +3,7 @@ package hooks
 import (
 	"time"
 
-	"github.com/pocketbase/pocketbase/core"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
 
 	"platform/internal/health"
 	"platform/internal/metrics"

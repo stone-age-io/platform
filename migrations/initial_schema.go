@@ -3,8 +3,8 @@ package migrations
 import (
 	"log"
 
-	"github.com/pocketbase/pocketbase/core"
-	m "github.com/pocketbase/pocketbase/migrations"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
+	m "ganigeorgiev.com/pocketbase/pocketbase/migrations"
 )
 
 // SchemaJSON holds the embedded schema.json bytes, set from main.go before app.Start().

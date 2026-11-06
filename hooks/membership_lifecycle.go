@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/pocketbase/pocketbase"
-	"github.com/pocketbase/pocketbase/core"
+	"ganigeorgiev.com/pocketbase/pocketbase"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
 )
 
 // MembershipLifecycleOptions names the collections this file keeps in step.
