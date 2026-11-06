@@ -8,6 +8,13 @@ import { fixLeafletIcons } from '@/utils/leafletIcons'
 import { textElement } from '@/utils/leafletText'
 import { isPlaced } from '@/utils/floorplanBindings'
 
+/** Levels below the fitted zoom you can zoom out to. */
+const ZOOM_OUT_BELOW_FIT = 1
+/** Levels above the fitted zoom you can zoom in to (each level is 2x). */
+const ZOOM_IN_ABOVE_FIT = 5
+/** Never cap below 4x the image's own pixels, however small the image. */
+const MIN_MAX_ZOOM = 2
+
 export interface RenderOptions {
   draggable: boolean
   onMove: (id: string, x: number, y: number) => void
@@ -50,16 +57,43 @@ export function useFloorPlan() {
 
     map.value = L.map(containerId, {
       crs: L.CRS.Simple, // pixel coordinate space (1 unit = 1 image pixel)
-      minZoom: -2,
-      maxZoom: 2,
+      // Fractional zoom. With Leaflet's default snap of 1 every wheel tick is
+      // a whole level (2x), and fitBounds rounds DOWN to a whole level, which
+      // leaves up to half the widget empty around a "fitted" plan.
+      zoomSnap: 0,
+      zoomDelta: 0.5,          // the +/- buttons and keyboard
+      wheelPxPerZoomLevel: 120, // about half a level per wheel tick
       attributionControl: false,
     })
 
     imageBounds = L.latLngBounds(L.latLng(0, 0), L.latLng(height, width))
     L.imageOverlay(imageUrl, imageBounds).addTo(map.value)
     markerLayer.value = L.layerGroup().addTo(map.value)
+    applyZoomRange(true)
     map.value.fitBounds(imageBounds)
     mapInitialized.value = true
+  }
+
+  /**
+   * The zoom range is relative to the zoom that fits the plan, not fixed: in
+   * CRS.Simple zoom 0 is one image pixel per screen pixel, so a fixed range
+   * means a large image in a small widget fits near the bottom of it and has
+   * only a level or two of zoom left. `reset` replaces the range; otherwise it
+   * only widens, so a resize never yanks the current view.
+   */
+  const applyZoomRange = (reset = false) => {
+    const m = map.value
+    if (!m || !imageBounds) return
+    // Not getBoundsZoom: that clamps to the range being computed here (and the
+    // default minimum is 0). In CRS.Simple the scale at zoom z is 2^z.
+    const size = m.getSize()
+    const img = imageBounds.getNorthEast()
+    if (!size.x || !size.y || !img.lng || !img.lat) return // not laid out yet
+    const fit = Math.log2(Math.min(size.x / img.lng, size.y / img.lat))
+    const min = fit - ZOOM_OUT_BELOW_FIT
+    const max = Math.max(fit + ZOOM_IN_ABOVE_FIT, MIN_MAX_ZOOM)
+    m.setMinZoom(reset ? min : Math.min(m.getMinZoom(), min))
+    m.setMaxZoom(reset ? max : Math.max(m.getMaxZoom(), max))
   }
 
   // Renders only placed things (those with a floorplan_position). Unplaced things
@@ -145,9 +179,15 @@ export function useFloorPlan() {
 
   /** Return the view to the whole plan. */
   const fitToImage = () => {
-    if (map.value && imageBounds) map.value.fitBounds(imageBounds)
+    if (!map.value || !imageBounds) return
+    applyZoomRange()
+    map.value.fitBounds(imageBounds)
   }
-  const invalidateSize = () => map.value?.invalidateSize()
+  const invalidateSize = () => {
+    if (!map.value) return
+    map.value.invalidateSize()
+    applyZoomRange()
+  }
 
   const cleanup = () => {
     clearMarkers()

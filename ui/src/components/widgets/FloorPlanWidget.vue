@@ -27,8 +27,9 @@
     </div>
 
     <div v-if="ready" class="fp-controls">
+      <!-- The same glyph as the map widget's "Fit all markers". -->
       <button class="fp-control-btn" title="Fit the whole plan" aria-label="Fit the whole plan" @click="fitToImage">
-        <Maximize :size="15" aria-hidden="true" />
+        <span aria-hidden="true">⊡</span>
       </button>
     </div>
 
@@ -52,7 +53,7 @@
 </template>
 
 <script setup lang="ts">
-import { Maximize, MapPin, TriangleAlert } from '@lucide/vue'
+import { MapPin, TriangleAlert } from '@lucide/vue'
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useFloorPlan } from '@/composables/useFloorPlan'
 import { useAuthStore } from '@/stores/auth'
@@ -334,8 +335,15 @@ function initWhenSized(imageUrl: string, w: number, h: number, seq: number, atte
   initFloorPlan(containerId.value, imageUrl, w, h)
   ready.value = true
   draw()
-  window.setTimeout(() => invalidateSize(), 100)
-  window.setTimeout(() => invalidateSize(), 300)
+  // The cell is often still settling its size, so the first fit was measured
+  // against the wrong box: refit, or the plan sits with a gap around it.
+  const settle = () => {
+    if (unmounted || seq !== loadSeq) return
+    invalidateSize()
+    fitToImage()
+  }
+  window.setTimeout(settle, 100)
+  window.setTimeout(settle, 300)
 }
 
 function draw() {
@@ -517,6 +525,7 @@ onUnmounted(() => {
   border: 1px solid var(--border);
   border-radius: 4px;
   color: var(--text);
+  font-size: 16px;
   cursor: pointer;
   transition: all 0.2s;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
