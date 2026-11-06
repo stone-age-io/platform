@@ -1,0 +1,543 @@
+{
+  "version": "1.0",
+  "exportDate": 1793164337808,
+  "appVersion": "0.1.0",
+  "dashboards": [
+    {
+      "id": "dashboard_northwind_cold_chain",
+      "name": "Northwind Cold Chain",
+      "description": "Freezer, chilled and reefer temperatures across Kansas City and Springfield.",
+      "created": 1793151769133,
+      "modified": 1793151769133,
+      "widgets": [
+        {
+          "id": "widget_cc_1",
+          "type": "stat",
+          "title": "Freezer 1 · TP-001",
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2,
+          "dataSource": {
+            "type": "subscription",
+            "subject": "telemetry.KC-DC1-FZ1.TP-001.temperature",
+            "useJetStream": false
+          },
+          "buffer": {
+            "maxCount": 10
+          },
+          "jsonPath": "$.celsius",
+          "statConfig": {
+            "format": "{value}°C",
+            "showTrend": false,
+            "thresholds": [
+              {
+                "id": "e",
+                "operator": ">",
+                "value": "-12",
+                "color": "var(--color-error)"
+              },
+              {
+                "id": "w",
+                "operator": ">",
+                "value": "-16",
+                "color": "var(--color-warning)"
+              }
+            ]
+          }
+        },
+        {
+          "id": "widget_cc_2",
+          "type": "stat",
+          "title": "Freezer 2 · TP-002",
+          "x": 2,
+          "y": 0,
+          "w": 2,
+          "h": 2,
+          "dataSource": {
+            "type": "subscription",
+            "subject": "telemetry.KC-DC1-FZ2.TP-002.temperature",
+            "useJetStream": false
+          },
+          "buffer": {
+            "maxCount": 10
+          },
+          "jsonPath": "$.celsius",
+          "statConfig": {
+            "format": "{value}°C",
+            "showTrend": false,
+            "thresholds": [
+              {
+                "id": "e",
+                "operator": ">",
+                "value": "-12",
+                "color": "var(--color-error)"
+              },
+              {
+                "id": "w",
+                "operator": ">",
+                "value": "-16",
+                "color": "var(--color-warning)"
+              }
+            ]
+          }
+        },
+        {
+          "id": "widget_cc_3",
+          "type": "stat",
+          "title": "KC chilled · TP-003",
+          "x": 4,
+          "y": 0,
+          "w": 2,
+          "h": 2,
+          "dataSource": {
+            "type": "subscription",
+            "subject": "telemetry.KC-DC1-CH1.TP-003.temperature",
+            "useJetStream": false
+          },
+          "buffer": {
+            "maxCount": 10
+          },
+          "jsonPath": "$.celsius",
+          "statConfig": {
+            "format": "{value}°C",
+            "showTrend": false,
+            "thresholds": [
+              {
+                "id": "e",
+                "operator": ">",
+                "value": "6",
+                "color": "var(--color-error)"
+              },
+              {
+                "id": "w",
+                "operator": ">",
+                "value": "4",
+                "color": "var(--color-warning)"
+              }
+            ]
+          }
+        },
+        {
+          "id": "widget_cc_4",
+          "type": "stat",
+          "title": "SGF chilled · TP-004",
+          "x": 6,
+          "y": 0,
+          "w": 2,
+          "h": 2,
+          "dataSource": {
+            "type": "subscription",
+            "subject": "telemetry.SGF-XD2-CH1.TP-004.temperature",
+            "useJetStream": false
+          },
+          "buffer": {
+            "maxCount": 10
+          },
+          "jsonPath": "$.celsius",
+          "statConfig": {
+            "format": "{value}°C",
+            "showTrend": false,
+            "thresholds": [
+              {
+                "id": "e",
+                "operator": ">",
+                "value": "6",
+                "color": "var(--color-error)"
+              },
+              {
+                "id": "w",
+                "operator": ">",
+                "value": "4",
+                "color": "var(--color-warning)"
+              }
+            ]
+          }
+        },
+        {
+          "id": "widget_cc_5",
+          "type": "gauge",
+          "title": "Reefer 1180 · frozen",
+          "x": 8,
+          "y": 0,
+          "w": 2,
+          "h": 2,
+          "dataSource": {
+            "type": "subscription",
+            "subject": "asset.TRL-1180.REEFER-1180.temperature",
+            "useJetStream": false
+          },
+          "buffer": {
+            "maxCount": 10
+          },
+          "jsonPath": "$.celsius",
+          "gaugeConfig": {
+            "min": -30,
+            "max": 10,
+            "unit": "°C",
+            "zones": [
+              {
+                "min": -30,
+                "max": -15,
+                "color": "var(--color-success)"
+              },
+              {
+                "min": -15,
+                "max": -10,
+                "color": "var(--color-warning)"
+              },
+              {
+                "min": -10,
+                "max": 10,
+                "color": "var(--color-error)"
+              }
+            ]
+          }
+        },
+        {
+          "id": "widget_cc_6",
+          "type": "gauge",
+          "title": "Reefer 1184 · chilled",
+          "x": 10,
+          "y": 0,
+          "w": 2,
+          "h": 2,
+          "dataSource": {
+            "type": "subscription",
+            "subject": "asset.TRL-1184.REEFER-1184.temperature",
+            "useJetStream": false
+          },
+          "buffer": {
+            "maxCount": 10
+          },
+          "jsonPath": "$.celsius",
+          "gaugeConfig": {
+            "min": -5,
+            "max": 15,
+            "unit": "°C",
+            "zones": [
+              {
+                "min": -5,
+                "max": 5,
+                "color": "var(--color-success)"
+              },
+              {
+                "min": 5,
+                "max": 8,
+                "color": "var(--color-warning)"
+              },
+              {
+                "min": 8,
+                "max": 15,
+                "color": "var(--color-error)"
+              }
+            ]
+          }
+        },
+        {
+          "id": "widget_cc_7",
+          "type": "chart",
+          "title": "Kansas City freezers · last 3 minutes",
+          "x": 0,
+          "y": 2,
+          "w": 6,
+          "h": 4,
+          "dataSource": {
+            "type": "subscription",
+            "subject": "telemetry.KC-DC1-FZ1.TP-001.temperature",
+            "subjects": [
+              "telemetry.KC-DC1-FZ1.TP-001.temperature",
+              "telemetry.KC-DC1-FZ1.TP-009.temperature",
+              "telemetry.KC-DC1-FZ2.TP-002.temperature",
+              "telemetry.KC-DC1-FZ2.TP-006.temperature"
+            ],
+            "useJetStream": false
+          },
+          "buffer": {
+            "maxCount": 400
+          },
+          "chartConfig": {
+            "chartType": "line",
+            "window": "3m",
+            "echartOptions": {
+              "yAxis": {
+                "type": "value",
+                "min": -20,
+                "max": -16,
+                "name": "°C",
+                "nameTextStyle": {
+                  "color": "#8b93a1"
+                },
+                "axisLabel": {
+                  "color": "#8b93a1",
+                  "fontSize": 11
+                },
+                "splitLine": {
+                  "lineStyle": {
+                    "color": "rgba(255,255,255,0.08)"
+                  }
+                }
+              }
+            },
+            "series": [
+              {
+                "label": "TP-001 · Freezer 1",
+                "path": "$.celsius",
+                "subject": "telemetry.KC-DC1-FZ1.TP-001.temperature"
+              },
+              {
+                "label": "TP-009 · Freezer 1",
+                "path": "$.celsius",
+                "subject": "telemetry.KC-DC1-FZ1.TP-009.temperature"
+              },
+              {
+                "label": "TP-002 · Freezer 2",
+                "path": "$.celsius",
+                "subject": "telemetry.KC-DC1-FZ2.TP-002.temperature"
+              },
+              {
+                "label": "TP-006 · Freezer 2",
+                "path": "$.celsius",
+                "subject": "telemetry.KC-DC1-FZ2.TP-006.temperature"
+              }
+            ]
+          }
+        },
+        {
+          "id": "widget_cc_8",
+          "type": "map",
+          "title": "Sites",
+          "x": 6,
+          "y": 2,
+          "w": 3,
+          "h": 4,
+          "dataSource": {
+            "type": "subscription"
+          },
+          "buffer": {
+            "maxCount": 10
+          },
+          "mapConfig": {
+            "center": {
+              "lat": 38.2,
+              "lon": -93.95
+            },
+            "zoom": 7,
+            "markers": [
+              {
+                "id": "marker_Kansas City DC",
+                "label": "Kansas City DC",
+                "lat": 39.1373,
+                "lon": -94.5592,
+                "items": [
+                  {
+                    "id": "item_Kansas City DC",
+                    "type": "text",
+                    "label": "Freezer 1",
+                    "textConfig": {
+                      "subject": "telemetry.KC-DC1-FZ1.TP-001.temperature",
+                      "unit": "°C",
+                      "useJetStream": false,
+                      "jsonPath": "$.celsius"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "marker_Springfield Cross-Dock",
+                "label": "Springfield Cross-Dock",
+                "lat": 37.2153,
+                "lon": -93.2982,
+                "items": [
+                  {
+                    "id": "item_Springfield Cross-Dock",
+                    "type": "text",
+                    "label": "Chilled bay",
+                    "textConfig": {
+                      "subject": "telemetry.SGF-XD2-CH1.TP-004.temperature",
+                      "unit": "°C",
+                      "useJetStream": false,
+                      "jsonPath": "$.celsius"
+                    }
+                  }
+                ]
+              }
+            ],
+            "enableClustering": false,
+            "fitBoundsOnLoad": true
+          }
+        },
+        {
+          "id": "widget_cc_9",
+          "type": "console",
+          "title": "WMS shipment events",
+          "x": 9,
+          "y": 2,
+          "w": 3,
+          "h": 4,
+          "dataSource": {
+            "type": "subscription",
+            "subject": "app.wms.WMS-CONN-01.shipment",
+            "useJetStream": false
+          },
+          "buffer": {
+            "maxCount": 50
+          },
+          "consoleConfig": {
+            "fontSize": 12,
+            "showTimestamp": true
+          }
+        },
+        {
+          "id": "widget_cc_10",
+          "type": "status",
+          "title": "KC gateway",
+          "x": 0,
+          "y": 6,
+          "w": 2,
+          "h": 2,
+          "dataSource": {
+            "type": "subscription",
+            "subject": "gateway.KC-DC1-MDF.GW-KC-01.heartbeat",
+            "useJetStream": false
+          },
+          "buffer": {
+            "maxCount": 10
+          },
+          "jsonPath": "$.ts",
+          "statusConfig": {
+            "mappings": [
+              {
+                "id": "1",
+                "value": "*",
+                "color": "var(--color-success)",
+                "label": "Online",
+                "blink": false
+              }
+            ],
+            "defaultColor": "var(--color-info)",
+            "defaultLabel": "Waiting",
+            "showStale": true,
+            "stalenessThreshold": 90000,
+            "staleColor": "var(--color-error)",
+            "staleLabel": "Stale"
+          }
+        },
+        {
+          "id": "widget_cc_11",
+          "type": "status",
+          "title": "Springfield gateway",
+          "x": 2,
+          "y": 6,
+          "w": 2,
+          "h": 2,
+          "dataSource": {
+            "type": "subscription",
+            "subject": "gateway.SGF-XD2-MDF.GW-SGF-01.heartbeat",
+            "useJetStream": false
+          },
+          "buffer": {
+            "maxCount": 10
+          },
+          "jsonPath": "$.ts",
+          "statusConfig": {
+            "mappings": [
+              {
+                "id": "1",
+                "value": "*",
+                "color": "var(--color-success)",
+                "label": "Online",
+                "blink": false
+              }
+            ],
+            "defaultColor": "var(--color-info)",
+            "defaultLabel": "Waiting",
+            "showStale": true,
+            "stalenessThreshold": 90000,
+            "staleColor": "var(--color-error)",
+            "staleLabel": "Stale"
+          }
+        },
+        {
+          "id": "widget_cc_12",
+          "type": "status",
+          "title": "Cold chain rules",
+          "x": 4,
+          "y": 6,
+          "w": 2,
+          "h": 2,
+          "dataSource": {
+            "type": "subscription",
+            "subject": "app.rules.RULES-COLD-01.heartbeat",
+            "useJetStream": false
+          },
+          "buffer": {
+            "maxCount": 10
+          },
+          "jsonPath": "$.ts",
+          "statusConfig": {
+            "mappings": [
+              {
+                "id": "1",
+                "value": "*",
+                "color": "var(--color-success)",
+                "label": "Online",
+                "blink": false
+              }
+            ],
+            "defaultColor": "var(--color-info)",
+            "defaultLabel": "Waiting",
+            "showStale": true,
+            "stalenessThreshold": 90000,
+            "staleColor": "var(--color-error)",
+            "staleLabel": "Stale"
+          }
+        },
+        {
+          "id": "widget_cc_13",
+          "type": "kv",
+          "title": "Freezer 1 temp · twin",
+          "x": 6,
+          "y": 6,
+          "w": 3,
+          "h": 2,
+          "dataSource": {
+            "type": "kv",
+            "kvBucket": "twin",
+            "kvKey": "thing.TP-001.temp"
+          },
+          "buffer": {
+            "maxCount": 10
+          },
+          "kvConfig": {
+            "displayFormat": "raw",
+            "thresholds": []
+          }
+        },
+        {
+          "id": "widget_cc_14",
+          "type": "kv",
+          "title": "Reefer 1180 setpoint · twin",
+          "x": 9,
+          "y": 6,
+          "w": 3,
+          "h": 2,
+          "dataSource": {
+            "type": "kv",
+            "kvBucket": "twin",
+            "kvKey": "thing.REEFER-1180.setpoint"
+          },
+          "buffer": {
+            "maxCount": 10
+          },
+          "kvConfig": {
+            "displayFormat": "raw",
+            "thresholds": []
+          }
+        }
+      ],
+      "variables": [],
+      "isLocked": true
+    }
+  ]
+}
