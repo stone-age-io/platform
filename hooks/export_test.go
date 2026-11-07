@@ -63,3 +63,8 @@ func SweepInventoryExports(app core.App, opts InventoryEventsOptions) {
 func EnsurePlatformEventsUser(app core.App, opts InventoryEventsOptions) (string, error) {
 	return ensurePlatformEventsUser(app, opts)
 }
+
+// The $SYS account lookup, so a test can name an org after it.
+func FindSystemAccount(app core.App, accountCollection string) (*core.Record, error) {
+	return findSystemAccount(app, accountCollection)
+}

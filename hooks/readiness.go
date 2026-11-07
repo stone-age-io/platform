@@ -275,18 +275,14 @@ func unknownMigrations(app core.App) ([]string, error) {
 // systemUserCreds returns the $SYS user's .creds contents, or an empty string
 // and the reason it could not be found.
 //
-// It finds the account by name and the user by nats_username, the same keys
-// pb-nats uses (getOperatorAndSystemAccount, getSystemUser). It reads
+// It finds the account with findSystemAccount and the user by nats_username, the
+// same keys pb-nats uses (getOperatorAndSystemAccount, getSystemUser). It reads
 // creds_file rather than the seed because at-rest encryption does not cover it,
 // so this needs no second copy of pb-nats's AES handling.
 func systemUserCreds(app core.App, accountCollection, userCollection string) (creds string, why string) {
-	account, err := app.FindFirstRecordByFilter(
-		accountCollection,
-		"name = {:name}",
-		dbx.Params{"name": systemAccountName},
-	)
-	if err != nil || account == nil {
-		return "", "no $SYS account record (has `superuser upsert` been run?)"
+	account, err := findSystemAccount(app, accountCollection)
+	if err != nil {
+		return "", "no $SYS account record (has `superuser upsert` been run?): " + err.Error()
 	}
 
 	users, err := app.FindAllRecords(userCollection, dbx.HashExp{

@@ -18,7 +18,7 @@ import (
 //
 //   - Blank `organization`: an owner could delete their organization, and
 //     PocketBase blanks rather than deletes rows on the non-cascade,
-//     non-required relations into it (16 of 18), orphaning its things,
+//     non-required relations into it (16 of 18 then), orphaning its things,
 //     locations, types, leaf nodes, nats_account and nebula_ca.
 //   - Blank `current_organization`: a registered invitee before acceptance, and
 //     a removed member (hooks/membership_lifecycle.go).

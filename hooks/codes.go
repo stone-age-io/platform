@@ -2,6 +2,8 @@ package hooks
 
 import (
 	"crypto/rand"
+	"database/sql"
+	"errors"
 	"fmt"
 	"math/big"
 	"regexp"
@@ -196,9 +198,13 @@ func RegisterCodes(app *pocketbase.PocketBase) {
 			if prefix == "" {
 				return e.Next()
 			}
-			clash, _ := e.App.FindFirstRecordByFilter(other,
+			clash, err := e.App.FindFirstRecordByFilter(other,
 				"organization = {:org} && prefix = {:prefix}",
 				dbx.Params{"org": e.Record.GetString("organization"), "prefix": prefix})
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				// Fail closed: an unchecked prefix could collide with the other set.
+				return fmt.Errorf("check prefix %q against %s: %w", prefix, other, err)
+			}
 			if clash != nil {
 				return apis.NewBadRequestError(fmt.Sprintf(
 					"The prefix %q is already used by the %s %q. Thing and Location prefixes are separate sets.",

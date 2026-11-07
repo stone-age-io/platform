@@ -125,6 +125,12 @@ func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
 	hooks.RegisterOrgCode(app, orgCollection)
 	hooks.RegisterCodes(app)
 	hooks.RegisterLocationPath(app)
+	// Changes what a write stores: a role saved without its limits gets -1, not
+	// the 0 a JWT reads as "none". Before provisioning, as in main.go.
+	hooks.RegisterNatsLimits(app, hooks.NatsLimitsOptions{
+		RoleCollection:    natsOpts.RoleCollectionName,
+		AccountCollection: natsOpts.AccountCollectionName,
+	})
 	hooks.RegisterOrgProvisioning(app, hooks.OrgProvisioningOptions{
 		OrgCollection:                 orgCollection,
 		NatsAccountCollection:         natsOpts.AccountCollectionName,
@@ -202,19 +208,15 @@ func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
 		UserCollection:       "users",
 	})
 
-	// Changes what a write stores: a role saved without its limits gets -1, not
-	// the 0 a JWT reads as "none".
-	hooks.RegisterNatsLimits(app, hooks.NatsLimitsOptions{
-		RoleCollection:    natsOpts.RoleCollectionName,
-		AccountCollection: natsOpts.AccountCollectionName,
-	})
-
 	// Deliberately not registered, because each binds only app.OnServe
 	// (observability also OnTerminate) and this harness never serves:
 	//
 	//   RegisterLeafConfigRoutes, RegisterCredentialRoutes,
-	//   RegisterNatsAccountRoutes, RegisterThingRoutes,
-	//   RegisterClientConfigRoutes, RegisterObservability
+	//   RegisterNatsAccountRoutes, RegisterNebulaRoutes, RegisterThingRoutes,
+	//   RegisterClientConfigRoutes, RegisterEmailTemplates, RegisterObservability
+	//
+	// RegisterActivity binds only the record REQUEST hooks, which record CRUD
+	// never fires; hooks/activity_test.go binds it on its own app.
 	//
 	// Test routes with a served app or scripts/test-authz.sh. The rule: every
 	// hook that changes what a write does is bound here; nothing that only

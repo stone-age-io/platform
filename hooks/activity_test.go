@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"ganigeorgiev.com/pocketbase/dbx"
+	"ganigeorgiev.com/pocketbase/pocketbase"
 	"ganigeorgiev.com/pocketbase/pocketbase/core"
 
 	"platform/hooks"
@@ -13,8 +14,8 @@ import (
 
 // The harness does record CRUD rather than serving HTTP, so these tests call
 // hooks.RecordActivity with a *core.RequestEvent carrying an Auth (the route
-// path). The request-hook binding in RegisterActivity is not exercised here.
-// The actor is the one thing a model hook cannot supply, so it is what to
+// path). TestActivityRequestHooksRecordEachAction covers the binding in
+// RegisterActivity. The actor is the one thing a model hook cannot supply, so it is what to
 // assert.
 func TestActivityRecordsTheActor(t *testing.T) {
 	f := setupActivity(t)
@@ -176,4 +177,62 @@ func (f *activityFixture) latest(t *testing.T) *core.Record {
 		t.Fatalf("no activity entry was recorded: %v", err)
 	}
 	return rec
+}
+
+// The binding itself: RegisterActivity on the three record request hooks. The
+// tests above call RecordActivity directly, so without this a binding that
+// stopped firing, or a create entry missing the id assigned during the save,
+// would pass them all.
+func TestActivityRequestHooksRecordEachAction(t *testing.T) {
+	f := setupActivity(t)
+	app, ok := f.app.(*pocketbase.PocketBase)
+	if !ok {
+		t.Fatalf("setupActivity returned %T, want *pocketbase.PocketBase", f.app)
+	}
+	hooks.RegisterActivity(app)
+
+	loc := f.newLocation(t, "Boiler Room")
+	event := func() *core.RecordRequestEvent {
+		e := &core.RecordRequestEvent{RequestEvent: &core.RequestEvent{App: app, Auth: f.member}, Record: loc}
+		e.Collection = loc.Collection()
+		return e
+	}
+	actions := []struct {
+		action  string
+		trigger func() error
+	}{
+		{hooks.ActionCreated, func() error {
+			return app.OnRecordCreateRequest("locations").Trigger(event(), func(e *core.RecordRequestEvent) error {
+				return e.App.Save(e.Record)
+			})
+		}},
+		{hooks.ActionUpdated, func() error {
+			loc.Set("name", "Plant Room")
+			return app.OnRecordUpdateRequest("locations").Trigger(event(), func(e *core.RecordRequestEvent) error {
+				return e.App.Save(e.Record)
+			})
+		}},
+		{hooks.ActionDeleted, func() error {
+			return app.OnRecordDeleteRequest("locations").Trigger(event(), func(e *core.RecordRequestEvent) error {
+				return e.App.Delete(e.Record)
+			})
+		}},
+	}
+
+	for _, a := range actions {
+		if err := a.trigger(); err != nil {
+			t.Fatalf("%s: %v", a.action, err)
+		}
+		entry, err := app.FindFirstRecordByFilter(hooks.ActivityCollection,
+			"organization = {:org} && action = {:a}", dbx.Params{"org": f.org.Id, "a": a.action})
+		if err != nil {
+			t.Fatalf("%s: no feed entry from the request hook: %v", a.action, err)
+		}
+		if got := entry.GetString("actor"); got != f.member.Id {
+			t.Errorf("%s: actor = %q, want %q", a.action, got, f.member.Id)
+		}
+		if got := entry.GetString("resource_id"); got == "" || got != loc.Id {
+			t.Errorf("%s: resource_id = %q, want the saved record's id %q", a.action, got, loc.Id)
+		}
+	}
 }

@@ -1,6 +1,7 @@
 package hooks
 
 import (
+	"fmt"
 	"net/http"
 
 	"ganigeorgiev.com/pocketbase/dbx"
@@ -234,9 +235,34 @@ func requireThing(re *core.RequestEvent, collection string) error {
 	return nil
 }
 
-// systemAccountName is how pb-nats names the $SYS account record, and how its
-// getOperatorAndSystemAccount finds it. Keep the two in step.
+// systemAccountName is how pb-nats names the $SYS account record. Keep in step.
 const systemAccountName = "System Account"
+
+// findSystemAccount returns the $SYS account record the way pb-nats's
+// getOperatorAndSystemAccount does: by the operator's system_account_id, and
+// by name only on a database old enough not to have that set. Every org's
+// NATS account is named after the org, so the name is not unique; the fallback
+// refuses an ambiguous match rather than pick one.
+func findSystemAccount(app core.App, accountCollection string) (*core.Record, error) {
+	if op, err := app.FindFirstRecordByFilter(operatorCollection, "1=1"); err == nil {
+		if id := op.GetString("system_account_id"); id != "" {
+			return app.FindRecordById(accountCollection, id)
+		}
+	}
+	recs, err := app.FindAllRecords(accountCollection, dbx.HashExp{"name": systemAccountName})
+	if err != nil {
+		return nil, err
+	}
+	switch len(recs) {
+	case 0:
+		return nil, fmt.Errorf("no %q account record", systemAccountName)
+	case 1:
+		return recs[0], nil
+	default:
+		return nil, fmt.Errorf("%d accounts named %q and no system_account_id on the operator",
+			len(recs), systemAccountName)
+	}
+}
 
 // systemAccount returns the $SYS account's JWT and public key.
 //
@@ -246,11 +272,7 @@ const systemAccountName = "System Account"
 // It is public trust material; connecting to $SYS needs a $SYS user credential,
 // which is never served.
 func systemAccount(re *core.RequestEvent, accountCollection string) (jwt string, pub string, err error) {
-	rec, err := re.App.FindFirstRecordByFilter(
-		accountCollection,
-		"name = {:name}",
-		dbx.Params{"name": systemAccountName},
-	)
+	rec, err := findSystemAccount(re.App, accountCollection)
 	if err != nil {
 		return "", "", re.NotFoundError("system account not found", nil)
 	}

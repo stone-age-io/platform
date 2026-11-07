@@ -248,11 +248,6 @@ func TestCAGetsALongerWarningWindowThanAHost(t *testing.T) {
 func TestCertExpiryIgnoresDecommissionedHosts(t *testing.T) {
 	f := newCertFixture(t, []time.Duration{400 * 24 * time.Hour}, []time.Duration{-5 * 24 * time.Hour})
 
-	col, err := f.app.FindCollectionByNameOrId("nebula_hosts")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = col
 	if _, err := f.app.DB().NewQuery("UPDATE {{nebula_hosts}} SET active = false").Execute(); err != nil {
 		t.Fatalf("deactivate: %v", err)
 	}
