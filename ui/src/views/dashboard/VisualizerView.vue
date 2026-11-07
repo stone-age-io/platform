@@ -30,7 +30,8 @@ const dashboardStore = useDashboardStore()
 const uiStore = useUIStore()
 const toast = useToast()
 
-// Restricted mode: no kiosk/debug/shortcuts/grid selector. Keyed on the role,
+// Restricted mode: no kiosk/debug/grid selector. Keyboard shortcuts stay on
+// (K does nothing here, since kiosk is off). Keyed on the role,
 // not the path, so it need not track the router.
 const isRestrictedMode = computed(() => authStore.isDashboardUser)
 
