@@ -357,10 +357,10 @@ onMounted(() => {
                   empty-text="No users found."
                 />
                 <label class="label">
-                  <!-- organizations.owner grants nothing; authority is memberships.role. -->
+                  <!-- The field grants nothing; hooks/org_membership.go gives the owner a membership. -->
                   <span class="label-text-alt">{{
                     isEdit
-                      ? 'Changing this does not change anyone\'s role. Roles come from memberships.'
+                      ? 'A new owner gets an owner membership. The previous owner keeps theirs.'
                       : 'Gets an owner membership when the organization is created.'
                   }}</span>
                 </label>
