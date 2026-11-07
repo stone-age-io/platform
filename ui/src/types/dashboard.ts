@@ -8,6 +8,7 @@ export const WIDGET_TYPES = [
   'chart',
   'text',
   'button',
+  'buttonpad',
   'kv',
   'kvtable',
   'streamtable',
@@ -124,6 +125,34 @@ export interface ButtonWidgetConfig {
   actionType?: 'publish' | 'request'
   timeout?: number
 }
+
+/**
+ * One key of a button pad. `row` and `col` are 0-based and stored on the cell,
+ * so changing the column count does not shuffle the keys. A position with no
+ * cell is a gap (a D-pad's corners).
+ */
+export interface ButtonPadCell {
+  row: number
+  col: number
+  label: string
+  subject: string    // supports {{variables}}
+  payload: string    // supports {{variables}}
+  color?: string
+}
+
+/**
+ * A fixed rows x cols grid of publish-only buttons. It draws the same shape on
+ * desktop and on a phone, which is the reason it exists: the phone layout pairs
+ * separate widgets two to a row and cannot keep a shape. Deliberately no
+ * request/reply, hold-to-repeat, spans or state.
+ */
+export interface ButtonPadWidgetConfig {
+  rows: number
+  cols: number
+  cells: ButtonPadCell[]
+}
+
+export const BUTTON_PAD_MAX = 8
 
 export interface KvWidgetConfig {
   displayFormat?: 'raw' | 'json'
@@ -555,6 +584,7 @@ export interface WidgetConfigByType {
   chart: { chartConfig: ChartWidgetConfig }
   text: { textConfig: TextWidgetConfig }
   button: { buttonConfig: ButtonWidgetConfig }
+  buttonpad: { buttonpadConfig: ButtonPadWidgetConfig }
   kv: { kvConfig: KvWidgetConfig }
   kvtable: { kvtableConfig: KvTableWidgetConfig }
   streamtable: { streamtableConfig: StreamTableWidgetConfig }
@@ -600,6 +630,7 @@ export const DEFAULT_WIDGET_SIZES: Record<WidgetType, { w: number; h: number }> 
   chart: { w: 6, h: 4 },
   text: { w: 2, h: 2 },
   button: { w: 2, h: 2 },
+  buttonpad: { w: 4, h: 4 },
   kv: { w: 4, h: 3 },
   switch: { w: 2, h: 2 },
   slider: { w: 4, h: 2 },
@@ -652,6 +683,22 @@ const WIDGET_DEFAULTS: { [T in WidgetType]: () => WidgetDefaults<T> } = {
       payload: '{}',
       actionType: 'publish',
       timeout: 1000,
+    },
+  }),
+
+  // A D-pad: it shows the gaps, and the shared subject shows the usual setup.
+  buttonpad: () => ({
+    title: 'Button Pad',
+    buttonpadConfig: {
+      rows: 3,
+      cols: 3,
+      cells: [
+        { row: 0, col: 1, label: '↑', subject: 'cmd.thing.DEVICE_01.key', payload: '{"key":"UP"}' },
+        { row: 1, col: 0, label: '←', subject: 'cmd.thing.DEVICE_01.key', payload: '{"key":"LEFT"}' },
+        { row: 1, col: 1, label: 'OK', subject: 'cmd.thing.DEVICE_01.key', payload: '{"key":"OK"}' },
+        { row: 1, col: 2, label: '→', subject: 'cmd.thing.DEVICE_01.key', payload: '{"key":"RIGHT"}' },
+        { row: 2, col: 1, label: '↓', subject: 'cmd.thing.DEVICE_01.key', payload: '{"key":"DOWN"}' },
+      ],
     },
   }),
 

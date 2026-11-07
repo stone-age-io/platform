@@ -1,4 +1,4 @@
-import type { ThresholdRule, MapMarker, StatusMapping, TableColumn, DynamicMarkerPopupField, ScannerRule, ChartType, ChartSeries, FloorPlanTypeBinding } from './dashboard'
+import type { ButtonPadCell, ThresholdRule,MapMarker, StatusMapping, TableColumn, DynamicMarkerPopupField, ScannerRule, ChartType, ChartSeries, FloorPlanTypeBinding } from './dashboard'
 
 export interface WidgetFormState {
   // Common
@@ -22,7 +22,12 @@ export interface WidgetFormState {
   buttonColor: string
   buttonActionType: 'publish' | 'request'
   buttonTimeout: number
-  
+
+  // Button Pad Widget
+  buttonpadRows: number
+  buttonpadCols: number
+  buttonpadCells: ButtonPadCell[]
+
   // Thresholds
   thresholds: ThresholdRule[]
 
@@ -170,6 +175,9 @@ export function createEmptyFormState(): WidgetFormState {
     buttonColor: '',
     buttonActionType: 'publish',
     buttonTimeout: 1000,
+    buttonpadRows: 3,
+    buttonpadCols: 3,
+    buttonpadCells: [],
     thresholds: [],
     chartType: 'line',
     chartSeries: [],

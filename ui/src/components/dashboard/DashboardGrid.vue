@@ -11,6 +11,7 @@
         :key="widget.id"
         class="mobile-widget-wrapper"
         :class="[mobileHeightClass(widget), { 'span-full': shouldSpanFullMobile(widget.id) }]"
+        :style="widget.type === 'buttonpad' ? { minHeight: `${padPhoneHeight(widget.buttonpadConfig)}px` } : undefined"
       >
         <WidgetContainer
           :config="widget"
@@ -69,6 +70,7 @@ import { GridLayout, GridItem } from 'grid-layout-plus'
 import WidgetContainer from './WidgetContainer.vue'
 import { WIDGETS } from './widgets'
 import { useDashboardStore } from '@/stores/dashboard'
+import { padPhoneHeight } from '@/utils/buttonPad'
 import type { WidgetConfig } from '@/types/dashboard'
 
 const props = defineProps<{

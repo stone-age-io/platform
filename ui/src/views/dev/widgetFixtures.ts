@@ -168,6 +168,24 @@ export function buildFixtures(): Record<WidgetType, DevFixture> {
       title: 'Reboot Gateway',
     }),
 
+    // The default pad is a D-pad, which shows the gaps; this adds colour.
+    buttonpad: make('buttonpad', 'A 3x3 D-pad with empty corners. Nothing is connected here, so the keys are disabled.', {
+      title: 'Navigation',
+      buttonpadConfig: {
+        rows: 3,
+        cols: 3,
+        cells: [
+          { row: 0, col: 0, label: 'Back', subject: 'tv.key', payload: '{"key":"BACK"}', color: 'var(--panel)' },
+          { row: 0, col: 1, label: '↑', subject: 'tv.key', payload: '{"key":"UP"}' },
+          { row: 0, col: 2, label: 'Home', subject: 'tv.key', payload: '{"key":"HOME"}', color: 'var(--panel)' },
+          { row: 1, col: 0, label: '←', subject: 'tv.key', payload: '{"key":"LEFT"}' },
+          { row: 1, col: 1, label: 'OK', subject: 'tv.key', payload: '{"key":"OK"}', color: 'var(--color-secondary)' },
+          { row: 1, col: 2, label: '→', subject: 'tv.key', payload: '{"key":"RIGHT"}' },
+          { row: 2, col: 1, label: '↓', subject: 'tv.key', payload: '{"key":"DOWN"}' },
+        ],
+      },
+    }),
+
     switch: make('switch', 'KV-backed toggle. Without a connection it shows its default state.', {
       title: 'Lobby Lights',
     }),

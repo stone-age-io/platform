@@ -38,6 +38,7 @@ describe('createDefaultWidget', () => {
     chart: 'chartConfig',
     text: 'textConfig',
     button: 'buttonConfig',
+    buttonpad: 'buttonpadConfig',
     kv: 'kvConfig',
     switch: 'switchConfig',
     slider: 'sliderConfig',

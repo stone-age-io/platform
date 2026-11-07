@@ -7,8 +7,9 @@ import { useWidgetOperations } from '@/composables/useWidgetOperations'
 import { createEmptyFormState } from '@/types/config'
 import { parseDurationMs } from '@/utils/duration'
 import { WIDGETS } from '@/components/dashboard/widgets'
+import { padSize, padCells, inGrid } from '@/utils/buttonPad'
 import type { WidgetFormState } from '@/types/config'
-import type { WidgetType, WidgetConfig, WidgetConfigOf } from '@/types/dashboard'
+import { BUTTON_PAD_MAX, type WidgetType, type WidgetConfig, type WidgetConfigOf } from '@/types/dashboard'
 
 // ============================================================================
 // TYPES
@@ -354,6 +355,66 @@ const typeHandlers: WidgetTypeHandlers = {
           color: form.buttonColor || undefined,
           actionType: form.buttonActionType,
           timeout: form.buttonTimeout,
+        },
+      }
+    },
+  },
+
+  // --- buttonpad ---
+  buttonpad: {
+    hydrate(widget, state) {
+      const { rows, cols } = padSize(widget.buttonpadConfig)
+      state.buttonpadRows = rows
+      state.buttonpadCols = cols
+      // Copies: the panel edits cells in place, and Cancel must not change the widget.
+      state.buttonpadCells = padCells(widget.buttonpadConfig).map(c => ({ ...c }))
+    },
+    validate(form, errors, v) {
+      const ok = (n: number) => Number.isInteger(n) && n >= 1 && n <= BUTTON_PAD_MAX
+      if (!ok(form.buttonpadRows) || !ok(form.buttonpadCols)) {
+        errors.buttonpadSize = `Rows and columns must be whole numbers from 1 to ${BUTTON_PAD_MAX}`
+        return
+      }
+      // Cells outside the grid are dropped on save, and the panel says so.
+      const kept = form.buttonpadCells.filter(c => inGrid(c, form.buttonpadRows, form.buttonpadCols))
+      if (kept.length === 0) {
+        errors.buttonpadCells = 'Add at least one button'
+        return
+      }
+      for (const c of kept) {
+        const where = `Row ${c.row + 1}, column ${c.col + 1}`
+        if (!c.label.trim()) {
+          errors.buttonpadCells = `${where}: a label is required`
+        } else {
+          const s = v.validateSubject(c.subject.trim())
+          if (!s.valid) {
+            errors.buttonpadCells = `${where}: ${s.error}`
+          } else if (c.payload.trim()) {
+            const j = v.validateJson(c.payload)
+            if (!j.valid) errors.buttonpadCells = `${where}: ${j.error}`
+          }
+        }
+        if (errors.buttonpadCells) break
+      }
+    },
+    buildUpdates(form) {
+      const rows = form.buttonpadRows
+      const cols = form.buttonpadCols
+      return {
+        buttonpadConfig: {
+          rows,
+          cols,
+          cells: form.buttonpadCells
+            .filter(c => inGrid(c, rows, cols))
+            .sort((a, b) => a.row - b.row || a.col - b.col)
+            .map(c => ({
+              row: c.row,
+              col: c.col,
+              label: c.label.trim(),
+              subject: c.subject.trim(),
+              payload: c.payload.trim() || '{}',
+              color: c.color || undefined,
+            })),
         },
       }
     },

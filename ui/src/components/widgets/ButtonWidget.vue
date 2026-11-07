@@ -8,8 +8,8 @@
         :class="{ 'is-disabled': isDisabled }"
       >
         <div class="card-info">
-          <div class="card-title">{{ config.title }}</div>
-          <div class="card-label">
+          <div v-if="showCardTitle" class="card-title">{{ config.title }}</div>
+          <div class="card-label" :class="{ 'card-label--solo': !showCardTitle }">
             <span v-if="isLoading" class="spinner-small"></span>
             <span v-else>{{ currentLabel }}</span>
           </div>
@@ -56,11 +56,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useNatsStore } from '@/stores/nats'
-import { useDashboardStore } from '@/stores/dashboard'
 import { useDesignTokens } from '@/composables/useDesignTokens'
+import { usePublishAction } from '@/composables/usePublishAction'
 import type { WidgetConfigOf } from '@/types/dashboard'
 import { encodeString, decodeBytes } from '@/utils/encoding'
-import { resolveTemplate } from '@/utils/variables'
 import ResponseModal from '@/components/common/ResponseModal.vue'
 
 const props = withDefaults(defineProps<{
@@ -71,11 +70,11 @@ const props = withDefaults(defineProps<{
 })
 
 const natsStore = useNatsStore()
-const dashboardStore = useDashboardStore()
 const { semanticColors } = useDesignTokens()
+const { flash, setFlash, resolve, publish } = usePublishAction()
 
-const showSuccess = ref(false)
-const showError = ref(false)
+const showSuccess = computed(() => flash.value === 'success')
+const showError = computed(() => flash.value === 'error')
 const isLoading = ref(false)
 
 const showResponseModal = ref(false)
@@ -87,6 +86,13 @@ const defaultLabel = computed(() => props.config.buttonConfig?.label || 'Publish
 const buttonColor = computed(() => props.config.buttonConfig?.color || semanticColors.value.primary)
 const actionType = computed(() => props.config.buttonConfig?.actionType || 'publish')
 const timeout = computed(() => props.config.buttonConfig?.timeout || 1000)
+
+// The phone card shows the title because a locked phone dashboard hides the
+// header. A title that only repeats the label would print the same word twice.
+const showCardTitle = computed(() => {
+  const title = props.config.title?.trim().toLowerCase()
+  return !!title && title !== defaultLabel.value.trim().toLowerCase()
+})
 
 const isDisabled = computed(() => !natsStore.isConnected || showSuccess.value || isLoading.value)
 
@@ -128,68 +134,40 @@ const buttonStyle = computed(() => {
   }
 })
 
-const publishSubject = computed(() => {
-  const raw = props.config.buttonConfig?.publishSubject || 'button.clicked'
-  return resolveTemplate(raw, dashboardStore.currentVariableValues)
-})
-
-const publishPayload = computed(() => {
-  const raw = props.config.buttonConfig?.payload || '{}'
-  return resolveTemplate(raw, dashboardStore.currentVariableValues)
-})
+const rawSubject = computed(() => props.config.buttonConfig?.publishSubject || 'button.clicked')
+const rawPayload = computed(() => props.config.buttonConfig?.payload || '{}')
 
 async function handleClick() {
   if (!natsStore.nc) return
-  
-  const subject = publishSubject.value
-  const payload = encodeString(publishPayload.value)
 
   if (actionType.value === 'request') {
-    await handleRequest(subject, payload)
+    await handleRequest()
   } else {
-    handlePublish(subject, payload)
+    publish(rawSubject.value, rawPayload.value)
   }
 }
 
-function handlePublish(subject: string, payload: Uint8Array) {
-  try {
-    natsStore.nc!.publish(subject, payload)
-    triggerSuccess()
-  } catch (err) {
-    triggerError()
-  }
-}
-
-async function handleRequest(subject: string, payload: Uint8Array) {
+async function handleRequest() {
   isLoading.value = true
   const start = Date.now()
-  
+
   try {
-    const msg = await natsStore.nc!.request(subject, payload, { timeout: timeout.value })
+    const payload = encodeString(resolve(rawPayload.value))
+    const msg = await natsStore.nc!.request(resolve(rawSubject.value), payload, { timeout: timeout.value })
     responseLatency.value = Date.now() - start
     responseData.value = decodeBytes(msg.data)
     responseStatus.value = 'success'
-    triggerSuccess()
+    setFlash('success')
     showResponseModal.value = true
   } catch (err: any) {
     responseLatency.value = Date.now() - start
     responseData.value = err.message || 'Request failed'
     responseStatus.value = 'error'
-    triggerError()
+    setFlash('error')
     showResponseModal.value = true
   } finally {
     isLoading.value = false
   }
-}
-
-function triggerSuccess() {
-  showSuccess.value = true
-  setTimeout(() => { showSuccess.value = false }, 1500)
-}
-
-function triggerError() {
-  showError.value = true
-  setTimeout(() => { showError.value = false }, 1500)
 }
 
 function adjustColorOpacity(hex: string, opacity: number) {
@@ -263,6 +241,12 @@ function adjustColorOpacity(hex: string, opacity: number) {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.card-label--solo {
+  font-size: 15px;
+  font-weight: 600;
+  color: inherit;
 }
 
 .card-overlay-btn {

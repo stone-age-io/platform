@@ -11,7 +11,7 @@
 
 import { defineAsyncComponent, type Component } from 'vue'
 import {
-  ChartColumn, ChartLine, CircleDot, Database, FileText, Gauge,
+  ChartColumn, ChartLine, CircleDot, Database, FileText, Gauge, Grid3x3,
   LayoutPanelTop, Map as MapIcon, MousePointerClick, RadioTower, ScanQrCode, Send,
   SlidersHorizontal, Table, Terminal, ToggleRight, Type,
 } from '@lucide/vue'
@@ -21,6 +21,7 @@ import type { WidgetType } from '@/types/dashboard'
 // dashboard without a chart never downloads ECharts.
 import TextWidget from '@/components/widgets/TextWidget.vue'
 import ButtonWidget from '@/components/widgets/ButtonWidget.vue'
+import ButtonPadWidget from '@/components/widgets/ButtonPadWidget.vue'
 import SwitchWidget from '@/components/widgets/SwitchWidget.vue'
 import SliderWidget from '@/components/widgets/SliderWidget.vue'
 import StatCardWidget from '@/components/widgets/StatCardWidget.vue'
@@ -45,6 +46,7 @@ const ConfigChart = defineAsyncComponent(() => import('@/components/dashboard/co
 const ConfigStat = defineAsyncComponent(() => import('@/components/dashboard/config/ConfigStat.vue'))
 const ConfigGauge = defineAsyncComponent(() => import('@/components/dashboard/config/ConfigGauge.vue'))
 const ConfigButton = defineAsyncComponent(() => import('@/components/dashboard/config/ConfigButton.vue'))
+const ConfigButtonPad = defineAsyncComponent(() => import('@/components/dashboard/config/ConfigButtonPad.vue'))
 const ConfigKv = defineAsyncComponent(() => import('@/components/dashboard/config/ConfigKv.vue'))
 const ConfigSwitch = defineAsyncComponent(() => import('@/components/dashboard/config/ConfigSwitch.vue'))
 const ConfigSlider = defineAsyncComponent(() => import('@/components/dashboard/config/ConfigSlider.vue'))
@@ -175,6 +177,15 @@ export const WIDGETS: Record<WidgetType, WidgetDefinition> = {
     label: 'Button', icon: MousePointerClick, description: 'Publish messages', category: 'Controls',
     mobileTitled: false, mobileExpandable: false,
     mobileWidth: 'half', mobileHeight: 'auto',
+    standardDataSource: false, multiSubject: false,
+  },
+  // Its phone height comes from its row count (utils/buttonPad.ts), which
+  // DashboardGrid applies over the 'auto' here.
+  buttonpad: {
+    component: ButtonPadWidget, config: ConfigButtonPad,
+    label: 'Button Pad', icon: Grid3x3, description: 'A grid of buttons', category: 'Controls',
+    mobileTitled: true, mobileExpandable: false,
+    mobileWidth: 'full', mobileHeight: 'auto',
     standardDataSource: false, multiSubject: false,
   },
   switch: {
