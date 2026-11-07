@@ -18,21 +18,15 @@ import (
 	"platform/internal/natsd"
 )
 
-// registerPlatformMetrics adds the Control Plane's own collectors to a set.
+// registerPlatformMetrics adds the Control Plane's own collectors to a set:
+// its own HTTP traffic, row counts in its own database, and, with `--nats`, the
+// embedded NATS server's counters. That is all it can observe first-hand.
 //
-// WHAT THESE NUMBERS ARE. Everything here is either this process's own HTTP
-// traffic, a row count in its own SQLite database, or — when `--nats` is on —
-// the embedded NATS server's own counters. That is the whole of what the
-// Control Plane can observe first-hand.
-//
-// WHAT THEY ARE NOT. `stone_age_records{collection="things"}` counts devices
-// CONFIGURED, not devices online. Liveness lives inside each organization NATS
-// account, which this process holds no credential for; it is reachable from a
-// console dashboard widget (the browser connects with the logged-in user own
-// in-account credential and asks the bus directly via
-// $SYS.REQ.ACCOUNT.PING.CONNZ — a recipe, not a built-in view) and exported by
-// the agent itself on the edge. Alerting on a row count as though it were
-// availability would produce an alert that can never fire.
+// `stone_age_records{collection="things"}` counts devices CONFIGURED, not
+// online, so an alert on it can never fire. Liveness lives inside each
+// organization's NATS account, which this process holds no credential for; a
+// console widget asks $SYS.REQ.ACCOUNT.PING.CONNZ with the user's own
+// credential, and the agent exports its own on the edge.
 func registerPlatformMetrics(app core.App, set *metrics.Set, opts ObservabilityOptions) {
 	set.Registry.MustRegister(&dbCollector{app: app, opts: opts})
 	set.Registry.MustRegister(&certCollector{app: app, opts: opts})
@@ -43,13 +37,9 @@ func registerPlatformMetrics(app core.App, set *metrics.Set, opts ObservabilityO
 
 // --------------------------------------------------------------- database
 
-// dbCollector counts rows at scrape time.
-//
-// Scrape time rather than on the readiness prober's tick, unlike the check
-// gauges: these are plain local COUNT queries with no network in them, so
-// doing the work only when someone actually asks is both cheap and honest. The
-// readiness checks go the other way because they dial NATS, and that must not
-// sit on the scrape path.
+// dbCollector counts rows at scrape time, unlike the check gauges, which use the
+// prober's tick: these are local COUNT queries with no network in them, while
+// the readiness checks dial NATS, which must not sit on the scrape path.
 type dbCollector struct {
 	app  core.App
 	opts ObservabilityOptions
@@ -77,9 +67,7 @@ var (
 		"Size of the PocketBase SQLite database on disk, including its WAL. The number to alert on for disk growth.",
 		nil, nil,
 	)
-	// A gauge, and named like one. It counts failures in THIS scrape, not
-	// failures since start, so the _total suffix a counter would carry would be
-	// a lie about what `rate()` on it means.
+	// A gauge of failures in THIS scrape, so no _total suffix.
 	descScrapeError = prometheus.NewDesc(
 		"stone_age_collector_errors",
 		"Collectors that failed during this scrape. Non-zero means some series below are missing, not that they are zero.",
@@ -98,11 +86,9 @@ func (c *dbCollector) Describe(ch chan<- *prometheus.Desc) {
 func (c *dbCollector) Collect(ch chan<- prometheus.Metric) {
 	var failures float64
 
-	// A collection that errors is SKIPPED rather than reported as zero. Zero is
-	// a legitimate value here ("no Nebula hosts configured"), so emitting it on
-	// failure would turn a broken query into a confident wrong answer — and an
-	// alert on `== 0` would fire for the wrong reason. The absent series plus
-	// stone_age_collector_errors says what actually happened.
+	// A collection that errors is SKIPPED, not reported as zero, because zero is
+	// a legitimate value. The absent series plus stone_age_collector_errors says
+	// what happened.
 	count := func(collection string, desc *prometheus.Desc, labels []string, exprs ...dbx.Expression) {
 		if collection == "" {
 			return
@@ -123,9 +109,8 @@ func (c *dbCollector) Collect(ch chan<- prometheus.Metric) {
 		"locations",
 		"thing_types",
 		"location_types",
-		// Counted rather than given a retention job. The feed grows with human
-		// clicks, not device traffic, so the question "does this need pruning"
-		// is better answered by a graph than by a cron nobody has sized.
+		// Counted rather than given a retention job: the feed grows with human
+		// clicks, so a graph answers "does this need pruning" better than a cron.
 		ActivityCollection,
 		c.opts.NatsAccountCollection,
 		c.opts.NatsUserCollection,
@@ -135,9 +120,8 @@ func (c *dbCollector) Collect(ch chan<- prometheus.Metric) {
 		count(col, descRecords, []string{col})
 	}
 
-	// The decommissioning flag from AUTHORIZATION.md's "A flag is not a control unless
-	// something acts on it": this one has teeth (token kill + NATS revoke), so it
-	// is worth counting.
+	// The decommissioning flag has teeth (token kill + NATS revoke), so it is
+	// worth counting.
 	count("things", descInactive, []string{"things"}, dbx.HashExp{"active": false})
 
 	count(c.opts.NatsUserCollection, descRevokedUsers, nil, dbx.HashExp{"revoke": true})
@@ -151,9 +135,8 @@ func (c *dbCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(descScrapeError, prometheus.GaugeValue, failures)
 }
 
-// databaseBytes sums data.db and its write-ahead log. The WAL is included
-// because it is real disk the operator has to have, and on a busy install it is
-// routinely the larger of the two.
+// databaseBytes sums data.db, its WAL and its -shm file. The WAL is real disk
+// and on a busy install often larger than the database.
 func databaseBytes(app core.App) (int64, bool) {
 	base := filepath.Join(app.DataDir(), "data.db")
 	var total int64
@@ -174,20 +157,14 @@ func databaseBytes(app core.App) (int64, bool) {
 // certCollector publishes when the Nebula certificates this platform signed
 // run out.
 //
-// A TIMESTAMP, NOT A COUNTDOWN. The gauge is the absolute expiry as Unix
-// seconds, which is the node_exporter convention and the only form that stays
-// correct between scrapes: a "days remaining" gauge is stale the moment it is
-// stored, and its recorded value drifts further from the truth the longer a
-// series is retained. Alert with the horizon written into the query --
-// `stone_age_certificate_expiry_seconds - time() < 30 * 86400` -- so the
-// threshold lives with the alert instead of being frozen into the exporter.
+// The gauge is the absolute expiry in Unix seconds (the node_exporter
+// convention), not a countdown, which is stale the moment it is stored. Alert
+// with the horizon in the query: `stone_age_certificate_expiry_seconds - time()
+// < 30 * 86400`.
 //
-// THE EARLIEST, NOT ONE SERIES PER CERTIFICATE. One number per kind. A series
-// per host would be a time series per device, and it would have to be labelled
-// with something identifying to be useful -- which is a per-tenant device
-// inventory published on an endpoint that is open by default. The soonest
-// expiry is also the only one an alert wants: fix that one and the next becomes
-// the soonest.
+// One series per kind, the soonest expiry, not one per certificate: a series
+// per host would need an identifying label, which would publish a per-tenant
+// device inventory on an endpoint that is open by default.
 type certCollector struct {
 	app  core.App
 	opts ObservabilityOptions
@@ -229,9 +206,8 @@ func (c *certCollector) Describe(ch chan<- *prometheus.Desc) {
 func (c *certCollector) Collect(ch chan<- prometheus.Metric) {
 	sums, err := nebulaCertSummaries(c.app, c.opts, time.Now())
 	if err != nil {
-		// Emit nothing, exactly as dbCollector skips a collection it could not
-		// count. Zeros here would read as "no certificates are expiring",
-		// which is the reassuring version of "we could not look".
+		// Emit nothing, as dbCollector does: zeros would read as "nothing is
+		// expiring" when the truth is "we could not look".
 		return
 	}
 	g := func(d *prometheus.Desc, v float64, kind string) {
@@ -241,8 +217,7 @@ func (c *certCollector) Collect(ch chan<- prometheus.Metric) {
 		g(descCertTotal, float64(s.Total), s.Kind)
 		g(descCertExpired, float64(s.Expired), s.Kind)
 		g(descCertExpiring, float64(s.Expiring), s.Kind)
-		// Only when there is one. An absent series is a question Prometheus can
-		// answer with absent(); a zero timestamp is 1970, which every
+		// Only when there is one: a zero timestamp is 1970, which every
 		// "expires soon" alert would fire on forever.
 		if !s.Earliest.IsZero() {
 			g(descCertExpiry, float64(s.Earliest.Unix()), s.Kind)
@@ -253,13 +228,9 @@ func (c *certCollector) Collect(ch chan<- prometheus.Metric) {
 // ---------------------------------------------------------- embedded NATS
 
 // embeddedNATSCollector exports the in-process NATS server's own counters, and
-// emits nothing at all when the bus is a separate process.
-//
-// Emitting nothing is the point. With an external nats-server these numbers are
-// not this process's to report, and publishing zeros would look like a quiet
-// bus rather than an absent one. Operators running an external server should
-// scrape it with prometheus-nats-exporter, which reads the server's own
-// monitoring port and reports far more than this ever could.
+// emits nothing when the bus is a separate process: zeros would look like a
+// quiet bus rather than an absent one. Scrape an external server with
+// prometheus-nats-exporter.
 type embeddedNATSCollector struct {
 	server func() *natsd.Server
 }
@@ -350,13 +321,9 @@ func (c *embeddedNATSCollector) Collect(ch chan<- prometheus.Metric) {
 
 // ------------------------------------------------------------------- HTTP
 
-// httpMetrics instruments the API surface.
-//
-// The route label is the matched PATTERN, never the request path. Paths here
-// carry record ids (/api/collections/things/records/abc123def456789), so
-// labelling by path would mint a new time series per record touched — the
-// classic cardinality bomb, and on a platform whose whole job is holding
-// per-device rows it would be one series per device per method.
+// httpMetrics instruments the API surface. The route label is the matched
+// PATTERN, never the request path: paths carry record ids, so a path label
+// would mint a series per record touched.
 type httpMetrics struct {
 	requests *prometheus.CounterVec
 	duration *prometheus.HistogramVec
@@ -373,8 +340,7 @@ func registerHTTPMetrics(app *pocketbase.PocketBase, set *metrics.Set) {
 		duration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name: "stone_age_http_request_duration_seconds",
 			Help: "HTTP request latency by matched route pattern.",
-			// Default buckets, which top out at 10s. Adequate here: anything
-			// slower than that is a timeout story, not a latency story.
+			// Default buckets top out at 10s; anything slower is a timeout.
 			Buckets: prometheus.DefBuckets,
 		}, []string{"route", "method"}),
 	}
@@ -397,13 +363,8 @@ func registerHTTPMetrics(app *pocketbase.PocketBase, set *metrics.Set) {
 }
 
 // routePattern returns the registered pattern for the matched route, falling
-// back to "other" rather than to the raw path. "other" loses detail; the raw
-// path would lose the server.
-//
-// Go's ServeMux patterns are "GET /api/health" — method and path in one string.
-// The method is stripped here because it is already its own label, and leaving
-// it in both places means every query has to know that route="GET /x" and
-// method="GET" are the same fact stated twice.
+// back to "other", never the raw path. A ServeMux pattern is "GET /api/health";
+// the method is stripped because it is already its own label.
 func routePattern(re *core.RequestEvent) string {
 	p := re.Request.Pattern
 	if p == "" {
@@ -415,13 +376,9 @@ func routePattern(re *core.RequestEvent) string {
 	return p
 }
 
-// methodLabel keeps the method label to the standard verbs.
-//
-// The method is client input, not something the router chose: Go accepts any
-// token as a method, and the method-less catch-all route runs this middleware,
-// so an unauthenticated client sending XYZZY1, XYZZY2, ... would mint a new
-// series per request. Same cardinality bomb routePattern guards against, from
-// the other label.
+// methodLabel keeps the method label to the standard verbs. The method is
+// client input: Go accepts any token, and the catch-all route runs this
+// middleware, so an unauthenticated client could mint a series per request.
 func methodLabel(m string) string {
 	switch m {
 	case http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut,
@@ -431,36 +388,22 @@ func methodLabel(m string) string {
 	return "other"
 }
 
-// statusClass buckets the response into 2xx/4xx/5xx rather than exact codes.
+// statusClass buckets the response into 2xx/4xx/5xx rather than exact codes:
+// PocketBase answers 404 when an update rule rejects and 400 on a denied
+// create, so exact codes mix authorization with missing records.
 //
-// Exact codes would trip over this platform's own conventions more than they
-// would help: PocketBase answers 404 when an update rule rejects and 400 on a
-// denied create, so "how many 404s" is a question about authorization, traffic
-// and genuinely missing records all at once. The class is what an alert wants;
-// the audit log and the access log have the specifics.
 // A status of 0 means the response was never written: a handler returned an
-// error and the router's ErrorHandler runs AFTER the middleware chain unwinds,
-// so the tracked status is still unset when this sees it. Resolving that error
-// the way the router does is the only way to bucket it correctly.
-//
-// It used to return "5xx" for every such case, which made this metric actively
-// misleading rather than merely coarse: EVERY API-rule rejection arrives here
-// as an error with no written status — 400 on a denied create, 404 on a denied
-// update, 401/403 from RequireAuth — so ordinary authorization traffic was
-// counted as server errors. The 4xx bucket sat near-empty and a 5xx alert fired
-// on a healthy platform doing its job.
-//
-// router.ToApiError is exactly what ErrorHandler calls before WriteHeader
-// (tools/router/router.go), so this reports the status the client actually got;
-// PocketBase's own request logging resolves it the same way in
-// apis/middlewares.go.
+// error and the router's ErrorHandler runs AFTER the middleware unwinds. Every
+// API-rule rejection arrives that way, so it must not be counted as 5xx.
+// router.ToApiError is what ErrorHandler calls before WriteHeader
+// (tools/router/router.go), so this reports the status the client got, as
+// PocketBase's own request logging does (apis/middlewares.go).
 func statusClass(re *core.RequestEvent, err error) string {
 	return statusClassFor(re.Status(), err)
 }
 
 // statusClassFor is the whole decision, split out so it can be tested without
-// constructing a core.RequestEvent. The bug it now encodes was invisible
-// precisely because nothing could assert on it.
+// constructing a core.RequestEvent.
 func statusClassFor(status int, err error) string {
 	if status == 0 {
 		if err == nil {

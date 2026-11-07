@@ -9,58 +9,29 @@ import (
 	m "ganigeorgiev.com/pocketbase/pocketbase/migrations"
 )
 
-// Drops the leaf_nodes collection. An edge site is a Thing now.
+// Drops the leaf_nodes collection. An edge site is a Thing now: it logs in
+// against `things`, its JetStream domain is its code, thing_types marks it as an
+// edge box, and GET /api/me/leaf-config (hooks/leaf_config_routes.go) serves the
+// trust material its nats-server needs. The `leaf-sync` KV mirror went too,
+// since nothing read the mirrored rows.
 //
-// WHY. leaf_nodes was "a special thing": an auth collection holding a code, a
-// JetStream domain, a list of collections to mirror, and one server-provisioned
-// NATS user. Every one of those has gone somewhere else or gone away.
+// The schema_update_leaf_*.go migrations stay. PocketBase records applied
+// migrations by file name, and the `schema_version` readiness check
+// (hooks/readiness.go) fails when the database holds names the binary does not
+// know, so deleting them would put every existing deployment into a 503.
 //
-//   - The mirror is gone. `leaf-sync` copied an organization's config
-//     collections into the edge's local KV so devices could read them offline.
-//     Nothing consumed the mirrored rows -- no rule-router rule read them, no
-//     firmware did -- so the whole mechanism was moving data nobody asked for.
-//     `synced_collections` went with it.
-//   - The domain is computed, not stored. A leaf node's JetStream domain is now
-//     just its code (GET /api/me/leaf-config), so a column that could disagree
-//     with the code no longer exists to disagree.
-//   - The "is this an edge box" marker is thing_types. That relation already
-//     existed; a second way to say the same thing is a second way to be wrong.
-//   - The identity is the Thing. A gateway logs in as itself against `things`
-//     and holds its NATS credential on its own nats_user relation, exactly like
-//     any other device.
-//
-// What is left that a leaf node needed and a Thing did not is one route:
-// GET /api/me/leaf-config (hooks/leaf_config_routes.go), which hands a Thing the
-// public trust material its nats-server needs. The payload is public or
-// self-owned, so serving it to any authenticated Thing is not a widening -- it
-// is why no marker field was needed to gate it.
-//
-// WHY THE FOUR schema_update_leaf_*.go MIGRATIONS ABOVE ARE STILL HERE. Deleting
-// an applied migration is not free: PocketBase records applied migrations by file
-// name, and hooks/readiness.go's `schema_version` check FAILS when the database
-// holds names this binary does not know -- so removing those files would put
-// every existing deployment into a 503 that reads as "your pb_data is from a
-// newer build". They stay, they are no-ops on a fresh database (the schema.json
-// they re-import no longer carries leaf_nodes), and the log line one of them
-// prints about creating the collection is immediately followed by this one
-// dropping it.
-//
-// ORDER does not matter here, unlike DropContractLayer. Nothing relates INTO
-// leaf_nodes -- its four relations all point outward -- so PocketBase has no
-// reference to refuse the delete for, and none of the earlier migrations can
-// recreate a collection that is no longer in the import.
+// Order does not matter, unlike DropContractLayer: nothing relates into
+// leaf_nodes.
 func init() {
 	m.Register(DropLeafNodes, nil)
 }
 
-// DropLeafNodes is the migration body. Exported and named for the same reason
-// DropContractLayer is: a fresh database imports the already-thinned schema.json,
-// so the migration set alone only ever exercises the no-op path and a green run
-// would prove nothing about the removal.
+// DropLeafNodes is the migration body, exported so a test can run it against
+// the old shape: a fresh database never has leaf_nodes to drop.
 func DropLeafNodes(app core.App) error {
-	// The import first, so the collections that carried a `leaf_nodes` read
-	// branch stop referring to it before it goes. Additive (deleteMissing=false),
-	// which cannot remove a collection -- hence the explicit Delete below.
+	// Import first, so collections with a `leaf_nodes` read branch stop
+	// referring to it. An additive import cannot remove a collection, hence the
+	// Delete below.
 	if len(SchemaJSON) > 0 {
 		if err := app.ImportCollectionsByMarshaledJSON(SchemaJSON, false); err != nil {
 			return err
@@ -72,8 +43,7 @@ func DropLeafNodes(app core.App) error {
 		return nil // fresh database, or already dropped
 	}
 
-	// Read the identities off every leaf node BEFORE the rows go, so the
-	// operator gets told about them. They are not touched -- see below.
+	// Read the identities before the rows go, so the operator can be told.
 	orphans, err := orphanedLeafIdentities(app)
 	if err != nil {
 		return err
@@ -88,8 +58,7 @@ func DropLeafNodes(app core.App) error {
 	return nil
 }
 
-// orphanedLeafIdentities lists the NATS users and Nebula hosts that each leaf
-// node owned, before the leaf node rows are deleted.
+// leafIdentities holds the NATS users and Nebula hosts the leaf nodes owned.
 type leafIdentities struct {
 	natsUsers   []string
 	nebulaHosts []string
@@ -118,16 +87,10 @@ func orphanedLeafIdentities(app core.App) (leafIdentities, error) {
 }
 
 // reportOrphanedLeafIdentities tells the operator about credentials this
-// migration deliberately LEFT WORKING.
-//
-// A leaf node's relations are all non-cascade, so deleting the collection leaves
-// its nats_users and nebula_hosts rows behind, and both are signed, live
-// credentials. Revoking them here would have been the tidy thing to do and the
-// wrong one: those credentials are what the edge boxes at real sites are
-// connected with right now, and a migration that runs on deploy is not a place to
-// take a fleet off the bus. The platform's own rule applies -- deactivate, do not
-// delete -- and deciding when is the operator's call, once each site is running
-// an agent that has re-provisioned as a Thing.
+// migration deliberately left working. The relations are non-cascade, so the
+// nats_users and nebula_hosts rows survive, and live edge boxes are connected
+// with them. A deploy must not take a fleet off the bus; the operator
+// deactivates each once its site has re-provisioned as a Thing.
 func reportOrphanedLeafIdentities(o leafIdentities) {
 	if len(o.natsUsers) == 0 && len(o.nebulaHosts) == 0 {
 		return

@@ -15,37 +15,19 @@ type CredentialRoutesOptions struct {
 	ThingCollection      string
 }
 
-// RegisterCredentialRoutes adds the one credential operation that PocketBase API
-// rules cannot express: rotating your OWN NATS credentials.
+// RegisterCredentialRoutes adds the one credential operation API rules cannot
+// express: rotating your OWN NATS credentials. Reading needs no route, because
+// nats_users is row-scoped and a non-admin reaches only their own identity.
 //
-// Reading credentials needs no route. The API rules in schema.json scope
-// nats_users by ROW: an owner/admin sees every identity in their organization, and
-// everyone else sees only the single identity belonging to them — the one their
-// own browser or Thing authenticates with. Since a caller can only
-// reach their own row, the credential inside it is not a leak.
+// The nats_users update rule is owner/admin only: publish_permissions is copied
+// into the signed JWT, so a member who could write it could grant themselves
+// ">". Allowing self-rotation in the rule would need `:isset = false` on every
+// other field, a deny-list that opens silently when a field is added. So this
+// route sets the single field `regenerate`, and takes no record id.
 //
-// Rotation is different, because it is a WRITE. The update rule is owner/admin
-// only, since publish_permissions on a nats_users record is copied verbatim into
-// the JWT the server signs (pb-nats internal/jwt/generator.go) — a member who
-// could write that field could self-grant publish ">" and be handed a signed JWT
-// for it. Allowing self-rotation through the rule would mean permitting a write
-// to exactly one field and no others, and a rule can only approximate that with
-// `:isset = false` on every other writable field. That is a deny-list: it opens
-// up silently the moment someone adds a field, which is the failure mode this
-// codebase has already been bitten by. So rotation gets a route that sets the
-// single field, and takes no record id — there is no other identity it could be
-// aimed at.
-//
-// pb-nats watches `regenerate` on update, re-mints the user JWT and creds_file,
-// then clears the flag (internal/sync/manager.go). Callers should re-read their
-// own record afterwards to pick up the new credential.
-//
-// Deliberately NOT touched here: `revoke`. Setting `regenerate` on a revoked user
-// re-enables it, so revocation has to stay an owner/admin action through the
-// normal update rule. This route only ever writes `regenerate`.
-//
-// The write goes through app.Save, so pb-audit records it as an ordinary update
-// on nats_users — rotations land in audit_logs with no extra work.
+// pb-nats re-mints the JWT and creds_file on `regenerate` and clears the flag;
+// callers re-read their record afterwards. It never writes `revoke`, which must
+// stay owner/admin. The write goes through app.Save, so pb-audit records it.
 func RegisterCredentialRoutes(app *pocketbase.PocketBase, opts CredentialRoutesOptions) {
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
 		se.Router.POST("/api/me/nats-creds/rotate", func(re *core.RequestEvent) error {
@@ -59,17 +41,14 @@ func RegisterCredentialRoutes(app *pocketbase.PocketBase, opts CredentialRoutesO
 				return re.NotFoundError("linked NATS identity not found", nil)
 			}
 
-			// A suspended identity does not get to lift its own suspension.
-			// pb-nats treats `active` false as "revoked, do not reissue", but a
-			// regenerate mints a JWT issued AFTER the revocation cutoff, which
-			// NATS accepts -- so without this check the rotate button is also a
-			// self-service un-suspend. Reactivating is owner/admin, through
-			// nats_users.updateRule (or things.active for a device).
+			// A regenerate mints a JWT past the revocation cutoff, which NATS
+			// accepts, so without this the rotate button is a self-service
+			// un-suspend. Reactivating is owner/admin (or things.active).
 			if !rec.GetBool("active") {
 				return re.ForbiddenError("this NATS identity is suspended", nil)
 			}
 
-			// Exactly one field. This is the whole reason the route exists.
+			// Exactly one field: the reason the route exists.
 			rec.Set("regenerate", true)
 			if err := re.App.Save(rec); err != nil {
 				return re.InternalServerError("failed to rotate credentials", err)
@@ -89,29 +68,18 @@ func RegisterCredentialRoutes(app *pocketbase.PocketBase, opts CredentialRoutesO
 // authenticated record alone. Nothing is read from the request, so a caller
 // cannot name someone else's identity.
 //
-// The two cases mirror the read branches in nats_users.listRule: a user reaches
-// their identity through the membership for their active organization, while a
-// Thing carries the relation directly.
+// The two cases mirror the read branches in nats_users.listRule: a user goes
+// through the membership for their active organization, a Thing carries the
+// relation directly.
 //
-// WHY THIS DOES NOT USE requireMembership (hooks/org_context.go), despite the
-// `users` branch below looking like its three guards. Four reasons, and the
-// second is the load-bearing one:
-//
-//   - Half of this function is not a membership lookup at all. A Thing reads
-//     `nats_user` straight off its own auth record, and the default branch is a
-//     collection guard.
-//   - It applies NO role filter, and that has to stay true. EVERY console role
-//     holds "Own NATS credential + rotation" — `viewer` and `dashboard`
-//     included — so the absence of a role clause is the feature, not an
-//     oversight. Routed through a helper that takes a role list, adding a role
-//     would silently stop that role rotating its own credential.
-//   - The denial here is 404, not 403, and that is right: with no role check
-//     there is no "not a member" versus "wrong role" to avoid distinguishing,
+// It does not use requireMembership (hooks/org_context.go), deliberately:
+//   - It applies NO role filter, and must not. Every console role, `viewer` and
+//     `dashboard` included, may rotate its own credential; behind a helper that
+//     takes a role list, a new role would silently lose that.
+//   - Its denial is 404, not 403: with no role check there is nothing to hide,
 //     and what is missing really is a resource.
-//   - What it returns is the membership's `nats_user`, not the organization.
-//
-// Sharing would mean parameterising the role clause, the error type AND the
-// return value, which is two functions wearing one name.
+//   - It returns the `nats_user`, not the organization, and half of it is the
+//     Thing branch.
 func resolveOwnNatsUser(re *core.RequestEvent, opts CredentialRoutesOptions) (string, error) {
 	if re.Auth == nil {
 		return "", re.UnauthorizedError("authentication required", nil)
@@ -145,8 +113,7 @@ func resolveOwnNatsUser(re *core.RequestEvent, opts CredentialRoutesOptions) (st
 		return natsUserID, nil
 
 	default:
-		// RequireAuth already restricts the collections; this keeps the handler
-		// correct on its own terms if that binding is ever changed.
+		// Unreachable behind RequireAuth; kept in case that binding changes.
 		return "", re.ForbiddenError("this identity type cannot rotate credentials", nil)
 	}
 }

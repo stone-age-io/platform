@@ -5,10 +5,8 @@ import (
 	"time"
 )
 
-// The readiness warning once said "expiring within 30 days" for a CA counted
-// against its 90-day window, so an operator reading "30" could believe there was
-// more slack than the check had actually measured -- or less. Each kind has to
-// name its own window.
+// Each kind must name its own window: a CA counted against 90 days must not be
+// reported as "within 30 days".
 func TestExpiringPhraseNamesEachKindsOwnWindow(t *testing.T) {
 	sums := []certSummary{
 		{Kind: certKindCA, Expiring: 1, Window: caExpiryWindow},

@@ -10,30 +10,19 @@ import (
 // schema_update_viewer_role adds a `viewer` option to the membership and invite
 // role selects: a tenant's read-only staff.
 //
-// This migration is an import and nothing else — no rule text changes, and no
-// backfill. Both are worth stating, because both are the kind of omission that
-// usually means a migration is wrong:
+// An import only, with no rule changes and no backfill:
 //
-//   - No rule changes, because every write branch in schema.json is an ALLOWLIST
-//     that names the roles it admits (see AUTHORIZATION.md). A role value that appears
-//     in no allowlist is denied everywhere by construction. That is the whole
-//     dividend of the allowlist refactor: a read-only role costs one enum entry
-//     on the server. If you find yourself editing a rule to keep `viewer` out,
-//     that rule is a deny-list and it is the bug.
-//   - No backfill, because no row can already hold `viewer`. Contrast
-//     schema_update_device_active_flag.go, where a new non-null column with a
-//     live rule over it stranded every existing row until the UPDATE ran. Adding
-//     an option to a select strands nothing.
+//   - Every write branch is an allowlist naming its roles (AUTHORIZATION.md), so
+//     a role in no allowlist is denied everywhere by construction. If a rule
+//     needs editing to keep `viewer` out, that rule is a deny-list and is the bug.
+//   - No row can already hold `viewer`, so nothing needs a backfill.
 //
-// `viewer` reads exactly what `member` reads — the read rules on things,
-// locations, thing_types, location_types, message_schemas and leaf_nodes are
-// org-scoped with no role check, and deliberately stay that way. The distinction
-// between the two roles is writes, which the allowlists already handle, plus
-// console navigation, which is ui/src/stores/auth.ts.
+// `viewer` reads what `member` reads, since read rules are org-scoped with no
+// role check. The difference is writes, plus console navigation in
+// ui/src/stores/auth.ts.
 //
-// `dashboard` is untouched and remains the zero-authority probe in
-// scripts/test-authz.sh. `viewer` cannot replace it: it holds read capability,
-// so a denial it passes proves less than a denial `dashboard` passes.
+// `dashboard` stays the zero-authority probe in scripts/test-authz.sh; `viewer`
+// holds read capability, so a denial it passes proves less.
 func init() {
 	m.Register(func(app core.App) error {
 		if len(SchemaJSON) == 0 {

@@ -26,20 +26,16 @@ import (
 // stone-age.inventory.<kind>.<action>, so the Control Plane publishes once on
 // one connection and NATS does the routing.
 //
-// THE WHOLE RECORD, NEVER A DIFF. That is what makes having no queue and no
-// replay safe: a consumer that missed an event is corrected by the next one
-// about the same record. `changed` says what moved; the rest says where things
-// now stand. Do not trim the payload to the changed fields.
+// The whole record, never a diff: that is what makes no queue and no replay
+// safe, since the next event about a record corrects a consumer that missed
+// one. `changed` says what moved. Do not trim the payload to it.
 //
-// NO QUEUE. An inventory event delivered an hour late is worse than one never
-// delivered, because a consumer would act on a stale fact. Core NATS, fire and
-// forget, log on failure. The connection is opened with ReconnectBufSize(-1)
-// for the same reason: nats.go otherwise buffers publishes made during an
-// outage and flushes them on reconnect, which is a queue by another name.
+// No queue: an event delivered an hour late is worse than none, because a
+// consumer would act on a stale fact. Core NATS, fire and forget, and
+// ReconnectBufSize(-1) so nats.go does not buffer publishes during an outage.
 //
-// NEVER FAIL THE WRITE. A Thing that saved but whose event did not publish is
-// a missed notification; a Thing that failed to save because NATS was briefly
-// unreachable is an outage. Every handler here logs and returns e.Next().
+// Never fail the write: a missed event is a missed notification, a failed save
+// is an outage. Every handler logs and returns e.Next().
 
 // InventoryEventsOptions configures RegisterInventoryEvents.
 type InventoryEventsOptions struct {
@@ -58,8 +54,7 @@ type InventoryEventsOptions struct {
 
 	// LocalSubject is nats.inventory_local_subject, what an organization's own
 	// account sees ("stone-age.>"). Its prefix also roots the provider-side
-	// subject, so the two never share a namespace with the provider's other
-	// traffic (see inventorySubjectRoot).
+	// subject (see inventorySubjectRoot).
 	LocalSubject string
 
 	// ServerURL is nats.server_url, which the platform-events connection dials.
@@ -79,12 +74,11 @@ const (
 	inventoryActionDeleted = "deleted"
 )
 
-// inventoryFields is the payload allowlist per kind, in the shape
-// auditSnapshotCollections uses: an allowlist, never a record dump. The day a
-// credential-bearing field is added to things, a denylist would publish it and
-// this does not. TestInventoryPayloadCarriesNoCredential pins it.
+// inventoryFields is the payload allowlist per kind, never a record dump, so a
+// credential field added later is not published.
+// TestInventoryPayloadCarriesNoCredential pins it.
 //
-// Relation fields (type, location, parent) are published as the target's CODE,
+// Relation fields (type, location, parent) are published as the target's code,
 // not its id: ids are for storage, codes for addressing (ADR 0002).
 var inventoryFields = map[string][]string{
 	inventoryKindThing:    {"code", "name", "description", "type", "location", "active", "metadata"},
@@ -94,11 +88,9 @@ var inventoryFields = map[string][]string{
 // inventorySubjectRoot is the provider-side root for one organization:
 // "<prefix>.<org-code>", where prefix is LocalSubject without its ".>".
 //
-// The plan wrote this as a bare "<org-code>.>". Prefixing it closes a
-// collision: a bare org code shares the first subject token with everything
-// else in the provider account, so an organization whose code happened to be
-// "helpdesk" would have been exported every managed org's helpdesk.<code>.>
-// traffic. Under the prefix, an org code can only ever address its own events.
+// Never a bare "<org-code>": it would share the first token with the provider
+// account's other traffic, so an org coded "helpdesk" would be exported every
+// managed org's helpdesk.<code>.> stream.
 func inventorySubjectRoot(localSubject, orgCode string) string {
 	return strings.TrimSuffix(localSubject, ".>") + "." + orgCode
 }
@@ -111,11 +103,9 @@ func inventorySubject(localSubject, orgCode, kind, action string) string {
 // inventoryChanged returns the allowlisted fields whose values differ from
 // rec.Original(), with location_path added when a Thing's location moved.
 //
-// Original() is the state at the last database READ, not before this write
-// (hooks/CLAUDE.md). After a REST request that is the pre-update record. For one
-// in-memory record saved twice, the second event also lists the first save's
-// fields -- over-reporting, which is the safe direction, and pinned by a test so
-// it is known behaviour rather than a surprise.
+// Original() is the state at the last database READ (hooks/CLAUDE.md), so for
+// one in-memory record saved twice the second event also lists the first save's
+// fields. Over-reporting is the safe direction; a test pins it.
 func inventoryChanged(kind string, rec *core.Record) []string {
 	orig := rec.Original()
 	var changed []string
@@ -153,8 +143,8 @@ func (p *inventoryPublisher) publish(subject string, data []byte) error {
 // flag off removes them) and, when enabled, the record hooks that publish and
 // the platform-events connection they publish on.
 //
-// Bind it after RegisterOrgProvisioning: the organization hooks need the
-// org's NATS account to exist by the time they look for it.
+// Bind it after RegisterOrgProvisioning: the organization hooks need the org's
+// NATS account to exist.
 func RegisterInventoryEvents(app *pocketbase.PocketBase, opts InventoryEventsOptions) {
 	registerInventoryExports(app, opts)
 	if !opts.Enabled {
@@ -164,11 +154,9 @@ func RegisterInventoryEvents(app *pocketbase.PocketBase, opts InventoryEventsOpt
 	p := &inventoryPublisher{opts: opts}
 	collections := []string{opts.ThingCollection, opts.LocationCollection}
 
-	// Every read below goes through the root `app`, never e.App. A write made
-	// inside a transaction -- a location move, POST /api/org/things -- runs its
-	// Success hooks after the commit, and e.App is then the finished
-	// transaction: every query on it fails with "transaction has already been
-	// committed". The root app sees exactly what was committed.
+	// Every read below goes through the root `app`, never e.App. A write made in
+	// a transaction (a location move, POST /api/org/things) runs its Success
+	// hooks after the commit, when every query on e.App fails.
 
 	app.OnRecordAfterCreateSuccess(collections...).BindFunc(func(e *core.RecordEvent) error {
 		p.emit(app, e.Record, inventoryActionCreated, nil)
@@ -178,8 +166,7 @@ func RegisterInventoryEvents(app *pocketbase.PocketBase, opts InventoryEventsOpt
 	app.OnRecordAfterUpdateSuccess(collections...).BindFunc(func(e *core.RecordEvent) error {
 		kind := p.kindOf(e.Record)
 		changed := inventoryChanged(kind, e.Record)
-		// A write that touched only fields outside the allowlist (a photo, a
-		// floorplan position, a credential link) has nothing to say.
+		// Only fields outside the allowlist moved: nothing to say.
 		if len(changed) == 0 {
 			return e.Next()
 		}
@@ -199,9 +186,8 @@ func RegisterInventoryEvents(app *pocketbase.PocketBase, opts InventoryEventsOpt
 		return
 	}
 
-	// At serve, not at bootstrap: `migrate`, `bootstrap` and every other CLI
-	// command also bootstrap the app, and none of them should open a bus
-	// connection or mint a credential.
+	// At serve, not bootstrap: every CLI command bootstraps the app, and none
+	// should open a bus connection or mint a credential.
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 		nc, err := connectPlatformEvents(e.App, opts)
 		if err != nil {
@@ -278,9 +264,8 @@ func inventoryPayload(app core.App, opts InventoryEventsOptions, kind string, re
 		}
 	}
 
-	// Alerting by area is the main reason to route on location, and the path
-	// makes it one rule-router `contains` on "/HQ/" instead of a KV lookup per
-	// message (ADR 0004).
+	// The path makes alerting by area one rule-router `contains` on "/HQ/"
+	// instead of a KV lookup per message (ADR 0004).
 	if kind == inventoryKindThing {
 		path := ""
 		if id := rec.GetString("location"); id != "" {
@@ -308,12 +293,9 @@ func codeOf(app core.App, collection, id string) string {
 // republishSubtree publishes every descendant location and every Thing under the
 // moved location, because the move rewrote their paths in raw SQL.
 //
-// hooks/location_path.go rewrites the subtree with one UPDATE inside the move's
-// transaction, which fires no record hooks. Without this, those records would
-// change path with no event, and since the next event about a record is what
-// corrects a consumer, a Thing that never changed again would carry a stale
-// location_path forever. Reads and publishes only: nothing is saved, so nothing
-// re-enters a hook.
+// hooks/location_path.go rewrites the subtree with one UPDATE, which fires no
+// record hooks, so without this a Thing that never changed again would carry a
+// stale location_path forever. Nothing is saved, so nothing re-enters a hook.
 func (p *inventoryPublisher) republishSubtree(app core.App, moved *core.Record) {
 	path := moved.GetString("path")
 	if path == "" {
@@ -351,21 +333,15 @@ func (p *inventoryPublisher) republishSubtree(app core.App, moved *core.Record) 
 	}
 }
 
-// --------------------------------------------------- platform-events identity
-
 const platformEventsName = "platform-events"
 
 // ensurePlatformEventsUser returns the creds of the Control Plane's own
 // publishing identity in the operator account, creating it on first use.
 //
-// An ordinary nats_users record rather than a JWT this process signs for itself
-// and renews: it is visible in the console, rotates through the existing
-// credential routes, and its permissions are the provider's to set. Created at
-// serve rather than by `bootstrap`, so deployments bootstrapped before this
-// existed get one too.
-//
-// The role is created once, with publish on the inventory root, and never
-// reconciled: after creation it is the provider's to edit.
+// An ordinary nats_users record rather than a self-signed JWT, so it is visible
+// in the console and rotates like any other. Created at serve rather than by
+// `bootstrap`, so older deployments get one too. Its role is created once and
+// never reconciled: after that it is the provider's to edit.
 func ensurePlatformEventsUser(app core.App, opts InventoryEventsOptions) (string, error) {
 	operatorOrg, hubAccount, err := operatorHub(app, opts.OrgCollection, opts.AccountCollection)
 	if err != nil {
@@ -433,8 +409,7 @@ func ensurePlatformEventsRole(app core.App, opts InventoryEventsOptions, operato
 	role.Set("description", "Publish-only role for the Control Plane's inventory events.")
 	role.Set("organization", operatorOrg.Id)
 	role.Set("is_default", false)
-	// An empty allow list grants nothing (pb-nats v0.3.0+), which is what the
-	// subscribe side wants: this identity only ever publishes.
+	// An empty allow list grants nothing (pb-nats v0.3.0+): publish only.
 	role.Set("publish_permissions", []string{strings.TrimSuffix(opts.LocalSubject, ".>") + ".>"})
 	role.Set("subscribe_permissions", []string{})
 	role.Set("publish_deny_permissions", []string{})
@@ -463,10 +438,9 @@ func operatorHub(app core.App, orgCollection, accountCollection string) (*core.R
 }
 
 // connectPlatformEvents ensures the identity and opens the connection.
-//
-// RetryOnFailedConnect so a NATS server that is not up yet does not stop the
-// Control Plane starting; ReconnectBufSize(-1) so a publish during an outage
-// fails and is logged instead of being buffered and delivered late.
+// RetryOnFailedConnect so a NATS server not yet up does not stop startup;
+// ReconnectBufSize(-1) so a publish during an outage fails instead of arriving
+// late.
 func connectPlatformEvents(app core.App, opts InventoryEventsOptions) (*nats.Conn, error) {
 	creds, err := ensurePlatformEventsUser(app, opts)
 	if err != nil {

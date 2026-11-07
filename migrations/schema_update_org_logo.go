@@ -7,9 +7,8 @@ import (
 	m "ganigeorgiev.com/pocketbase/pocketbase/migrations"
 )
 
-// schema_update_org_logo re-imports the embedded schema.json so existing
-// deployments pick up the new `logo` file field on `organizations`.
-// Additive import — fresh DBs that already have the field treat this as a no-op.
+// schema_update_org_logo re-imports schema.json for the `logo` file field on
+// `organizations`.
 func init() {
 	m.Register(func(app core.App) error {
 		if len(SchemaJSON) == 0 {

@@ -2,14 +2,9 @@ package demoseed
 
 // Curated things, edge sites, overlay networks, and people.
 //
-// Nothing here sets floorplan_position, deliberately. Those are PIXEL
-// coordinates on the location's uploaded floorplan image, and this seed uploads
-// no images — a coordinate against an absent (or later, differently-sized) plan
-// would place markers at meaningless spots. Unplaced is a real state the console
-// models: the things below show up in the floor-plan positioning drawer, which
-// is the workflow worth demonstrating anyway.
-
-// ------------------------------------------------------------ overlay network
+// Nothing sets floorplan_position: it is pixel coordinates on an uploaded
+// floorplan image, and this seed uploads none. Unplaced things show up in the
+// positioning drawer instead.
 
 type networkFixture struct {
 	Org, Name, Description string
@@ -23,31 +18,25 @@ var networks = []networkFixture{
 	{Org: "galewind", Name: "Galewind Overlay", Description: "Reaches the unmanned substations over cellular, outbound only."},
 }
 
-// ------------------------------------------------------------ curated things
-
 type thingFixture struct {
 	Org, Code, Name, Type, Location, Description string
 	Metadata                                     map[string]any
 
-	// Role overrides the thing type's default NATS role. Empty means "use the
-	// type's". Set explicitly only where the point is that it differs.
+	// Role overrides the thing type's default NATS role. Empty means the type's.
 	Role string
 
-	// NebulaIP, when set, mints a Nebula host for this thing at that overlay
-	// address. Most field sensors get no Nebula host at all: they reach the bus
-	// and nothing else, which is the design, and giving every sensor a mesh
-	// certificate in the demo would misrepresent it.
+	// NebulaIP, when set, mints a Nebula host at that overlay address. Most
+	// field sensors get none: they reach the bus and nothing else.
 	NebulaIP     string
 	NebulaGroups []string
 
-	// Inactive seeds a decommissioned device. Two of these exist so the console's
-	// inactive badge, the `active` filter and stone_age_inactive_records all have
-	// something to show — and so the state is visibly normal rather than alarming.
+	// Inactive seeds a decommissioned device, so the inactive badge, the
+	// `active` filter and stone_age_inactive_records have something to show.
 	Inactive bool
 }
 
 var things = []thingFixture{
-	// ------------------------------------------------------------- northwind
+	// Northwind.
 	{Org: "northwind", Code: "GW-KC-01", Name: "KC Edge Gateway", Type: "edge-gateway",
 		Location: "KC-DC1-MDF", Description: "Runs the KC leaf node and the cold-chain rules.",
 		NebulaIP: "10.20.10.1", NebulaGroups: []string{"gateway", "kc"},
@@ -71,24 +60,16 @@ var things = []thingFixture{
 	{Org: "northwind", Code: "DISP-KC-01", Name: "KC Dock Display", Type: "dock-display", Location: "KC-DC1",
 		Description: "Above dock doors 1-12.",
 		Metadata:    map[string]any{"panel_size": "55in", "orientation": "landscape"}},
-	// ---- northwind: the stone-access estate.
+	// Northwind: the stone-access estate.
 	//
-	// EVERY CODE BELOW IS ALSO A RECORD IN THE ACCESS-CONTROL APP — a `controllers`
-	// row or a `portals` row, with the identical code. They are lowercase where the
-	// rest of this file is uppercase, and that is not sloppiness: these codes appear
-	// in NATS subjects (acc.{location}.{type}.{thing}), so they are minted in
-	// subject-token form by the app that puts them on the wire, and the inventory
-	// follows. Site codes go the other way — access-control takes KC-DC1, KC-OFFICE
-	// and SGF-XD2 from here, because the platform is the system of record for sites.
+	// Every code below is also a `controllers` or `portals` row in stone-access,
+	// with the identical code; change both sides together. They are lowercase
+	// because stone-access mints them as NATS subject tokens
+	// (acc.{location}.{type}.{thing}). Site codes go the other way: stone-access
+	// takes KC-DC1, KC-OFFICE and SGF-XD2 from here.
 	//
-	// The join is the point. A door here and a door there are one door: scan its QR
-	// label in the platform's ScannerWidget or in the helpdesk's /staff/scan, and
-	// the bare code resolves in whichever app you are standing in.
-	//
-	// Only the controllers get a Nebula host. A door is not a network participant —
-	// it is I/O on a controller's terminal block, reachable only through the box
-	// that drives it — and giving every door a mesh certificate would misrepresent
-	// both the topology and what the overlay is for.
+	// Only the controllers get a Nebula host: a door is I/O on a controller's
+	// terminal block, not a network participant.
 	{Org: "northwind", Code: "ctrl-kc-dc1-1", Name: "KC DC1 - Dock Panel", Type: "access-controller",
 		Location: "KC-DC1", Description: "Drives the DC main entrance, Dock A and the Freezer Zone 1 door.",
 		NebulaIP: "10.20.40.1", NebulaGroups: []string{"access", "kc"},
@@ -144,23 +125,15 @@ var things = []thingFixture{
 		Metadata: map[string]any{"lock_type": "strike", "reader_make": "HID Signo 20",
 			"reader_protocol": "osdp", "held_open_seconds": 15, "installed": "2025-02-18"}},
 
-	// ---- northwind: the tool crib estate.
+	// Northwind: the tool crib estate.
 	//
-	// EVERY CODE BELOW IS ALSO A `kiosks` ROW IN THE KIOSK APP, and the same
-	// two-module contract applies as for stone-access above: nothing imports
-	// anything, so this list IS the join and changing a code has to change it on
-	// both sides. kiosk/internal/demoseed/data.go is the other side.
+	// Every code below is also a `kiosks` row in the kiosk app; change both
+	// sides together. kiosk/internal/demoseed/data.go is the other side. They
+	// are uppercase because the kiosk app mints them that way for
+	// `kiosk.<code>.event.…`.
 	//
-	// Uppercase, where the access estate is lowercase, for the identical reason
-	// running the other way: these codes go on the wire as `kiosk.<code>.event.…`
-	// and the kiosk app mints them uppercase, so the inventory follows the app
-	// that publishes.
-	//
-	// Every node gets a Nebula host. That is the opposite call from the doors —
-	// and it is the same test applied honestly. A door is I/O on a controller's
-	// terminal block; a kiosk is a mini-PC with its own database that an
-	// administrator has to be able to reach when the bus is unhappy, which is
-	// exactly what the overlay is for.
+	// Every node gets a Nebula host: a kiosk is a mini-PC with its own database
+	// that an administrator must reach when the bus is down.
 	{Org: "northwind", Code: "KC-DC1-CRIB", Name: "Main Tool Crib", Type: "tool-kiosk", Location: "KC-DC1",
 		Description: "Counter scanner plus two RFID cabinets. The flagship node.",
 		NebulaIP:    "10.20.50.1", NebulaGroups: []string{"kiosk", "kc"},
@@ -176,17 +149,15 @@ var things = []thingFixture{
 		NebulaIP:    "10.20.50.3", NebulaGroups: []string{"kiosk", "sgf"},
 		Metadata: map[string]any{"model": "Intel NUC 13 Pro", "os": "Debian 13", "port": 8103,
 			"scanner": "usb-hid", "rfid_mode": "mixed", "enclosures": 1, "installed": "2026-05-20"}},
-	// KC-OFFICE has no crib. Office staff punch from their phones, which is how
-	// this binary is meant to be deployed — and it is the node that proves the
-	// cross-kiosk clock-out gate, because a phone has no local open checkouts at
-	// all and still has to see a tool out at Springfield.
+	// KC-OFFICE has no crib; staff punch from phones. It exercises the
+	// cross-kiosk clock-out gate: no local checkouts, yet it must see a tool out
+	// at Springfield.
 	{Org: "northwind", Code: "KC-OFFICE-TC", Name: "Office Timeclock", Type: "timeclock-terminal", Location: "KC-OFFICE",
 		Description: "Virtual timeclock terminal. No checkout surface is registered on this binary, so none can be exposed.",
 		NebulaIP:    "10.20.50.4", NebulaGroups: []string{"kiosk", "kc"},
 		Metadata: map[string]any{"port": 8092, "auth": "both", "installed": "2026-05-20"}},
-	// No kiosk_code of its own, deliberately: the controller is the one participant
-	// in this estate that is not a node, and it sits in the application overlay
-	// range beside the WMS connector rather than with the nodes it manages.
+	// No kiosk_code: the controller is not a node, so it sits in the application
+	// overlay range beside the WMS connector.
 	{Org: "northwind", Code: "KIOSK-CTRL-01", Name: "Kiosk Controller", Type: "kiosk-controller", Location: "KC-DC1-MDF",
 		Description: "Single instance. Aggregates all three nodes' ledgers and publishes their catalogue.",
 		NebulaIP:    "10.20.20.3", NebulaGroups: []string{"application"},
@@ -196,7 +167,7 @@ var things = []thingFixture{
 		Description: "Replaced during the 2026 refit. Kept for its history.", Inactive: true,
 		Metadata: map[string]any{"serial": "TP-LEG-0007", "firmware": "1.2.9", "probe_type": "air", "calibrated_on": "2024-08-19"}},
 
-	// ------------------------------------------------------------ ironbridge
+	// Ironbridge.
 	{Org: "ironbridge", Code: "GW-PIT-01", Name: "Plant Edge Gateway", Type: "edge-gateway",
 		Location: "PIT-MCC1", Description: "Runs the plant leaf node and the OEE pipeline.",
 		NebulaIP: "10.30.10.1", NebulaGroups: []string{"gateway", "plant"},
@@ -215,7 +186,7 @@ var things = []thingFixture{
 		NebulaIP: "10.30.20.2", NebulaGroups: []string{"application"},
 		Metadata: map[string]any{"version": "1.1.7", "mes_vendor": "Siemens Opcenter"}},
 
-	// -------------------------------------------------------------- galewind
+	// Galewind.
 	{Org: "galewind", Code: "GW-N1-01", Name: "North Substation Gateway", Type: "edge-gateway",
 		Location: "SUB-N1-CAB", Description: "Cellular backhaul. The site keeps running when the WAN does not.",
 		NebulaIP: "10.40.10.1", NebulaGroups: []string{"gateway", "substation"},
@@ -245,11 +216,8 @@ var things = []thingFixture{
 		Metadata: map[string]any{"panel_size": "75in", "orientation": "landscape"}},
 }
 
-// ------------------------------------------------------------- lighthouses
-
-// A lighthouse is a Nebula host, not a Thing — it is infrastructure rather than
-// inventory, and giving it a Thing record would put a rendezvous server in the
-// device list. Each org gets one so its network is actually usable.
+// A lighthouse is a Nebula host, not a Thing: infrastructure, not inventory.
+// Each org gets one so its network is usable.
 type lighthouseFixture struct {
 	Org, Hostname, OverlayIP, PublicHostPort string
 	Groups                                   []string
@@ -264,8 +232,6 @@ var lighthouses = []lighthouseFixture{
 		PublicHostPort: "lighthouse.galewind.example:4242", Groups: []string{"lighthouse"}},
 }
 
-// ------------------------------------------------------------------- people
-
 // DemoPassword is shared by every seeded login. It is printed by the command and
 // is the reason --confirm exists.
 const DemoPassword = "demo1234"
@@ -273,41 +239,29 @@ const DemoPassword = "demo1234"
 type personFixture struct {
 	Email, Name string
 
-	// Operator marks a platform operator: someone who can manage organizations
-	// themselves. One is seeded so the Organizations screen is reachable without
-	// logging in as a superuser.
+	// Operator marks a platform operator, so the Organizations screen is
+	// reachable without a superuser login.
 	Operator bool
 
-	// Roles maps org code to membership role. Every one of the five roles is
-	// represented at least once, because scripts/test-authz.sh is the only other
-	// place they all appear and a person exploring the console should be able to
-	// log in as each and see the difference.
+	// Roles maps org code to membership role. All five roles appear at least
+	// once, so each can be tried in the console.
 	Roles map[string]string
 }
 
 // natsRoleForConsoleRole maps a console role to the NATS role a membership's
 // identity gets.
 //
-// This is a FUNCTION rather than a field on personFixture, and that is the whole
-// point. It was a field first, and the first person who held two different
-// console roles in two organizations — Casey below, an admin in two tenants and
-// a viewer in a third — got one NATS role across all three, so the demo shipped
-// a "read-only" auditor who could publish anywhere. The pairing has to be
-// per-membership because the console role is, and deriving it here makes that
-// structural instead of something each fixture has to remember.
-//
-// A console role is still NOT a NATS role: nothing in the platform enforces this
-// mapping, and an operator is free to link any identity to any membership. What
-// this buys is that the seeded data demonstrates the correct pairing rather than
-// the trap.
+// It is derived per membership, not a field on personFixture, because one
+// person can hold different console roles in different orgs (Casey below), and
+// a per-person field gave a read-only viewer publish rights. Nothing in the
+// platform enforces this pairing; the seed only demonstrates the correct one.
 func natsRoleForConsoleRole(role string) string {
 	switch role {
 	case "viewer", "dashboard":
 		return "console-readonly"
 	default:
-		// owner, admin and member all administer or edit inventory, and all
-		// three legitimately publish from the console — testing an operation
-		// with the Publisher widget is ordinary work for them.
+		// owner, admin and member all publish from the console (the Publisher
+		// widget).
 		return "console-operator"
 	}
 }
@@ -338,13 +292,11 @@ var people = []personFixture{
 	{Email: "iso@galewind.example", Name: "Grid Compliance",
 		Roles: map[string]string{"galewind": "viewer"}},
 
-	// Service logins, one per organization, for the long-term inventory feed
-	// (ADR 0004 in platform-docs; demo/inventory). nats-auth-manager signs in as
-	// one and keeps its token in the organization's own `tokens` KV bucket, and
-	// rule-router polls the list API with it. A viewer and nothing more: the
-	// token sits in a bucket anything with `$KV.tokens.>` can read, so what it
-	// can do is what leaks. Its NATS identity (console-inventory-feed, read-only)
-	// is minted like everyone else's and the feed does not use it.
+	// Service logins for the inventory feed (ADR 0004 in platform-docs;
+	// demo/inventory): nats-auth-manager keeps the token in the org's `tokens`
+	// KV bucket and rule-router polls the list API with it. Viewer only, because
+	// anything with `$KV.tokens.>` can read that token. Its NATS identity
+	// (console-inventory-feed) is minted like everyone else's and unused.
 	{Email: "inventory-feed@northwind.example", Name: "Northwind Inventory Feed",
 		Roles: map[string]string{"northwind": "viewer"}},
 	{Email: "inventory-feed@ironbridge.example", Name: "Ironbridge Inventory Feed",
@@ -352,10 +304,9 @@ var people = []personFixture{
 	{Email: "inventory-feed@galewind.example", Name: "Galewind Inventory Feed",
 		Roles: map[string]string{"galewind": "viewer"}},
 
-	// One person in two tenants at different authority levels. This is what the
-	// organization switcher exists for, and it is also the fastest way to see
-	// that `current_organization` is server-side session state: switching in one
-	// tab rescopes the other.
+	// One person in three tenants at different authority levels, for the org
+	// switcher. `current_organization` is server-side: switching in one tab
+	// rescopes the other.
 	{Email: "casey@msp.example", Name: "Casey Nakamura", Operator: true,
 		Roles: map[string]string{"northwind": "admin", "ironbridge": "admin", "galewind": "viewer"}},
 }

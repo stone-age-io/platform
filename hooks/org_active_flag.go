@@ -11,8 +11,7 @@ import (
 )
 
 // ErrInfrastructureOrgActive is returned when something tries to clear `active`
-// on the operator or system organization. Exported so a test can errors.Is it
-// rather than matching on the message.
+// on the operator or system organization. Exported for errors.Is in tests.
 var ErrInfrastructureOrgActive = errors.New("the platform's own organizations cannot be deactivated")
 
 // OrgActiveFlagOptions names the two collections this mirror spans.
@@ -21,132 +20,65 @@ type OrgActiveFlagOptions struct {
 	NatsAccountCollection string
 }
 
-// RegisterOrgActiveFlag makes `active` on organizations mean something.
+// RegisterOrgActiveFlag makes `active` on organizations mean exactly one thing:
+// the organization's NATS account is withdrawn. Nothing more. A flag nobody
+// enforces is worse than no flag, because someone trusts it during an incident.
 //
-// Until this existed it meant nothing at all. The field was in schema.json, the
-// operator form carried a toggle for it, and the organization detail and list
-// views badged it red or green -- and not one line of Go, TypeScript or rule
-// text read it back. Deactivating a tenant stopped no login, disconnected no
-// device, revoked no credential and withdrew no account. It is the same shape as
-// the `nats_users.active` checkbox that was removed from the UI for the same
-// reason: a flag nobody enforces is worse than no flag, because someone will
-// trust it during an incident -- or, here, during a billing dispute.
+// `nats_accounts.active` is pb-nats's account-scope suspend switch: the
+// true->false edge schedules a DELETE of the account claim, which disconnects
+// every client of the tenant on the hub at once, and ReconcileAccounts skips
+// inactive accounts, so it stays withdrawn across restarts.
 //
-// WHAT IT NOW MEANS, EXACTLY: the organization's NATS account is withdrawn.
-// Nothing more. That is one sentence on purpose, and it is the sentence the
-// console should print next to the badge.
+// It is reversible, unlike the device flag in hooks/active_flag.go, whose
+// revocation cutoff is permanent. This deletes the ACCOUNT claim and writes no
+// cutoff, touches no nats_users row and re-mints nothing, so every creds_file
+// works again on reactivation. That asymmetry is why a tenant-wide suspend is
+// safe behind a checkbox and a tenant-wide revoke would not be.
 //
-// WHY THAT IS THE WHOLE FEATURE. `nats_accounts.active` is pb-nats's own
-// account-scope suspend switch (internal/sync/manager.go, the account
-// AfterUpdateSuccess hook): the true->false edge schedules a DELETE of the
-// account claim, which disconnects every client of the tenant on the hub at once
-// -- devices, edge agents and the console's own browser connection -- and ReconcileAccounts
-// skips inactive accounts, so it stays withdrawn across restarts. There is no
-// cheaper lever with the same reach, because the account is the boundary; and
-// there is no need to fan out over things, nats_users or nebula_hosts to get it.
+// What it deliberately does not do:
 //
-// WHY IT IS REVERSIBLE, WHICH THE USER-SCOPE FLAG IS NOT. Deactivating here
-// deletes the ACCOUNT claim. It writes no revocation cutoff, touches no
-// nats_users row and re-mints nothing, so every creds_file in the tenant stays
-// valid and simply has nothing to connect to. Reactivation republishes the
-// account and the same credentials work again. Contrast hooks/active_flag.go,
-// where clearing `active` on a single device revokes its public key against a
-// cutoff that is permanent, so coming back has to issue a NEW credential. That
-// asymmetry is why a tenant-wide suspend is safe to put behind a checkbox and a
-// tenant-wide revoke would not be.
+//   - Touch Nebula. Revocation lands only on each peer's redeploy, and undoing
+//     it rewrites every config in the mesh: the wrong shape for a reversible
+//     suspension.
+//   - Lock the console. That needs `organization.active = true` on eight read
+//     rules plus a hook for the org switcher, since a rule cannot traverse
+//     @request.body.current_organization. A suspended tenant still signs in and
+//     reads what it owns. That is a product decision.
+//   - Kill Things' PocketBase sessions. That needs the flag in things.authRule
+//     plus a RefreshTokenKey() sweep, because an authRule is only checked at
+//     the auth endpoint.
+//   - Reach a site's leaf node. A leaf runs `resolver: MEMORY` with a preloaded
+//     account JWT, which /api/me/leaf-config serves whether or not the account
+//     is active. Devices on the leaf keep working; the gateway's uplink is in
+//     the withdrawn account, so the site is islanded. Say "disconnects from the
+//     hub", never "disconnects everything".
 //
-// WHAT IT DELIBERATELY DOES NOT DO, so nobody has to re-derive it:
+// The mirror is level-triggered, unlike hooks/active_flag.go. A reported
+// failure is retried by saving again, which an edge trigger would ignore. And
+// Record.Original() is the state at the last database READ, not before this
+// write, so a record saved twice in memory shows no edge on the second save: an
+// edge build mirrored a deactivation and then did not undo it. The compare
+// costs one indexed lookup and also pulls back an account flipped directly in
+// the PocketBase dashboard.
 //
-//   - It does not touch Nebula. Revocation there is a fingerprint in every OTHER
-//     host's pki.blocklist, it lands only when each peer's config is redeployed,
-//     and undoing it rewrites every config in the mesh. That is the wrong shape
-//     for a reversible suspension, and it moves nothing at the moment of
-//     suspension anyway.
-//   - It does not lock the console. Reads are scoped on the active organization
-//     with no role branch, so locking a tenant out means `organization.active =
-//     true` on eight read rules plus a hook for the org switcher (a rule cannot
-//     do it: @request.body.current_organization is a raw submitted string with
-//     nothing to traverse into -- the hooks/relation_tenancy.go lesson). A
-//     suspended tenant can still sign in and read what it owns. That is the
-//     product decision, not an oversight.
-//   - It does not kill Things' PocketBase sessions. With the account withdrawn a
-//     device can read its own record and call /api/me/leaf-config, and nothing
-//     else. Closing that would need `active = true` on the organization relation
-//     in things.authRule PLUS a RefreshTokenKey() sweep over every Thing in the
-//     org, because an authRule is a latch and those tokens live seven days.
-//   - It does not reach a site's leaf node. A leaf runs `resolver: MEMORY` with a
-//     preloaded copy of the account JWT, and /api/me/leaf-config serves that JWT
-//     whether or not the account is active, so the agent's periodic leaf refresh
-//     does not carry the suspension either. Devices on the leaf keep working
-//     locally. The gateway's own uplink credential is in the withdrawn account,
-//     so the hub drops it with everything else and the site is islanded, not
-//     shut down. Say "disconnects from the hub", never "disconnects everything".
-//
-// WHY LEVEL-TRIGGERED RATHER THAN EDGE-TRIGGERED, which is where this differs
-// from hooks/active_flag.go. The mirror is reported rather than swallowed (see
-// below), and a reported failure is only useful if there is something to do
-// about it. On an edge trigger the retry is unavailable by construction: the
-// second save sees was == now and returns early, so the one lever the operator
-// has -- save it again -- does nothing. Comparing the two values and saving only
-// on a difference costs one indexed lookup per organization save, which is the
-// same trade hooks/org_provisioning.go already took to become retryable, and it
-// picks up drift for free: an account whose flag was flipped directly in the
-// PocketBase dashboard is pulled back into line by the next organization save.
-// Because the compare happens before the save, an organization update that
-// changes something else writes nothing here and pb-nats sees no event.
-//
-// There is also a harder reason, found by writing the edge version and running
-// the tests against it. Record.originalData is refreshed in exactly one place --
-// Record.PostScan, which runs when the row is READ from the database
-// (core/record_model.go) -- and by nothing in the save path. So Original() means
-// "the state at the last LOAD", not "the state before this write", and the two
-// stop agreeing the moment one in-memory record is saved twice. Deactivate and
-// then reactivate through the same record object and the second save presents no
-// edge at all: Original() still reports the value from before the first one. The
-// edge build of this hook mirrored the deactivation and then silently declined to
-// undo it, which is a worse failure than the one this file was written to remove.
-// hooks/active_flag.go can key on an edge because its trigger is a REST request,
-// where PocketBase loads the row before applying the patch; a hook that must also
-// hold for app.Save() cannot assume that.
-//
-// WHY THE ERROR IS RETURNED RATHER THAN LOGGED, which is also where this differs
-// from hooks/active_flag.go. That file's cascade is best-effort because its
-// failure mode is a NATS hiccup, and a bus outage must not roll back an operator
-// deactivation. This one has a different failure mode: pb-nats does the NATS work
-// on a queue, so what can fail here is the PocketBase Save -- a database or
-// validation problem, not a network one. Swallowing it leaves the badge saying
-// suspended while the tenant is live, which is the precise lie this file exists
-// to remove. So it follows hooks/org_provisioning.go: the work happens before
-// e.Next() and the error is returned after it, because returning early would
-// silently delete every handler bound later in the chain.
+// The error is returned, not logged, also unlike hooks/active_flag.go: pb-nats
+// does the NATS work on a queue, so what fails here is the Save, and swallowing
+// it would leave the badge saying suspended while the tenant is live. As in
+// hooks/org_provisioning.go, the work runs before e.Next() and the error is
+// returned after it, so later handlers still run.
 func RegisterOrgActiveFlag(app *pocketbase.PocketBase, opts OrgActiveFlagOptions) {
-	// Refuse the flip on the platform's own organizations.
+	// Refuse the flip on the platform's own organizations. OnRecordUpdate is the
+	// last layer that can still say no. It is an invariant, not a permission, so
+	// it is not in schema.json: a rule cannot say "this value, on these two rows".
+	// The operator org's account is the hub every managed tenant's helpdesk.>
+	// import resolves against; the system org holds the adopted $SYS records. An
+	// operator who means to withdraw the hub clears `active` on the nats_accounts
+	// row instead.
 	//
-	// This is a validation and so it binds to OnRecordUpdate, the only layer that
-	// can still say no -- AfterUpdateSuccess runs after the commit and could only
-	// report. It is an invariant rather than a permission (the caller is already
-	// an operator and organizations.updateRule said so), which is what keeps it
-	// out of schema.json: a rule cannot express "this value, on these two rows".
-	//
-	// The operator organization is not a customer. Its account is the hub every
-	// managed tenant's helpdesk.> import resolves against, so withdrawing it
-	// takes out event delivery for every managed org on the platform -- a blast
-	// radius wildly out of proportion to an unlabelled checkbox on one form. The
-	// system organization holds the adopted $SYS records, which bootstrap seeds
-	// and provisioning skips entirely.
-	//
-	// Neither is a lever we are removing, only a click we are refusing: an
-	// operator who genuinely means to withdraw the hub can clear `active` on the
-	// nats_accounts row, which is the record that says so.
-	//
-	// This one IS keyed on the transition, unlike the mirror below, and it
-	// carries that choice's limitation knowingly: Original() is the state at the
-	// last database read (see the note above), so a caller re-saving one
-	// in-memory organization record twice could slip a flip past it. Nothing
-	// writes organizations except the record API, which loads the row first, and
-	// a level check here would refuse every save of an infrastructure org that is
-	// already inactive -- including the save that would put it right. Keyed on
-	// the transition, being already inactive costs nothing and is recoverable.
+	// Edge-keyed, unlike the mirror: a level check would refuse every save of an
+	// infrastructure org that is already inactive, including the save that fixes
+	// it. The Original() limitation (above) is accepted because only the record
+	// API writes organizations, and it loads the row first.
 	app.OnRecordUpdate(opts.OrgCollection).BindFunc(func(e *core.RecordEvent) error {
 		orig := e.Record.Original()
 		if orig == nil || orig.GetBool("active") == e.Record.GetBool("active") {
@@ -159,13 +91,9 @@ func RegisterOrgActiveFlag(app *pocketbase.PocketBase, opts OrgActiveFlagOptions
 		return e.Next()
 	})
 
-	// The mirror itself.
-	//
-	// Registered in main.go AFTER RegisterOrgProvisioning, which matters: both
-	// bind here, handlers run in registration order, and provisioning does its
-	// work before calling e.Next(). So an organization whose account was missing
-	// has one by the time this runs, rather than being mirrored against nothing
-	// and then handed a fresh account with the wrong flag.
+	// The mirror. Registered in main.go AFTER RegisterOrgProvisioning: handlers
+	// run in registration order and provisioning works before e.Next(), so a
+	// missing account exists by the time this runs.
 	app.OnRecordAfterUpdateSuccess(opts.OrgCollection).BindFunc(func(e *core.RecordEvent) error {
 		mirrorErr := mirrorOrgActive(e.App, opts, e.Record)
 
@@ -175,24 +103,14 @@ func RegisterOrgActiveFlag(app *pocketbase.PocketBase, opts OrgActiveFlagOptions
 		return mirrorErr
 	})
 
-	// Deleting an organization needs it suspended and empty first.
-	//
-	// A delete blanks the relations into the organization rather than removing
-	// the rows (the tenancy sentinel note in AUTHORIZATION.md). So a delete on a
-	// live tenant left its NATS account active with a blank organization, which
-	// pb-nats kept publishing, and its Things kept signing in. And with
-	// inventory in it the delete usually failed part-way: PocketBase blanks one
-	// collection at a time, and relation tenancy refuses a location whose type
-	// or parent still holds the organization.
-	//
-	// So the rule is the two things that make a delete leave nothing behind.
-	// Suspended, because that is what withdraws the account, and the account
-	// stays withdrawn once blanked. Checked on the account itself, not the flag,
-	// so a mirror that failed cannot pass for one that worked. Empty of things,
-	// locations and Nebula hosts, because suspension does not touch Nebula and
-	// a host certificate keeps working until it expires.
-	//
-	// Returning before e.Next() is the point here: the delete must not proceed.
+	// Deleting an organization needs it suspended and empty first. A delete
+	// blanks the relations into it rather than removing rows (the tenancy
+	// sentinel note in AUTHORIZATION.md), so a live tenant would leave an active
+	// NATS account with a blank organization, and inventory makes the delete fail
+	// part-way under relation tenancy. Suspension is checked on the account, not
+	// the flag, so a failed mirror cannot pass. Nebula hosts must be gone too,
+	// because suspension does not touch Nebula. Returning before e.Next() is
+	// deliberate: the delete must not proceed.
 	app.OnRecordDelete(opts.OrgCollection).BindFunc(func(e *core.RecordEvent) error {
 		if err := deletableOrg(e.App, opts, e.Record); err != nil {
 			return err
@@ -237,19 +155,12 @@ func mirrorOrgActive(app core.App, opts OrgActiveFlagOptions, org *core.Record) 
 		return nil // not configured on this deployment
 	}
 
-	// Neither infrastructure organization is mirrored, and the second half of
-	// that is not redundant with the refusal above.
-	//
-	// The System org's $SYS account is seeded by `superuser upsert` and adopted
-	// by bootstrap rather than provisioned, so there is nothing here to mirror --
-	// the same reason ensureOrgNatsAccount skips it.
-	//
-	// The operator org is skipped because the refusal above only governs
-	// transitions from here on. A database that predates this file can already
-	// hold an operator org with `active` clear, set through a toggle that
-	// enforced nothing at the time; without this line the first unrelated save
-	// of that record after an upgrade would withdraw the hub account every
-	// managed tenant imports through. A deploy must not be able to do that.
+	// Neither infrastructure org is mirrored. The $SYS account is adopted by
+	// bootstrap, not provisioned (ensureOrgNatsAccount skips it too). The
+	// operator org is skipped because a database predating this hook can already
+	// hold it with `active` clear, and the refusal above only governs
+	// transitions: the first unrelated save after an upgrade would otherwise
+	// withdraw the hub account every managed tenant imports through.
 	if org.GetBool("is_system_org") || org.GetBool("is_operator_org") {
 		return nil
 	}
@@ -259,9 +170,7 @@ func mirrorOrgActive(app core.App, opts OrgActiveFlagOptions, org *core.Record) 
 		return fmt.Errorf("look up the NATS account for organization %q: %w", org.GetString("name"), err)
 	}
 	if account == nil {
-		// Provisioning ran first in this same chain and reported its own failure
-		// if it could not create one. Saying so twice would name the same problem
-		// with the wrong noun.
+		// Provisioning ran first in this chain and reported its own failure.
 		return nil
 	}
 

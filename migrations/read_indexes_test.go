@@ -38,10 +38,8 @@ func tableIndexes(t *testing.T, app core.App, table string) map[string]bool {
 	return out
 }
 
-// restorePreReadIndexShape puts the database back to how it looked before the
-// migration. A fresh database imports the schema.json that already has the new
-// indexes, so without this the migration runs against nothing and passes for
-// the wrong reason.
+// restorePreReadIndexShape puts the database back to its pre-migration shape,
+// since a fresh database already has the new indexes.
 func restorePreReadIndexShape(t *testing.T, app core.App) {
 	t.Helper()
 

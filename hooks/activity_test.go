@@ -11,11 +11,11 @@ import (
 	"platform/internal/testutil"
 )
 
-// The feed is written from REQUEST hooks, and this harness does record CRUD
-// rather than serving HTTP -- so these tests drive the request hooks directly,
-// the way PocketBase does, with a *core.RecordRequestEvent carrying an Auth.
-// That is the point: the actor is the one thing a model hook cannot supply, so
-// it is the thing worth asserting.
+// The harness does record CRUD rather than serving HTTP, so these tests call
+// hooks.RecordActivity with a *core.RequestEvent carrying an Auth (the route
+// path). The request-hook binding in RegisterActivity is not exercised here.
+// The actor is the one thing a model hook cannot supply, so it is what to
+// assert.
 func TestActivityRecordsTheActor(t *testing.T) {
 	f := setupActivity(t)
 
@@ -48,9 +48,8 @@ func TestActivityRecordsTheActor(t *testing.T) {
 	}
 }
 
-// The label is a SNAPSHOT, which is the whole reason `actor` is a plain id and
-// not a relation: a relation would be blanked on user delete and the line would
-// lose its attribution.
+// The label is a snapshot and `actor` a plain id, not a relation, which would be
+// blanked on user delete.
 func TestActivitySurvivesTheActorBeingDeleted(t *testing.T) {
 	f := setupActivity(t)
 
@@ -73,12 +72,11 @@ func TestActivitySurvivesTheActorBeingDeleted(t *testing.T) {
 	}
 }
 
-// An observation must never cost the user their write. This is the opposite of
-// hooks/org_provisioning.go and deliberately so.
+// An observation must never cost the user their write (unlike
+// hooks/org_provisioning.go).
 func TestActivityFailureDoesNotBreakTheWrite(t *testing.T) {
 	f := setupActivity(t)
 
-	// Make every activity write fail.
 	f.app.OnRecordCreate(hooks.ActivityCollection).BindFunc(func(e *core.RecordEvent) error {
 		return errors.New("simulated activity outage")
 	})
@@ -102,8 +100,6 @@ func TestActivityFailureDoesNotBreakTheWrite(t *testing.T) {
 		t.Errorf("expected no feed entry when the write fails, got %d", n)
 	}
 }
-
-// --- fixture ---
 
 type activityFixture struct {
 	app    core.App

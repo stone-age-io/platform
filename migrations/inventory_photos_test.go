@@ -12,9 +12,8 @@ import (
 
 var photoCollections = []string{"things", "locations"}
 
-// dropPhoto puts a collection back to the pre-migration state. A fresh database
-// imports a schema.json that already carries the field, so without this the
-// migration runs against nothing and passes for the wrong reason.
+// dropPhoto puts a collection back to the pre-migration state, since a fresh
+// database already has the field.
 func dropPhoto(t *testing.T, app *pocketbase.PocketBase, collection string) {
 	t.Helper()
 
@@ -31,7 +30,7 @@ func dropPhoto(t *testing.T, app *pocketbase.PocketBase, collection string) {
 		t.Fatalf("drop %s.photo: %v", collection, err)
 	}
 	if !tableHasColumn(t, app, collection, "photo") {
-		return // column went with it, as expected
+		return
 	}
 	t.Fatalf("fixture removed the %s.photo definition but not its column", collection)
 }
@@ -67,8 +66,7 @@ func TestAddInventoryPhotosAddsTheField(t *testing.T) {
 		if !tableHasColumn(t, app, c, "photo") {
 			t.Errorf("%s.photo has a definition but no column", c)
 		}
-		// One photo, not a gallery: maxSelect > 1 would make this a JSON column
-		// and the migration back is not free.
+		// One photo, not a gallery: going back from many to one loses files.
 		if f.MaxSelect != 1 {
 			t.Errorf("%s.photo maxSelect = %d, want 1", c, f.MaxSelect)
 		}
@@ -93,12 +91,9 @@ func TestAddInventoryPhotosIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestPhotoIsNotSvg pins the mime list.
-//
-// locations.floorplan accepts SVG for reasons of its own; this field is camera
-// output, and widening it back would re-open the decoder surface
-// schema_update_floorplan_mime_types.go deliberately narrowed. A one-word
-// edit to schema.json would otherwise do it silently.
+// TestPhotoIsNotSvg pins the mime list: this field is camera output, and SVG
+// would re-open the decoder surface schema_update_floorplan_mime_types.go
+// narrowed.
 func TestPhotoIsNotSvg(t *testing.T) {
 	app := testutil.SetupApp(t)
 
@@ -114,13 +109,9 @@ func TestPhotoIsNotSvg(t *testing.T) {
 	}
 }
 
-// TestPhotoThumbsAreDeclared is the one that stops a silent regression.
-//
-// PocketBase serves `100x100` for any file field whether or not it is declared,
-// but EVERY other size must be in the field's own thumbs list -- and a request
-// for an undeclared size does not error, it quietly serves the full-size
-// original. So a UI asking for 400x400 against a field that stopped declaring
-// it would keep working, keep looking right, and start shipping 2 MB per row.
+// TestPhotoThumbsAreDeclared guards a silent regression: a request for an
+// undeclared thumb size (anything but 100x100) quietly serves the full-size
+// original.
 func TestPhotoThumbsAreDeclared(t *testing.T) {
 	app := testutil.SetupApp(t)
 

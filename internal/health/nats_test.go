@@ -20,12 +20,9 @@ func TestHostPort(t *testing.T) {
 		wantErr  bool
 	}{
 		{in: "nats://localhost:4222", want: "localhost:4222"},
-		// The NATS client default. A config that omits the port is legal and
-		// must not be read as "no port" and rejected.
+		// An omitted port is the client default, not an error.
 		{in: "nats://localhost", want: "localhost:4222"},
-		// Bare host:port turns up in hand-written configs; url.Parse needs a
-		// scheme to find a host at all, so this would otherwise silently parse
-		// as a path.
+		// Without a scheme, url.Parse would read this as a path.
 		{in: "localhost:4222", want: "localhost:4222"},
 		{in: "tls://nats.example.com:4223", want: "nats.example.com:4223"},
 		{in: "nats://[::1]:4222", want: "[::1]:4222"},
@@ -51,10 +48,8 @@ func TestHostPort(t *testing.T) {
 	}
 }
 
-// startTestNATS runs a real nats-server on a random port. The point of using
-// the real server rather than a canned INFO string is the same one that made
-// TestBuildLeafConfIsAcceptedByNATSServer worth having: a hand-written fixture
-// asserts what we believe the protocol is, not what it is.
+// startTestNATS runs a real nats-server on a random port. A canned INFO string
+// would assert what we believe the protocol is, not what it is.
 func startTestNATS(t *testing.T, opts *natsserver.Options) *natsserver.Server {
 	t.Helper()
 	if opts == nil {
@@ -93,8 +88,8 @@ func TestDialInfoReadsARealServersGreeting(t *testing.T) {
 	if info.Version == "" {
 		t.Error("Version should be populated from the INFO greeting")
 	}
-	// JetStream is off in these options; the check reports that as a warning,
-	// so the field has to actually reflect the server rather than default true.
+	// JetStream is off here, and the check warns on that, so the field must
+	// reflect the server.
 	if info.JetStream {
 		t.Error("JetStream should be false for a server started without it")
 	}
@@ -130,9 +125,8 @@ func TestDialInfoOnNothingListening(t *testing.T) {
 	}
 }
 
-// Something listening that is not a NATS server must produce a diagnosis, not a
-// JSON parse error. Pointing nats.server_url at the HTTP port is a real and
-// easy mistake — the monitoring port is 8222 and the client port is 4222.
+// A non-NATS listener (nats.server_url pointed at the 8222 monitoring port, say)
+// must produce a diagnosis, not a JSON parse error.
 func TestDialInfoOnANonNATSListener(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -157,9 +151,7 @@ func TestDialInfoOnANonNATSListener(t *testing.T) {
 	}
 }
 
-// The trust check has to fail on a rejected credential rather than reporting
-// success — this is the whole point of nats_trust, which exists to catch a
-// running server whose operator JWT no longer matches this database's.
+// A malformed credential fails CheckCreds and is named as the problem.
 func TestCheckCredsRejectsGarbage(t *testing.T) {
 	ns := startTestNATS(t, nil)
 
@@ -216,8 +208,8 @@ func mintOperatorWorld(t *testing.T) (opJWT, sysPub, sysJWT, creds string) {
 }
 
 // startOperatorNATS runs a real nats-server in operator mode, trusting exactly
-// one operator, with the accounts preloaded into a MEMORY resolver — the same
-// arrangement `nats export` and buildLeafConf produce.
+// one operator, with the accounts preloaded into a MEMORY resolver, as
+// `nats export` and the agent's buildLeafConf produce.
 func startOperatorNATS(t *testing.T, opJWT, sysPub, sysJWT string) *natsserver.Server {
 	t.Helper()
 	conf := "operator: \"" + opJWT + "\"\n" +
@@ -236,21 +228,15 @@ func startOperatorNATS(t *testing.T, opJWT, sysPub, sysJWT string) *natsserver.S
 	return startTestNATS(t, opts)
 }
 
-// The scenario nats_trust exists for: a running NATS server whose operator is
-// not the operator in this database. Every account claim the Control Plane
-// publishes is rejected, no organization's account ever reaches the bus, and
-// nothing in the console looks wrong.
-//
-// Built against a real operator-mode server rather than a stub, because the
-// thing being asserted IS the server's trust decision — a mock would only
-// assert what we believe that decision to be.
+// The scenario nats_trust exists for: the server's operator is not this
+// database's. A real operator-mode server, because the thing asserted is the
+// server's trust decision, and a mock asserts only what we believe it to be.
 func TestCheckCredsRejectsAnUntrustedOperator(t *testing.T) {
 	// World A runs the server.
 	opJWT, sysPub, sysJWT, _ := mintOperatorWorld(t)
 	ns := startOperatorNATS(t, opJWT, sysPub, sysJWT)
 
-	// World B is a different operator entirely — the database's, after someone
-	// re-seeded it without regenerating nats.conf.
+	// World B is the database's operator, re-seeded without a new nats.conf.
 	_, _, _, otherCreds := mintOperatorWorld(t)
 
 	err := CheckCreds(ns.ClientURL(), otherCreds, 5*time.Second)
@@ -263,9 +249,8 @@ func TestCheckCredsRejectsAnUntrustedOperator(t *testing.T) {
 	}
 }
 
-// The matching positive case. Without it the test above passes for a
-// CheckCreds that rejects everything, which is the failure mode AUTHORIZATION.md warns
-// about: a blanket deny that looks like a working check.
+// The paired "can": without it, a CheckCreds that rejects everything passes the
+// test above.
 func TestCheckCredsAcceptsATrustedOperator(t *testing.T) {
 	opJWT, sysPub, sysJWT, creds := mintOperatorWorld(t)
 	ns := startOperatorNATS(t, opJWT, sysPub, sysJWT)

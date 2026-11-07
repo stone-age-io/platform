@@ -17,9 +17,8 @@ import (
 	"platform/internal/testutil"
 )
 
-// The columns that hold a credential somewhere in the schema. None may ever be
-// on the bus: an inventory event reaches every subscriber in the tenant's
-// account, which is a far wider audience than the row rules that guard these.
+// The columns that hold a credential somewhere in the schema. None may reach the
+// bus, whose audience is far wider than the row rules that guard them.
 var credentialFields = []string{
 	"password", "tokenKey", "email", "creds_file", "config_yaml", "private_key",
 	"seed", "jwt", "nats_user", "nebula_host",
@@ -49,9 +48,8 @@ func TestInventoryAllowlistNamesNoCredential(t *testing.T) {
 }
 
 // The console marks the inventory pair read-only by name. A drifted literal
-// would offer an Edit button on records the sweep rewrites, with no error at
-// either end -- the reason TestConsoleRecognisesTheManagedExportName exists for
-// the helpdesk pair.
+// would silently offer an Edit button on records the sweep rewrites (as
+// TestConsoleRecognisesTheManagedExportName guards for the helpdesk pair).
 func TestConsoleRecognisesTheInventoryNames(t *testing.T) {
 	raw, err := os.ReadFile(filepath.FromSlash(managedExportsTS))
 	if err != nil {
@@ -126,8 +124,7 @@ func TestInventoryEvents(t *testing.T) {
 		LocalSubject:       "stone-age.>",
 		Publish:            rec.publish,
 	}
-	// Bound after Bootstrap, beside the harness's disabled registration. A late
-	// bind fires now that no organization hook terminates the chain.
+	// Bound after Bootstrap, beside the harness's disabled registration.
 	hooks.RegisterInventoryEvents(app, opts)
 
 	newRecord := func(collection string) *core.Record {
@@ -452,10 +449,8 @@ func TestInventoryEvents(t *testing.T) {
 			t.Fatal("re-enabling did not rewire the pair")
 		}
 
-		// An org with no inventory: deleting one that has nested locations
-		// blanks their organization and trips relation tenancy on the parent
-		// link, which is the existing reason org delete is operator-only and
-		// not what is under test here.
+		// An org with no inventory: deleting one with nested locations trips
+		// relation tenancy on the parent link, which is not under test here.
 		doomed := newOrg("Inventory Doomed", false)
 		exportOf := func() *core.Record {
 			r, _ := app.FindFirstRecordByFilter("nats_account_exports", "name = {:n}",

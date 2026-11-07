@@ -9,12 +9,9 @@ import (
 	"platform/internal/metrics"
 )
 
-// Exposed for hooks_test, which must be an EXTERNAL test package: it needs
-// internal/testutil for a real database, and testutil imports platform/hooks.
-//
-// Test-only by construction -- an _test.go file is not compiled into the
-// binary -- so this widens nothing that ships. Same shape as
-// internal/demoseed/export_test.go.
+// Exposed for hooks_test, which must be an external test package because
+// internal/testutil imports platform/hooks. Test-only, so nothing that ships is
+// widened.
 
 type CertSummary = certSummary
 
@@ -38,10 +35,8 @@ func RegisterPlatformMetrics(app core.App, set *metrics.Set, opts ObservabilityO
 	registerPlatformMetrics(app, set, opts)
 }
 
-// The shared org-context guard and the two role sets every route gates on.
-// Exposed so org_context_test.go can exercise the refusals directly: the authz
-// script covers them over HTTP, but only for the routes that exist today, and
-// the point of this helper is the route someone writes next.
+// The shared org-context guard and its role sets, so org_context_test.go can
+// test the refusals for routes not yet written, which the authz script cannot.
 var (
 	RolesOrgManager = rolesOrgManager
 	RolesInventory  = rolesInventory
@@ -51,8 +46,8 @@ func RequireMembership(re *core.RequestEvent, membershipCollection string, roles
 	return requireMembership(re, membershipCollection, roles)
 }
 
-// Inventory events. The sweep and the platform-events identity both run from
-// OnServe, which no test reaches, so they are exposed to be called directly.
+// Inventory events. The sweep and the platform-events identity run from
+// OnServe, which no test reaches.
 var (
 	InventoryFields     = inventoryFields
 	InventorySubject    = inventorySubject

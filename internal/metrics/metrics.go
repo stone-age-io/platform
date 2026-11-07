@@ -1,24 +1,14 @@
 // Package metrics is the Prometheus exposition shared by the Control Plane and
 // the edge agent.
 //
-// WHY PROMETHEUS AND NOT A JSON ENDPOINT. The point of a metrics endpoint is
-// that something else already knows how to read it. A bespoke JSON shape needs
-// a bespoke consumer, and this platform's users are integrators who already run
-// Prometheus, Grafana Alloy, Telegraf or an uptime checker — all of which speak
-// this format and none of which speak ours. The client library rather than a
-// hand-written text encoder for the same reason a generated nats-server config
-// is validated by nats-server itself: there is no scrape test in CI,
-// so a subtly malformed exposition (label escaping, `_total` conventions, NaN)
-// would look fine and be wrong. It also costs no binary size — slackhq/nebula
-// already links client_golang in.
+// Prometheus because integrators already run tools that read it. The client
+// library rather than a hand-written encoder, because nothing in CI scrapes the
+// output to catch a malformed exposition; slackhq/nebula already links it in.
 //
-// WHAT IS DELIBERATELY NOT HERE. No per-organization labels. The Control Plane
-// can only count rows in its own database, so per-org series would be tenant
-// names attached to inventory counts — customer-identifying, of no operational
-// use, and a poor trade on an endpoint that defaults to open. The numbers that
-// would justify a label (which site is offline, which bucket is stale) live
-// inside an organization's NATS account, which this process has no credential
-// for; the agent exposes those from the edge, where they can actually be seen.
+// No per-organization labels. The Control Plane can only count its own rows, so
+// per-org series would be customer-identifying, of no operational use, on an
+// endpoint open by default. Per-site numbers live inside an organization's NATS
+// account, which this process has no credential for; the agent exposes them.
 package metrics
 
 import (
@@ -33,9 +23,8 @@ import (
 	"platform/internal/health"
 )
 
-// allStates is every state a check can report. Each one gets a series so the
-// exposition is a complete state set rather than a boolean that loses the
-// difference between "warned" and "was never run".
+// allStates is every state a check can report. Each gets a series, so a warned
+// check stays distinct from one never run.
 var allStates = []health.State{
 	health.StateOK,
 	health.StateWarn,
@@ -46,10 +35,8 @@ var allStates = []health.State{
 // Set is one process's metrics: its own registry plus the readiness gauges
 // every binary here publishes.
 //
-// A private registry rather than prometheus.DefaultRegisterer, because
-// slackhq/nebula registers its own collectors into the default one when a
-// Nebula host runs in-process. Sharing it would mean this endpoint's contents
-// depend on which unrelated library happened to initialise.
+// A private registry, because slackhq/nebula registers its own collectors into
+// the default one when a Nebula host runs in-process.
 type Set struct {
 	Registry *prometheus.Registry
 
@@ -69,9 +56,7 @@ func New(namespace, version string) *Set {
 	)
 
 	// The conventional build-info pattern: a constant 1 whose labels carry the
-	// facts. It makes "which version reported this" answerable in a query
-	// rather than out of band, which is the whole reason `--version` reports
-	// the pb-* library versions too.
+	// facts.
 	buildInfo := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: namespace,
 		Name:      "build_info",
@@ -102,9 +87,8 @@ func New(namespace, version string) *Set {
 	return s
 }
 
-// Observe copies a readiness report into the gauges. Safe to call with nil,
-// which leaves the gauges at their zero values — correct, because "never
-// probed" and "not ready" should both read as not ready.
+// Observe copies a readiness report into the gauges. A nil report sets ready to
+// 0, because "never probed" should read as not ready.
 func (s *Set) Observe(rep *health.Report) {
 	if rep == nil {
 		s.ready.Set(0)
@@ -131,35 +115,25 @@ func (s *Set) Observe(rep *health.Report) {
 // Bind wires a prober's reports into this set, updating the gauges after every
 // probe. Call it before Prober.Start.
 //
-// It hangs the update off the prober rather than off scrape time on purpose. A
-// collector that ran the checks during a scrape would put a NATS dial on the
-// scrape path, so the probe rate would become whatever the operator configured
-// in Prometheus, and a slow check would time out the scrape rather than showing
-// up as a stale check_timestamp_seconds.
+// Updating from the prober rather than at scrape time keeps NATS dials off the
+// scrape path: a slow check shows as a stale check_timestamp_seconds instead of
+// a timed-out scrape.
 func (s *Set) Bind(p *health.Prober) {
 	p.OnRefresh(s.Observe)
 }
 
 // Handler returns the /metrics handler, optionally protected by a shared token.
 //
-// An empty token means no authentication, which is the default. That is a
-// deliberate choice and not laziness: the series exposed here are aggregate
-// counts and process statistics with no customer identifiers in them, and a
-// metrics endpoint that needs a credential to read is one that mostly does not
-// get scraped. Operators who do want it closed get a token that satisfies both
-// forms every scraper already supports.
+// An empty token, the default, means no authentication: the series are
+// aggregate counts with no customer identifiers, and an endpoint that needs a
+// credential mostly does not get scraped.
 //
-// The token is accepted two ways because scrapers differ and neither form is
-// more correct: `Authorization: Bearer <token>` (Prometheus `authorization`,
-// Alloy, Vector) and HTTP Basic with the token as the password and any username
-// (Prometheus `basic_auth`, Telegraf, most uptime checkers, and a plain
-// browser). PocketBase's own auth is deliberately NOT used: its tokens are JWTs
-// that expire, and no scraper has a refresh flow, so it would take a custom
-// sidecar to read a standard format.
+// The token is accepted as `Authorization: Bearer <token>` or as the HTTP Basic
+// password with any username, since scrapers support one or the other.
+// PocketBase auth is not used: its JWTs expire, and scrapers cannot refresh.
 func (s *Set) Handler(token string) http.Handler {
 	h := promhttp.HandlerFor(s.Registry, promhttp.HandlerOpts{
-		// A broken collector should not take the endpoint down; report what
-		// works and log the rest.
+		// A broken collector should not take the endpoint down.
 		ErrorHandling: promhttp.ContinueOnError,
 	})
 	if token == "" {
@@ -175,8 +149,7 @@ func requireToken(token string, next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		// Advertise Basic so a browser offers a prompt and a misconfigured
-		// scraper gets a diagnosable 401 rather than a blank refusal.
+		// Advertise Basic so a browser offers a prompt.
 		w.Header().Set("WWW-Authenticate", `Basic realm="metrics"`)
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 	})

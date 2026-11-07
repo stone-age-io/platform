@@ -10,30 +10,16 @@ import (
 // schema_update_email_templates adds the collection that makes the platform's
 // own outgoing mail editable without a rebuild.
 //
-// PocketBase's editable mail templates are a CLOSED set of five, all of them
-// record flows on an auth collection: verification, password reset, confirm
-// email change, OTP, and the new-device auth alert. There is no way, in /_ or in
-// the API, to register a sixth. So the organization invitation -- which the
-// platform composes itself -- had nowhere to live but a Go const in pb-tenancy,
-// and changing one word of it meant editing a library, tagging it, `go get`,
-// rebuild, redeploy. For copy an operator is better placed to write than a
-// developer.
+// PocketBase's editable templates are a closed set of auth-collection flows, so
+// the organization invitation, which the platform composes itself, had to be
+// compiled in and needed a rebuild to change one word.
 //
-// Superuser-only, by all five rules being null. An email body is close enough to
-// code -- it is a Go template rendered into HTML and mailed under the
-// deployment's own sender identity -- that a tenant owner has no business
-// editing one, and there is nothing tenant-scoped about it to scope.
+// Superuser-only (all five rules null): a body is a Go template mailed under the
+// deployment's own sender identity, and nothing about it is tenant-scoped.
 //
-// NO ROWS ARE SEEDED HERE. hooks.RegisterEmailTemplates creates the missing ones
-// at serve time from the compiled-in values, which keeps the Go value the single
-// source of the default, lets a template added in a later release appear without
-// another migration, and -- because it only ever creates what is absent -- can
-// promise never to overwrite an operator's edit. A re-running schema import
-// could not promise that.
-//
-// Import-only otherwise, same shape as schema_update_viewer_role.go. Nothing
-// existing is touched, so there is nothing to back-fill and nothing to revert
-// that dropping the collection would not do better.
+// No rows are seeded here. hooks.RegisterEmailTemplates creates missing ones at
+// serve time from the compiled-in defaults, and since it only creates what is
+// absent it never overwrites an operator's edit. Import-only.
 func init() {
 	m.Register(func(app core.App) error {
 		if len(SchemaJSON) == 0 {

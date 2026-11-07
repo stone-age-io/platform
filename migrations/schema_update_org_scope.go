@@ -7,10 +7,9 @@ import (
 	m "ganigeorgiev.com/pocketbase/pocketbase/migrations"
 )
 
-// schema_update_org_scope re-imports schema.json so deployments that ran Stage 3
-// pick up the tightened list/view rules on thing_type_operations and
-// message_schemas (dropped the now-unused `organization = ""` platform-shipped
-// clause). Additive import — safe on fresh DBs.
+// schema_update_org_scope re-imports schema.json for the tightened list/view
+// rules on thing_type_operations and message_schemas, which drop the unused
+// `organization = ""` platform-shipped clause.
 func init() {
 	m.Register(func(app core.App) error {
 		if len(SchemaJSON) == 0 {

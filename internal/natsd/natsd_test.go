@@ -17,25 +17,12 @@ func writeConf(t *testing.T, body string) string {
 	return path
 }
 
-// The embedded server clusters, and this test is the reason the package comment
-// no longer claims otherwise.
+// The embedded server honours a `cluster` block like any other directive, so a
+// Control Plane can peer with external nodes, and Stats().Routes is non-zero.
 //
-// Start() hands the parsed config straight to nats-server: it sets NoSigs and
-// nothing else, so every directive in the file — `cluster` included — is
-// honoured exactly as `nats-server -c nats.conf` would honour it. That is the
-// package's stated design ("no embedded-only mode, no options derived in Go"),
-// and a clustered Control Plane peered with external nodes is a supported
-// topology rather than a thing to be talked out of.
-//
-// It also justifies Stats().Routes existing. A route count that could only ever
-// be zero would be a metric nobody can act on; this proves it is not.
-//
-// Every port is -1, so the kernel assigns it at bind time and nothing can take
-// it first. This used to reserve four ports up front by opening and closing a
-// listener, which raced: a parallel test package bound one in the gap and node
-// A failed with "address already in use". Only B has to name a route; one
-// direction is enough to form a cluster, and B dials A's port once A holds it.
-// The empty clientURL skips Start's port check, which needs a fixed port.
+// Every port is -1 so the kernel assigns it at bind time; reserving ports up
+// front raced with parallel test packages. Only B names a route, which is
+// enough to form a cluster. The empty clientURL skips Start's port check.
 func TestEmbeddedServerClustersWithAPeer(t *testing.T) {
 	conf := func(name, routes string) string {
 		return fmt.Sprintf(`
@@ -90,8 +77,8 @@ cluster {
 	}
 }
 
-// Stats reports nothing at all when there is no embedded server, so the caller
-// can omit the series rather than publish zeros that read as a quiet bus.
+// Stats reports nothing when there is no embedded server, so the caller omits
+// the series rather than publish zeros that read as a quiet bus.
 func TestStatsOnNoServer(t *testing.T) {
 	var nilSrv *Server
 	if _, ok := nilSrv.Stats(); ok {

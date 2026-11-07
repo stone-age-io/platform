@@ -7,27 +7,14 @@ import (
 	"testing"
 )
 
-// The one thing that must stay true about the audit snapshot list: no
-// collection on it holds a credential in a field that a snapshot would copy.
-//
-// WHY THIS IS A TEST AND NOT A COMMENT. A pb-audit snapshot is PublicExport(),
-// so it copies every field a collection does not mark `hidden`. This platform
-// deliberately leaves two credential fields unhidden because the identity that
-// owns them has to read them back — `nats_users.creds_file` holds the NKEY seed
-// and `nebula_hosts.config_yaml` holds the Nebula private key inline — and
-// relies on ROW SCOPING to decide who sees which row. audit_logs has no row
-// scoping. Adding one of those collections to the list would therefore restore,
-// silently and in one line, the plaintext credential archive the list exists to
-// remove. The failure has no symptom: the console looks identical and the rows
-// are only read by an operator.
-//
-// It reads schema.json rather than naming the offending collections, so a field
-// added to a listed collection tomorrow is caught by the same assertion.
+// No collection on the audit snapshot list may hold a credential in an unhidden
+// field. A snapshot copies every unhidden field, some credentials are unhidden
+// on purpose (row scoping protects them), and audit_logs has no row scoping, so
+// listing such a collection would silently archive credentials in plaintext.
+// It reads schema.json, so a sensitive field added later is caught too.
 func TestAuditSnapshotCollectionsHoldNoCredentials(t *testing.T) {
-	// Substrings that mark a field as carrying credential or trust material.
-	// Matched against field NAMES, which is why this is a test: the list is a
-	// heuristic, and a heuristic is fine for raising a hand and wrong for
-	// deciding what the binary does.
+	// Matched against field names. A heuristic, which is fine in a test and
+	// wrong for deciding what the binary does.
 	sensitive := []string{
 		"seed", "private", "creds", "config_yaml", "certificate",
 		"jwt", "token", "secret", "signing", "password",
@@ -54,7 +41,7 @@ func TestAuditSnapshotCollectionsHoldNoCredentials(t *testing.T) {
 		byName[c.Name] = i
 	}
 
-	// The same arguments main.go passes, which are config.yaml's defaults.
+	// The same arguments main.go passes.
 	listed := auditSnapshotCollections("organizations", "memberships", "nats_roles", "nebula_networks")
 	if len(listed) == 0 {
 		t.Fatal("the snapshot list is empty; this test would pass vacuously")
@@ -81,9 +68,9 @@ func TestAuditSnapshotCollectionsHoldNoCredentials(t *testing.T) {
 	}
 }
 
-// The paired "can": the collections deliberately kept OFF the list really are
-// the ones a snapshot would leak. Without this, hiding every field or emptying
-// the list would pass the test above while destroying the audit trail.
+// The paired "can": the collections kept off the list really would leak.
+// Without this, hiding every field or emptying the list would pass the test
+// above while destroying the audit trail.
 func TestAuditSnapshotExclusionsWouldActuallyLeak(t *testing.T) {
 	raw, err := os.ReadFile("schema.json")
 	if err != nil {
@@ -101,7 +88,7 @@ func TestAuditSnapshotExclusionsWouldActuallyLeak(t *testing.T) {
 		t.Fatalf("parse schema.json: %v", err)
 	}
 
-	// The two the whole change is about, plus the field that carries the secret.
+	// Each excluded collection and the unhidden field that carries its secret.
 	want := map[string]string{
 		"nats_users":   "creds_file",
 		"nebula_hosts": "config_yaml",

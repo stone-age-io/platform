@@ -9,26 +9,19 @@ import (
 )
 
 // schema_update_membership_authority makes memberships.role the only source of
-// authority over an organization's members and invitations.
+// authority over an organization's members and invitations. Two rule changes on
+// memberships and invites:
 //
-// Two rule changes, both on the memberships and invites collections:
+//  1. The organizations.owner branches are gone. They never checked the owner's
+//     membership, so a demoted or removed owner kept managing members and could
+//     PATCH their own role back to owner.
+//  2. memberships.user is frozen on every branch, not only the self branch.
+//     Otherwise a removed owner could PATCH any membership to
+//     {"user":"<self>","role":"owner"} and be back in.
 //
-//  1. The organizations.owner branches are gone. They checked the owner relation
-//     and never the owner's membership, so the field was a standing grant: an
-//     owner whom an admin demoted to dashboard, or removed outright, still
-//     listed and managed invitations and memberships, and could PATCH their own
-//     role back to owner. owner and admin were meant to be identical in the
-//     rules (CLAUDE.md), and the membership already says who is which.
-//  2. memberships.user is frozen on every branch. Only the self branch froze it,
-//     so combined with (1) a removed owner could PATCH any membership id in the
-//     organization to {"user":"<self>","role":"owner"} and be back in,
-//     displacing the member who held it.
-//
-// Rule-only, so a re-import is sufficient. What it cannot do is tell an owner
-// who was deliberately removed from one who simply never had a membership, so
-// it reports organizations whose owner holds no owner/admin membership rather
-// than granting one: from this release those owners have no access, and
-// whether they should is an operator decision, not a migration one.
+// Rule-only, so a re-import is enough. It reports owners with no owner/admin
+// membership rather than granting one: those owners now have no access, and
+// whether they should is an operator decision.
 func init() {
 	m.Register(func(app core.App) error {
 		if len(SchemaJSON) == 0 {

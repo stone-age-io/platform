@@ -13,29 +13,17 @@ import (
 // managed-export hook rewrites its hub import's local_subject from
 // helpdesk.{org.Id}.> to helpdesk.{org.code}.> (ADR 0002, step 3).
 //
-// The hook reconciles, but only when it fires. Changing the token shape in code
-// does nothing to imports that already exist, so something has to touch each
-// managed org once. That is all this is.
+// The hook reconciles only when it fires, so each managed org is touched once.
+// It re-saves the org rather than updating nats_account_imports directly:
+// pb-nats republishes the account JWT from its record hooks, and a raw UPDATE
+// would leave NATS enforcing the old import.
 //
-// It re-saves the ORG rather than updating nats_account_imports directly, and
-// the difference is not stylistic. pb-nats regenerates and republishes the
-// affected account JWT from its own record hooks on the export/import
-// collections. A raw SQL UPDATE would change this database and leave the running
-// NATS server still enforcing the old import — the subject would look correct in
-// the admin UI and carry nothing on the wire, which is the exact failure mode
-// ADR 0002 is trying to remove rather than introduce.
+// Must run after schema_update_org_code.go, which it does by filename. The hook
+// refuses an org with no code rather than writing "helpdesk..>".
 //
-// Ordering: this must run after schema_update_org_code.go, which creates and
-// backfills the codes. It does, by filename — "org_code" sorts before
-// "subject_token_to_code". The hook itself refuses an org with no code rather
-// than writing "helpdesk..>", so a mis-ordering would be loud rather than
-// silently wrong.
-//
-// Deploy order across repos is the other half, and it does not live in any
-// migration: a consumer resolves subject token 2 against its own tenant table,
-// and an unresolved org is ACKED, not retried. Consumers must be able to resolve
-// codes BEFORE this runs, or every machine-filed event in the gap is dropped
-// with only a log line. Readers before writers.
+// Deploy order across repos: consumers must resolve codes BEFORE this runs. A
+// consumer acks an unresolved org without retrying, so events in the gap are
+// dropped. Readers before writers.
 func init() {
 	m.Register(func(app core.App) error {
 		orgs, err := app.FindAllRecords("organizations", dbx.HashExp{"managed": true})
@@ -48,10 +36,8 @@ func init() {
 		}
 
 		for _, org := range orgs {
-			// Fires OnRecordAfterUpdateSuccess → syncManaged → ensureManagedExports,
-			// whose reconcile logs exactly which fields it changed. Failures there
-			// are logged and not propagated, so one unprovisioned org cannot block
-			// the migration for the rest.
+			// Fires syncManaged → ensureManagedExports. Its failures are logged,
+			// not returned, so one unprovisioned org cannot block the rest.
 			if err := app.Save(org); err != nil {
 				return fmt.Errorf("re-save organization %q: %w", org.GetString("name"), err)
 			}
@@ -60,8 +46,7 @@ func init() {
 		log.Printf("✅ re-saved %d managed organization(s) to move their import subject onto the org code", len(orgs))
 		return nil
 	}, func(app core.App) error {
-		// Down: no-op. Reverting means putting the id back on the subject, which
-		// is a code change (the hook builds it), not a data change.
+		// No-op: the hook builds the subject, so reverting is a code change.
 		return nil
 	})
 }

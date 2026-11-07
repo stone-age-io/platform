@@ -21,82 +21,43 @@ type ActiveFlagOptions struct {
 	NebulaHostCollection string
 }
 
-// RegisterActiveFlag makes `active` on things mean something.
-//
-// The schema.json authRule on the collection is `active = true`, which stops a
-// deactivated device from obtaining a NEW auth token. On its own that is close to
-// worthless, for two reasons:
-//
-//  1. PocketBase evaluates authRule at the auth endpoint only — in
-//     apis.RecordAuthResponse (apis/record_helpers.go), reached from
-//     /auth-with-password and friends. It is NOT re-checked on requests that
-//     carry an already-issued token. The collection sets authToken.duration to
-//     604800, so a device deactivated at noon keeps its API access for a week.
-//
-//  2. A Thing's real capability is not its PocketBase session, it is the signed
-//     NATS user JWT held by its linked nats_users record. Nothing PocketBase does
-//     to the Thing touches that.
-//
-// So deactivation does four things, not one:
+// RegisterActiveFlag makes `active` on things mean something. Deactivation does
+// four things, because any one alone is a half-measure:
 //
 //	active = false  ->  authRule blocks new logins
 //	                ->  RefreshTokenKey() invalidates every outstanding token now
 //	                ->  active = false on the linked NATS identity
 //	                ->  active = false on the linked Nebula host
 //
-// and re-activation issues a fresh NATS credential, since the revocation cutoff
-// in the account JWT is permanent and the old creds file stays dead.
+// The authRule alone is not enough. PocketBase checks it only at the auth
+// endpoint, never on an already-issued token (valid for a week here), and a
+// Thing's real capability is its NATS JWT and Nebula certificate, which nothing
+// done to the Thing record touches.
 //
-// The NATS half is a straight mirror of the flag, because `active` on nats_users
-// is pb-nats's durable suspend switch (internal/sync/manager.go). It is
-// edge-triggered: true->false revokes the user's public key on the owning account
-// and deliberately issues nothing back, so the device holds no working credential
-// until reactivated; false->true signs a JWT whose issue time is later than the
-// revocation cutoff, which NATS accepts while the old creds file stays rejected.
-// That is true at the hub at once. A site's leaf node checks credentials against
-// its own preloaded copy of the account JWT (`resolver: MEMORY`), so a device on
-// that leaf keeps connecting until the gateway's agent refreshes the copy
-// (platform.leaf_refresh_interval, or cmd.leaf_refresh).
+// NATS: `active` on nats_users is pb-nats's durable suspend switch, and it is
+// edge-triggered. true->false revokes the user's public key on the account and
+// issues nothing back; false->true signs a fresh JWT past the revocation cutoff.
+// The cutoff is permanent, so the old creds file stays dead. The hub enforces it
+// at once; a leaf (`resolver: MEMORY`) only after its agent refreshes the
+// account JWT (platform.leaf_refresh_interval, or cmd.leaf_refresh).
 //
-// Do not reach for `revoke` here, despite the name. In pb-nats `revoke` is the
-// "these credentials leaked" button: it rotates the key pair and immediately
-// hands back a *working* replacement, leaving the user active. Using it to
-// deactivate a device would re-credential the thing you just disabled. It is also
-// checked before the active edge and returns early, so setting both flags in one
-// save silently takes the revoke path — the failure mode is a deactivated Thing
-// whose NATS identity is freshly re-issued and still publishing.
+// Mirror `active`, never `revoke`. In pb-nats `revoke` is the "credentials
+// leaked" button: it hands back a working replacement and leaves the user
+// active. It is also checked first, so setting both in one save silently takes
+// the revoke path.
 //
-// The Nebula half is the same mirror for the same reason, and it closed the last
-// door left open: a device taken out of service kept a valid overlay-network
-// certificate until it expired, so "decommissioned" closed the console door and
-// the NATS door and left the mesh door wide open. `active` on nebula_hosts is
-// what pb-nebula puts into every OTHER host's `pki.blocklist`, because Nebula
-// has no CRL — revocation is a fingerprint list each peer carries, not a central
-// record. Two consequences follow from that shape and neither is a bug here:
+// Nebula: `active` on nebula_hosts feeds every other host's `pki.blocklist`,
+// because Nebula has no CRL. So it takes effect only when each peer's config is
+// redeployed, and it needs the certificate still in the database to fingerprint
+// it: deactivating a device revokes it, deleting one does not.
 //
-//   - It takes effect when each peer's config is redeployed and reloaded. The
-//     platform's job ends when the material it hands out says the certificate is
-//     refused, exactly as it ends at minting a NATS credential rather than
-//     policing what connects with it.
-//   - Revocation needs the certificate to still be in the database to fingerprint
-//     it, so DEACTIVATING a device revokes it and DELETING one does not. That is
-//     worth knowing before deleting a Thing you actually want off the mesh.
-//
-// A flag that turns a badge red while the device keeps publishing is worse than
-// no flag, because someone will trust it during an incident.
-//
-// The NATS cascade is best-effort and logged, never fatal: a NATS hiccup must
-// not roll back the operator deactivation. The PocketBase half — the part that
-// is transactional with the record write — always succeeds or fails with the
-// save.
+// The cascade is best-effort and logged: a NATS or Nebula hiccup must not roll
+// back the deactivation. The token kill is transactional with the save.
 func RegisterActiveFlag(app *pocketbase.PocketBase, opts ActiveFlagOptions) {
-	// A device is born enabled. `active` is a bool, and PocketBase bools have no
-	// schema-level default — an omitted field lands as false, which with the
-	// authRule above would mean every API-created Thing is dead on arrival. It is
-	// forced rather than defaulted-if-absent because the member branch of the
-	// things create rule freezes `active`, so a member's create legitimately
-	// carries no value, and "absent" and "explicitly false" are indistinguishable
-	// by the time a hook sees the record. Deactivation is an update.
+	// A device is born enabled. PocketBase bools have no schema default, so an
+	// omitted `active` would be false and the authRule would lock out every new
+	// Thing. Forced rather than defaulted: the member create rule freezes
+	// `active`, and by now "absent" and "explicitly false" look the same.
 	app.OnRecordCreate(opts.ThingCollection).BindFunc(func(e *core.RecordEvent) error {
 		e.Record.Set("active", true)
 		return e.Next()
@@ -110,10 +71,8 @@ func RegisterActiveFlag(app *pocketbase.PocketBase, opts ActiveFlagOptions) {
 			return e.Next()
 		}
 
-		// Must happen before the save so the new tokenKey is written by it.
-		// Changing tokenKey invalidates every auth token already issued for this
-		// record — that is the whole point, and it is why deactivation cannot be
-		// left to the authRule alone.
+		// Before the save, so the save writes the new tokenKey. That is what
+		// kills every token already issued.
 		if !now {
 			e.Record.RefreshTokenKey()
 		}
@@ -122,12 +81,8 @@ func RegisterActiveFlag(app *pocketbase.PocketBase, opts ActiveFlagOptions) {
 			return err
 		}
 
-		// Past this point the flip is committed. Cascade to whichever identities
-		// this device actually holds. The two are independent — a Thing may carry
-		// a NATS identity, a Nebula host, both or neither — so neither is allowed
-		// to short-circuit the other. The previous version returned early when
-		// `nats_user` was empty, which would have skipped the Nebula half for any
-		// device that had only a certificate.
+		// A Thing may hold either identity, both or neither, so neither mirror
+		// may short-circuit the other.
 		mirrorActiveFlag(e, opts.NatsUserCollection, "nats_user", "NATS identity", now)
 		mirrorActiveFlag(e, opts.NebulaHostCollection, "nebula_host", "Nebula host", now)
 		return nil
@@ -142,37 +97,23 @@ func RegisterActiveFlag(app *pocketbase.PocketBase, opts ActiveFlagOptions) {
 }
 
 // guardLinkedIdentity refuses to bring back an identity whose Thing is
-// deactivated.
+// deactivated. The mirror runs one way; without this guard, the NATS user page's
+// Re-enable, the Nebula form's Active toggle or a PATCH puts the device back on
+// the bus or the mesh while the Thing says it is cut off. Reactivating the Thing
+// is the way back.
 //
-// The mirror makes a deactivated Thing's identities inactive, but nothing
-// stopped them being re-enabled on their own: the NATS user page's Re-enable,
-// the Nebula host form's Active toggle, or a PATCH. Each put the device back on
-// NATS or the mesh while the Thing still said it was cut off -- the inert-flag
-// failure this file exists to prevent, arrived at from the other side. The
-// Thing's flag is the one authority for a device; reactivating the Thing is the
-// way back, and it re-enables both identities through the mirror.
+// Refused while a Thing linking the identity is inactive:
+//   - the identity being active after the save. LEVEL, not edge: Original() is
+//     the last database read (hooks/CLAUDE.md). Saving it inactive, the repair,
+//     still works.
+//   - a minting trigger. pb-nats mints a working credential for an inactive user
+//     on `regenerate` and `revoke`. pb-nebula refuses `renew` on an inactive host
+//     since v0.3.3, but `renew` stays listed so the invariant does not rest on a
+//     library version.
 //
-// Refused, while a Thing linking the identity is inactive:
-//   - the identity being active after the save. LEVEL, not the false->true edge:
-//     Original() is the last database read, not the state before this write
-//     (see hooks/CLAUDE.md), and the invariant is the state anyway. An identity
-//     already out of step can still be saved inactive, which is the repair.
-//   - a minting trigger. pb-nats mints a working credential for an INACTIVE
-//     user on `regenerate` (past the revocation cutoff) and `revoke` (a new key
-//     pair, never revoked). pb-nebula re-issued an inactive host's certificate
-//     on `renew` until v0.3.3, and since the blocklist is built from the STORED
-//     certificate, the device's real one dropped off it at the next rebuild.
-//     v0.3.3 refuses that itself (ErrHostInactive). `renew` stays listed here
-//     anyway: this guard is the one that names the Thing as the reason, and it
-//     must not depend on a library version to hold.
-//
-// The mirror itself always passes: it runs after the Thing's own save, so the
-// Thing read here is already active on a reactivation, and a deactivation
-// writes `active = false`, which is never refused.
-//
-// Bound at a negative priority so it runs before pb-nats and pb-nebula act on
-// the same save -- their handlers carry none, and returning an error after
-// they have minted would be too late.
+// The mirror itself always passes, because it runs after the Thing's own save.
+// Negative priority so it runs before pb-nats and pb-nebula mint on the same
+// save.
 func guardLinkedIdentity(app *pocketbase.PocketBase, thingCollection, identityCollection, relationField, label string, triggers []string) {
 	if identityCollection == "" {
 		return // not configured on this deployment
@@ -197,9 +138,7 @@ func guardLinkedIdentity(app *pocketbase.PocketBase, thingCollection, identityCo
 				return e.Next() // no deactivated Thing links it
 			}
 			if err != nil {
-				// Refuse rather than pass: this is an enforcement hook, and
-				// passing on a failed lookup would let a deactivated device
-				// back onto the bus or the mesh.
+				// Fail closed: this is an enforcement hook.
 				return fmt.Errorf("checking for a deactivated Thing: %w", err)
 			}
 
@@ -216,18 +155,13 @@ func guardLinkedIdentity(app *pocketbase.PocketBase, thingCollection, identityCo
 	})
 }
 
-// mirrorActiveFlag copies a device's `active` flag onto one linked identity.
+// mirrorActiveFlag copies a device's `active` flag onto one linked identity,
+// best-effort and logged.
 //
-// Mirror the flag and nothing else. Both libraries watch `active` on
-// OnRecordUpdate — the model hook, not the request hook — so this one save is
-// what triggers the revoke or the reissue. On the NATS side, setting
-// `regenerate` as well would be worse than redundant: pb-nats checks the active
-// edge first and returns before the regenerate branch runs, leaving the flag set
-// on the row to fire on some unrelated later save.
-//
-// Best-effort and logged, never fatal: a hiccup in NATS or Nebula must not roll
-// back the operator deactivation. The part that is transactional with the record
-// write — the token kill — has already succeeded by the time this runs.
+// Only the flag. Both libraries watch `active` on the model hook, so this save
+// triggers the revoke or reissue. Setting `regenerate` too would be worse than
+// redundant: pb-nats handles the active edge first and returns, leaving
+// `regenerate` set on the row to fire on a later, unrelated save.
 func mirrorActiveFlag(e *core.RecordEvent, collection, relationField, label string, now bool) {
 	if collection == "" {
 		return // not configured on this deployment

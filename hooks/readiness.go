@@ -12,19 +12,16 @@ import (
 	"platform/internal/health"
 )
 
-// dialTimeout bounds each NATS check. Short: these run on a background prober
-// with its own deadline, and a bus that needs more than this to answer is
+// dialTimeout bounds each NATS check. A bus that needs longer to answer is
 // already the problem being reported.
 const dialTimeout = 3 * time.Second
 
 // registerPlatformChecks adds the Control Plane's readiness checks to reg.
 //
-// Every check here is answerable by this process alone — its own database, its
-// own configuration, and the NATS server it is itself configured to dial. See
-// the package comment on internal/health for why that boundary is not an
-// accident: the Control Plane holds the operator and $SYS, and has no
+// Every check is answerable by this process alone: its own database, its own
+// configuration, and the NATS server it dials. The Control Plane has no
 // credential inside any organization's account, so per-site liveness is
-// deliberately absent from this list.
+// deliberately absent (the package comment on internal/health).
 func registerPlatformChecks(app core.App, reg *health.Registry, opts ObservabilityOptions) {
 	reg.Register("database", func(ctx context.Context) health.Result {
 		var one int
@@ -38,15 +35,11 @@ func registerPlatformChecks(app core.App, reg *health.Registry, opts Observabili
 		return health.OK("responding")
 	})
 
-	// This check looks redundant and is not. `serve` calls RunAllMigrations
-	// before it listens (PocketBase apis/serve.go), so the schema is normally
-	// imported by the time anything can probe — but the initial migration
-	// returns nil when the embedded SchemaJSON is empty, logging a warning and
-	// marking itself applied. A build whose //go:embed did not take therefore
-	// produces a database with the libraries' collections, none of the
-	// platform's fields, and a migrations table that says everything ran. In
-	// that state record.Set() on a platform flag is a silent no-op, which is
-	// how `bootstrap` used to "succeed" while writing nothing.
+	// Not redundant with `serve` running migrations first: the initial migration
+	// returns nil and marks itself applied when the embedded SchemaJSON is
+	// empty. A build whose embed did not take has none of the platform's fields,
+	// a migrations table that says everything ran, and silent no-op writes to
+	// every platform flag.
 	reg.Register("schema", func(ctx context.Context) health.Result {
 		missing := MissingFields(app, PlatformSchemaFields(opts.OrgCollection, opts.MembershipCollection))
 		if len(missing) > 0 {
@@ -58,16 +51,11 @@ func registerPlatformChecks(app core.App, reg *health.Registry, opts Observabili
 		return health.OK("platform fields present")
 	})
 
-	// A DOWNGRADE: the database has migrations this binary has never heard of,
-	// so its schema is ahead of the code driving it.
-	//
-	// Deliberately not the other direction. "Migrations pending" cannot happen
-	// here — `serve` calls RunAllMigrations before it listens, so anything
-	// outstanding is applied before this check could ever run, and a check that
-	// can only ever report ok is a green tick that means nothing. Ahead is the
-	// half that `serve` cannot fix: migrations do not roll back on startup, so
-	// an older binary pointed at a newer pb_data keeps running against columns
-	// and rules it does not know about, and the symptom is arbitrary.
+	// A DOWNGRADE: the database has migrations this binary does not know.
+	// Deliberately not "migrations pending", which cannot happen because `serve`
+	// applies them before it listens; a check that can only report ok means
+	// nothing. Migrations do not roll back, so an older binary on a newer
+	// pb_data runs against columns and rules it does not know.
 	reg.Register("schema_version", func(ctx context.Context) health.Result {
 		unknown, err := unknownMigrations(app)
 		if err != nil {
@@ -84,10 +72,8 @@ func registerPlatformChecks(app core.App, reg *health.Registry, opts Observabili
 		return health.OK("database and binary agree")
 	})
 
-	// `bootstrap` is the only way to mint an operator outside the admin panel,
-	// and running it before `migrate up` used to "succeed" while writing none of
-	// the flags. A platform with no operator has no one who can create an
-	// organization, which is a dead install that serves 200s.
+	// A platform with no operator has no one who can create an organization: a
+	// dead install that serves 200s.
 	reg.Register("bootstrap", func(ctx context.Context) health.Result {
 		operator, err := app.FindFirstRecordByFilter("users", "is_operator = true")
 		if err != nil || operator == nil {
@@ -146,14 +132,13 @@ func registerPlatformChecks(app core.App, reg *health.Registry, opts Observabili
 		return health.OK(detail + ", JetStream enabled")
 	})
 
-	// The silent killer: a running NATS server that does not trust this
-	// database's operator. Account claims are published and rejected, no
-	// organization's account ever reaches the bus, and the console looks fine.
+	// The failure nothing else shows: a running NATS server that does not trust
+	// this database's operator. Account claims are rejected, no organization's
+	// account reaches the bus, and the console looks fine.
 	reg.Register("nats_trust", func(ctx context.Context) health.Result {
 		creds, why := systemUserCreds(app, opts.NatsAccountCollection, opts.NatsUserCollection)
 		if creds == "" {
-			// Not a failure of the bus: we could not find the credential to
-			// test with. Say which, rather than blaming NATS.
+			// Not a failure of the bus: say which credential is missing.
 			return health.Skip("cannot test: " + why)
 		}
 		if err := health.CheckCreds(opts.NatsServerURL, creds, dialTimeout); err != nil {
@@ -187,9 +172,8 @@ func registerPlatformChecks(app core.App, reg *health.Registry, opts Observabili
 			}
 		}
 
-		// No certificates at all means Nebula is not in use here, which is a
-		// check that did not apply rather than a clean bill of health. Skipped
-		// ranks below ok for exactly this reason.
+		// No certificates means Nebula is not in use: a check that did not
+		// apply, which is why skipped ranks below ok.
 		if total == 0 {
 			return health.Skip("no Nebula certificates issued")
 		}
@@ -220,8 +204,7 @@ func registerPlatformChecks(app core.App, reg *health.Registry, opts Observabili
 		return health.OK(fmt.Sprintf("%d valid, soonest expiry %s", total, earliest.UTC().Format(time.DateOnly)))
 	})
 
-	// Configuration warnings. Neither blocks serving, and both describe a
-	// deployment that works today and will embarrass someone later.
+	// Configuration warnings: neither blocks serving.
 	reg.Register("nats_websocket_urls", func(ctx context.Context) health.Result {
 		if len(opts.NatsWebsocketURLs) == 0 {
 			return health.Warn(
@@ -243,10 +226,8 @@ func registerPlatformChecks(app core.App, reg *health.Registry, opts Observabili
 		}
 		switch len(off) {
 		case 0:
-			// Deliberately says what it covers. "enabled" on its own reads as
-			// "credentials are encrypted at rest", which is not what this buys:
-			// creds_file and config_yaml are plaintext by construction. See
-			// SECURITY.md.
+			// Says what it covers: creds_file and config_yaml are plaintext by
+			// construction (SECURITY.md).
 			return health.OK("enabled for NATS and Nebula (minting keys; issued credentials are plaintext by construction)")
 		case 2:
 			return health.Warn(
@@ -267,10 +248,8 @@ func registerPlatformChecks(app core.App, reg *health.Registry, opts Observabili
 // have registered — the signature of a database written by a newer build.
 //
 // It compares against core.AppMigrations AND core.SystemMigrations, the two
-// lists `serve` actually runs, so the comparison can never drift from what the
-// binary would apply: a migration file added to the repo joins that list the
-// moment it compiles. PocketBase's own system migrations share the table, so
-// leaving them out would flag every one of them as unknown.
+// lists `serve` runs, so it cannot drift from what the binary applies.
+// PocketBase's system migrations share the table.
 func unknownMigrations(app core.App) ([]string, error) {
 	var applied []string
 	if err := app.DB().NewQuery("SELECT file FROM {{_migrations}}").Column(&applied); err != nil {
@@ -296,14 +275,10 @@ func unknownMigrations(app core.App) ([]string, error) {
 // systemUserCreds returns the $SYS user's .creds contents, or an empty string
 // and the reason it could not be found.
 //
-// It locates the account by name and the user by nats_username, matching how
-// pb-nats itself resolves them (its getOperatorAndSystemAccount and
-// getSystemUser). Using the same keys is what keeps the two in step.
-//
-// creds_file is deliberately the field read rather than the seed: it is not one
-// of the columns at-rest encryption covers, so this needs no decryption code —
-// and duplicating pb-nats's AES handling here would be a second implementation
-// of the one thing that must never disagree.
+// It finds the account by name and the user by nats_username, the same keys
+// pb-nats uses (getOperatorAndSystemAccount, getSystemUser). It reads
+// creds_file rather than the seed because at-rest encryption does not cover it,
+// so this needs no second copy of pb-nats's AES handling.
 func systemUserCreds(app core.App, accountCollection, userCollection string) (creds string, why string) {
 	account, err := app.FindFirstRecordByFilter(
 		accountCollection,

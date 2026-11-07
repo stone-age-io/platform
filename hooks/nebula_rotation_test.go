@@ -11,18 +11,12 @@ import (
 	"platform/internal/testutil"
 )
 
-// These are DEPENDENCY CONTRACT tests, in the same spirit as the "a minted
-// Nebula host is born active" check in scripts/test-authz.sh. Neither asserts
-// platform code; both assert a pb-nebula behaviour this platform now relies on,
-// so a downgrade or an upstream regression fails here rather than in
-// production.
+// These are DEPENDENCY CONTRACT tests: they assert pb-nebula behaviour this
+// platform relies on, so a downgrade or upstream regression fails here rather
+// than in production.
 
-// nebulaOrg stands up an app, creates an organization, and returns its
-// auto-provisioned Nebula CA.
-//
-// The CA arrives via hooks.RegisterOrgProvisioning, which testutil binds -- the
-// same path production uses, so the record under test is the one an operator
-// would actually be rotating.
+// nebulaOrg stands up an app, creates an organization, and returns the Nebula
+// CA that hooks.RegisterOrgProvisioning gave it, the same path production uses.
 func nebulaOrg(t *testing.T) (core.App, *core.Record) {
 	t.Helper()
 	app := testutil.SetupApp(t)
@@ -53,18 +47,13 @@ func nebulaOrg(t *testing.T) (core.App, *core.Record) {
 	ca, err := app.FindFirstRecordByFilter("nebula_ca", "organization = {:org}",
 		map[string]any{"org": org.Id})
 	if err != nil || ca == nil {
-		// The provisioning hook logs and swallows its own failures so a
-		// problem cannot undo the organization create, which means an absent
-		// record is the only signal there is.
 		t.Fatalf("organization did not get a Nebula CA: %v", err)
 	}
 	return app, ca
 }
 
-// rotate applies one step the way hooks/nebula_routes.go does -- app.Save on
-// the record, with no request hook in front of it. That path is the whole point:
-// pb-nebula's rotation validation used to be bound to the request hooks alone,
-// so a save from a route skipped every check while execution went ahead anyway.
+// rotate applies one step the way hooks/nebula_routes.go does: app.Save with no
+// request hook in front, the path pb-nebula before v0.3.2 did not validate.
 func rotate(app core.App, ca *core.Record, step string) error {
 	ca.Set("rotate", step)
 	return app.Save(ca)
@@ -73,26 +62,19 @@ func rotate(app core.App, ca *core.Record, step string) error {
 // TestProgrammaticRotationIsValidated pins the contract POST
 // /api/org/nebula-ca/rotate is built on.
 //
-// The route cannot validate the transition itself: "has every active host
-// migrated off the outgoing CA?" needs each host certificate's issuer compared
-// against the CA's fingerprint, which means parsing Nebula certificates that
-// only pb-nebula holds the code for. So the route allowlists the three verbs
-// and trusts the library for ordering and the interlock. If that trust is
-// misplaced -- as it was before pb-nebula v0.3.2 -- an owner clicking Finish on
-// an idle CA reaches the executor, which runs after the write has committed and
-// cannot refuse anything.
+// The route only allowlists the three verbs and trusts pb-nebula for ordering
+// and the interlock, which needs Nebula certificates parsed. Without it, Finish
+// on an idle CA reaches the executor, which runs post-commit and cannot refuse.
 func TestProgrammaticRotationIsValidated(t *testing.T) {
 	app, ca := nebulaOrg(t)
 
-	// Out of order, both directions. Nothing is prepared, so neither commit nor
-	// finish has anything to act on.
+	// Out of order: nothing is prepared, so neither commit nor finish applies.
 	if err := rotate(app, ca, "commit"); err == nil {
 		t.Error("commit with nothing prepared was accepted through app.Save; " +
 			"the executor runs post-commit and cannot refuse it")
 	} else if !errors.Is(err, pbnebula.ErrInvalidRotation) {
-		// The model-layer hook returns the raw error precisely so this works.
-		// An ApiError wrapper would flatten the sentinel away and leave a Go
-		// caller matching on message text.
+		// The model-layer hook returns the raw error so the sentinel survives;
+		// an ApiError wrapper would flatten it away.
 		t.Errorf("commit refusal did not carry ErrInvalidRotation: %v", err)
 	}
 
@@ -107,9 +89,8 @@ func TestProgrammaticRotationIsValidated(t *testing.T) {
 		t.Error("an unknown verb was accepted rather than rejected")
 	}
 
-	// Hand-editing the material pb-nebula owns must be refused on this path too.
-	// A non-CA PEM in the bundle makes every host under the CA fail to start,
-	// because NewCAPoolFromPEM treats a malformed block as a hard error.
+	// Hand-editing the CA material must be refused on this path too: a
+	// malformed PEM in the bundle stops every host under the CA from starting.
 	ca = reload(t, app, ca)
 	ca.Set("certificate", "not a certificate")
 	if err := app.Save(ca); err == nil {
@@ -118,12 +99,9 @@ func TestProgrammaticRotationIsValidated(t *testing.T) {
 }
 
 // TestRotationCycleCompletes walks the three steps in order, asserting the
-// property each one exists to have.
-//
-// Prepare publishing trust WITHOUT moving issuance is the reason rotation is
-// three steps rather than one: config distribution is pull-based, so a single
-// write carrying both the new bundle and the new certificate splits the mesh
-// for as long as propagation takes.
+// property each one exists for. Prepare publishes trust WITHOUT moving
+// issuance: config distribution is pull-based, so one write carrying both
+// would split the mesh while it propagates.
 func TestRotationCycleCompletes(t *testing.T) {
 	app, ca := nebulaOrg(t)
 	issuedBy := ca.GetString("certificate")
@@ -155,8 +133,7 @@ func TestRotationCycleCompletes(t *testing.T) {
 			"until every host has migrated")
 	}
 
-	// No active host holds an outgoing-CA certificate here, so the interlock
-	// permits it. The org has no hosts at all.
+	// The org has no hosts, so the interlock permits it.
 	if err := rotate(app, ca, "finish"); err != nil {
 		t.Fatalf("finish: %v", err)
 	}
@@ -167,18 +144,10 @@ func TestRotationCycleCompletes(t *testing.T) {
 }
 
 // TestMintedHostCertificateIsNotStale proves the /32 fix is live in THIS
-// deployment.
-//
-// pb-nebula signed host certificates at /32 until v0.3.0. Nebula reads a
-// certificate's network straight onto the tun device and installs a link route
-// for it, so a /32 gives a host a route covering only itself: the certificate
-// verifies, the config renders, the handshake completes, and no packet ever
-// crosses the mesh. Nothing errors, which is exactly why it survived from the
-// first commit.
-//
-// The console badges affected hosts using this same predicate through GET
-// /api/org/nebula/cert-audit. A freshly minted host must come back clean, or
-// the console would light up every row it just created.
+// deployment. A /32 certificate verifies and handshakes but moves no packet,
+// since Nebula installs the certificate's network as the host's route. The
+// console badges stale hosts with this same predicate (GET
+// /api/org/nebula/cert-audit), so a fresh host must come back clean.
 func TestMintedHostCertificateIsNotStale(t *testing.T) {
 	app, ca := nebulaOrg(t)
 
@@ -229,9 +198,7 @@ func TestMintedHostCertificateIsNotStale(t *testing.T) {
 			"pb-nebula is signing at the wrong mask, and no packet will cross the mesh", cidr)
 	}
 
-	// The paired positive. Without it a predicate that always returned false
-	// would pass the check above, and the console's badge would be dark for
-	// every genuinely stale host rather than for none.
+	// The paired positive, so a predicate that always returned false fails.
 	stale, err = pbnebula.HostCertNetworkIsStale(certPEM, host.GetString("overlay_ip"), "10.42.0.0/24")
 	if err != nil {
 		t.Fatalf("audit predicate failed against a changed mask: %v", err)

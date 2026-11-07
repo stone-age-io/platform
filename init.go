@@ -17,28 +17,24 @@ import (
 )
 
 // addInitCommand registers `init`: the four first-run commands, in the one order
-// that works, so nobody has to know the order.
+// that works.
 //
 //  1. superuser upsert  -- the PocketBase superuser
 //  2. migrate up        -- import schema.json, which carries the API rules
 //  3. bootstrap         -- the platform operator, the System org, the operator org
 //  4. nats export       -- operator.jwt and nats.conf, which `serve --nats` reads
 //
-// `bootstrap` writes fields that only exist after `migrate up`, and PocketBase
-// silently drops writes to fields that do not exist. `nats export` needs the
-// operator that `bootstrap` links up. So the order is load-bearing, and before
-// this command it lived in two places: docker-entrypoint.sh and the docs.
+// `bootstrap` writes fields that only exist after `migrate up` (PocketBase
+// silently drops writes to missing fields), and `nats export` needs the
+// operator that `bootstrap` links.
 //
-// Steps 2 to 4 run as child processes of this same binary, exactly as the
-// entrypoint ran them. Each command then bootstraps the app fresh, so nothing
-// here depends on whether this process's collection cache saw the schema import.
-// Step 1 runs in-process instead, so the password never appears in a process
-// list: `superuser upsert` only takes it as an argument.
+// Steps 2 to 4 run as child processes of this binary, so each bootstraps the
+// app fresh and sees the imported schema. Step 1 runs in-process so the
+// password never appears in a process list.
 //
-// nats.conf is the "already done" marker, as it was in the entrypoint: it is
-// written last, and an operator who edits it keeps their edits. A run that fails
-// part-way writes no marker, and every step is idempotent, so running init again
-// is the recovery.
+// nats.conf, written last, is the "already done" marker, so an operator's
+// edits to it survive. A failed run writes no marker and every step is
+// idempotent, so running init again is the recovery.
 func addInitCommand(app *pocketbase.PocketBase) {
 	cmd := &cobra.Command{
 		Use:   "init",
@@ -53,9 +49,8 @@ config is written where --nats-config points, so 'serve --nats' with the same
   stone-age serve --nats`,
 		Run: func(cmd *cobra.Command, args []string) {
 			natsConfig, _ := cmd.Flags().GetString("nats-config")
-			// `nats export` always writes <dir>/nats.conf. With any other file
-			// name the marker would never appear, and every start would run init
-			// again, resetting the superuser password and overwriting nats.conf.
+			// `nats export` always writes <dir>/nats.conf. Any other name means
+			// the marker never appears and every start re-runs init.
 			if filepath.Base(natsConfig) != "nats.conf" {
 				log.Fatalf("❌ --nats-config must name a file called nats.conf (got %q): 'nats export' always writes that name", natsConfig)
 			}
@@ -68,8 +63,7 @@ config is written where --nats-config points, so 'serve --nats' with the same
 			orgName, _ := cmd.Flags().GetString("org")
 			operatorOrgName, _ := cmd.Flags().GetString("operator-org")
 
-			// Every question is asked here, up front, so the child processes
-			// never need a terminal.
+			// Ask everything up front so the child processes need no terminal.
 			if email == "" {
 				fmt.Print("Admin Email: ")
 				fmt.Scanln(&email)
@@ -99,8 +93,8 @@ config is written where --nats-config points, so 'serve --nats' with the same
 			runSelf(forward, nil, "migrate", "up")
 
 			log.Print("==> 3/4 bootstrap")
-			// The password goes by environment, which bootstrap already reads.
-			// --operator-org is always passed, even empty, so it never prompts.
+			// Password by environment. --operator-org is always passed, even
+			// empty, so bootstrap never prompts.
 			runSelf(forward, []string{"STONE_AGE_BOOTSTRAP_PASSWORD=" + password},
 				"bootstrap", "--email", email, "--org", orgName, "--operator-org", strings.TrimSpace(operatorOrgName))
 
@@ -125,8 +119,7 @@ config is written where --nats-config points, so 'serve --nats' with the same
 
 // forwardedFlags returns the root flags this run set, such as --dir and
 // --config, so each child command works on the same data directory with the
-// same config. --nats and --nats-config are serve's, and init has used the
-// latter already.
+// same config. --nats and --nats-config are serve's and are not forwarded.
 func forwardedFlags(cmd *cobra.Command) []string {
 	var out []string
 	// VisitAll and Changed, not Visit: InheritedFlags() builds a new FlagSet,

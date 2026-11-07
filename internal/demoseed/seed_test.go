@@ -18,26 +18,19 @@ import (
 // independent of scale.
 const testThings = 60
 
-// One seeded app, shared by every read-only test in this file.
+// One seeded app, shared by every read-only test in this file, because booting
+// and seeding costs several seconds.
 //
-// Standing up an app costs several seconds — four libraries bootstrap their
-// collections, every migration runs — and seeding costs several more, mostly in
-// key generation: three NATS accounts, three Nebula CAs, and a signed identity
-// for every Thing. Paying that per test took the package from seconds to minutes
-// and would have made `go test ./...` something people skip.
-//
-// The two tests that MUTATE (idempotency, and topping up the fleet) build their
-// own app, because sharing one would make them order-dependent.
+// The tests that mutate build their own app with testutil.SetupApp, because
+// sharing one would make them order-dependent.
 var shared core.App
 
 func TestMain(m *testing.M) {
-	// flag.Parse() first: testing.Short() reads a flag, and m.Run() is what
-	// normally parses them -- so without this the check below is always false.
+	// flag.Parse() first: m.Run() normally parses flags, so without it
+	// testing.Short() is always false here.
 	flag.Parse()
 	if testing.Short() {
-		// Seed nothing. Every read-only test reaches the app through
-		// sharedApp(t), which skips; the mutating ones build their own through
-		// testutil.SetupApp, which skips too.
+		// Seed nothing: sharedApp(t) and testutil.SetupApp both skip.
 		os.Exit(m.Run())
 	}
 
@@ -68,13 +61,9 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// sharedApp is how every read-only test reaches the seeded app.
-//
-// It exists so there is ONE place that knows the app may not have been built:
-// TestMain skips the seed under -short, and a test reading the package variable
-// directly would nil-deref rather than skip. Added with the -short split; the
-// direct `shared` reads it replaced are why it is an accessor and not a
-// variable.
+// sharedApp is how every read-only test reaches the seeded app. Under -short
+// the app is never built, and reading `shared` directly would nil-deref rather
+// than skip.
 func sharedApp(t *testing.T) core.App {
 	t.Helper()
 	testutil.SkipIfShort(t)
@@ -120,8 +109,8 @@ func TestSeedPopulatesEveryCollectionItClaimsTo(t *testing.T) {
 	}
 }
 
-// The whole seed is built on organizations.code, and a code is immutable once
-// written — so a run that produced the wrong one could not be repaired in place.
+// The seed is built on organizations.code, which is immutable once written, so
+// a wrong one could not be repaired in place.
 func TestOrganizationsCarryTheCodesTheHelpdeskDemoJoinsOn(t *testing.T) {
 	app := sharedApp(t)
 
@@ -137,9 +126,8 @@ func TestOrganizationsCarryTheCodesTheHelpdeskDemoJoinsOn(t *testing.T) {
 }
 
 // Every organization must come out of the provisioning hook with its NATS
-// account and Nebula CA. If this fails, the seeder was wired into a binary that
-// does not register the hook — which would produce a demo that looks complete in
-// the inventory screens and has no credentials behind any of it.
+// account and Nebula CA. A failure means the hook is not registered, and the
+// demo has no credentials behind it.
 func TestEveryOrganizationIsProvisioned(t *testing.T) {
 	app := sharedApp(t)
 
@@ -166,8 +154,7 @@ func TestEveryOrganizationIsProvisioned(t *testing.T) {
 }
 
 // things.authRule is `active = true`, and a PocketBase bool has no schema
-// default. A Thing seeded without the flag set would be locked out of the API —
-// the exact bug POST /api/org/things was written to fix.
+// default, so a Thing seeded without the flag would be locked out of the API.
 func TestEveryActiveThingCanActuallyAuthenticate(t *testing.T) {
 	app := sharedApp(t)
 
@@ -192,24 +179,19 @@ func TestEveryActiveThingCanActuallyAuthenticate(t *testing.T) {
 	if active == 0 {
 		t.Error("no active things — every seeded device would be locked out by things.authRule")
 	}
-	// The demo deliberately includes decommissioned devices so the inactive
-	// badge and stone_age_inactive_records have something to show.
+	// Decommissioned devices are seeded on purpose.
 	if inactive == 0 {
 		t.Error("no inactive things — the decommissioned state is unrepresented")
 	}
 }
 
-// A Thing's real capability is its credentials. Deactivating one has to reach
-// nats_users and nebula_hosts, or it has only closed the console door.
+// Deactivating a Thing has to reach nats_users and nebula_hosts, or it has only
+// closed the console door.
 //
-// This asserts the EFFECT, not the flag. `active = false` on a nats_users
-// record is read by nothing in JWT generation -- pb-nats's suspend path is
-// what disconnects anyone, by adding the user's public key to the OWNING
-// ACCOUNT's revocation list and re-signing the account JWT. That list is the
-// durable evidence, and it is not a field the seeder writes, so it cannot pass
-// by accident. The previous version checked only the flag the seeder had just
-// set itself, which could not tell "pb-nats suspended the user" from "pb-nats
-// did nothing".
+// This asserts the effect, not the flag: JWT generation ignores
+// nats_users.active, and pb-nats's suspend adds the public key to the owning
+// account's revocation list. The seeder never writes that list, so the check
+// cannot pass by accident.
 func TestDecommissionedThingsHaveTheirCredentialRevoked(t *testing.T) {
 	app := sharedApp(t)
 
@@ -218,11 +200,8 @@ func TestDecommissionedThingsHaveTheirCredentialRevoked(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(inactive) == 0 {
-		// Deliberately not t.Skip. This test opted out silently for as long as
-		// the seeder produced no decommissioned devices at all -- which it did,
-		// because hooks/active_flag.go forces active=true on create and the
-		// harness did not bind that hook. A test that skips when its subject is
-		// missing cannot report that its subject is missing.
+		// Not t.Skip: a test that skips when its subject is missing cannot
+		// report that it is missing.
 		t.Fatal("no decommissioned things, so this assertion never ran: the seeder produced none")
 	}
 
@@ -253,9 +232,8 @@ func TestDecommissionedThingsHaveTheirCredentialRevoked(t *testing.T) {
 				"revocation list -- the credential still works", code, acct.GetString("name"))
 		}
 
-		// The Nebula half. Not every Thing has a host; the ones that do must be
-		// blocklisted, or a decommissioned device keeps overlay-network access
-		// until its certificate expires.
+		// A Thing with a Nebula host must have it blocklisted, or it keeps
+		// overlay access until its certificate expires.
 		if hostID := thing.GetString("nebula_host"); hostID != "" {
 			h, err := app.FindRecordById("nebula_hosts", hostID)
 			if err != nil {
@@ -279,8 +257,7 @@ func TestAllFiveConsoleRolesAreRepresented(t *testing.T) {
 	}
 	for _, m := range memberships {
 		seen[m.GetString("role")] = true
-		// A console role is not a NATS role, and the pairing is what this demo
-		// is meant to teach. A membership with no NATS identity teaches nothing.
+		// Every membership is paired with a NATS identity.
 		if m.GetString("nats_user") == "" {
 			t.Errorf("membership %s has no NATS identity linked", m.Id)
 		}
@@ -292,9 +269,8 @@ func TestAllFiveConsoleRolesAreRepresented(t *testing.T) {
 	}
 }
 
-// The read-only console roles must be paired with a NATS role that is genuinely
-// read-only. Otherwise the demo ships the trap it exists to illustrate: an
-// auditor who is read-only in PocketBase and can publish anywhere on the bus.
+// The read-only console roles must be paired with a read-only NATS role, or a
+// viewer could publish anywhere on the bus.
 func TestReadOnlyConsoleRolesGetAReadOnlyNatsRole(t *testing.T) {
 	app := sharedApp(t)
 
@@ -327,8 +303,7 @@ func TestReadOnlyConsoleRolesGetAReadOnlyNatsRole(t *testing.T) {
 	}
 }
 
-// The read-only NATS role must not carry a publish wildcard. This is the actual
-// property the pairing above is trying to buy.
+// The read-only NATS role must not carry a publish wildcard.
 func TestConsoleReadonlyRoleCannotPublishAnywhere(t *testing.T) {
 	app := sharedApp(t)
 
@@ -352,8 +327,7 @@ func TestConsoleReadonlyRoleCannotPublishAnywhere(t *testing.T) {
 	}
 }
 
-// Re-running must converge, not duplicate. A demo instance someone re-seeds
-// after poking at it should end up where it started.
+// Re-running must converge, not duplicate.
 func TestSeedingTwiceChangesNothing(t *testing.T) {
 	app := testutil.SetupApp(t)
 
@@ -432,9 +406,8 @@ func TestCodesAreUniqueWithinAnOrganization(t *testing.T) {
 	}
 }
 
-// Things span more than sensors. The platform's claim is that an application is
-// a first-class participant with its own signed identity; a demo of nothing but
-// probes quietly contradicts it.
+// Things span more than sensors: an application is a first-class participant
+// with its own signed identity.
 func TestThingsSpanDevicesGatewaysAndApplications(t *testing.T) {
 	app := sharedApp(t)
 
@@ -473,12 +446,10 @@ func TestThingsSpanDevicesGatewaysAndApplications(t *testing.T) {
 
 // The stone-access join.
 //
-// Every code below is ALSO a record in the access-control repository — a
-// `controllers` row or a `portals` row with the identical code — and the three
-// site codes go the other way, from here into that app's `locations`. Two Go
-// modules cannot import each other's fixtures, so this list IS the contract:
-// changing a code on either side has to change it on both, and this test is what
-// says so out loud on this side. access-control's
+// Every code below is also a `controllers` or `portals` row in the
+// access-control repo, and the three site codes go the other way, into its
+// `locations`. The modules share no fixtures, so this list is the contract:
+// change a code on both sides. access-control's
 // TestSiteCodesMatchThePlatformDemo is its mirror.
 func TestTheAccessControlEstateIsPresentAndJoinable(t *testing.T) {
 	app := sharedApp(t)
@@ -527,8 +498,7 @@ func TestTheAccessControlEstateIsPresentAndJoinable(t *testing.T) {
 		if got := typeOf[thing.GetString("type")]; got != wantType {
 			t.Errorf("Thing %q has type %q, want %q", code, got, wantType)
 		}
-		// A controller is a network participant and gets a Nebula host; a door is
-		// I/O on that controller's terminal block and must not.
+		// A controller gets a Nebula host; a door, I/O on its terminal block, must not.
 		hasNebula := thing.GetString("nebula_host") != ""
 		if wantType == "access-controller" && !hasNebula {
 			t.Errorf("controller %q has no Nebula host; it is the box that needs the management path", code)
@@ -538,8 +508,7 @@ func TestTheAccessControlEstateIsPresentAndJoinable(t *testing.T) {
 		}
 	}
 
-	// The site codes access-control mirrors. These are the ones its own
-	// TestSiteCodesMatchThePlatformDemo asserts from the other side.
+	// The site codes access-control mirrors (its TestSiteCodesMatchThePlatformDemo).
 	for _, code := range []string{"KC-DC1", "KC-OFFICE", "SGF-XD2"} {
 		if _, err := app.FindFirstRecordByFilter("locations",
 			"organization = {:o} && code = {:c}", dbx.Params{"o": org.Id, "c": code}); err != nil {
@@ -548,9 +517,8 @@ func TestTheAccessControlEstateIsPresentAndJoinable(t *testing.T) {
 	}
 }
 
-// A portal's subject prefix has to compose to what a controller actually
-// publishes on: acc.{location}.{type}.{thing}. Getting this wrong is invisible —
-// the Thing Type screen renders a plausible subject that nothing is listening to.
+// A portal's subject prefix has to compose to what a controller publishes on:
+// acc.{location}.{type}.{thing}. A wrong one still renders a plausible subject.
 func TestAccessSubjectPrefixesMatchTheWireFormat(t *testing.T) {
 	app := sharedApp(t)
 
@@ -569,16 +537,11 @@ func TestAccessSubjectPrefixesMatchTheWireFormat(t *testing.T) {
 	}
 }
 
-// The kiosk join, and the mirror of the stone-access one above.
+// The kiosk join. Every code here is also a `kiosks` row in the kiosk repo's
+// internal/demoseed/data.go; this list is the contract on this side.
 //
-// Every code here is also a `kiosks` row in the KIOSK repository, seeded from
-// its own internal/demoseed/data.go. Two Go modules cannot import each other's
-// fixtures, so this list IS the contract on this side.
-//
-// The ports are asserted for a duller reason that costs an afternoon when it is
-// wrong: the whole demo estate runs on ONE host, every node binds its own port,
-// and two fixtures agreeing on 8102 produces a second kiosk that dies at startup
-// with an address-in-use error while the first one carries on looking healthy.
+// Ports are asserted because the demo estate runs on one host, and two nodes on
+// the same port means one dies at startup with address-in-use.
 func TestTheKioskEstateIsPresentAndJoinable(t *testing.T) {
 	app := sharedApp(t)
 
@@ -618,8 +581,7 @@ func TestTheKioskEstateIsPresentAndJoinable(t *testing.T) {
 		if got := typeOf[thing.GetString("type")]; got != w.thingType {
 			t.Errorf("Thing %q has type %q, want %q", w.code, got, w.thingType)
 		}
-		// Unlike a door, every participant in this estate is a computer an
-		// administrator has to be able to reach when the bus is unhappy.
+		// Unlike a door, every participant here is a computer an admin must reach.
 		if thing.GetString("nebula_host") == "" {
 			t.Errorf("%q has no Nebula host; every kiosk node is a mini-PC with its own database", w.code)
 		}
@@ -643,12 +605,9 @@ func TestTheKioskEstateIsPresentAndJoinable(t *testing.T) {
 	}
 }
 
-// A kiosk's subject prefix has to compose to what a kiosk actually publishes on:
-// kiosk.{kiosk_code}.{family}.{...}, with NO location segment. The stone-access
-// types carry one and these must not — a kiosk's own code is the routing token,
-// and the controller's stream binds `kiosk.*.event.>` against exactly that shape.
-// Adding {location} would render a plausible subject on the Thing Type screen
-// that nothing publishes on and nothing listens to.
+// A kiosk's subject prefix has to compose to what a kiosk publishes on:
+// kiosk.{kiosk_code}.{family}.{...}, with no location segment. The code is the
+// routing token, and the controller's stream binds `kiosk.*.event.>`.
 func TestKioskSubjectPrefixesMatchTheWireFormat(t *testing.T) {
 	app := sharedApp(t)
 
@@ -663,8 +622,7 @@ func TestKioskSubjectPrefixesMatchTheWireFormat(t *testing.T) {
 	}
 }
 
-// Locations need coordinates or the map screens — two of the console's best —
-// come up empty, which is the single most common reason a demo underwhelms.
+// Locations need coordinates or the map screens come up empty.
 func TestTopLevelLocationsHaveCoordinates(t *testing.T) {
 	app := sharedApp(t)
 
@@ -700,9 +658,9 @@ func TestManagedFlagIsSetOnTheOrgsThatClaimIt(t *testing.T) {
 	}
 }
 
-// Every operation that names a schema must resolve to one, and every thing type
-// must resolve its operations. A dangling relation here renders as an empty
-// section in the console rather than an error.
+// Every operation needs a subject suffix, every thing type a subject prefix,
+// and at least one type must link operations. A dangling relation renders as an empty console
+// section, not an error.
 func TestTheContractGraphIsWhole(t *testing.T) {
 	app := sharedApp(t)
 
@@ -713,9 +671,7 @@ func TestTheContractGraphIsWhole(t *testing.T) {
 	if len(ops) == 0 {
 		t.Fatal("no operations were seeded")
 	}
-	// Every operation needs a subject suffix: it is the half of the subject the
-	// Publisher widget appends to its Thing Type's prefix, and an empty one
-	// resolves to a subject that silently addresses the prefix itself.
+	// An empty subject suffix silently addresses the Thing Type's prefix itself.
 	for _, op := range ops {
 		if op.GetString("subject_suffix") == "" {
 			t.Errorf("operation %q has no subject_suffix", op.GetString("name"))
@@ -740,34 +696,13 @@ func TestTheContractGraphIsWhole(t *testing.T) {
 	}
 }
 
-// A thing type's intended NATS role has to be able to carry that type's own
-// contract. Nothing in this platform checks that at runtime: a role is a set of
-// subject patterns on one screen, a thing type is a subject prefix plus a list
-// of operations on another, and the credential minted from the pair is only
-// tested by a device trying to speak and being refused by the server.
+// A thing type's intended NATS role has to carry that type's own contract.
+// Nothing checks this at runtime: role and thing type are edited on different
+// screens, the JWT signs cleanly, and only the server refuses the device.
 //
-// It shipped wrong twice at once. The three stone-access types took the stock
-// `device`/`gateway` roles, whose publish lists named every subtree in the
-// fixture except `acc.>` — so a seeded door could not publish the decision its
-// own type declares, and a controller could not receive the taps it exists to
-// answer. Separately, `reply_diagnostics` on three types resolved to roles
-// carrying `_INBOX.>` on SUBSCRIBE only, which is the requester's side of
-// request/reply rather than the responder's.
-//
-// Both failures are invisible in the console. Every screen renders correctly and
-// the JWT signs cleanly; the permission is simply absent from it.
-//
-// WHY THIS READS FIXTURES AND NOT RECORDS. It used to resolve each type's role
-// through thing_types.nats_role. That column was dropped -- no hook, route, or
-// screen in the platform ever read it, so it was a copy of fixture data that
-// only this test consumed. The pairing itself is still worth asserting: it is
-// what an operator does by hand when minting a credential for a device of a
-// given type, and it is the closest thing here to deriving permissions from a
-// contract. So the pairing is read from ThingTypeFixture.Role, which is where it
-// was always authored, and the permissions from RoleTemplates, which seedNatsRoles
-// writes verbatim into every org. That makes this a check on the fixture data's
-// internal coherence, which is exactly what it was checking before, minus a
-// database round-trip that could only ever have echoed it back.
+// It reads fixtures, not records: thing_types has no nats_role column, so the
+// pairing comes from ThingTypeFixture.Role and the permissions from
+// RoleTemplates, which seedNatsRoles writes verbatim into every org.
 func TestEveryThingTypeCanSpeakItsOwnContract(t *testing.T) {
 	if len(demoseed.ThingTypeFixtures) == 0 {
 		t.Fatal("no thing type fixtures")
@@ -795,8 +730,7 @@ func TestEveryThingTypeCanSpeakItsOwnContract(t *testing.T) {
 			checked++
 
 			// A responder needs the subject on subscribe and an inbox on publish;
-			// a requester needs the mirror image. Getting one half is the failure
-			// mode, because the half you have is the one that looks like it works.
+			// a requester needs the mirror image.
 			switch op.Capability {
 			case "publish":
 				requirePermission(t, ttf.Code, opName, "publish", subject, role.Publish)
@@ -829,9 +763,8 @@ func roleTemplateByName(name string) *demoseed.RoleFixture {
 	return nil
 }
 
-// operationFixtureByName finds an operation within one org. Operation names are
-// unique per (organization, name) in the fixture set, matching the collection's
-// own unique index.
+// operationFixtureByName finds an operation within one org. Names are unique per
+// (organization, name), matching the collection's unique index.
 func operationFixtureByName(org, name string) *demoseed.OperationFixture {
 	for i := range demoseed.OperationFixtures {
 		if demoseed.OperationFixtures[i].Org == org && demoseed.OperationFixtures[i].Name == name {
@@ -896,24 +829,13 @@ func subjectMatches(pattern, subject string) bool {
 	return len(p) == len(s)
 }
 
-// The three permissions an edge service needs that no thing type's operation
-// list mentions, so TestEveryThingTypeCanSpeakItsOwnContract cannot derive them.
-// Each was found by running the real thing — four access-controllers against a
-// `serve --nats` deployment, authenticating as their own seeded Things — and each
-// failed in a way that looked like someone else's bug.
+// The three permissions an edge service needs that no operation list mentions,
+// so TestEveryThingTypeCanSpeakItsOwnContract cannot derive them:
 //
-//	$JS.API.>  bind a stream, create a consumer. Missing: no policy sync at all.
-//	$KV.>      WRITE a KV value, which is a plain publish to $KV.{bucket}.{key}
-//	           and is NOT covered by $JS.API.>. Missing: the controller boots
-//	           clean, syncs its whole policy graph, arms every portal, and then
-//	           fails on the first status write with a permissions violation. A
-//	           box that starts fine and cannot report state is worse than one
-//	           that refuses to start.
-//	_INBOX.>   answer a request. Missing: request/reply is dead in one direction
-//	           only, which is the half that looks like it works.
-//
-// The one to keep in mind when adding a role: reading a KV bucket and writing one
-// need different permissions, and only the read goes through the JetStream API.
+//	$JS.API.>  bind a stream, create a consumer.
+//	$KV.>      write a KV value: a plain publish to $KV.{bucket}.{key}, not
+//	           covered by $JS.API.>. Only a KV read goes through the API.
+//	_INBOX.>   answer a request.
 func TestGatewayRoleCanRunAnEdgeService(t *testing.T) {
 	app := sharedApp(t)
 
@@ -939,31 +861,16 @@ func TestGatewayRoleCanRunAnEdgeService(t *testing.T) {
 	}
 }
 
-// The kiosk controller's three permissions, and the reason this test has to
-// exist at all.
+// The kiosk controller's three permissions. Its type declares no operations
+// (every subject it touches belongs to a kiosk), so
+// TestEveryThingTypeCanSpeakItsOwnContract derives nothing for it and this is
+// the only check.
 //
-// TestEveryThingTypeCanSpeakItsOwnContract derives what a type needs from the
-// operations it declares. The `kiosk-controller` type declares NONE, and that is
-// correct rather than lazy: every subject it touches belongs to some other
-// Thing. It requests on each kiosk's command subtree, subscribes their
-// heartbeats, consumes their events through the stream, and writes the catalogue
-// into KV. An operation's suffix composes against its OWN type's prefix, so any
-// entry would render `app.kiosk.<code>.…`, a subject nothing publishes on.
-//
-// So the derivation has nothing to work with here, and this is the only thing
-// standing between that type and a credential that cannot do its job.
-//
-//	kiosk.>     request a command at a node, and receive its events. Missing:
-//	            every remote admin action times out and renders as "kiosk
-//	            offline", which sends an operator to check the kiosk.
+//	kiosk.>     request a command at a node. Missing, it reads as "kiosk offline".
 //	$JS.API.>   bind the event stream and the KV buckets.
-//	$KV.>       WRITE a KV value. Missing: the controller starts, serves its
-//	            console, aggregates every event the fleet sends — and ships no
-//	            catalogue at all, so the kiosks stock nothing and the failure
-//	            reads as a kiosk-side bug.
+//	$KV.>       write a KV value (the catalogue fan-out).
 //
-// Subscribe is `>` on this role, so reading is never the half that breaks. The
-// gap is always on publish, which is the half that looks like it works.
+// Subscribe is `>` on this role, so only publish can be short.
 func TestApplicationRoleCanRunTheKioskController(t *testing.T) {
 	app := sharedApp(t)
 
@@ -989,12 +896,9 @@ func TestApplicationRoleCanRunTheKioskController(t *testing.T) {
 	}
 }
 
-// The kiosk's own side of that pair. A node publishes on its subtree and
-// subscribes its command subtree and its sightings, all under `kiosk.>` — which
-// the gateway role carried for no one until the kiosk estate arrived, and which
-// a node silently cannot do without: its ledger commits locally and publishes
-// into a permissions violation, so the kiosk looks healthy and the controller
-// stays empty.
+// The kiosk's own side of that pair: a node publishes on its subtree and
+// subscribes its commands and sightings, all under `kiosk.>`. Without it the
+// ledger commits locally, the publish fails, and the controller stays empty.
 func TestGatewayRoleCanRunAKioskNode(t *testing.T) {
 	app := sharedApp(t)
 
@@ -1024,31 +928,17 @@ func TestGatewayRoleCanRunAKioskNode(t *testing.T) {
 	}
 }
 
-// A re-seed has to REPAIR a role whose permissions have fallen behind the
-// fixture, and this is the one place the seeder overwrites an existing record.
-//
-// `ensure` runs its fill only on create, so hand-edits survive a re-run — right
-// for a Thing someone renamed, wrong for a role, because a role is the set of
-// subjects a credential may use and every demo credential is minted from it.
-//
-// The gap was live, not hypothetical. Adding the kiosk estate added `kiosk.>` to
-// `gateway` and `kiosk.>` + `$KV.>` to `application`. Fresh installs got them;
-// every already-seeded install did not, because those role records already
-// existed. The next run would have created five kiosk Things and minted each a
-// credential against the OLD role — every node authenticating, coming up clean,
-// and failing on its first publish, with the controller shipping no catalogue at
-// all and nothing in the seeder's output saying so.
-//
-// Note what this test could NOT have been. Every other test here builds a fresh
-// app, which only ever exercises the create path; the bug lives exclusively on
-// the second run. It has to seed, damage, and seed again.
+// A re-seed has to repair a role whose permissions have fallen behind the
+// fixture (see reconcileRolePermissions), so a fixture change reaches installs
+// that already ran the seed. The bug lives only on the second run, so the test
+// seeds, damages, and seeds again.
 func TestReseedRepairsARoleThatFellBehind(t *testing.T) {
 	app := testutil.SetupApp(t)
 	if _, err := demoseed.Run(app, demoseed.Options{Things: 10}); err != nil {
 		t.Fatalf("first run: %v", err)
 	}
 
-	// Exactly the list every deployment seeded before the kiosk estate landed.
+	// The list deployments seeded before the kiosk estate.
 	stale := []string{"app.>", "cmd.>", "helpdesk.>", "$JS.API.>"}
 	rec, err := app.FindFirstRecordByFilter("nats_roles",
 		"name = 'application' && organization.code = 'northwind'", nil)
@@ -1084,11 +974,8 @@ func TestReseedRepairsARoleThatFellBehind(t *testing.T) {
 	}
 }
 
-// The other half of that contract: a re-seed that has nothing to repair must not
-// write. pb-nats hooks role updates and regenerates the JWT of every user holding
-// the role, so an unconditional save would re-sign every identity in the
-// deployment on every run — which is not a correctness bug, and is exactly the
-// kind of churn nobody notices until a fleet is large.
+// A re-seed with nothing to repair must not write: pb-nats re-signs the JWT of
+// every user holding a role on each role update.
 func TestReseedLeavesAnUpToDateRoleAlone(t *testing.T) {
 	app := testutil.SetupApp(t)
 	if _, err := demoseed.Run(app, demoseed.Options{Things: 10}); err != nil {

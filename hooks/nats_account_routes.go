@@ -17,21 +17,13 @@ type NatsAccountRoutesOptions struct {
 // RegisterNatsAccountRoutes adds the signing-key operations an organization's
 // owners and admins are meant to perform on their own NATS account.
 //
-// WHY THIS IS A ROUTE. `nats_accounts.updateRule` used to carry an owner/admin
-// branch commented "can only change rotate_keys", implemented as a list of
-// `:changed = false` assertions on the six limit fields plus `organization`.
-// That is a deny-list, and it did not hold: an owner or admin could also write
-// `jwt` (the signed account JWT), `revocations` (which user JWTs the account
-// rejects), `public_key`, `signing_public_key`, `signing_keys`, `name`,
-// `description` and `active`. Adding a field to the collection would have made it
-// tenant-writable too, silently. Same failure this codebase has already been bitten
-// by twice — a rule cannot express "this one field and nothing else".
-//
-// So the update rule is now operator-only, and the three operations a tenant
-// legitimately needs live here. The switch below IS the allowlist: each action
-// sets exactly one field, and an unrecognised action is rejected rather than
-// ignored. There is no record id in the request — the account is derived from the
-// caller's own active organization, so this cannot be aimed at another tenant.
+// It is a route because a rule cannot express "this one field and nothing
+// else". An owner/admin update branch would be a deny-list of `:changed =
+// false` terms, which left `jwt`, `revocations` and the keys writable and would
+// silently open every field added later. So `nats_accounts.updateRule` is
+// operator-only, and the switch below IS the allowlist: each action sets
+// exactly one field, and an unrecognised one is rejected. There is no record id
+// in the request; the account comes from the caller's active organization.
 //
 // The three fields are pb-nats triggers, mutually exclusive and self-clearing
 // (internal/sync/manager.go):
@@ -44,13 +36,9 @@ type NatsAccountRoutesOptions struct {
 //   - remove_signing_key removes one key by public key. pb-nats refuses to remove
 //     the last remaining key.
 //
-// Deliberately NOT exposed: the account limits (`max_*`) and `jwt`. Limits are a
-// platform-operator concern — they are what a tenant would raise to escape the
-// resource envelope they were sold — and `jwt` is server-generated output, not
-// input.
-//
-// Writes go through app.Save, so pb-audit records them as ordinary updates on
-// nats_accounts with no extra work.
+// Deliberately NOT exposed: the limits (`max_*`), which would let a tenant
+// escape the envelope it was sold, and `jwt`, which is server output. Writes
+// go through app.Save, so pb-audit records them as ordinary updates.
 func RegisterNatsAccountRoutes(app *pocketbase.PocketBase, opts NatsAccountRoutesOptions) {
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
 		se.Router.POST("/api/org/nats-account/keys", func(re *core.RequestEvent) error {
@@ -99,18 +87,11 @@ func RegisterNatsAccountRoutes(app *pocketbase.PocketBase, opts NatsAccountRoute
 }
 
 // resolveOwnOrgNatsAccount returns the NATS account of the caller's active
-// organization, but only if the caller is an owner or admin there. The
-// organization comes from the authenticated record, never from the request, so a
-// caller cannot name another tenant's account.
-//
-// This mirrors the owner/admin allowlist used throughout schema.json. It is
-// written as an explicit role check rather than reusing an API rule because the
-// route bypasses the rules by design — the whole point is to permit a write the
-// update rule now forbids.
+// organization, but only if the caller is an owner or admin there (the
+// schema.json allowlist, restated because this route bypasses the rules). The
+// organization comes from the authenticated record, never the request.
 func resolveOwnOrgNatsAccount(re *core.RequestEvent, opts NatsAccountRoutesOptions) (*core.Record, error) {
-	// Shared with the Nebula routes, which gate on the same owner/admin check.
-	// Two copies of "who may act on their own org infrastructure" is one copy
-	// too many -- it answers the same question for both.
+	// The same gate as the Nebula routes.
 	orgID, _, err := requireMembership(re, opts.MembershipCollection, rolesOrgManager)
 	if err != nil {
 		return nil, err

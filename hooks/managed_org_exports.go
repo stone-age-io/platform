@@ -106,10 +106,9 @@ func storedForm(v any) string {
 
 // privateTo is the desired state that makes an export private to one importer:
 // token_req, and the importer's account key in allowed_importers. pb-nats then
-// signs the activation token for that one account (pb-nats v0.3.3), and
-// nats-server refuses an import of the export from any other. Public exports let
-// any account import them, and an owner may create imports naming any account
-// key, so a public platform export was readable by every tenant.
+// signs the activation token for that one account (pb-nats v0.3.3). A public
+// export is readable by every tenant, since an owner may create an import
+// naming any account key.
 func privateTo(importerPublicKey string) []field {
 	return []field{
 		{"token_req", true},
@@ -119,24 +118,18 @@ func privateTo(importerPublicKey string) []field {
 
 // ensureManagedExports brings the export/import pair for a managed org to its
 // desired state: it creates the pair when absent and reconciles it when it has
-// drifted. Errors are returned for logging, never fatal — an operator can retry
-// by toggling the flag once the missing piece (account, hub, key) exists.
+// drifted. Errors are logged, never fatal; an operator retries by re-saving the
+// org once the missing piece (account, hub, key) exists.
 //
-// It used to only create, and never update what it had created. That was
-// survivable while the import's local_subject embedded org.Id, which cannot
-// change — but every other value in the pair can. The export subject comes from
-// config, the imported account is a public key that can rotate, and both
-// descriptions embed a renameable org name.
-//
-// It stopped being survivable once the subject rooted at organizations.code
-// (ADR 0002, step 3): a stale local_subject is an outage that reports nothing
-// at all, because a consumer's filter is helpdesk.*.tickets.> and the wildcard
-// keeps matching a subject that no longer carries any traffic.
+// Reconcile rather than create-if-missing, because every value in the pair can
+// change: the export subject comes from config, the imported account key can
+// rotate, and the descriptions embed a renameable org name. A stale
+// local_subject is a silent outage: a consumer's helpdesk.*.tickets.> filter
+// keeps matching a subject that no longer carries traffic.
 //
 // Reconciliation only runs when this hook fires, so a change to the token shape
-// does not retroactively fix existing imports. The switch to codes re-saved
-// every managed org for that reason
-// (migrations/schema_update_subject_token_to_code.go); a future change must too.
+// must re-save every managed org, as
+// migrations/schema_update_subject_token_to_code.go did.
 func ensureManagedExports(app core.App, opts ManagedOrgExportsOptions, org *core.Record) error {
 	account, _ := app.FindFirstRecordByFilter(opts.AccountCollection, "organization = {:org}", dbx.Params{"org": org.Id})
 	if account == nil {
@@ -165,10 +158,9 @@ func ensureManagedExports(app core.App, opts ManagedOrgExportsOptions, org *core
 		return fmt.Errorf("find import collection: %w", err)
 	}
 
-	// account_id and name are the lookup keys below, so they are create-only by
-	// definition. Everything else is desired state — including `organization`,
-	// whose reconcile doubles as the backfill for records made before org
-	// stamping, which the tenant-scoped list rule needs or they stay invisible.
+	// account_id and name are the lookup keys, so they are create-only.
+	// Everything else is desired state, including `organization`, which the
+	// tenant-scoped list rule needs; its reconcile backfills older records.
 	hubKey := hubAccount.GetString("public_key")
 	if hubKey == "" {
 		return fmt.Errorf("operator NATS account has no public key yet")
@@ -201,16 +193,13 @@ func ensureManagedExports(app core.App, opts ManagedOrgExportsOptions, org *core
 	}
 
 	// The org token on the subject is the organization CODE, not its id (ADR
-	// 0002). The code is globally unique and frozen, so it identifies the tenant
-	// as unforgeably as the id did — provenance comes from this rewrite being
-	// operator-signed, never from what the token contains — while also being
-	// legible in a monitored subject and the same handle every other consumer
-	// already resolves by.
+	// 0002): globally unique, frozen and legible. Provenance comes from this
+	// rewrite being operator-signed, never from what the token contains.
 	//
-	// The record stays NAMED by org.Id. Keeping record identity on the immutable
-	// id and the mutable-until-frozen value on the subject is what makes this
-	// change a reconcile rather than a delete-and-recreate, and it is why the
-	// lookup below still finds imports created under the old token.
+	// The record stays NAMED by org.Id. Record identity on the immutable id and
+	// the code on the subject is what makes a token change a reconcile rather
+	// than a delete-and-recreate: the lookup below still finds imports created
+	// under the old token.
 	orgCode := org.GetString("code")
 	if orgCode == "" {
 		return fmt.Errorf("organization has no code yet (run `migrate up`)")

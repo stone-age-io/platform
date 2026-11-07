@@ -11,44 +11,22 @@ import (
 
 // schema_update_nats_role_limits stores -1 in every nats_roles limit that holds
 // 0, and so re-mints every credential signed from those roles. No schema change.
+// A role created without limits stored 0, which a user JWT reads as none;
+// hooks/nats_limits.go now stores -1, and this corrects the older rows.
 //
-// hooks/nats_limits.go now stores -1 for a limit left unset. Before it, a role
-// created without its limits -- through the record API, `stone nats-role create`
-// or `stone apply` -- stored 0, which a user JWT reads as NONE. This is the same
-// correction for the rows written before the hook.
+// Every 0 becomes -1, because no 0 did anything useful: Subs 0 is closed at
+// CONNECT, Payload 0 on the first non-empty publish, and Data 0 is not enforced.
+// -1 cannot exceed the tenant's envelope: nats-server applies the lower of the
+// user and account limits, and account limits are operator-only.
 //
-// THE DECISION: every 0 becomes -1. No 0 is kept as deliberate, because no 0 did
-// anything a person could have wanted:
+// Saved through app.Save, not a plain UPDATE (contrast
+// schema_update_device_active_flag.go): the defect is the credentials signed
+// from the row. A role save makes pb-nats re-sign every active user holding it,
+// after commit. Suspended users are re-signed when reactivated.
 //
-//   - Subscriptions 0: nats-server closes the connection at CONNECT, before the
-//     first subscribe. A role at 0 has never had a user that could stay
-//     connected, so it cannot have been a working publish-only role.
-//   - Payload 0: the first non-empty publish closes the connection.
-//   - Data 0: nats-server does not enforce it at all.
-//
-// -1 on a role cannot exceed the tenant's envelope: nats-server applies the lower
-// of the user limit and the account limit, and the account limits are
-// operator-only. What a user may publish or subscribe to is still the role's
-// permission lists, which this does not touch.
-//
-// SAVED THROUGH app.Save, NOT A PLAIN UPDATE (contrast
-// schema_update_device_active_flag.go). The row is not the defect; the
-// credentials signed from it are. When a role is updated, pb-nats re-signs the
-// JWT of every ACTIVE user holding it (setupRoleHooks, after the transaction
-// commits). A plain UPDATE would leave each of those users holding Subs 0 until
-// something unrelated re-signed it. Suspended users are skipped by pb-nats on
-// purpose, and get a credential from the corrected role when reactivated.
-//
-// A role that cannot be saved is named in the log and left as it is, not made
-// fatal: refusing to start the platform over one role would take every other
-// tenant down with it. Save it by hand once the reason is fixed.
-//
-// nats_accounts is deliberately not touched. An account limit is the envelope
-// the tenant was sold, an account's -1 is really unlimited, and a 0 there may be
-// an operator's deliberate choice (a crude suspend from before
-// organizations.active did anything). That is a decision for a person, and
-// hooks/nats_limits.go is written so that a 0 already stored does not block
-// later saves of the account.
+// A role that fails to save is logged and skipped, not fatal, so one role cannot
+// keep every tenant down. nats_accounts is not touched: an account 0 may be an
+// operator's deliberate choice, and hooks/nats_limits.go lets it be saved.
 func init() {
 	m.Register(applyNatsRoleLimits, nil)
 }

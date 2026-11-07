@@ -10,19 +10,11 @@ import (
 	"testing"
 )
 
-// The invariant the whole feature rests on:
-//
-//	an activity entry is visible to exactly those who could read the record
-//	it describes.
-//
-// The feed's own read rule is org-scoped with no role branch, so it may only
-// describe records whose OWN read rule is org-scoped with no role branch. This
-// reads schema.json and fails if any covered collection has a role clause --
-// which is what stops someone adding `memberships` for a richer feed and
-// silently telling every member whose role changed.
-//
-// The same shape and the same reason as audit_snapshots_test.go: the regression
-// is one line, and it has no symptom.
+// The feed's invariant: an entry is visible to exactly those who could read the
+// record it describes. The feed's read rule is org-scoped with no role branch,
+// so every covered collection's must be too. This fails if one has a role
+// clause, e.g. if `memberships` is added. The regression is one line and has no
+// symptom.
 func TestActivityCollectionsAreOrgReadable(t *testing.T) {
 	collections := loadSchemaCollections(t)
 
@@ -54,9 +46,8 @@ func TestActivityCollectionsAreOrgReadable(t *testing.T) {
 	}
 }
 
-// The paired "can": the collections deliberately left OUT really are the ones a
-// shared feed would leak. Without this, emptying the list or flattening every
-// rule would pass the test above while destroying the property.
+// The paired "can": the collections left out really are role-scoped. Without
+// this, flattening every rule would pass the test above.
 func TestActivityExclusionsAreRoleScoped(t *testing.T) {
 	collections := loadSchemaCollections(t)
 
@@ -84,9 +75,8 @@ func TestActivityExclusionsAreRoleScoped(t *testing.T) {
 }
 
 func TestRecordLabelPrefersNameThenCode(t *testing.T) {
-	// Covered without a database: recordLabel only reads fields off a record.
-	// The fallback order is what keeps a feed line readable for
-	// thing_type_operations, which has a name and no code.
+	// The fallback order keeps a feed line readable for thing_type_operations,
+	// which has a name and no code.
 	cases := []struct {
 		what, name, code, id, want string
 	}{
@@ -103,8 +93,6 @@ func TestRecordLabelPrefersNameThenCode(t *testing.T) {
 		})
 	}
 }
-
-// --- helpers ---
 
 func loadSchemaCollections(t *testing.T) map[string]*string {
 	t.Helper()
@@ -133,9 +121,8 @@ func loadSchemaCollections(t *testing.T) map[string]*string {
 	return out
 }
 
-// stripRuleComments removes the // lines so a rule's prose cannot satisfy a
-// check on its logic -- every rule in this schema carries a comment mentioning
-// roles.
+// stripRuleComments removes the // lines so a rule's prose, which often
+// mentions roles, cannot satisfy a check on its logic.
 func stripRuleComments(rule string) string {
 	var b strings.Builder
 	for _, line := range strings.Split(rule, "\n") {
@@ -148,18 +135,11 @@ func stripRuleComments(rule string) string {
 	return b.String()
 }
 
-// The console's "Open record" button resolves a feed entry to a route by the
-// product NOUN this file snapshots into `resource` -- RESOURCE_ROUTES in
-// ui/src/views/activity/ActivityView.vue. That map is a hand-copied set of the
-// values below, so it can drift, and drift here is silent: adding a sixth
-// collection to activityCollections gives its entries a feed row with no way to
-// reach the record, and nothing errors at either end.
-//
-// Same trick, and the same reason, as managed_org_exports_test.go: the copy is
-// fine, the copy going stale is not. The direction that matters is
-// Go -> TypeScript (a noun with no route), but a route keyed on a noun the
-// server never writes is also worth catching -- it is dead code that reads like
-// coverage.
+// RESOURCE_ROUTES in ui/src/views/activity/ActivityView.vue maps each feed noun
+// to a console route, and is a hand-copied set of activityCollections' values.
+// This keeps the two in step in both directions: a noun with no route silently
+// offers no way to open the record, and a route for a noun the server never
+// writes is dead code.
 func TestActivityNounsAllHaveAConsoleRoute(t *testing.T) {
 	dir, ok := callerDir(t)
 	if !ok {
@@ -201,19 +181,13 @@ func TestActivityNounsAllHaveAConsoleRoute(t *testing.T) {
 	}
 }
 
-// The object literal's body, from the opening brace to the line that closes it
-// at column zero. Deliberately anchored on the declaration rather than matching
-// keys across the whole file: `'thing': {` is not a distinctive enough shape to
-// grep for on its own.
+// The object literal's body, from the opening brace to the closing brace at
+// column zero. Anchored on the declaration because `'thing': {` alone is not
+// distinctive.
 //
-// `\r?\n`, NOT `\n`. This reads a .vue file off disk, and .gitattributes pins
-// only *.sh, *.go, Dockerfile, *.yaml and *.yml to LF -- so with
-// core.autocrlf=true (the Windows default) the worktree copy of ActivityView.vue
-// is CRLF while git stores LF. A bare `\n` therefore fails to match on every
-// Windows checkout and matches in CI, which is the worst of both: the test can
-// never pass locally and always passes on the machine nobody is watching, so a
-// genuinely broken hooks package hides behind a red run people have learned to
-// ignore. Any future test that reads a UI source file needs the same tolerance.
+// `\r?\n`, not `\n`: .gitattributes does not pin *.vue to LF, so a Windows
+// worktree has it as CRLF and a bare `\n` would fail locally and pass in CI. Any
+// test that reads a UI source file needs the same tolerance.
 var resourceRoutesRe = regexp.MustCompile(`(?s)const RESOURCE_ROUTES\b[^\n]*\{\r?\n(.*?)\r?\n\}`)
 
 // One quoted key per entry.

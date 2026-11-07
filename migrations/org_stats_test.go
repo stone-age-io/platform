@@ -49,8 +49,7 @@ func TestOrgStatsExposesCountsOnly(t *testing.T) {
 	}
 }
 
-// The counts are the organization asked about. The page this view replaced
-// counted the READER's organization and showed 0 for every other one, so the
+// The counts are for the organization asked about, not the reader's, so the
 // fixture has two organizations with different shapes.
 func TestOrgStatsCountsTheOrganizationAsked(t *testing.T) {
 	app := testutil.SetupApp(t)
@@ -94,9 +93,7 @@ func TestOrgStatsCountsTheOrganizationAsked(t *testing.T) {
 		thing.Set("emailVisibility", true)
 		thing.Set("password", "thing-password-123")
 		save("thing", thing)
-		// A device is born enabled (hooks/active_flag.go forces active on
-		// create), so a deactivated one is deactivated afterwards, as in the
-		// console.
+		// hooks/active_flag.go forces active on create, so deactivate afterwards.
 		if !active {
 			thing.Set("active", false)
 			save("deactivated thing", thing)

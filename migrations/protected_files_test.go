@@ -11,11 +11,9 @@ import (
 	"platform/migrations"
 )
 
-// protectedFileFields is the list this migration is responsible for, repeated
-// here on purpose rather than exported from the migration. A test that read the
-// migration's own list could only ever confirm the migration agrees with
-// itself; spelling it out means changing the migration and forgetting the test
-// is a failure rather than a silent agreement.
+// protectedFileFields are the file fields that existed when the migration was
+// written, spelled out so the test does not derive its expectation the same way
+// the migration does.
 var protectedFileFields = []struct{ collection, field string }{
 	{"users", "avatar"},
 	{"organizations", "logo"},
@@ -23,10 +21,7 @@ var protectedFileFields = []struct{ collection, field string }{
 }
 
 // unprotect puts a field back to the pre-migration state so the migration has
-// something to do. A fresh database imports a schema.json that already carries
-// `"protected": true`, so without this the migration runs against nothing and
-// passes for the wrong reason -- the same trap drop_contract_layer_test.go
-// exists to avoid.
+// something to do; a fresh database is already protected.
 func unprotect(t *testing.T, app *pocketbase.PocketBase, collection, field string) {
 	t.Helper()
 
@@ -98,19 +93,11 @@ func TestProtectFileFieldsIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestProtectFileFieldsAppliesWhenTheLiveFieldIdDiffers is the reason this
-// migration mutates the field instead of re-importing schema.json.
-//
-// core.ImportCollections re-adds every live field the import did not carry BY
-// ID, and FieldsList.add then keeps the EXISTING definition -- so a re-import
-// against a database whose field id does not match schema.json logs its ✅ and
-// changes nothing. That has bitten this repo twice already (see the re-import
-// note in migrations/CLAUDE.md). For a mime-type list it is survivable. For the flag that
-// decides whether a file is served to unauthenticated strangers it is not.
-//
-// This drives a live field's id away from the one schema.json carries and
-// asserts the migration still applies. It fails the moment anyone "simplifies"
-// this migration into an ImportCollectionsByMarshaledJSON call.
+// TestProtectFileFieldsAppliesWhenTheLiveFieldIdDiffers is why the migration
+// mutates the field instead of re-importing schema.json: a re-import keeps the
+// live field when the ids differ (the re-import note in migrations/CLAUDE.md).
+// It fails if the migration is turned into an ImportCollectionsByMarshaledJSON
+// call.
 func TestProtectFileFieldsAppliesWhenTheLiveFieldIdDiffers(t *testing.T) {
 	app := testutil.SetupApp(t)
 
@@ -138,17 +125,9 @@ func TestProtectFileFieldsAppliesWhenTheLiveFieldIdDiffers(t *testing.T) {
 	}
 }
 
-// TestEveryFileFieldInTheSchemaIsProtected is the guard that matters over time.
-//
-// The migration above fixes the three fields that exist today. This walks the
-// LIVE schema and fails on any file field that is not protected, so adding an
-// upload field -- a device photo, a site photo, an attachment -- and forgetting
-// to protect it is a red test rather than a quiet hole. It deliberately does
-// not consult the migration's list: a new field is a finding whether or not
-// anyone remembered to enumerate it.
-//
-// If a genuinely public upload field is ever wanted, this test is the place to
-// state that decision and say why, rather than the flag quietly being false.
+// TestEveryFileFieldInTheSchemaIsProtected walks the live schema and fails on
+// any unprotected file field, so a new upload field that forgets the flag is a
+// red test. If a public upload field is ever wanted, state that decision here.
 func TestEveryFileFieldInTheSchemaIsProtected(t *testing.T) {
 	app := testutil.SetupApp(t)
 
@@ -161,7 +140,7 @@ func TestEveryFileFieldInTheSchemaIsProtected(t *testing.T) {
 	var found int
 	for _, col := range collections {
 		if col.System {
-			continue // PocketBase internals are not ours to re-declare
+			continue // PocketBase internals
 		}
 		for _, field := range col.Fields {
 			f, ok := field.(*core.FileField)
@@ -182,8 +161,8 @@ func TestEveryFileFieldInTheSchemaIsProtected(t *testing.T) {
 		sort.Strings(unprotected)
 		t.Errorf("unprotected file field(s): %v\n"+
 			"An unprotected file is served by /api/files to anyone with the URL, with no\n"+
-			"auth and no expiry. Add the field to fileFieldsToProtect in\n"+
-			"schema_update_protected_files.go and set \"protected\": true in schema.json.",
+			"auth and no expiry. Set \"protected\": true on it in schema.json\n"+
+			"(schema_update_protected_files.go derives its list from the live schema).",
 			unprotected)
 	}
 }

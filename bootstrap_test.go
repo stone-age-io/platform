@@ -6,10 +6,9 @@ import (
 	"testing"
 )
 
-// orgCodeFor is what keeps `bootstrap` and the backfill in
-// migrations/schema_update_org_code.go assigning the same code to the same
-// organization. The fallback branch is the only part not already covered by
-// hooks.TestSlugify, and it is the part that used to be the whole behaviour.
+// orgCodeFor keeps `bootstrap` and migrations/schema_update_org_code.go
+// assigning the same code to the same org. hooks.TestSlugify covers the
+// derivation; this covers the fallback.
 func TestOrgCodeFor(t *testing.T) {
 	cases := []struct {
 		what     string
@@ -34,10 +33,8 @@ func TestOrgCodeFor(t *testing.T) {
 	}
 }
 
-// The names the two infrastructure orgs are documented with derive to the codes
-// bootstrap used to pin, so the default install is unchanged by the switch to
-// deriving. Only a deployment that renamed them sees a different code -- which
-// is the point, since the migration would have derived one from the name too.
+// The documented default names derive to the fallback codes, so a default
+// install gets the same codes whether derived or fallen back.
 func TestDefaultInfrastructureNamesDeriveToTheOldPinnedCodes(t *testing.T) {
 	if got := orgCodeFor("System", systemOrgCode); got != systemOrgCode {
 		t.Errorf("system org: got %q, want %q", got, systemOrgCode)
@@ -47,23 +44,11 @@ func TestDefaultInfrastructureNamesDeriveToTheOldPinnedCodes(t *testing.T) {
 	}
 }
 
-// The `bootstrap` command had NO test coverage until this one, and it cost a
-// shipped regression: v0.7.0 tightened hooks/relation_tenancy.go to re-check
-// every relation when a record's own organization moves, which is precisely
-// what adopting the pre-seeded $SYS records does. Linking the NATS user while
-// its role was still unlinked compared a user now in the System org against a
-// role still blank, and bootstrap died with "the role_id field must reference a
-// record in the same organization" -- leaving an install with no working NATS
-// identity and no operator context.
-//
-// Nothing caught it: the full Go suite never runs this command, and
-// scripts/test-authz.sh stands its server up with `superuser upsert` +
-// `migrate up` + `serve` and skips bootstrap entirely.
-//
-// This asserts the ORDER rather than the outcome, because the order is the
-// fix: link what is pointed AT before what points at it. An outcome test
-// against a real database would be a second harness; the ordering is the thing
-// that can silently regress when someone tidies the block.
+// hooks/relation_tenancy.go re-checks every relation when a record's
+// organization moves, which adopting the $SYS records does. So bootstrap must
+// link the NATS account and role before the user that points at them, or the
+// adoption is refused. Neither the Go suite nor scripts/test-authz.sh runs
+// bootstrap, so this asserts the order in the source.
 func TestBootstrapLinksNatsTargetsBeforeTheUserThatPointsAtThem(t *testing.T) {
 	source, err := os.ReadFile("bootstrap.go")
 	if err != nil {

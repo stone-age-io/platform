@@ -11,14 +11,9 @@ import (
 	"platform/migrations"
 )
 
-// restoreLeafNodes puts the leaf_nodes collection back through the REAL importer,
-// so the state under test is the state a live database is actually in rather than
-// one assembled collection-by-collection in Go.
-//
-// Same reason as restorePreDropSchema: a fresh database imports the
-// already-thinned schema.json, so `migrate up` reaches DropLeafNodes with nothing
-// to remove and passes without touching anything. Without this the migration's
-// green tick would mean nothing.
+// restoreLeafNodes puts the leaf_nodes collection back through the real
+// importer, since a fresh database never has it and `migrate up` would test
+// nothing.
 func restoreLeafNodes(t *testing.T, app *pocketbase.PocketBase) {
 	t.Helper()
 
@@ -49,8 +44,7 @@ func TestDropLeafNodesRemovesTheCollection(t *testing.T) {
 		t.Error("leaf_nodes collection survived the migration")
 	}
 
-	// The table too, not just the definition. PocketBase drops both, but this is
-	// the half a definition-only assertion would miss.
+	// The table too, not just the definition.
 	var tables []struct {
 		Name string `db:"name"`
 	}
@@ -64,7 +58,7 @@ func TestDropLeafNodesRemovesTheCollection(t *testing.T) {
 	}
 }
 
-// Covers the path a fresh database takes, and a replay of the migration set.
+// Covers a fresh database and a replay of the migration set.
 func TestDropLeafNodesIsIdempotent(t *testing.T) {
 	app := testutil.SetupApp(t)
 
@@ -80,11 +74,8 @@ func TestDropLeafNodesIsIdempotent(t *testing.T) {
 	}
 }
 
-// Nothing relates INTO leaf_nodes, which is why DropLeafNodes can delete it
-// outright where DropContractLayer had to remove a relation first. If a relation
-// into it is ever reintroduced, PocketBase will refuse the delete and the
-// migration needs the same two-step shape -- this is the test that says so
-// instead of a comment nobody checked.
+// Nothing relates into leaf_nodes, so DropLeafNodes can delete it outright. If
+// this fails, the migration needs DropContractLayer's relation-first order.
 func TestNothingRelatesIntoLeafNodes(t *testing.T) {
 	app := testutil.SetupApp(t)
 	restoreLeafNodes(t, app)

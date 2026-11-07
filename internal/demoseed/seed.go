@@ -1,30 +1,17 @@
 // Package demoseed populates a Control Plane with demo/showcase data.
 //
-// It runs IN-PROCESS against core.App rather than through an HTTP client, which
-// buys three things an external script could not have:
+// It runs in-process against core.App, not over HTTP, so the provisioning
+// hooks fire as in production (a broken hook breaks the seed), there is no
+// per-tenant login or current_organization switching, and a migration that
+// breaks the fixtures breaks `go test ./...`.
 //
-//   - The provisioning hooks fire exactly as they do in production. Creating an
-//     organization mints its NATS account and Nebula CA. The seed goes in
-//     THROUGH that machinery, not around it, so a demo instance is
-//     indistinguishable from one built by hand and a hook that breaks breaks
-//     the seed.
-//   - No auth dance and no org switching. Every API rule here is scoped by
-//     users.current_organization, so an HTTP seeder would have to log in as a
-//     member of each tenant and PATCH its own context between phases.
-//   - It cannot drift from the schema. A migration that breaks these fixtures
-//     breaks `go test ./...`.
+// It needs no running NATS server: pb-nats signs the JWTs locally, and the
+// claim publishes queue in nats_publish_queue until a server appears.
 //
-// It needs NO running NATS server. pb-nats generates account and user keys
-// locally and signs the JWTs with the account seed; reaching the bus is a
-// separate step that queues in nats_publish_queue and drains whenever a server
-// appears. A demo seeded offline is complete the moment `serve --nats` starts.
-//
-// Seeding is IDEMPOTENT. Everything is found-or-created by a natural key —
-// within an organization, the `code` that ADR 0002 already made unique — and
-// generation is driven by a fixed-seed PRNG, so re-running converges rather than
-// duplicating. Children reconcile individually rather than being gated on "was
-// the parent new", because that gate leaves records permanently childless if a
-// run dies partway.
+// Seeding is idempotent. Everything is found-or-created by a natural key
+// (within an org, the `code` from ADR 0002) and bulk comes from a fixed-seed
+// PRNG. Children reconcile individually, never gated on "was the parent new",
+// so a run that dies partway heals on the next one.
 package demoseed
 
 import (
@@ -49,8 +36,7 @@ type Options struct {
 	// curated ones included.
 	Things int
 
-	// Seed makes generation reproducible. Keeping it stable is what makes
-	// re-runs idempotent, so there is rarely a reason to change it.
+	// Seed makes generation reproducible; keep it stable so re-runs converge.
 	Seed int64
 
 	// Log receives progress lines. Nil discards them.
@@ -92,9 +78,8 @@ func (r *Result) Summary() string {
 	return b.String()
 }
 
-// seeder carries the resolved id maps between phases. Every map is keyed by the
-// fixture's own natural key, never by a PocketBase id, so a phase reads like the
-// fixture file it consumes.
+// seeder carries the resolved id maps between phases, keyed by the fixtures'
+// natural keys, never by PocketBase ids.
 type seeder struct {
 	app  core.App
 	opts Options
@@ -137,10 +122,11 @@ func Run(app core.App, opts Options) (*Result, error) {
 		ops: map[string]string{}, thingType: map[string]string{}, things: map[string]string{},
 	}
 
-	// Order is load-bearing in three places, and only these three:
-	//   people before organizations — organizations.owner is required.
-	//   roles before memberships    — a membership links a console NATS identity.
-	//   locations + types before things — a Thing points at both.
+	// Order is load-bearing: each step looks up what an earlier one seeded.
+	//   people before organizations: organizations.owner is required.
+	//   roles before memberships and thing types: both link a NATS role.
+	//   operations before thing types: a type links its operations.
+	//   locations, types and networks before things: a Thing points at all three.
 	steps := []struct {
 		name string
 		fn   func() error
@@ -165,18 +151,11 @@ func Run(app core.App, opts Options) (*Result, error) {
 	return s.res, nil
 }
 
-// ------------------------------------------------------------------ helpers
-
 // ensure is the found-or-create primitive. `fill` runs only when the record is
-// new, so hand-edits to demo data survive a re-run — someone who renames a Thing
-// to try something out does not have it silently reverted by the next seed.
+// new, so hand-edits to demo data survive a re-run.
 func (s *seeder) ensure(collection, filter string, params dbx.Params, fill func(*core.Record)) (*core.Record, bool, error) {
-	// A genuine database error must not be read as "not found". Treating every
-	// error that way makes a transient failure create a duplicate of a record
-	// that already exists — and for `things` that means a second Thing with the
-	// same code, which the UNIQUE (organization, code) index would then reject
-	// on a later run, so the seeder starts failing for a reason with no visible
-	// connection to the outage that caused it.
+	// Only sql.ErrNoRows means "not found". Any other error would otherwise
+	// create a duplicate of a record that exists.
 	existing, err := s.app.FindFirstRecordByFilter(collection, filter, params)
 	switch {
 	case err == nil && existing != nil:
@@ -198,14 +177,12 @@ func (s *seeder) ensure(collection, filter string, params dbx.Params, fill func(
 	return rec, true, nil
 }
 
-// secret returns a hex-encoded random string. Used for the passwords on auth
-// records nobody logs into — a Thing, a NATS identity, a Nebula host. Their real
-// credential is the signed JWT or certificate, never this.
+// secret returns a hex-encoded random string, for the passwords on auth records
+// nobody logs into (a Thing, a NATS identity, a Nebula host).
 func secret(nBytes int) string {
 	b := make([]byte, nBytes)
 	if _, err := rand.Read(b); err != nil {
-		// crypto/rand failing is not a condition a demo seeder can sensibly
-		// recover from, and returning a predictable fallback would be worse.
+		// A predictable fallback would be worse than a panic.
 		panic("demoseed: crypto/rand unavailable: " + err.Error())
 	}
 	return hex.EncodeToString(b)
@@ -214,22 +191,16 @@ func secret(nBytes int) string {
 // pickInt is a deterministic helper for generated metadata.
 func (s *seeder) pickInt(lo, hi int) int { return lo + s.rng.Intn(hi-lo+1) }
 
-// ------------------------------------------------------------------- people
-
 func (s *seeder) seedPeople() error {
 	for _, p := range people {
 		rec, _, err := s.ensure("users", "email = {:e}", dbx.Params{"e": p.Email}, func(r *core.Record) {
 			r.Set("email", p.Email)
 			r.Set("name", p.Name)
 			r.Set("emailVisibility", true)
-			// No verification mail: these accounts are created out of band by
-			// whoever ran the command, exactly like the bootstrap admin.
 			r.Set("verified", true)
 			r.SetPassword(DemoPassword)
-			// is_operator is NOT grantable through the API (users.updateRule
-			// freezes it). It is set here because app.Save bypasses rules — the
-			// same privilege `bootstrap` uses, and the reason this command is
-			// gated behind --confirm.
+			// is_operator is frozen by users.updateRule; app.Save bypasses rules,
+			// as `bootstrap` does.
 			if p.Operator {
 				r.Set("is_operator", true)
 			}
@@ -242,8 +213,6 @@ func (s *seeder) seedPeople() error {
 	return nil
 }
 
-// ------------------------------------------------------------ organizations
-
 func (s *seeder) seedOrgs() error {
 	for _, o := range orgs {
 		ownerID, err := s.ownerFor(o.Code)
@@ -253,10 +222,8 @@ func (s *seeder) seedOrgs() error {
 
 		rec, _, err := s.ensure("organizations", "code = {:c}", dbx.Params{"c": o.Code}, func(r *core.Record) {
 			r.Set("name", o.Name)
-			// Set explicitly rather than left to RegisterOrgCode's derivation:
-			// the code is the join key with the helpdesk's demo data, so it must
-			// be what the fixture says and not what a slug of the name happens
-			// to produce.
+			// Not left to RegisterOrgCode's derivation: the code is the join
+			// key with the helpdesk's demo data.
 			r.Set("code", o.Code)
 			r.Set("description", o.Description)
 			r.Set("active", true)
@@ -268,9 +235,8 @@ func (s *seeder) seedOrgs() error {
 		}
 		s.orgs[o.Code] = rec.Id
 
-		// RegisterOrgProvisioning created these on the save above (or on an
-		// earlier run). Resolved here rather than in each consumer so a missing
-		// one is reported once, against the org that is missing it.
+		// RegisterOrgProvisioning created these on the save above or an earlier
+		// run. Resolved here so a missing one is reported once, against its org.
 		acct, err := s.app.FindFirstRecordByFilter("nats_accounts",
 			"organization = {:o} && active = true", dbx.Params{"o": rec.Id})
 		if err != nil || acct == nil {
@@ -289,9 +255,8 @@ func (s *seeder) seedOrgs() error {
 	return nil
 }
 
-// ownerFor resolves the person the fixtures name as an org's owner. An org
-// cannot be saved without one, so an org with no owner in `people` is a fixture
-// bug and is reported as such rather than defaulting to whoever is handy.
+// ownerFor resolves the person the fixtures name as an org's owner. A missing
+// owner is a fixture bug, reported rather than defaulted.
 func (s *seeder) ownerFor(orgCode string) (string, error) {
 	for _, p := range people {
 		if p.Roles[orgCode] == "owner" {
@@ -304,8 +269,6 @@ func (s *seeder) ownerFor(orgCode string) (string, error) {
 	}
 	return "", fmt.Errorf("no person in the fixtures owns org %q", orgCode)
 }
-
-// --------------------------------------------------------------- NATS roles
 
 func (s *seeder) seedNatsRoles() error {
 	for _, o := range orgs {
@@ -337,32 +300,16 @@ func (s *seeder) seedNatsRoles() error {
 	return nil
 }
 
-// reconcileRolePermissions is the one place this seeder deliberately overwrites
-// an existing record, and it is worth knowing why the general rule does not hold
-// here.
+// reconcileRolePermissions is the one place the seeder overwrites an existing
+// record. Unlike a hand-renamed Thing, a role's permission lists define what
+// every demo credential minted from it may do, so a fixture change (such as
+// new subjects for a new estate) must reach installs that already ran the seed.
 //
-// `ensure` runs its fill only on create, so hand-edits survive a re-run. That is
-// right for a Thing someone renamed to try something out. It is wrong for a
-// role's permission list, because a role is not decoration — it is the set of
-// subjects a credential may use, and every demo credential is minted FROM it.
+// Only the four permission arrays are reconciled; limits are an operator's knob,
+// and a wrong limit throttles rather than removes a capability.
 //
-// The failure this fixes is a live one rather than a hypothetical. Adding the
-// kiosk estate meant adding `kiosk.>` to `gateway` and `kiosk.>` + `$KV.>` to
-// `application`. On a fresh install that works. On the installs that already ran
-// demo-seed — which is all of them — the role records already existed, so the new
-// lists never landed: the next run happily created five kiosk Things and minted
-// each one a credential against the OLD role. Every node would authenticate,
-// come up clean, and then fail on its first publish, while the controller shipped
-// no catalogue at all. Nothing in the seeder's output would have said so.
-//
-// Only the four permission arrays are reconciled. Limits are left alone: they are
-// a knob an operator may reasonably turn on a demo box, and getting one wrong
-// throttles rather than silently removes a capability.
-//
-// The save is skipped when nothing differs, and that is load-bearing, not a
-// micro-optimization: pb-nats hooks role updates and regenerates the JWT of every
-// user holding the role, so an unconditional save would re-sign every identity in
-// the deployment on every run.
+// The save is skipped when nothing differs: pb-nats re-signs the JWT of every
+// user holding a role on each role update.
 func (s *seeder) reconcileRolePermissions(rec *core.Record, t roleFixture) error {
 	want := map[string][]string{
 		"publish_permissions":        t.Publish,
@@ -395,9 +342,8 @@ func (s *seeder) reconcileRolePermissions(rec *core.Record, t roleFixture) error
 	return nil
 }
 
-// samePatterns compares two permission lists as ORDERED sequences. Order does not
-// matter to NATS, but it is stable in the fixture and preserving it keeps the
-// role screen readable, so a reordering is treated as a change worth writing.
+// samePatterns compares two permission lists as ordered sequences. NATS ignores
+// order, but keeping the fixture's order keeps the role screen readable.
 func samePatterns(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
@@ -411,7 +357,7 @@ func samePatterns(a, b []string) bool {
 }
 
 // orEmpty keeps a nil slice out of a JSON column, where it would serialize as
-// null and read back differently from the empty list every other role carries.
+// null instead of an empty list.
 func orEmpty(v []string) []string {
 	if v == nil {
 		return []string{}
@@ -419,13 +365,10 @@ func orEmpty(v []string) []string {
 	return v
 }
 
-// -------------------------------------------------------------- memberships
-
 func (s *seeder) seedMemberships() error {
 	for _, p := range people {
-		// Deterministic order: map iteration is not, and a membership's NATS
-		// identity is named after the org, so an unstable order would produce a
-		// different (still valid) set of identities on each fresh run.
+		// Sorted because map iteration is random, and codes[0] picks the org the
+		// person lands in below.
 		codes := make([]string, 0, len(p.Roles))
 		for c := range p.Roles {
 			codes = append(codes, c)
@@ -440,10 +383,8 @@ func (s *seeder) seedMemberships() error {
 			}
 			userID := s.users[p.Email]
 
-			// A console NATS identity per (person, org). Minted before the
-			// membership so the relation can be set in one save. The NATS role
-			// is derived from the CONSOLE role, per membership — see
-			// natsRoleForConsoleRole.
+			// A console NATS identity per (person, org), minted first so the
+			// membership saves once. Its role comes from natsRoleForConsoleRole.
 			natsUserID, err := s.consoleNatsUser(p, orgCode, orgID, natsRoleForConsoleRole(role))
 			if err != nil {
 				return err
@@ -460,16 +401,9 @@ func (s *seeder) seedMemberships() error {
 				return err
 			}
 
-			// An owner's membership is NOT created here.
-			// hooks.RegisterOrgMembership already made it when the organization was
-			// saved, so `ensure` above finds it and its `fill` never runs — which
-			// left every owner without the console NATS identity the rest of this
-			// demo depends on.
-			//
-			// Reconciled only when EMPTY, not overwritten. An operator who points
-			// their own membership at a different identity has made a choice, and
-			// a re-seed should not undo it; a blank one is the hook's gap, not a
-			// choice.
+			// hooks.RegisterOrgMembership already created an owner's membership,
+			// so `fill` never ran for it. Link the identity only when empty, so a
+			// re-seed does not undo an operator's own choice.
 			if rec.GetString("nats_user") == "" {
 				rec.Set("nats_user", natsUserID)
 				if err := s.app.Save(rec); err != nil {
@@ -478,8 +412,7 @@ func (s *seeder) seedMemberships() error {
 			}
 		}
 
-		// Land everyone somewhere, so a demo login is not met with an empty
-		// console and an org switcher they have to find first.
+		// Land everyone in an org, so a demo login does not open an empty console.
 		if len(codes) > 0 {
 			if err := s.setCurrentOrg(s.users[p.Email], s.orgs[codes[0]]); err != nil {
 				return err
@@ -489,9 +422,9 @@ func (s *seeder) seedMemberships() error {
 	return nil
 }
 
-// consoleNatsUser mints the NATS identity a person's browser connects with. The
-// name mirrors the convention hooks/thing_routes.go uses for a Thing: the local
-// half identifies the principal, the domain half is the org's immutable code.
+// consoleNatsUser mints the NATS identity a person's browser connects with,
+// named like hooks/thing_routes.go names a Thing's: the local half is the
+// principal, the domain half is the org's immutable code.
 func (s *seeder) consoleNatsUser(p personFixture, orgCode, orgID, natsRole string) (string, error) {
 	local := strings.SplitN(p.Email, "@", 2)[0]
 	username := "console-" + local
@@ -519,9 +452,8 @@ func (s *seeder) consoleNatsUser(p personFixture, orgCode, orgID, natsRole strin
 	return rec.Id, nil
 }
 
-// setCurrentOrg writes users.current_organization, which is the field every
-// inventory read rule is scoped by. Skipped when already set, so a re-run does
-// not yank a human out of the org they were last looking at.
+// setCurrentOrg writes users.current_organization, which scopes every inventory
+// read rule. Skipped when already set, so a re-run does not move a user.
 func (s *seeder) setCurrentOrg(userID, orgID string) error {
 	rec, err := s.app.FindRecordById("users", userID)
 	if err != nil {
@@ -533,8 +465,6 @@ func (s *seeder) setCurrentOrg(userID, orgID string) error {
 	rec.Set("current_organization", orgID)
 	return s.app.Save(rec)
 }
-
-// ----------------------------------------------------------- location types
 
 func (s *seeder) seedLocationTypes() error {
 	for _, t := range locationTypes {
@@ -556,8 +486,6 @@ func (s *seeder) seedLocationTypes() error {
 	}
 	return nil
 }
-
-// ------------------------------------------------------------------ locations
 
 func (s *seeder) seedLocations() error {
 	// Pass 1: create without `parent`, because a parent may appear later in the
@@ -589,8 +517,8 @@ func (s *seeder) seedLocations() error {
 		s.locations[l.Org+":"+l.Code] = rec.Id
 	}
 
-	// Pass 2: link parents. Reconciled rather than set-on-create, so a fixture
-	// that gains a parent later takes effect on the next run.
+	// Pass 2: link parents, reconciled so a fixture that gains a parent later
+	// takes effect on the next run.
 	for _, l := range locations {
 		if l.Parent == "" {
 			continue
@@ -614,8 +542,6 @@ func (s *seeder) seedLocations() error {
 	return nil
 }
 
-// ----------------------------------------------------------------- operations
-
 func (s *seeder) seedOperations() error {
 	for _, op := range operations {
 		orgID := s.orgs[op.Org]
@@ -636,8 +562,6 @@ func (s *seeder) seedOperations() error {
 	return nil
 }
 
-// ---------------------------------------------------------------- thing types
-
 func (s *seeder) seedThingTypes() error {
 	for _, tt := range thingTypes {
 		orgID := s.orgs[tt.Org]
@@ -651,11 +575,9 @@ func (s *seeder) seedThingTypes() error {
 			opIDs = append(opIDs, id)
 		}
 
-		// Validated, not stored. thing_types.nats_role was dropped with the rest
-		// of the contract layer, but the fixture still names a role because
-		// roleForThingType uses it to pick the identity for each THING of this
-		// type -- so a fixture naming a role that does not exist should still
-		// fail here rather than at the first device.
+		// Validated, not stored: thing_types has no nats_role field, but
+		// roleForThingType uses the fixture's role for each Thing, so fail here
+		// rather than at the first device.
 		if _, ok := s.roles[tt.Org+":"+tt.Role]; !ok {
 			return fmt.Errorf("thing type %q references unknown NATS role %q", tt.Code, tt.Role)
 		}
@@ -679,8 +601,6 @@ func (s *seeder) seedThingTypes() error {
 	}
 	return nil
 }
-
-// ----------------------------------------------------------- overlay networks
 
 func (s *seeder) seedNetworks() error {
 	byOrg := map[string]orgFixture{}
@@ -714,9 +634,8 @@ func (s *seeder) seedNetworks() error {
 	return nil
 }
 
-// nebulaHost is the found-or-create for a Nebula host, mirroring the naming
-// hooks/thing_routes.go uses so a seeded host and a console-created one are
-// indistinguishable.
+// nebulaHost is the found-or-create for a Nebula host, named as
+// hooks/thing_routes.go names one.
 func (s *seeder) nebulaHost(orgCode, hostname, overlayIP string, groups []string, publicHostPort string) (string, error) {
 	orgID := s.orgs[orgCode]
 	networkID := s.networks[orgCode]

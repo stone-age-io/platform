@@ -14,37 +14,28 @@ import (
 //
 //   - UNIQUE (organization, code COLLATE NOCASE) on things, locations,
 //     thing_types and location_types, replacing the case-sensitive indexes from
-//     schema_update_unique_org_code.go. Codes keep the case they were entered
-//     in, and subjects use that stored spelling exactly -- NATS is
-//     case-sensitive and nothing here changes that. What changes is which
-//     records may EXIST: `cam-1` next to `CAM-1` is two identities, two subject
-//     namespaces and two permission sets that nobody can tell apart when the
-//     code is read aloud, and because each works on its own nothing ever errors.
-//     SQLite's NOCASE folds ASCII only, which is all CodePattern admits.
+//     schema_update_unique_org_code.go. Codes keep their case and subjects use
+//     it exactly (NATS is case-sensitive); what changes is that `cam-1` and
+//     `CAM-1` cannot both exist. NOCASE folds ASCII only, which is all
+//     CodePattern admits.
 //   - `prefix` on thing_types and location_types: optional, ^[A-Z]{1,4}$, with a
 //     partial unique index per collection. hooks/codes.go copies it into
-//     generated codes and keeps the two collections' prefixes apart.
+//     generated codes.
 //   - `type` frozen once set on things and locations, in the update rules.
 //
-// The case sweep runs BEFORE the import and is fatal, for the reason
-// schema_update_unique_org_code.go gives: SQLite refuses to build a unique index
-// over data that violates it, and a bare "UNIQUE constraint failed" names no
-// rows. Nothing here picks a winner. Which of `hq` and `HQ` is the real site is
-// a decision about printed labels and signed subjects, and codes are frozen, so
-// the fix is a superuser's.
+// The case check runs before the import and is fatal: SQLite will not build a
+// unique index over violating data, and its error names no rows. Codes are
+// frozen, so choosing between `hq` and `HQ` is a superuser's job.
 //
-// No backfill of blank codes. A code is frozen the moment it exists, so a
-// migration that generated codes for existing blank records would be choosing
-// permanent identifiers on nobody's behalf. Blank records are counted instead;
-// from this migration on, the create hook means no new one can appear.
+// No backfill of blank codes, since a generated code would be permanent. They
+// are counted instead; the create hook prevents new ones.
 func init() {
 	m.Register(ApplyTypePrefixes, nil)
 }
 
-// ApplyTypePrefixes is the migration body. Exported so a test can restore the
-// case-sensitive indexes, insert a case-only duplicate, and prove the sweep
-// refuses it: a fresh database imports the already-folded schema.json, so
-// `migrate up` alone reaches this with nothing to find.
+// ApplyTypePrefixes is the migration body. It is exported so a test can restore
+// the case-sensitive indexes and insert a case-only duplicate, since a fresh
+// database has nothing for the check to find.
 func ApplyTypePrefixes(app core.App) error {
 	if len(SchemaJSON) == 0 {
 		log.Println("⚠️ SchemaJSON is empty, skipping type prefixes")

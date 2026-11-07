@@ -10,37 +10,21 @@ import (
 // schema_update_audit_changed_fields re-imports the embedded schema.json so
 // existing deployments pick up `changed_fields` on `audit_logs`.
 //
-// WHAT THE COLUMN IS FOR. pb-audit used to write a full before/after snapshot
-// of every record into every audit row, and a snapshot is PublicExport() --
-// every field the collection does not mark `hidden`. Two of this platform's
-// fields are deliberately NOT hidden, because the identity that owns them has
-// to read them back: `nats_users.creds_file`, which contains the user's NKEY
-// seed, and `nebula_hosts.config_yaml`, which carries the host private key
-// inline. Row scoping is what protects those on their own collections
-// (see the credential note in AUTHORIZATION.md) -- and `audit_logs` has no row
-// scoping, so every credential this platform ever minted was sitting in it in
-// plaintext, exempt from at-rest encryption (which covers the `seed` and
-// `private_key` columns, the hidden ones) and never expiring, since retention
-// is off by default.
+// Audit rows held a full PublicExport() snapshot of every record, and two
+// credential fields are deliberately not hidden: `nats_users.creds_file` (the
+// NKEY seed) and `nebula_hosts.config_yaml` (the host key). Row scoping protects
+// them on their own collections, but audit_logs has none, so every credential
+// ever minted sat there in plaintext, outside at-rest encryption, with no
+// retention by default. `changed_fields` names the fields that moved instead,
+// and main.go lists the collections whose values are still stored.
 //
-// `changed_fields` names the fields that moved instead. main.go now lists the
-// collections whose VALUES are still worth storing, and the credential-bearing
-// ones are not among them.
+//   - No backfill: old rows already carry the same information in their
+//     snapshots.
 //
-// NO BACKFILL, AND NOTHING IS REMOVED. Two deliberate omissions:
-//
-//   - Nothing can backfill `changed_fields` for rows written before it existed.
-//     The information is derivable from their before/after snapshots, but those
-//     rows are exactly the ones being kept for their values, so computing it
-//     would add a column beside data that already says the same thing.
-//
-//   - This does NOT delete the historical snapshots. That is a data decision
-//     with an operational cost -- it is the audit trail -- and it belongs to
-//     whoever runs the deployment, not to a migration that runs silently on
-//     deploy. It is worth doing: until those rows are cleared or aged out, the
-//     credential archive described above is still in the database. Either set
-//     audit.retention in config.yaml and let it age out, or clear the two
-//     columns for the credential-bearing collections by hand:
+//   - This does not delete the historical snapshots. That is the audit trail,
+//     so it is the operator's decision, not a silent step on deploy. Until those
+//     rows are cleared or aged out the credential archive is still there. Set
+//     audit.retention in config.yaml, or clear the columns by hand:
 //
 //     UPDATE audit_logs SET before_changes = NULL, after_changes = NULL
 //     WHERE collection_name IN ('nats_users','nebula_hosts','nats_accounts',
@@ -50,11 +34,9 @@ import (
 //     lose those values.
 //
 // The field id is PocketBase's deterministic one (`json` + crc32 of the name),
-// which is what pb-audit's own ensureAuditCollection produces when it creates
-// the collection on a virgin database. They have to agree: core.ImportCollections
-// re-adds any existing field the import does not carry BY ID, and FieldsList.add
-// then keeps the live definition -- so a hand-picked id here would make this
-// migration log its tick and change nothing. See the re-import note in migrations/CLAUDE.md.
+// matching what pb-audit's ensureAuditCollection creates; any other id would make
+// the re-import keep the live field and change nothing. See the re-import note
+// in migrations/CLAUDE.md.
 func init() {
 	m.Register(func(app core.App) error {
 		if len(SchemaJSON) == 0 {

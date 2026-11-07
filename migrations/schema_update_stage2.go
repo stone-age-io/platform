@@ -7,14 +7,9 @@ import (
 	m "ganigeorgiev.com/pocketbase/pocketbase/migrations"
 )
 
-// stage2_schema_update re-imports the embedded schema.json so that Stage 1
-// deployments (where initial_schema already ran once with the Stage 1 schema)
-// pick up the new `thing_type_operations` collection and the `operations` /
-// `nats_role` fields on `thing_types`.
-//
-// ImportCollectionsByMarshaledJSON with deleteMissing=false merges additively,
-// so fresh deployments that already imported the Stage 2 schema via
-// initial_schema.go treat this as a no-op.
+// schema_update_stage2 re-imports schema.json so Stage 1 deployments pick up the
+// `thing_type_operations` collection and the `operations` / `nats_role` fields
+// on `thing_types`.
 func init() {
 	m.Register(func(app core.App) error {
 		if len(SchemaJSON) == 0 {

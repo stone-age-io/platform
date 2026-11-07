@@ -7,10 +7,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Each step of init is a child process, so a root flag that is not forwarded
-// sends that step to a different database: `--dir /data/pb_data` dropped from
-// migrate would import the schema into ./pb_data and leave the real one bare.
-// --nats and --nats-config belong to serve; init consumes --nats-config itself.
+// Each init step is a child process, so a root flag not forwarded sends that
+// step to a different database (`--dir` dropped from migrate imports into
+// ./pb_data). --nats and --nats-config belong to serve.
 func TestInitForwardsTheRootFlagsItWasGiven(t *testing.T) {
 	root := &cobra.Command{Use: "stone-age"}
 	root.PersistentFlags().String("dir", "./pb_data", "")

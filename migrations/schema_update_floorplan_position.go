@@ -9,9 +9,8 @@ import (
 
 // schema_update_floorplan_position re-imports the embedded schema.json so existing
 // deployments pick up the new `floorplan_position` json field on `things`.
-// Positions used to live in the free-form `metadata` blob, where a user editing
-// metadata could silently clobber them; they now have a dedicated field.
-// Additive import — fresh DBs that already have the field treat this as a no-op.
+// Positions lived in the free-form `metadata` blob, where editing metadata could
+// silently clobber them.
 func init() {
 	m.Register(func(app core.App) error {
 		if len(SchemaJSON) == 0 {

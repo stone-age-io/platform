@@ -10,16 +10,9 @@ import (
 )
 
 // codeScopedCollections are the collections whose `code` is a per-organization
-// handle rather than a free-text label.
-//
-// The common thread is that something outside PocketBase resolves a record BY
-// its code. `leaf-sync` keys every mirrored record in NATS KV by the handle
-// `candidateKey` derives -- composite, then code, then name -- and `stone-cli`
-// resolves entities the same way, so a duplicate code means two records
-// competing for one KV key. The mirror does not fail: `recordKey` falls back to
-// the record id when a code is shared, so the key silently changes shape and
-// every consumer looking up `thing.S01` stops finding anything. A digital twin
-// key prefix has the same problem, one layer up.
+// handle rather than a free-text label. leaf-sync and stone-cli resolve records
+// by code, and on a duplicate leaf-sync silently falls back to the record id, so
+// lookups such as `thing.S01` stop finding anything.
 var codeScopedCollections = []string{
 	"things",
 	"locations",
@@ -30,37 +23,19 @@ var codeScopedCollections = []string{
 // schema_update_unique_org_code adds UNIQUE (organization, code) to the
 // collections whose code is a lookup handle.
 //
-// It covered leaf_nodes too until schema_update_drop_leaf_nodes.go removed that
-// collection. Dropped from the list here rather than left to hit the graceful
-// skip below, which would log "table not present yet" about a table that is
-// never coming.
+// `code` was used as a unique key (KV key, subject segment, `stone thing get`)
+// but nothing enforced it. leaf_nodes was in the list until
+// schema_update_drop_leaf_nodes.go removed that collection.
 //
-// Nothing enforced this before. `code` was documented as unique and used as one
-// -- as a KV key, as a subject segment, as the argument to `stone thing get` --
-// while the database happily accepted two Things with the same code in the same
-// organization, and the behaviour that followed was silent rather than loud.
+// The index is partial, over non-empty codes only. `code` is optional, and
+// SQLite treats an empty string as a value, so a plain index would allow only
+// one blank-coded record per organization.
 //
-// Three details worth keeping:
+// The duplicate check runs before the import and is fatal: SQLite will not build
+// a unique index over violating data, and its error names no rows. Duplicates
+// are not auto-resolved, since only a person knows which record is the real S01.
 //
-// The index is PARTIAL: it covers only rows whose code is not the empty
-// string. `code` is optional on all five collections, and SQLite treats the
-// empty string as a value rather than as NULL, so a plain
-// composite unique index would let an organization have exactly one record with
-// a blank code. That would be a new restriction nobody asked for, and it would
-// surface as "failed to create location" on the second blank-coded row.
-// PocketBase's own email indexes use the same partial form.
-//
-// The sweep runs BEFORE the import, and it is fatal. SQLite refuses to build a
-// unique index over data that violates it, so without the check the migration
-// fails with a bare "UNIQUE constraint failed" naming no rows. Refusing with the
-// actual duplicates listed is the difference between a five-minute fix and an
-// afternoon. This is deliberately not auto-resolved: renaming somebody's records
-// is a decision about which one is the real S01, and the platform does not know.
-//
-// Scoped per organization, not globally. Two tenants both calling a site "HQ" is
-// correct and expected -- the whole point of the tenancy model is that they do
-// not collide. This mirrors nebula_hosts, which already carries
-// UNIQUE (network_id, hostname).
+// Scoped per organization, not globally: two tenants may both have "HQ".
 func init() {
 	m.Register(func(app core.App) error {
 		if len(SchemaJSON) == 0 {

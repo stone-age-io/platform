@@ -3,26 +3,20 @@ package demoseed
 // The Thing Type contract fixtures and the NATS permission templates.
 //
 // Subject prefixes use the reserved template variables from
-// ui/src/utils/subjectResolver.ts — {org}, {location}, {thing},
-// {thing_type_code} — rather than literal strings, because that is what the
-// console renders and what a role pattern is derived from ({thing} collapses to
-// "*"). Fixtures written with literal subjects would look fine on the Thing Type
-// screen and quietly teach the wrong thing.
+// ui/src/utils/subjectResolver.ts ({org}, {location}, {thing},
+// {thing_type_code}), not literal strings, because that is what the console
+// renders and what a role pattern is derived from ({thing} collapses to "*").
 //
-// No prefix here carries an organization token. Inside NATS, the ACCOUNT is the
-// tenant boundary — every subject below is already private to one org — so an
-// org token in the subject would be redundant here and misleading next to the
-// managed-org export, which adds exactly one such token on the way OUT of the
-// account and is the only place it belongs.
-
-// ----------------------------------------------------------------- operations
+// No prefix carries an organization token: the NATS account is the tenant
+// boundary, and the managed-org export is the only place that adds one, on the
+// way out of the account.
 
 type operationFixture struct {
 	Org, Name, Capability, SubjectSuffix, Description string
 }
 
 var operations = []operationFixture{
-	// ---- northwind
+	// Northwind.
 	{Org: "northwind", Name: "publish_temperature", Capability: "publish", SubjectSuffix: "temperature",
 		Description: "Periodic temperature sample."},
 	{Org: "northwind", Name: "publish_battery", Capability: "publish", SubjectSuffix: "battery",
@@ -44,14 +38,11 @@ var operations = []operationFixture{
 	{Org: "northwind", Name: "request_inventory", Capability: "request", SubjectSuffix: "inventory",
 		Description: "Ask the WMS connector for on-hand inventory at a location."},
 
-	// ---- northwind: stone-access.
+	// Northwind: stone-access.
 	//
-	// The suffixes are the real ones from access-control/internal/subjects, so a
-	// subject composed on the Thing Type screen is the subject a controller
-	// actually publishes on. `evt.tap` rather than `tap` is not a typo: the bare
-	// `.tap` subject is the READER's input (a credential presentation arriving at
-	// the controller), while `.evt.tap` is the DECISION the controller emits. Two
-	// different messages, and only the second is audited.
+	// The suffixes are the real ones from access-control/internal/subjects; keep
+	// them in step. `.tap` is the reader's input (a credential presentation);
+	// `.evt.tap` is the decision the controller emits, and only it is audited.
 	{Org: "northwind", Name: "publish_access_decision", Capability: "publish", SubjectSuffix: "evt.tap",
 		Description: "The decision on a credential presentation."},
 	{Org: "northwind", Name: "publish_access_alarm", Capability: "publish", SubjectSuffix: "evt.alarm",
@@ -67,22 +58,16 @@ var operations = []operationFixture{
 	{Org: "northwind", Name: "publish_controller_heartbeat", Capability: "publish", SubjectSuffix: "heartbeat",
 		Description: "Controller liveness beat, outside the audited .evt subtree."},
 
-	// ---- northwind: the tool crib (the kiosk app).
+	// Northwind: the tool crib (the kiosk app).
 	//
-	// The suffixes are the real ones from kiosk/internal/events/subjects.go. The
-	// grammar there is <prefix>.<kiosk_code>.<family>.<...>, and the FAMILY
-	// segment is what decides transport: the controller's JetStream stream binds
-	// `kiosk.*.event.>` and nothing else, so commands, heartbeats and sightings
-	// are outside the stream by construction rather than by an exclusion list.
-	// Every suffix below therefore leads with its family, and naming a new
-	// `event.` subject is what makes it durable.
+	// The suffixes are the real ones from kiosk/internal/events/subjects.go; keep
+	// them in step. The grammar is <prefix>.<kiosk_code>.<family>.<...>, and the
+	// family decides transport: the controller's stream binds only
+	// `kiosk.*.event.>`, so an `event.` subject is durable and nothing else is.
 	//
-	// Three item actions rather than one `event.item.>`: the last token is the
-	// line's action, a publish operation resolves to a subject something actually
-	// publishes ON, and a wildcard there is not one. `admin_close` is absent from
-	// that trio on purpose — an admin close writes an admin_close LINE locally but
-	// publishes only `event.checkout.admin_close`, which is what lets a report
-	// separate "the worker brought it back" from "an admin wrote it off".
+	// Three item actions, not `event.item.>`: a publish operation must name a
+	// subject something publishes on. An admin close publishes only
+	// `event.checkout.admin_close`, so reports can tell a return from a write-off.
 	{Org: "northwind", Name: "publish_kiosk_transaction", Capability: "publish", SubjectSuffix: "event.transaction.complete",
 		Description: "A committed transaction. The ledger's unit of record, and the only event that registers a kiosk in the fleet."},
 	{Org: "northwind", Name: "publish_kiosk_checkout", Capability: "publish", SubjectSuffix: "event.item.checkout",
@@ -111,18 +96,15 @@ var operations = []operationFixture{
 		Description: "Every EPC seen in one RFID read window. Observability only — nothing projects it today."},
 	{Org: "northwind", Name: "publish_kiosk_heartbeat", Capability: "publish", SubjectSuffix: "heartbeat",
 		Description: "45s liveness beat, outside the stream. Last-write-wins on purpose: durability here would hide the very signal it carries."},
-	// A wildcard suffix, and the one place it is right. This is a SUBSCRIPTION
-	// pattern, not a publish target: the kiosk subscribes its whole command
-	// subtree and its dispatcher routes on the leaf name. There are around twenty
-	// of those leaves and they are registered in code, so enumerating them here
-	// would stand up a second registry whose only guaranteed property is drifting
-	// from the first.
+	// A wildcard suffix is right here: it is a subscription pattern. The kiosk
+	// subscribes its whole command subtree and routes on the leaf name; listing
+	// the leaves here would be a second registry that drifts from the kiosk's.
 	{Org: "northwind", Name: "reply_kiosk_command", Capability: "reply", SubjectSuffix: "command.>",
 		Description: "Answer any command the controller sends: inventory, instances, checkouts, timeclock, RFID. Single attempt, 5s budget — a handler that cannot do the work must still reply, or the controller renders the kiosk as offline."},
 	{Org: "northwind", Name: "subscribe_kiosk_sighting", Capability: "subscribe", SubjectSuffix: "sighting.raw",
 		Description: "Advisory tag sightings from an off-platform gateway. Raw: it carries a tag id, never a resolved unit, and the subscriber resolves it."},
 
-	// ---- ironbridge
+	// Ironbridge.
 	{Org: "ironbridge", Name: "publish_power", Capability: "publish", SubjectSuffix: "power",
 		Description: "Three-phase panel measurement, every 5s."},
 	{Org: "ironbridge", Name: "publish_vibration", Capability: "publish", SubjectSuffix: "vibration",
@@ -142,7 +124,7 @@ var operations = []operationFixture{
 	{Org: "ironbridge", Name: "publish_oee", Capability: "publish", SubjectSuffix: "oee",
 		Description: "Rolling OEE, computed by the analytics service from the cycle stream."},
 
-	// ---- galewind
+	// Galewind.
 	{Org: "galewind", Name: "publish_generation", Capability: "publish", SubjectSuffix: "generation",
 		Description: "Turbine output sample."},
 	{Org: "galewind", Name: "publish_feeder", Capability: "publish", SubjectSuffix: "feeder",
@@ -163,12 +145,9 @@ var operations = []operationFixture{
 		Description: "Dispatch instruction lifted from the ISO market feed."},
 }
 
-// ---------------------------------------------------------------- thing types
-
-// thingKind groups thing types for the bulk generator and, more importantly, for
-// the reader: this platform's claim is that an APPLICATION is a first-class
-// participant with its own signed identity, exactly like a sensor. A demo with
-// nothing but sensors in it quietly contradicts that.
+// thingKind groups thing types. The demo includes applications and appliances
+// because an application is a first-class participant with its own signed
+// identity, like a sensor.
 type thingKind string
 
 const (
@@ -187,14 +166,13 @@ type thingTypeFixture struct {
 	Schema                       map[string]any
 
 	// BulkPrefix and BulkLocations drive the generated fill. An empty BulkPrefix
-	// means this type is curated-only — one-of-a-kind participants (the WMS
-	// connector, the rule engine) must not be duplicated into a fleet.
+	// means curated-only, for one-of-a-kind participants.
 	BulkPrefix    string
 	BulkLocations []string
 }
 
 var thingTypes = []thingTypeFixture{
-	// ------------------------------------------------------------- northwind
+	// Northwind.
 	{Org: "northwind", Code: "temp-probe", Name: "Temperature Probe", Kind: kindDevice,
 		Description:   "Wireless probe reporting one temperature and its own battery.",
 		SubjectPrefix: "telemetry.{location}.{thing}",
@@ -268,17 +246,12 @@ var thingTypes = []thingTypeFixture{
 			"rule_count": intF("Loaded rules"),
 		})},
 
-	// ---- northwind: stone-access hardware.
+	// Northwind: stone-access hardware.
 	//
-	// These three carry the codes of records in the ACCESS-CONTROL app, and the
-	// prefixes are its real subject hierarchy: acc.{location}.{type}.{thing} for a
-	// portal, acc.{location}.ctrl.{code} for a controller. `ctrl` is a reserved
-	// segment there — it is not a portal type — which is why the controller gets
-	// its own thing type rather than a `{thing_type_code}` substitution.
-	//
-	// A door and a gate are separate types for the same reason: the second token
-	// is the portal's TYPE, so one thing type per type is the only way a composed
-	// subject on the Thing Type screen matches what a controller publishes.
+	// The prefixes are stone-access's real subject hierarchy:
+	// acc.{location}.{type}.{thing} for a portal, acc.{location}.ctrl.{code} for
+	// a controller (`ctrl` is reserved, not a portal type). The portal type is a
+	// subject token, so door and gate need one thing type each.
 	{Org: "northwind", Code: "access-controller", Name: "Access Controller", Kind: kindGateway,
 		Description:   "A stone-access edge controller. Decides credential presentations locally against a mirrored policy graph, and keeps deciding when the WAN is down.",
 		SubjectPrefix: "acc.{location}.ctrl.{thing}",
@@ -332,23 +305,15 @@ var thingTypes = []thingTypeFixture{
 			"orientation": enum("Orientation", "landscape", "portrait"),
 		})},
 
-	// ---- northwind: the tool crib.
+	// Northwind: the tool crib.
 	//
-	// These carry the codes of `kiosks` rows in the KIOSK app, and the prefix is
-	// its real subject hierarchy. Two things about it are worth reading twice.
+	// The prefix is the kiosk app's real subject hierarchy. It has no {location}
+	// segment: the kiosk's code is the routing token (the stream binds
+	// `kiosk.*.event.>`, commands address `kiosk.<code>.command.<name>`).
 	//
-	// There is NO {location} segment. `acc.{location}.door.{thing}` names a portal
-	// by where it hangs; `kiosk.{thing}` names a node by what it is, because a
-	// kiosk's own code IS the routing token — the controller's stream binds
-	// `kiosk.*.event.>` and its commands address `kiosk.<code>.command.<name>`.
-	// Adding a site segment here would render a plausible subject on the Thing
-	// Type screen that no kiosk publishes on and no controller listens to.
-	//
-	// And the codes are UPPERCASE where the stone-access ones are lowercase. Same
-	// rule produced both: the app that puts a code on the wire is the one that
-	// mints it, and the inventory follows. Site codes go the other way — KC-DC1,
-	// KC-OFFICE and SGF-XD2 come from here, because the platform is the system of
-	// record for sites.
+	// The app that puts a code on the wire mints it, and the inventory follows:
+	// kiosk codes are uppercase, stone-access codes lowercase. Site codes go the
+	// other way; the platform is the system of record for sites.
 	{Org: "northwind", Code: "tool-kiosk", Name: "Tool Crib Kiosk", Kind: kindGateway,
 		Description:   "A self-service checkout node. Owns its own ledger and keeps transacting with the WAN down; the controller aggregates rather than authorizes.",
 		SubjectPrefix: "kiosk.{thing}",
@@ -360,10 +325,8 @@ var thingTypes = []thingTypeFixture{
 			"publish_kiosk_rfid_read", "publish_kiosk_heartbeat", "reply_kiosk_command",
 			"subscribe_kiosk_sighting",
 		},
-		// kindGateway, and the role matches: a kiosk mirrors its catalogue out of
-		// JetStream KV and answers commands on its own subtree. `device` has no
-		// JetStream access at all, so a kiosk on it would come up, serve checkouts
-		// off its local database, and never learn what it stocks.
+		// A kiosk mirrors its catalogue out of JetStream KV, and `device` has no
+		// JetStream access.
 		Role: "gateway",
 		Schema: objSchema(map[string]any{
 			"model":      str("Hardware model"),
@@ -379,11 +342,8 @@ var thingTypes = []thingTypeFixture{
 		Description:   "A punch-only station with no checkout surface. Workers authenticate from their own phones, so the punched identity comes from the session and never from the request body.",
 		SubjectPrefix: "kiosk.{thing}",
 		Operations:    []string{"publish_kiosk_punch", "publish_kiosk_heartbeat"},
-		// An appliance in form, an edge service on the bus: it mirrors the worker
-		// catalogue and the fleet punch replica out of KV, which is JetStream
-		// access, which `console-readonly` (what the dock display takes) does not
-		// have and could not use — that role cannot publish at all, and this one
-		// publishes every punch it accepts.
+		// An appliance in form, an edge service on the bus: it mirrors KV and
+		// publishes punches, and `console-readonly` can do neither.
 		Role: "gateway",
 		Schema: objSchema(map[string]any{
 			"port":      intF("HTTP port"),
@@ -391,21 +351,11 @@ var thingTypes = []thingTypeFixture{
 			"installed": date("Installed"),
 		})},
 
-	// The controller declares NO operations, and that is the finding rather than
-	// an omission.
-	//
-	// Every subject it touches belongs to some OTHER thing: it requests on each
-	// kiosk's `command.` subtree, subscribes their `heartbeat` and `sighting.raw`,
-	// and consumes their `event.` subtree through the stream. An operation's
-	// suffix composes against its own type's prefix, so any entry here would
-	// render `app.kiosk.<code>.…` on the Thing Type screen — a subject nothing
-	// publishes on and nothing listens to.
-	//
-	// This is the same shape as the access-controller, whose subscriptions to door
-	// subjects are likewise absent from its operation list. Cross-subtree
-	// participation is expressed in the ROLE, not in operations, which is why
-	// TestApplicationRoleCanRunTheKioskController exists: it is the only check
-	// standing between this type and a credential that cannot do its job.
+	// The controller declares no operations on purpose: every subject it touches
+	// belongs to a kiosk, and an operation composes under its own type's prefix
+	// (`app.kiosk.<code>.…`, which nothing uses). Cross-subtree participation
+	// lives in the role, as for the access-controller;
+	// TestApplicationRoleCanRunTheKioskController is the only check on it.
 	{Org: "northwind", Code: "kiosk-controller", Name: "Kiosk Controller", Kind: kindApp,
 		Description:   "Central aggregator for the kiosk fleet. Projects every node's ledger, publishes the catalogue into KV, and drives admin commands at remote nodes. Single instance.",
 		SubjectPrefix: "app.kiosk.{thing}",
@@ -416,7 +366,7 @@ var thingTypes = []thingTypeFixture{
 			"deployed": date("Deployed"),
 		})},
 
-	// ------------------------------------------------------------ ironbridge
+	// Ironbridge.
 	{Org: "ironbridge", Code: "power-meter", Name: "Panel Power Meter", Kind: kindDevice,
 		Description:   "Three-phase meter on a distribution panel.",
 		SubjectPrefix: "telemetry.{location}.{thing}",
@@ -488,7 +438,7 @@ var thingTypes = []thingTypeFixture{
 			"mes_vendor": str("MES vendor"),
 		})},
 
-	// -------------------------------------------------------------- galewind
+	// Galewind.
 	{Org: "galewind", Code: "turbine-ctl", Name: "Turbine Controller", Kind: kindDevice,
 		Description:   "Per-turbine controller. Reports generation and accepts a curtailment ceiling.",
 		SubjectPrefix: "turbine.{location}.{thing}",
@@ -571,8 +521,6 @@ var thingTypes = []thingTypeFixture{
 		})},
 }
 
-// ----------------------------------------------------------------- NATS roles
-
 type roleFixture struct {
 	Org, Name, Description string
 	IsDefault              bool
@@ -584,90 +532,45 @@ type roleFixture struct {
 
 // One set per org, written out for each of the three by seedNatsRoles.
 //
-// `console-readonly` is the one worth reading carefully. A console role and a
-// NATS role are two INDEPENDENT authorization systems here: `viewer` is
-// read-only against the PocketBase API, but a member's real capability on the
-// bus is whatever memberships.nats_user points at, and nothing checks that the
-// two agree. Seeding a genuinely read-only NATS role and linking it to the
-// viewer and dashboard memberships is what makes this demo teach the correct
-// pairing instead of quietly demonstrating the trap — a "read-only" auditor
-// holding publish ">" can drive the Publisher and Button widgets.
-//
-// Its publish list is not empty, because a subscriber is not a passive party in
-// NATS: request/reply needs _INBOX, and reading a KV bucket in the console means
-// creating an ephemeral consumer and fetching from the stream. Those are the
-// minimum publishes a read-only console session actually issues.
+// A console role and a NATS role are independent: a member's capability on the
+// bus is whatever memberships.nats_user points at, and nothing checks that it
+// agrees with `viewer`. So `console-readonly` is a genuinely read-only NATS
+// role, linked to the viewer and dashboard memberships. Its publish list is
+// not empty: request/reply needs _INBOX, and reading KV means creating a
+// consumer and fetching.
 var roleTemplates = []roleFixture{
-	// `acc.>` is on both lists here and on `gateway` below because a sibling app
-	// running inside this account owns that subtree, and its participants are
-	// Things of these two kinds: an access-controlled door defaults to `device`
-	// and a controller to `gateway`. Without it, a door's minted credential
-	// cannot publish the decision its own thing type declares, and a controller
-	// cannot receive the taps it exists to answer — and the failure would look
-	// like an access-control bug rather than a permission the inventory forgot
-	// to grant. It is on SUBSCRIBE as well as publish because a door listens on
-	// `acc.{location}.{type}.{thing}.cmd.grant`, not on the generic `cmd.>`.
+	// `acc.>` is on both lists here and on `gateway` for stone-access, whose
+	// doors default to `device` and controllers to `gateway`. It is on
+	// subscribe because a door listens on `acc.{location}.{type}.{thing}.cmd.grant`,
+	// not `cmd.>`.
 	//
-	// The two lists below cover the SAME SUBTREES, and that is the invariant to
-	// keep. It was not true before: subscribe carried only `cmd.>` and `config.>`,
-	// on the assumption that anything inbound arrives on a command root. Nothing
-	// in the fixture works that way — a reefer takes its setpoint on
-	// `asset.{location}.{thing}.setpoint`, a line controller its mode on
-	// `line.…mode`, a turbine its curtailment on `turbine.…curtail` — because a
-	// thing type composes every operation under its OWN prefix, inbound and
-	// outbound alike. A pattern rooted at `cmd.` matches none of them, so three
-	// types shipped unable to receive the instructions they declare, and the
-	// `.echo` half of each pair had nothing to echo.
+	// Invariant: the publish and subscribe lists cover the same subtrees. A thing
+	// type composes every operation, inbound too, under its own prefix (a reefer
+	// takes its setpoint on `asset.{location}.{thing}.setpoint`), so a
+	// subscribe list rooted at `cmd.` misses them.
 	//
-	// Mirroring is deliberately coarse: a device can subscribe to a peer's
-	// telemetry, not just its own. That is the cost of a role template being a
-	// KIND of participation rather than one identity's contract, and the reason
-	// narrowing lives on the thing's own `publish_permissions` — owner/admin only,
-	// because it is equivalent to granting NATS permissions.
+	// `_INBOX.>` is on publish because a `reply` operation answers to the
+	// requester's inbox.
 	//
-	// `_INBOX.>` is on PUBLISH for the same class of reason. A `reply` operation
-	// means the thing answers requests, and an answer goes to the requester's
-	// inbox — so a type declaring `reply_diagnostics` needs an inbox publish or
-	// its request/reply half is dead. Three types declared one against a role
-	// that had `_INBOX.>` on subscribe only, which is the requester's side of the
-	// pair, not the responder's.
-	//
-	// `$SRV.>` is on SUBSCRIBE for the edge agent, which registers its commands
-	// as a NATS micro service named stone-agent, so one request to
-	// $SRV.PING.stone-agent lists every agent in the account. A service answers
-	// discovery by subscribing to those subjects and replying to an inbox, which
-	// `_INBOX.>` on publish already covers. Without it nothing breaks -- the
-	// agent still answers its commands -- but it is missing from discovery and
-	// its nats_permissions check warns. Both roles an agent runs under carry it.
-	// Behind a leaf node the gateway credential is also the uplink a hub-side
-	// request has to cross, and the uplink filters it like any other subject:
+	// `$SRV.>` is on subscribe for the edge agent, a NATS micro service named
+	// stone-agent, so $SRV.PING.stone-agent discovers it. Both roles an agent
+	// runs under carry it. Behind a leaf the gateway credential is also the
+	// uplink, which filters it too:
 	// TestServiceDiscoveryCrossesALeafOnlyIfTheUplinkAllowsIt.
 	//
-	// TestEveryThingTypeCanSpeakItsOwnContract now checks both directions for
-	// every type against the role it actually points at. Nothing at runtime does:
-	// a role is a set of subject patterns, a thing type is a prefix plus a list
-	// of operations, and the two are edited on different screens.
+	// TestEveryThingTypeCanSpeakItsOwnContract checks both directions for every
+	// type against its role. Nothing at runtime does.
 	//
-	// The lists are subtree-coarse throughout (`telemetry.>`, not one subject per
-	// device), so a role grants a KIND of participation rather than an identity's
-	// exact contract.
+	// The lists are subtree-coarse (`telemetry.>`): a role grants a kind of
+	// participation, so a device can subscribe to a peer's telemetry.
 	//
-	// **A per-user edit cannot narrow one of these roles.** pb-nats UNIONS the
-	// role's lists with the user's own (`applyPermissions` in
-	// internal/jwt/generator.go) for allow and deny alike, so adding
-	// `telemetry.dev-1.>` to a device already holding `telemetry.>` changes
-	// nothing, and a deny cannot subtract "every device except this one" --
-	// NATS evaluates allow then deny with no specificity ranking, `*` matches a
-	// WHOLE token, and there is no negation. Narrowing is possible, but it is a
-	// property of the role: a role carrying only the shared parts (limits,
-	// response permission, JetStream access) unions with a per-user allow list
-	// to exactly that identity's subtree. None of the roles below are built
-	// that way, and doing so needs a subject grammar from which
-	// `<kind>.<code>` is derivable at provisioning time, which the free-text
-	// `subject_prefix` on a thing type does not give.
-	//
-	// Either way the per-user fields are owner/admin-only, precisely because
-	// writing them is equivalent to granting NATS permissions.
+	// A per-user edit cannot narrow these roles. pb-nats unions the role's
+	// lists with the user's own (`applyPermissions` in
+	// internal/jwt/generator.go), for allow and deny alike, and NATS has no
+	// specificity ranking or negation. Narrowing needs a role carrying only the
+	// shared parts plus a per-user allow list, which needs a subject grammar
+	// that the free-text `subject_prefix` does not give. The per-user fields are
+	// owner/admin-only because writing them grants NATS permissions.
 	{Name: "device", IsDefault: true,
 		Description:      "A field device: publishes its own telemetry and status, listens for commands addressed to it.",
 		Publish:          []string{"telemetry.>", "event.>", "asset.>", "line.>", "turbine.>", "status.>", "acc.>", "_INBOX.>"},
@@ -676,48 +579,28 @@ var roleTemplates = []roleFixture{
 
 	{Name: "gateway",
 		Description: "A site aggregator: everything a device may do, plus the site's own subtree and JetStream access for the local mirror.",
-		// `$KV.>` is NOT covered by `$JS.API.>`, and the gap is invisible until an
-		// edge service tries to write a bucket. Reading a KV bucket goes through
-		// the JetStream API (bind the stream, create a consumer, deliver to an
-		// inbox), so a role with `$JS.API.>` + `_INBOX.>` watches KV perfectly
-		// well — but a WRITE is a plain publish to `$KV.{bucket}.{key}`, which
-		// matches neither. An access controller came up, synced its whole policy
-		// graph, armed every portal, and then failed on the first status write
-		// with `Permissions Violation for Publish to "$KV.ACC_STATUS.portal.…"`.
-		// A box that boots clean and cannot report state is worse than one that
-		// refuses to start.
+		// `$KV.>` is not covered by `$JS.API.>`: reading KV goes through the
+		// JetStream API, but a write is a plain publish to `$KV.{bucket}.{key}`.
+		// Without it an edge service boots clean and fails on its first write.
 		//
-		// It is on `gateway` and deliberately not on `device`: a gateway runs the
-		// edge services that own buckets (leaf node, rule engine, access
-		// controller), while a field sensor publishes telemetry and lets the edge
-		// relay it. `device` has no JetStream access at all, so `$KV.>` alone
-		// would not even let it bind a bucket — half a permission is worse than
-		// none, because it reads as support for something that cannot work.
+		// Not on `device`: a gateway runs the edge services that own buckets, and
+		// `device` has no JetStream access, so `$KV.>` alone would be half a
+		// permission.
 		Publish:          []string{"telemetry.>", "event.>", "status.>", "gateway.>", "acc.>", "kiosk.>", "_INBOX.>", "$JS.API.>", "$KV.>"},
 		Subscribe:        []string{"telemetry.>", "event.>", "status.>", "gateway.>", "acc.>", "kiosk.>", "cmd.>", "config.>", "_INBOX.>", "$SRV.>"},
 		MaxSubscriptions: 512, MaxPayload: 4194304},
 
 	{Name: "application",
 		Description: "A software participant: publishes on its own app subtree and on the operator service contract, reads broadly.",
-		// `kiosk.>` and `$KV.>` are the kiosk controller's half of the same lesson
-		// the gateway role learned above, arrived at from the other direction.
-		//
-		// An application that AGGREGATES has no subtree of its own to work in. The
-		// controller requests on each kiosk's `kiosk.<code>.command.<name>` and
-		// writes the catalogue, the fleet punch state and the fleet open-checkout
-		// state into KV. Subscribe is already `>`, so reading looked complete and
-		// the gap showed up only on writes: catalogue fan-out is a plain publish
-		// to `$KV.catalog_items.<kiosk>.<sku>`, which `$JS.API.>` does not cover.
-		// Without it the controller starts, serves its console, aggregates every
-		// event the fleet sends — and silently ships no catalogue, so the kiosks
-		// stock nothing and the failure reads as a kiosk-side bug.
+		// `kiosk.>` and `$KV.>` are for the kiosk controller, which works outside
+		// its own subtree: it requests on `kiosk.<code>.command.<name>` and writes
+		// the catalogue and fleet state into KV (`$KV.catalog_items.<kiosk>.<sku>`
+		// is a plain publish, as on `gateway`).
 		Publish:   []string{"app.>", "cmd.>", "helpdesk.>", "kiosk.>", "$JS.API.>", "$KV.>"},
 		Subscribe: []string{">"},
-		// NO $SYS DENY HERE, deliberately -- see console-readonly below. The
-		// operator's endpoints live in the $SYS ACCOUNT, and an account is a
-		// closed subject namespace, so publishing `$SYS.REQ.SERVER.>` from this
-		// account reaches no responder whatever this role permits. A deny would
-		// restate the account boundary in a weaker place and buy nothing.
+		// No $SYS deny, deliberately; see console-readonly below. The operator's
+		// endpoints live in the $SYS account, so `$SYS.REQ.SERVER.>` from this
+		// account reaches no responder whatever this role permits.
 		MaxSubscriptions: 1024, MaxPayload: 4194304},
 
 	{Name: "console-operator",
@@ -741,43 +624,26 @@ var roleTemplates = []roleFixture{
 			"$JS.API.CONSUMER.CREATE.>",
 			"$JS.API.CONSUMER.MSG.NEXT.>",
 			"$JS.API.DIRECT.GET.>",
-			// Account monitoring, which is how an operator asks the hub which
-			// of this organization's leaf nodes are attached: a Publisher or
-			// Button widget aimed at `$SYS.REQ.ACCOUNT.PING.CONNZ` with `{}`.
-			// CONNZ names each leaf connection by the leaf server's
-			// `server_name`, which the agent sets to the Thing's code -- so a
-			// site is identifiable, not merely countable.
-			//
-			// This is a dashboard recipe rather than a built-in view on purpose.
-			// A console badge for it was built and removed: nothing in the
-			// schema marks which Things are gateways, so it rendered on every
-			// device to say "no leaf node attached" about temperature probes,
-			// and it polled a whole account's connection list every 15s to do
-			// it. A widget asks once, when someone actually wants to know.
+			// Account monitoring: a Publisher or Button widget aimed at
+			// `$SYS.REQ.ACCOUNT.PING.CONNZ` with `{}` lists this org's attached
+			// leaf nodes, each named by the Thing code the agent sets as
+			// `server_name`. A dashboard recipe, not a built-in view: nothing in
+			// the schema marks which Things are gateways.
 			"$SYS.REQ.ACCOUNT.PING.>",
 		},
 		Subscribe: []string{">"},
-		// NO $SYS PUBLISH DENY, and this is the considered position rather than
-		// an omission.
+		// No $SYS publish deny, deliberately. Do not add one back.
 		//
-		// Server-level monitoring IS the operator's alone -- `SERVER.PING.LEAFZ`
-		// answers for every tenant at once -- but the thing that enforces it is
-		// the ACCOUNT, not a subject rule. Those endpoints are served inside the
-		// $SYS account, and an account is a closed subject namespace: a client
-		// in this account publishing `$SYS.REQ.SERVER.PING.LEAFZ` reaches no
-		// responder, with or without a deny.
-		// TestTenantCannotReachServerEndpoints proves it with a credential that
-		// carries no deny list at all.
+		// Server-level monitoring (`SERVER.PING.LEAFZ` answers for every tenant)
+		// is the operator's alone, but the account enforces that, not a subject
+		// rule: those endpoints are served inside the $SYS account, so a client
+		// here reaches no responder with or without a deny.
+		// TestTenantCannotReachServerEndpoints proves it with no deny list.
 		//
-		// So a deny here would restate the account boundary somewhere weaker,
-		// and it would carry a real hazard to do it: in NATS a publish DENY
-		// beats a publish ALLOW, so the `$SYS.>` deny this role used to ship
-		// silently killed the account-scoped endpoints above, and adding an
-		// allow beside it does not help. The symptom is a bare request timeout
-		// -- the real reason arrives asynchronously on the connection's error
-		// handler and never on the request -- so nothing points at permissions.
-		//
-		// DO NOT "tighten" this by adding one back.
+		// A deny is also harmful: in NATS a publish deny beats a publish allow,
+		// so a `$SYS.>` deny kills the account-scoped endpoints above, and the
+		// symptom is a bare request timeout (the permissions error arrives only
+		// on the connection's async error handler).
 		// TestDenyingAllOfSysBlocksAccountMonitoring pins all four shapes
 		// against a real server.
 		MaxSubscriptions: 256, MaxPayload: 1048576},

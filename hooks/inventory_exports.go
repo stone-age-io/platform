@@ -20,13 +20,11 @@ import (
 //     remapped to LocalSubject (stone-age.>)
 //
 // Every organization gets one while nats.inventory_events_enabled is on, not
-// only managed ones: the helpdesk export lets the provider reach INTO a tenant,
-// and this one hands a tenant its own data. One export per org rather than one
-// wildcard export, because a wildcard cannot be revoked for one tenant.
+// only managed ones: this hands a tenant its own data. One export per org, not
+// a wildcard, because a wildcard cannot be revoked for one tenant.
 //
-// Records are NAMED by org.Id and their subjects keyed on org.code, for the
-// reason managed_org_exports.go gives: identity on the immutable id, the
-// addressable value on the subject, so a change is a reconcile.
+// Records are named by org.Id and their subjects keyed on org.code, for the
+// reason managed_org_exports.go gives.
 //
 // The console shows both records read-only, recognising them by these names
 // (ui/src/utils/managedExports.ts). Keep the two in step.
@@ -49,9 +47,8 @@ func isInfrastructureOrg(org *core.Record) bool {
 
 func registerInventoryExports(app *pocketbase.PocketBase, opts InventoryEventsOptions) {
 	if opts.Enabled {
-		// Bound to update as well as create, as the managed pair is: re-saving
-		// an organization is how a failed provision is retried, and a no-op
-		// reconcile writes nothing.
+		// Update as well as create: re-saving an organization retries a failed
+		// provision, and a no-op reconcile writes nothing.
 		syncOrg := func(e *core.RecordEvent) error {
 			if !isInfrastructureOrg(e.Record) {
 				if err := ensureInventoryExports(e.App, opts, e.Record); err != nil {
@@ -64,22 +61,18 @@ func registerInventoryExports(app *pocketbase.PocketBase, opts InventoryEventsOp
 		app.OnRecordAfterUpdateSuccess(opts.OrgCollection).BindFunc(syncOrg)
 	}
 
-	// BEFORE the delete, not after it, and inside its transaction (e.App), so a
-	// refused delete rolls the removal back with it. Deleting an organization
-	// blanks rather than cascades: PocketBase unsets `organization` on each
-	// referencing record one at a time, and for a moment the import's
-	// organization and its account's disagree -- which relation tenancy refuses,
-	// failing the whole delete. Removing the pair first leaves nothing to
-	// disagree. Bound whether or not the flag is on, so a pair left by an
-	// earlier enabled run can never block a delete.
+	// BEFORE the delete, inside its transaction (e.App), so a refused delete
+	// rolls the removal back. An org delete blanks `organization` on each
+	// referencing record one at a time, and mid-delete the import's organization
+	// and its account's disagree, which relation tenancy refuses. Bound whether
+	// or not the flag is on, so a leftover pair can never block a delete.
 	app.OnRecordDelete(opts.OrgCollection).BindFunc(func(e *core.RecordEvent) error {
 		removeInventoryExports(e.App, opts, e.Record)
 		return e.Next()
 	})
 
-	// The flag is config, so turning it on or off takes effect on restart. This
-	// is also how existing organizations are wired on the first boot after an
-	// upgrade.
+	// The flag is config, so a change takes effect on restart. This also wires
+	// existing organizations after an upgrade.
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 		sweepInventoryExports(e.App, opts)
 		return e.Next()
@@ -88,8 +81,7 @@ func registerInventoryExports(app *pocketbase.PocketBase, opts InventoryEventsOp
 
 // sweepInventoryExports ensures the pair on every organization when the flag is
 // on, and removes every pair when it is off. Reconcile writes nothing when a
-// record is already right, which on a sweep across every org is the difference
-// between a quiet restart and republishing every account JWT.
+// record is already right, so a restart does not republish every account JWT.
 func sweepInventoryExports(app core.App, opts InventoryEventsOptions) {
 	orgs, err := app.FindAllRecords(opts.OrgCollection)
 	if err != nil {
@@ -133,15 +125,13 @@ func ensureInventoryExports(app core.App, opts InventoryEventsOptions, org *core
 
 	subject := inventorySubjectRoot(opts.LocalSubject, orgCode) + ".>"
 
-	// The export sits on the provider account, so it carries the OPERATOR org:
-	// relation tenancy refuses a record whose organization differs from its
-	// account's.
 	orgKey := account.GetString("public_key")
 	if orgKey == "" {
 		return fmt.Errorf("NATS account for organization has no public key yet")
 	}
-	// Private to this organization's own account. A public export here let any
-	// tenant import another tenant's inventory events by naming the hub key and
+	// The export sits on the provider account, so it carries the OPERATOR org
+	// (relation tenancy). Private to this organization's account: a public
+	// export lets any tenant import another's events by naming the hub key and
 	// the victim's code, both of which it can read.
 	if err := ensureNamedRecord(app, opts.ExportCollection, hubAccount.Id, inventoryExportName(org.Id), nil,
 		append([]field{

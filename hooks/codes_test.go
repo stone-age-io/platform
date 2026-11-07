@@ -118,7 +118,7 @@ func TestCodes(t *testing.T) {
 		if err := app.Save(newLocation("HQ upper", "HQ", "", org)); err == nil {
 			t.Fatal("saved HQ beside hq in the same organization")
 		}
-		// The scoping is per organization, exactly as before.
+		// The scoping is per organization.
 		mustSave(t, "other org location", newLocation("HQ elsewhere", "HQ", "", other))
 	})
 

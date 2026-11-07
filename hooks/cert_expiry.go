@@ -12,111 +12,72 @@ import (
 // Nebula certificate expiry, shared by the readiness check and the metrics
 // collector so the two cannot disagree.
 //
-// WHY THE CONTROL PLANE MAY CHECK THIS AT ALL. Every other credential this
-// platform issues lives somewhere it cannot look: an organization's NATS
-// account, an edge box's KV. Nebula certificates are different — this process
-// signed them and stores them, expiry included, in its own database. So it is
-// answerable first-hand, which is the whole bar for a check here (see the
-// package comment on internal/health).
+// The Control Plane may check this because it is answerable first-hand: every
+// other credential the platform issues lives where this process cannot look (a
+// tenant's NATS account, an edge box's KV), but it signed and stores the Nebula
+// certificates itself. That is the bar for a check (package internal/health).
 //
-// WHY EXPIRY WARNS RATHER THAN FAILS. An expired host certificate is a device
-// that cannot join the overlay. It is not this process being unable to serve,
-// and readiness failing means "stop sending me traffic" — so failing here would
-// pull the console out of a load balancer because a device certificate lapsed.
-// Same reasoning as an islanded edge warning rather than failing.
+// Expiry warns rather than fails: a lapsed certificate is a device that cannot
+// join the overlay, not this process unable to serve, and a failed readiness
+// would pull the console out of a load balancer.
 //
-// WHY IT IS WORTH HAVING. A Nebula certificate expires silently and on a
-// schedule nobody is watching: the CA is minted at organization-create with a
-// multi-year validity, so the day it lapses is years after the only person who
-// knew about it stopped thinking about it, and the failure is every host in the
-// mesh at once. Until now the only surface for this was ExpiryBadge on a list
-// view — visible to someone already looking at the right screen.
+// It is worth having because a CA lapses silently, years after it was minted,
+// and takes every host in the mesh down at once.
 
-// certExpiryWindow is how far ahead a certificate starts being called out.
+// certExpiryWindow is the HOST look-ahead. The CA has its own, below.
 //
-// Mirrors EXPIRY_WARNING_DAYS in ui/src/utils/expiry.ts, deliberately: the
-// console badges a host at 30 days and an operator comparing the two screens
-// should not find them disagreeing about what "expiring" means. Not worth a
-// cross-language test the way the managed-export name is — a mismatch here
-// makes two views inconsistent, not silently inert.
-//
-// This is the HOST window. The CA gets its own, below.
+// Mirrors EXPIRY_WARNING_DAYS in ui/src/utils/expiry.ts so the two screens
+// agree on what "expiring" means. No cross-language test: a mismatch makes two
+// views inconsistent, not silently inert.
 const certExpiryWindow = 30 * 24 * time.Hour
 
-// caExpiryWindow is the same idea for the CA, and it is deliberately much
-// longer.
+// caExpiryWindow is the CA look-ahead, deliberately three times the host's.
 //
-// A host certificate is renewable — pb-nebula re-issues one automatically once
-// it has burned through its lifetime, so 30 days' notice is ample. A CA cannot
-// be renewed at all. The only remedy is rotation, and rotation is a three-step
-// procedure with a wait in the middle that nothing can compress: it has to
-// outlast every host fetching a config nobody told it to fetch. Nebula's own
-// guide asks you to begin two to three months out, which is where 90 comes from
-// — and it is what pb-nebula warns at too, on a log line this deployment never
-// sees, because nebula.log_to_console is false here.
+// Hosts renew themselves, so 30 days is ample. A CA cannot be renewed, only
+// rotated, and rotation has a wait in the middle that must outlast every host
+// fetching a new config. Nebula's guide says to start two to three months out,
+// which is where 90 comes from (pb-nebula warns at 90 too, on a log this
+// deployment does not show). 30 days' notice on a CA is notice that the remedy
+// no longer fits.
 //
-// So these are not a tunable and a copy of it. 30 days' notice on a CA is
-// notice that the remedy no longer fits.
-//
-// Mirrored by CA_EXPIRY_WARNING_DAYS in ui/src/utils/expiry.ts, and unlike
-// certExpiryWindow above that mirror is NOT merely about two screens agreeing.
-// A Nebula CA belongs to a TENANT organization and only its owners and admins
-// may rotate one (POST /api/org/nebula-ca/rotate) — the wait in the middle
-// belongs to whoever operates the devices. This window only reaches /api/ready
-// and /metrics, which are the platform OPERATOR's surfaces, and the operator
-// cannot rotate a tenant's CA. So the console is the only warning the party who
-// can act ever sees. It badged CAs at 30 days for a while, which meant the 90
-// went exclusively to whoever could do nothing with it; ui/src/utils/
-// expiry.spec.ts now fails if the two console windows collapse back together.
+// Mirrored by CA_EXPIRY_WARNING_DAYS in ui/src/utils/expiry.ts, and that mirror
+// matters more than certExpiryWindow's: only a tenant's owners and admins can
+// rotate its CA, and this window only reaches /api/ready and /metrics, the
+// operator's surfaces. So the console is the only warning the party who can act
+// sees. ui/src/utils/expiry.spec.ts fails if the two console windows collapse.
 const caExpiryWindow = 90 * 24 * time.Hour
 
-// certKind labels one family of certificate. These are the metric's `kind`
-// label values, so they are snake_case and stable.
+// certKind values are the metric's `kind` label values, so they are stable.
 const (
 	certKindCA   = "nebula_ca"
 	certKindHost = "nebula_host"
 )
 
-// certSummary is what both consumers need: how many there are, how many are
-// already dead, how many are about to be, and when the next one goes.
+// certSummary is one kind's certificate counts and its soonest expiry.
 type certSummary struct {
 	Kind  string
 	Total int
-	// Expired is already past; Expiring is within certExpiryWindow and not yet
-	// past. The two never overlap, so Total-Expired-Expiring is the healthy
-	// remainder.
+	// Expired is already past; Expiring is within Window and not yet past. They
+	// never overlap.
 	Expired  int
 	Expiring int
-	// Earliest is the soonest expiry of any certificate of this kind, zero when
-	// there are none (or none carries a parseable date). This is the value the
-	// metric publishes: one number per kind that an alert can be written
-	// against, with no per-organization label — a tenant name next to a
-	// certificate inventory is the same disclosure the metrics package refuses
-	// everywhere else.
+	// Earliest is the soonest expiry of this kind, zero when there is none. It
+	// is what the metric publishes, with no per-organization label.
 	Earliest time.Time
-	// NoExpiry counts rows whose expires_at is empty or unparseable. Reported
-	// rather than treated as healthy: a certificate whose expiry we cannot read
-	// is not a certificate we know to be valid.
+	// NoExpiry counts rows whose expires_at is empty or unparseable. Reported,
+	// not treated as healthy.
 	NoExpiry int
-	// Window is the look-ahead Expiring was counted against: certExpiryWindow
-	// for hosts, caExpiryWindow for the CA. Carried on the summary so a message
-	// naming the window cannot quote the host figure for a CA.
+	// Window is the look-ahead Expiring was counted against, carried so a
+	// message cannot quote the host window for a CA.
 	Window time.Duration
 }
 
 // scanCertExpiry summarises one collection's expires_at column.
 //
-// It reads the column and does the arithmetic in Go rather than asking SQLite
-// for MIN/COUNT with date predicates. PocketBase stores dates as text
-// ("2026-01-02 15:04:05.000Z"), which happens to sort lexicographically the
-// same way it sorts chronologically, so the SQL version works — but it works by
-// coincidence of the storage format, and it would keep returning plausible
-// numbers if that format ever changed. One string per row is cheap at any
-// inventory size this platform holds.
-//
-// `where` narrows the rows: host certificates are filtered to active = true,
-// because a decommissioned device's lapsed certificate is not a problem anyone
-// needs paging about.
+// The arithmetic is in Go, not SQL date predicates: those only work because
+// PocketBase's text date format happens to sort chronologically, and would keep
+// returning plausible numbers if it changed. `where` narrows the rows (hosts
+// are filtered to active = true).
 func scanCertExpiry(app core.App, collection, kind, where string, window time.Duration, now time.Time) (certSummary, error) {
 	sum := certSummary{Kind: kind, Window: window}
 	if collection == "" {
@@ -154,10 +115,8 @@ func scanCertExpiry(app core.App, collection, kind, where string, window time.Du
 	return sum, nil
 }
 
-// nebulaCertSummaries scans both Nebula certificate collections.
-//
-// Returned in a fixed order (CA first) so the readiness detail string and the
-// metric series are stable between scrapes rather than map-ordered.
+// nebulaCertSummaries scans both Nebula certificate collections, in a fixed
+// order (CA first) so the readiness detail and metric series are stable.
 func nebulaCertSummaries(app core.App, opts ObservabilityOptions, now time.Time) ([]certSummary, error) {
 	specs := []struct {
 		collection string
@@ -166,9 +125,7 @@ func nebulaCertSummaries(app core.App, opts ObservabilityOptions, now time.Time)
 		window     time.Duration
 	}{
 		{opts.NebulaCACollection, certKindCA, "", caExpiryWindow},
-		// Only certificates that are meant to be in service. `active = false`
-		// is this platform's decommission flag, and hooks/active_flag.go has
-		// already killed the NATS half of such a device's identity.
+		// A decommissioned device's lapsed certificate needs no warning.
 		{opts.NebulaHostCollection, certKindHost, "active = true", certExpiryWindow},
 	}
 
@@ -183,14 +140,8 @@ func nebulaCertSummaries(app core.App, opts ObservabilityOptions, now time.Time)
 	return out, nil
 }
 
-// certExpiryPhrase names WHICH kinds are affected, e.g. "1 CA, 3 host
-// certificates". The count alone reads the same whether it is three devices or
-// the certificate authority every device chains to, and those are very
-// different mornings.
 // certExpiringPhrase is certExpiryPhrase for the Expiring count, naming each
 // kind's own window: "2 host certificates within 30 days, 1 CA within 90 days".
-// One window for the whole sentence would misstate the CA, which is counted
-// three times further out.
 func certExpiringPhrase(sums []certSummary) string {
 	var parts []string
 	for _, s := range sums {
@@ -206,6 +157,9 @@ func certExpiringPhrase(sums []certSummary) string {
 	return strings.Join(parts, ", ")
 }
 
+// certExpiryPhrase names which kinds are affected, e.g. "1 CA, 3 host
+// certificates": three devices and the CA every device chains to are very
+// different problems.
 func certExpiryPhrase(sums []certSummary, pick func(certSummary) int) string {
 	var parts []string
 	for _, s := range sums {

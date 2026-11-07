@@ -8,71 +8,42 @@ import (
 	"ganigeorgiev.com/pocketbase/pocketbase/core"
 )
 
-// NATS resource limits: an unset limit is -1, and 0 is refused.
+// NATS resource limits: an unset limit is -1, and 0 is refused. The long form
+// is the limits bullet in AUTHORIZATION.md.
 //
-// THE TRAP. Two conventions meet here and they disagree about 0. In a
-// nats-server config file 0 means "not set": the server substitutes its own
-// default, which for max_subscriptions is unlimited (opts.go,
-// setBaselineOptions; client.go, applyAccountLimits). In a JWT, -1 is unlimited
-// and 0 means ZERO, and pb-nats copies the record value straight into the JWT:
-// limitValue in internal/jwt/generator.go maps only negatives to NoLimit,
-// deliberately and documented. PocketBase number fields have no default, so a
-// nats_roles record created without the three limit fields -- through the
-// record API, `stone nats-role create`, a `stone apply` workspace that never
-// mentions them -- stored 0 and was signed into every user JWT as a hard limit
-// of zero. The console form avoided it only because it pre-fills -1.
+// In nats-server.conf 0 means "server default"; in a JWT 0 means ZERO, and
+// pb-nats copies the record value straight in (limitValue in
+// internal/jwt/generator.go maps only negatives to NoLimit). PocketBase number
+// fields have no default, so a role created without its limits signed a hard
+// zero. In nats-server v2.15, asserted in nats_limits_test.go:
 //
-// What zero does in nats-server v2.15, asserted against a real server in
-// nats_limits_test.go rather than inferred:
-//
-//   - Subs 0: the server checks the limit at CONNECT, finds 0 subscriptions
-//     already at a limit of 0, and closes the connection 20ms later with
-//     "maximum subscriptions exceeded". Before the client subscribes to
-//     anything, so before it can publish either. The browser reconnected every
-//     ~3s forever, and the only trace was a server log line.
+//   - Subs 0: the connection is closed at CONNECT, before it can subscribe or
+//     publish.
 //   - Payload 0: the first non-empty publish closes the connection.
-//   - Data 0: nothing at all. nats-server never reads Limits.Data, user or
-//     account, so 0 would claim a restriction that no server applies.
+//   - Data 0: nothing. nats-server never reads Limits.Data.
 //
-// So 0 is not "publish-only". Its only effect is a credential that does not
-// work, and the intent it might have been written for is already expressible
-// correctly: an empty subscribe (or publish) allow list signs deny ">" in that
-// direction, since pb-nats v0.3.0. That is why 0 is refused rather than kept.
+// So 0 only yields a credential that does not work. "Publish-only" is an empty
+// subscribe allow list, which signs deny ">" since pb-nats v0.3.0.
 //
-// TWO LAYERS, because only one of them can tell "omitted" from "0":
+// Two layers, because only a request can tell "omitted" from "0":
 //
-//   - MODEL, nats_roles only, create and update: a 0 limit is stored as -1. An
-//     omitted field and a 0 are the same value by the time a model hook sees
-//     the record, so this is the default every path gets: the record API,
-//     app.Save, demoseed, the tests. On a ROLE, -1 does not mean unlimited:
-//     nats-server applies the lower of the user limit and the account limit, so
-//     -1 means "the account limit applies", and the account limits are
-//     operator-only. Nothing this hook writes can widen a tenant's envelope.
-//   - REQUEST, nats_roles and nats_accounts, create and update: a write that
-//     explicitly asks for 0 is refused, with a field error saying what 0 would
-//     do. Rewriting a deliberate 0 to -1 would quietly grant the thing the
-//     writer meant to withhold -- the "blank scope is a wildcard" bug in
-//     reverse. On a role, null and "" are not explicit: they mean unset, like
-//     an omitted field, and the model layer stores -1. That is judged from the
-//     raw body, because RequestInfo() has already turned them into 0
+//   - MODEL, nats_roles, create and update: a 0 is stored as -1, for every
+//     path. On a role -1 means "the account limit applies", since nats-server
+//     applies the lower of the two, so this cannot widen a tenant's envelope.
+//   - REQUEST, nats_roles and nats_accounts: an explicit 0 is refused with a
+//     field error. Rewriting it to -1 would grant what the writer meant to
+//     withhold. On a role, null and "" mean unset, judged from the raw body
 //     (rawRequestBody).
 //
-// Accounts get only the request layer, and their blank counts as a 0. Both of
-// their creators set every limit (org provisioning from config, pb-nats's system
-// account at -1), the API lets only a superuser create one, and an ACCOUNT's -1
-// really is unlimited, so a model-level rewrite would widen what the tenant was
-// sold.
-// The JetStream limits are excluded: 0 there is a real NATS setting, JetStream
-// off. The config defaults are checked at startup instead
-// (OrgProvisioningOptions.Validate), where an operator who knows nats-server.conf
-// is most likely to write 0 meaning "use the default".
+// Accounts get only the request layer, and a blank counts as 0: an account's
+// -1 really is unlimited, so a model rewrite would widen what the tenant was
+// sold. JetStream limits are excluded (0 there is JetStream off); the config
+// defaults are checked at startup (OrgProvisioningOptions.Validate).
 //
-// The request check is EDGE-keyed: it refuses a 0 only where the stored value is
-// not already 0. Original() is reliable here because a request always loads the
-// row first (hooks/CLAUDE.md). Without that, an account an operator had already
-// set to 0 -- a crude suspend from before organizations.active did anything --
-// would refuse every later save of the console limits form, which resubmits all
-// six fields.
+// The request check is EDGE-keyed: it refuses a 0 only where the stored value
+// is not already 0, so a 0 already stored does not block every later save of a
+// form that resubmits all the fields. Original() is reliable here because a
+// request loads the row first.
 
 // natsLimitError is a field error PocketBase renders as {code, message}: it
 // satisfies tools/router.SafeErrorItem.
@@ -147,8 +118,7 @@ func RegisterNatsLimits(app *pocketbase.PocketBase, opts NatsLimitsOptions) {
 }
 
 // refuseZeroLimits returns a 400 naming every limit this request would set to 0.
-// By the time a request hook runs, PocketBase has loaded the body into e.Record,
-// so the record holds the value the write would store.
+// e.Record already holds the value the write would store.
 func refuseZeroLimits(e *core.RecordRequestEvent, fields []natsLimitField, blankIsUnset bool) error {
 	var raw map[string]any // read only when a 0 needs telling apart from a blank
 	errs := map[string]error{}
@@ -183,14 +153,10 @@ func refuseZeroLimits(e *core.RecordRequestEvent, fields []natsLimitField, blank
 }
 
 // rawRequestBody binds the request body again, as the client sent it.
-//
-// RequestInfo().Body is no use for this. The record create and update handlers
-// overwrite it with Record.ReplaceModifiers(body) before any request hook runs
-// (apis/record_crud.go), and ReplaceModifiers stores each field's PREPARED value:
-// a number field's null and "" are already 0 there, indistinguishable from an
-// explicit 0. The router wraps every request body, batch sub-requests included,
-// in a RereadableReadCloser, so binding it a second time with PocketBase's own
-// binder reads the same bytes the first bind did.
+// RequestInfo().Body holds PREPARED values (apis/record_crud.go,
+// ReplaceModifiers), where a number field's null and "" are already 0. The
+// router wraps every body, batch sub-requests included, in a
+// RereadableReadCloser, so a second bind reads the same bytes.
 func rawRequestBody(e *core.RecordRequestEvent) (map[string]any, error) {
 	raw := map[string]any{}
 	if err := e.BindBody(&raw); err != nil {
@@ -200,9 +166,8 @@ func rawRequestBody(e *core.RecordRequestEvent) (map[string]any, error) {
 }
 
 // leftUnset reports whether the request left a limit unset: did not send it,
-// or sent null or "" (what a blank form field sends). A modifier key such as
-// `max_subscriptions-` is an explicit value, so decrementing a limit to exactly
-// 0 is refused rather than quietly read as "unset".
+// or sent null or "". A modifier key such as `max_subscriptions-` is explicit,
+// so decrementing a limit to exactly 0 is refused.
 func leftUnset(raw map[string]any, name string) bool {
 	if _, ok := raw[name+"+"]; ok {
 		return false

@@ -7,17 +7,12 @@ import (
 	m "ganigeorgiev.com/pocketbase/pocketbase/migrations"
 )
 
-// schema_update_nebula_multi_ca re-imports schema.json so existing deployments
-// pick up pb-nebula's multi-CA uniqueness model (pb-nebula only applies these
-// indexes to fresh databases):
-//   - nebula_networks: global-unique cidr_range → unique per CA
-//     (ca_id+name, ca_id+cidr_range), so different orgs' meshes can reuse
-//     the same CIDR or network name
-//   - nebula_hosts: global-unique hostname → unique per network
-//     (network_id+hostname)
-//
-// Safe on existing data: the old constraints were strictly tighter, so no
-// rows can violate the new ones. Additive import (deleteMissing=false).
+// schema_update_nebula_multi_ca re-imports schema.json for pb-nebula's multi-CA
+// uniqueness model, which pb-nebula applies only to fresh databases:
+// nebula_networks become unique per CA (ca_id+name, ca_id+cidr_range), so orgs
+// can reuse a CIDR or name, and nebula_hosts unique per network
+// (network_id+hostname). The old constraints were tighter, so no row violates
+// the new ones.
 func init() {
 	m.Register(func(app core.App) error {
 		if len(SchemaJSON) == 0 {

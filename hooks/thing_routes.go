@@ -55,43 +55,25 @@ type createThingRequest struct {
 }
 
 // RegisterThingRoutes adds POST /api/org/things: create a Thing and, optionally,
-// mint its NATS identity and Nebula host in ONE transaction.
+// mint its NATS identity and Nebula host in ONE transaction, so a failure leaves
+// no orphaned identity holding a signed credential or an allocated overlay IP.
 //
-// This replaces three unguarded client calls. The console used to create the
-// nats_users record, then the nebula_hosts record, then the Thing — three
-// independent requests with no rollback, so a failure on the third left an
-// orphaned NATS identity holding a signed credential and a Nebula host holding an
-// allocated overlay IP, with nothing referencing either. The browser also had to
-// know the whole provisioning recipe (which account, which default role, what
-// email shape), and it got one part wrong: it never set `active`, so every Thing
-// created through the console landed with active = false and could not
-// authenticate at all once things.authRule became `active = true`.
+// The atomicity is real: PocketBase defers *AfterCreateSuccess hooks to
+// transaction completion (core/db.go: txInfo.OnComplete), and pb-nats mints and
+// publishes there, so a rollback means pb-nats never signed or published.
 //
-// Atomicity is real, not decorative. PocketBase defers the *AfterCreateSuccess
-// hooks to transaction completion (core/db.go: txInfo.OnComplete), and pb-nats
-// mints the user JWT and publishes to NATS on OnRecordAfterCreateSuccess. So a
-// rollback here means pb-nats never signed anything and never published — the
-// failure mode is "nothing happened", not "NATS knows about a user PocketBase
-// forgot".
+// It is a route because it needs TWO authority levels for one operation: a
+// member may create inventory but not attach an identity to it (things.createRule
+// freezes nats_user/nebula_host for members), which no create rule can express.
 //
-// The route exists for a second reason the rules cannot cover: it needs TWO
-// authority levels for one operation. A member may create inventory but not
-// attach an identity to it (things.createRule freezes nats_user/nebula_host for
-// the member branch), and there is no way to express "you may call this endpoint,
-// but the identity half of it is admin-only" in a create rule. Here it is a role
-// check per section.
-//
-// SECURITY: this route writes with app.Save(), which bypasses API rules entirely.
-// Every check the rules would have applied is therefore restated below —
-// organization comes from the caller's own record and never from the body, and a
-// linked identity is verified to belong to that same organization. Do not assume
-// a rule is still protecting anything on this path.
+// SECURITY: this route writes with app.Save(), which bypasses every API rule, so
+// each check is restated below. The organization comes from the caller's own
+// record, never the body, and a linked identity must belong to that organization.
 func RegisterThingRoutes(app *pocketbase.PocketBase, opts ThingRoutesOptions) {
-	// Only an owner or admin ever knows a Thing's password -- the same line
-	// things.manageRule draws for setting one. A member who knew it could sign in
-	// as the Thing once an admin later attached an identity, and read that
-	// identity's creds_file or host key through the Thing's own read branch. The
-	// route below withholds the generated one; this covers the plain record API,
+	// Only an owner or admin ever knows a Thing's password, the same line
+	// things.manageRule draws. A member who knew it could sign in as the Thing
+	// after an admin attached an identity, and read its creds_file or host key.
+	// The route below withholds the generated one; this covers the record API,
 	// whose create admits members and must carry a password, so no rule can
 	// refuse the field. Replacing it here makes PocketBase skip its
 	// passwordConfirm check (forms/record_upsert.go, syncPasswordFields).
@@ -109,13 +91,10 @@ func RegisterThingRoutes(app *pocketbase.PocketBase, opts ThingRoutesOptions) {
 		return e.Next()
 	})
 
-	// The other half of the same line: a Thing's password is never reset by
-	// email. PocketBase serves /api/collections/things/request-password-reset to
-	// anyone, because things must keep password auth for the agent, and a member
-	// may write a Thing's email on create and on update. So without this a member
-	// could point any Thing at their own mailbox, reset its password, and sign in
-	// as it. A Thing never uses its email for anything; owners and admins set its
-	// password (things.manageRule).
+	// The other half: a Thing's password is never reset by email. PocketBase
+	// serves request-password-reset to anyone because things keep password auth
+	// for the agent, and a member chooses a Thing's email on create, so a member
+	// could reset the password to their own mailbox and sign in as the Thing.
 	app.OnRecordRequestPasswordResetRequest(opts.ThingCollection).BindFunc(func(e *core.RecordRequestPasswordResetRequestEvent) error {
 		return e.ForbiddenError("Things do not use password reset. An owner or admin sets a Thing's password.", nil)
 	})
@@ -133,9 +112,8 @@ func RegisterThingRoutes(app *pocketbase.PocketBase, opts ThingRoutesOptions) {
 				return re.BadRequestError("name is required", nil)
 			}
 
-			// Modes default to "none" so an absent block provisions nothing. A
-			// mode we don't recognise is rejected rather than treated as none —
-			// the same reason the account-key route rejects unknown actions.
+			// An absent mode is "none"; an unrecognised one is rejected, not
+			// treated as none.
 			natsMode := defaultMode(body.Nats.Mode)
 			nebulaMode := defaultMode(body.Nebula.Mode)
 			if natsMode == "" {
@@ -150,9 +128,8 @@ func RegisterThingRoutes(app *pocketbase.PocketBase, opts ThingRoutesOptions) {
 				return err
 			}
 
-			// The identity half is owner/admin only. This is the same boundary
-			// things.createRule draws by freezing nats_user/nebula_host for
-			// members, restated because app.Save() below skips that rule.
+			// The identity half is owner/admin only: things.createRule's boundary,
+			// restated because app.Save() below skips that rule.
 			wantsIdentity := natsMode != modeNone || nebulaMode != modeNone
 			if wantsIdentity && role != "owner" && role != "admin" {
 				return re.ForbiddenError("attaching a NATS or Nebula identity requires owner or admin", nil)
@@ -212,9 +189,8 @@ func RegisterThingRoutes(app *pocketbase.PocketBase, opts ThingRoutesOptions) {
 				thing.Set("emailVisibility", true)
 				thing.SetPassword(thingPassword)
 				thing.Set("organization", orgID)
-				// The client used to omit this, which left the Thing unable to
-				// authenticate: things.authRule is `active = true` and a bool
-				// column has no schema default, so an unset flag reads false.
+				// things.authRule is `active = true` and a bool column has no
+				// schema default, so an unset flag cannot authenticate.
 				thing.Set("active", true)
 				if body.Type != "" {
 					thing.Set("type", body.Type)
@@ -242,12 +218,9 @@ func RegisterThingRoutes(app *pocketbase.PocketBase, opts ThingRoutesOptions) {
 				return txErr
 			}
 
-			// This route writes with txApp.Save(), so the activity request hooks
-			// never see it. Without this call every Thing created through the
-			// console would be absent from the tenant feed while its later edits
-			// appeared -- a feed showing changes to devices that were, as far as
-			// it knew, never created. Recorded after the transaction, so the feed
-			// never describes a Thing that did not land.
+			// txApp.Save() skips the activity request hooks, so the create is
+			// recorded here, after the transaction, so the feed never describes a
+			// Thing that did not land.
 			RecordActivity(re.App, re, orgID, ActionProvisioned, "thing",
 				created.Id, created.GetString("name"))
 
@@ -256,14 +229,9 @@ func RegisterThingRoutes(app *pocketbase.PocketBase, opts ThingRoutesOptions) {
 				"code":  created.GetString("code"),
 				"email": created.GetString("email"),
 			}
-			// The password is returned exactly once — PocketBase stores only its
-			// hash, so this response is the only chance to record it.
-			//
-			// Owner/admin only, the same line things.manageRule draws for setting
-			// one. A member who kept it could sign in as the Thing after an admin
-			// later attached an identity, and read that identity's creds_file or
-			// host key through the Thing's own read branch. A member's Thing gets
-			// its password from an owner or admin, who can set one on the form.
+			// The password is returned exactly once (PocketBase stores only its
+			// hash), and to owner/admin only, for the reason on the create hook
+			// above. A member's Thing gets its password from an owner or admin.
 			if role == "owner" || role == "admin" {
 				resp["password"] = thingPassword
 			}
@@ -287,18 +255,16 @@ func defaultMode(m string) string {
 	}
 }
 
-// resolveInventoryRole returns the caller's active organization and their role in
-// it, refusing anyone without an inventory-writing role. The organization comes
-// from the authenticated record, never the request, so a caller cannot create a
-// Thing in someone else's tenant.
+// resolveInventoryRole returns the caller's active organization and role,
+// refusing anyone without an inventory-writing role. The organization comes from
+// the authenticated record, never the request.
 func resolveInventoryRole(re *core.RequestEvent, opts ThingRoutesOptions) (string, string, error) {
 	return requireMembership(re, opts.MembershipCollection, rolesInventory)
 }
 
-// assertThingCodeFree rejects a duplicate code up front so the caller gets a
-// readable message instead of a constraint violation surfaced from the driver.
-// Case is ignored, matching the unique index (ADR 0003): `cam-1` next to `CAM-1`
-// would be two identities nobody can tell apart when the code is read aloud.
+// assertThingCodeFree rejects a duplicate code up front with a readable message
+// instead of a driver constraint error. Case is ignored, matching the unique
+// index (ADR 0003).
 func assertThingCodeFree(re *core.RequestEvent, opts ThingRoutesOptions, orgID, code string) error {
 	existing, _ := re.App.FindFirstRecordByFilter(
 		opts.ThingCollection,
@@ -311,23 +277,11 @@ func assertThingCodeFree(re *core.RequestEvent, opts ThingRoutesOptions, orgID, 
 	return nil
 }
 
-// orgSlugFor returns the organization's code, used as the domain half of the
-// synthetic emails this route mints for a Thing and its NATS / Nebula identities.
-//
-// It used to derive a slug from the organization NAME on every call, matching
-// what the console built client-side. Two things were wrong with that, and both
-// are fixed by reading the stored code instead (ADR 0002 in platform-docs):
-//
-//   - The name is mutable, so renaming an organization silently changed the
-//     identifier domain of every Thing created afterwards, leaving one org's
-//     devices split across two domains with nothing to indicate it.
-//   - Names are unique but their slugs are not ("Acme Inc" and "Acme, Inc."
-//     both give acme-inc), so two legal organizations could collide in a
-//     namespace that has a global unique index over it.
-//
-// organizations.code is globally unique and frozen, so both classes are closed:
-// the emails below are now literally the (organization, code) join key, with
-// each half immutable.
+// orgSlugFor returns the organization's code, the domain half of the synthetic
+// emails this route mints for a Thing and its NATS / Nebula identities. It must
+// be the stored code, never a slug of the name (ADR 0002 in platform-docs): a
+// name is mutable and two names can slug alike, while organizations.code is
+// globally unique and frozen.
 func orgSlugFor(re *core.RequestEvent, opts ThingRoutesOptions, orgID string) (string, error) {
 	org, err := re.App.FindRecordById(opts.OrgCollection, orgID)
 	if err != nil {
@@ -335,9 +289,8 @@ func orgSlugFor(re *core.RequestEvent, opts ThingRoutesOptions, orgID string) (s
 	}
 	code := org.GetString("code")
 	if code == "" {
-		// Unreachable through the record API: the create hook assigns a code to
-		// every organization and the migration backfilled the rest. Refusing
-		// beats minting "DOOR-1@.thing.local" and discovering it much later.
+		// Unreachable through the record API (the create hook and the backfill
+		// assign codes). Refusing beats minting "DOOR-1@.thing.local".
 		return "", re.BadRequestError(
 			"the active organization has no code; set one before creating Things", nil)
 	}
@@ -345,9 +298,9 @@ func orgSlugFor(re *core.RequestEvent, opts ThingRoutesOptions, orgID string) (s
 }
 
 // resolveNatsUser returns the nats_users id to link, minting one under "auto".
-// Under "link" the target is verified to live in the caller's organization —
-// without that check this route would be a cross-tenant credential-theft path,
-// since a Thing can read the credential of its own linked identity.
+// Under "link" the target must live in the caller's organization; without that
+// check this route is a cross-tenant credential-theft path, since a Thing can
+// read the credential of its own linked identity.
 func resolveNatsUser(
 	re *core.RequestEvent, txApp core.App, opts ThingRoutesOptions,
 	mode string, body createThingRequest, orgID, orgSlug string,
@@ -395,13 +348,10 @@ func resolveNatsUser(
 		}
 	}
 
-	// Scoped to the account, not global. A NATS user name only has to be
-	// unique within its own account -- the identity in a signed JWT is the
-	// public key, and the name is a label on it. Checking globally meant the
-	// second tenant who wanted "gateway-01" was refused because the first one
-	// had it, which is a cross-tenant collision in a platform whose entire
-	// point is that tenants do not collide. There is no unique index on the
-	// column, so this check is the whole policy.
+	// Scoped to the account, not global: a NATS user name only has to be unique
+	// within its account (the JWT identity is the public key), and a global
+	// check would let one tenant's names block another's. There is no unique
+	// index on the column, so this check is the whole policy.
 	if existing, _ := txApp.FindFirstRecordByFilter(
 		opts.NatsUserCollection,
 		"account_id = {:acct} && nats_username = {:u}",
@@ -410,18 +360,9 @@ func resolveNatsUser(
 		return "", re.BadRequestError(fmt.Sprintf("NATS username %q is already used in this organization", body.Code), nil)
 	}
 
-	// The synthetic email is globally unique (a partial unique index on the
-	// collection). The domain half is now organizations.code, which is itself
-	// globally unique and frozen, so the collision this check was written for --
-	// two organizations whose NAMES slugged identically ("Acme Inc" and
-	// "Acme, Inc." both gave acme-inc) sharing an identifier domain -- can no
-	// longer happen.
-	//
-	// The check stays because the local half can still repeat: a Thing code
-	// already used in this organization reaches here if assertThingCodeFree was
-	// somehow bypassed. Kept purely so the failure says what happened, rather
-	// than surfacing from Save() as "failed to create thing" and sending the
-	// reader looking in the wrong place entirely.
+	// The synthetic email has a global unique index. The domain half cannot
+	// collide, but the local half can if assertThingCodeFree was bypassed, so
+	// this says what happened instead of a bare "failed to create" from Save().
 	email := fmt.Sprintf("%s@%s.nats.local", body.Code, orgSlug)
 	if clash, _ := txApp.FindFirstRecordByFilter(
 		opts.NatsUserCollection,
@@ -457,8 +398,8 @@ func resolveNatsUser(
 	return u.Id, nil
 }
 
-// resolveNebulaHost mirrors resolveNatsUser for the Nebula side. The overlay IP is
-// operator-supplied, as it was in the form — this route does not allocate one.
+// resolveNebulaHost mirrors resolveNatsUser for the Nebula side. The overlay IP
+// is caller-supplied; this route does not allocate one.
 func resolveNebulaHost(
 	re *core.RequestEvent, txApp core.App, opts ThingRoutesOptions,
 	mode string, body createThingRequest, orgID, orgSlug string,
@@ -523,11 +464,9 @@ func resolveNebulaHost(
 	return h.Id, nil
 }
 
-// randomSecret returns a hex-encoded cryptographically-random string of nBytes
-// of entropy. It is used for the PocketBase password of a Thing and of the
-// nats_users record minted beside it — neither is ever typed by a person, and
-// the NATS identity authenticates to the bus with its signed JWT rather than
-// with this.
+// randomSecret returns nBytes of crypto/rand entropy, hex-encoded. Used for
+// PocketBase passwords nobody types; a NATS identity authenticates to the bus
+// with its signed JWT, not with this.
 func randomSecret(nBytes int) (string, error) {
 	b := make([]byte, nBytes)
 	if _, err := rand.Read(b); err != nil {

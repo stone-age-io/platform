@@ -19,29 +19,14 @@ import (
 	"platform/hooks"
 )
 
-// PocketBase's own minimum for auth record passwords. Checked up front so a typo
-// surfaces as a clear message instead of a validation error after the prompts.
+// PocketBase's own minimum for auth record passwords, checked before the
+// prompts finish.
 const minPasswordLen = 8
 
-// FALLBACK organization codes for the two infrastructure orgs (ADR 0002).
-//
-// These used to be pinned unconditionally, on the reasoning that a
-// deterministic code is what reserves the two strings: the unique index on
-// organizations.code makes them unavailable to every other org, so no
-// reserved-word list is needed. The cost was not worth it. Both orgs are
-// renameable -- --org-name and --operator-org -- and pinning meant bootstrap
-// and migrations/schema_update_org_code.go DISAGREED about the same org: a
-// fresh install of `--operator-org "816tech"` produced `operator`, while
-// running the backfill migration over an existing database produced `816tech`.
-// One deployment, two codes, decided by install history -- for a value that is
-// immutable and gets printed on physical labels.
-//
-// Codes are now derived from the name like every other org's, and these are
-// used only when the name yields nothing valid. So the two strings are no
-// longer reserved by construction: an org named "Operator" can take
-// `operator`. That is acceptable because nothing resolves an org by these
-// values -- they are written here and never read anywhere -- and the unique
-// index still stops two orgs sharing one code.
+// Fallback codes for the two infrastructure orgs (ADR 0002), used only when the
+// name yields no valid code. Codes are derived from the name, never pinned, so
+// bootstrap and migrations/schema_update_org_code.go agree on the same org.
+// These strings are not reserved: nothing resolves an org by them.
 const (
 	systemOrgCode   = "system"
 	operatorOrgCode = "operator"
@@ -49,8 +34,8 @@ const (
 
 // orgCodeFor derives an organization code from a display name, falling back to
 // one of the constants above when the name yields nothing the field will accept
-// (no alphanumerics at all, or a single character). Deliberately the same
-// derivation the backfill migration uses, which is the whole point: see above.
+// (no alphanumerics, or a single character). It must stay the derivation the
+// backfill migration uses.
 func orgCodeFor(name, fallback string) string {
 	if code := hooks.Slugify(name); hooks.OrgCodePattern.MatchString(code) {
 		return code
@@ -97,19 +82,14 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 				log.Fatalf("❌ Failed to find users collection: %v", err)
 			}
 
-			// The platform's own fields (is_operator, the org flags) come from
-			// schema.json via the migrations. The embedded libraries create their
-			// collections during OnBootstrap, so those exist even on a virgin DB —
-			// which makes it perfectly possible to run bootstrap before any
-			// migration has been applied. Doing so used to "succeed" while losing
-			// every platform flag, because record.Set() on a field that does not
-			// exist is a silent no-op in PocketBase: no operator, no is_system_org,
-			// no is_operator_org, and no error anywhere.
+			// Refuse to run before the migrations. The libraries' collections
+			// exist on a virgin DB, but the platform flags (is_operator, the org
+			// flags) come from schema.json, and PocketBase silently drops a write
+			// to a missing field: bootstrap would "succeed" with no operator.
 			requireSchemaFields(app, hooks.PlatformSchemaFields(orgColName, memberColName))
 
-			// Resolve the user before asking for a password: on a re-run the
-			// account already exists and the password is never used, so there is
-			// no reason to make the operator type one.
+			// Resolve the user first: on a re-run it exists and no password is
+			// needed.
 			var user *core.Record
 			existingUser, _ := app.FindAuthRecordByEmail("users", email)
 			if existingUser != nil {
@@ -128,8 +108,7 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 				user = core.NewRecord(usersCol)
 				user.Set("email", email)
 				user.Set("emailVisibility", true)
-				// No verification email is sent for the bootstrap account — it is
-				// created out-of-band by whoever owns the server.
+				// Created out-of-band by the server owner, so no verification mail.
 				user.Set("verified", true)
 				user.SetPassword(password)
 				if err := app.Save(user); err != nil {
@@ -161,15 +140,13 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 			} else {
 				org = core.NewRecord(orgCol)
 				org.Set("name", orgName)
-				// Derived from the name, same as every other org and same as the
-				// backfill migration. Set explicitly rather than left to
-				// RegisterOrgCode so that a name nothing can be derived from
-				// falls back to systemOrgCode instead of failing the bootstrap.
+				// Set here rather than by RegisterOrgCode so an underivable name
+				// falls back to systemOrgCode instead of failing bootstrap.
 				org.Set("code", orgCodeFor(orgName, systemOrgCode))
 				org.Set("active", true)
 				org.Set("owner", user.Id)
-				// The org-provisioning hook skips system orgs, avoiding duplicate
-				// provisioning — this org adopts the pre-seeded $SYS NATS records below.
+				// Provisioning skips system orgs: this one adopts the pre-seeded
+				// $SYS NATS records below.
 				org.Set("is_system_org", true)
 				if err := app.Save(org); err != nil {
 					log.Fatalf("❌ Failed to create organization: %v", err)
@@ -177,7 +154,7 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 				log.Printf("✅ Created organization '%s'", orgName)
 			}
 
-			// Backfill the flag on re-runs against DBs bootstrapped before it existed.
+			// Backfill for DBs bootstrapped before the flag existed.
 			if !org.GetBool("is_system_org") {
 				org.Set("is_system_org", true)
 				if err := app.Save(org); err != nil {
@@ -185,9 +162,7 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 				}
 			}
 
-			// Same backfill for the code, on a DB bootstrapped before ADR 0002.
-			// Only when empty: a code that already exists is frozen. It agrees
-			// with the migration now, so reaching here after one is a no-op.
+			// Same for the code (pre-ADR 0002). Only when empty: a code is frozen.
 			if org.GetString("code") == "" {
 				org.Set("code", orgCodeFor(orgName, systemOrgCode))
 				if err := app.Save(org); err != nil {
@@ -195,25 +170,14 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 				}
 			}
 
-			// Collected rather than fatal: each of these leaves the platform usable
-			// but incompletely provisioned, and the operator needs to see all of
-			// them at once instead of fixing one per run.
+			// Collected rather than fatal, so the operator sees every gap in one run.
 			var problems []string
 
-			// ORDER IS LOAD-BEARING: link what is POINTED AT before what points.
-			//
-			// The $SYS user carries account_id and role_id. hooks/relation_tenancy.go
-			// refuses a relation into another organization, and it re-checks every
-			// relation when the record's own organization moves -- which is exactly
-			// what adoption does, from "" to the System org. So linking the user
-			// while its role is still unlinked compares the user (now System) against
-			// a role that is still blank, and the adoption is refused with "the
-			// role_id field must reference a record in the same organization".
-			//
-			// That is the guard working, not a false positive: mid-adoption the two
-			// records genuinely do disagree. The fix is to finish the targets first.
-			// It surfaced only against a real `bootstrap` run, which is why
-			// TestBootstrapLinksTheSystemNatsRecords now exists.
+			// Order is load-bearing: link the account and role before the user
+			// that points at them. hooks/relation_tenancy.go re-checks relations
+			// when a record's organization moves, so a user adopted ahead of its
+			// role is refused. TestBootstrapLinksNatsTargetsBeforeTheUserThatPointsAtThem
+			// pins the order.
 			if !linkSingleton(app, natsOpts.AccountCollectionName, org.Id, "NATS Account", "name", orgName) {
 				problems = append(problems, "NATS Account not linked — new organizations cannot be provisioned")
 			}
@@ -231,8 +195,7 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 					ca := core.NewRecord(nebulaCol)
 					ca.Set("name", orgName+" CA")
 					ca.Set("organization", org.Id)
-					// Was hardcoded to 10; use the configured default so bootstrap
-					// and the org-provisioning hook agree.
+					// The configured default, so bootstrap and provisioning agree.
 					ca.Set("validity_years", viper.GetInt("nebula.default_ca_validity_years"))
 					if err := app.Save(ca); err == nil {
 						log.Printf("✅ Provisioned Nebula CA for '%s'", orgName)
@@ -250,16 +213,15 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 
 			ensureOwnerMembership(app, memberCol, user, org)
 
-			// Operator organization: the platform operator's own org, whose NATS
-			// account acts as the hub for cross-account service imports (helpdesk
-			// etc.). Provisioned like any regular org via the org-provisioning hook.
+			// The operator's own org, whose NATS account is the hub for
+			// cross-account service imports.
 			operatorOrg := ensureOperatorOrg(app, orgCol, user, operatorOrgName)
 			if operatorOrg != nil {
 				ensureOwnerMembership(app, memberCol, user, operatorOrg)
 			}
 
-			// Default working context: the operator org is the day-to-day org;
-			// the System org exists only for cluster-level NATS operations.
+			// The operator org is the day-to-day context; System is only for
+			// cluster-level NATS operations.
 			currentOrg := org
 			if operatorOrg != nil {
 				currentOrg = operatorOrg
@@ -269,8 +231,7 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 				log.Printf("⚠️ Failed to set user context: %v", err)
 			}
 
-			// A missing operator org is NOT a problem here: --operator-org is
-			// documented as optional and ensureOperatorOrg already warns.
+			// A missing operator org is not a problem: --operator-org is optional.
 
 			if len(problems) > 0 {
 				fmt.Println("\n⚠️  Bootstrap finished, but the platform is only partly provisioned:")
@@ -300,15 +261,9 @@ Also links the pre-existing NATS System Account/User/Role (seeded by pb-nats/sup
 	app.RootCmd.AddCommand(cmd)
 }
 
-// requireSchemaFields aborts unless every listed field exists. Bootstrap writes
-// platform flags that only exist once schema.json has been imported, and a write
-// to a missing field is silently discarded — so without this check the operator
-// gets a "Bootstrap complete!" that produced no platform operator at all.
-//
-// The list and the walk are hooks.PlatformSchemaFields / hooks.MissingFields,
-// shared with the `schema` readiness check, which asks the identical question.
-// What stays here is the reaction: this one is fatal, because bootstrap has
-// nothing useful to do afterwards.
+// requireSchemaFields aborts unless every listed field exists. The check is
+// shared with the `schema` readiness check (hooks.MissingFields); here it is
+// fatal, because bootstrap has nothing useful to do without the fields.
 func requireSchemaFields(app *pocketbase.PocketBase, want []hooks.CollectionFields) {
 	missing := hooks.MissingFields(app, want)
 	if len(missing) == 0 {
@@ -322,8 +277,7 @@ func requireSchemaFields(app *pocketbase.PocketBase, want []hooks.CollectionFiel
 }
 
 // promptNewPassword reads a password twice from the terminal and returns it only
-// if both entries match. The bootstrap password cannot be recovered or reset
-// without another CLI run, so a silent typo here is expensive.
+// if both entries match. Recovering from a typo takes another CLI run.
 func promptNewPassword() string {
 	fmt.Print("Admin Password: ")
 	first, err := term.ReadPassword(int(syscall.Stdin))
@@ -345,14 +299,10 @@ func promptNewPassword() string {
 	return string(first)
 }
 
-// linkSingleton adopts the single pre-existing NATS Account/User/Role
-// (seeded by `pb-nats superuser upsert`) into the given organization.
-// Only unlinked records are candidates — regular orgs provision their own
-// records via hooks, so those must not make adoption look ambiguous.
-// Fatal only when more than one unlinked record exists.
-//
-// Returns false when there was nothing to adopt, so the caller can report an
-// incompletely provisioned platform instead of printing unqualified success.
+// linkSingleton adopts the single unlinked NATS Account/User/Role (seeded by
+// `superuser upsert`) into the given organization. Other orgs' records are
+// already linked, so they do not count. Fatal when more than one is unlinked;
+// false when there was nothing to adopt.
 func linkSingleton(app *pocketbase.PocketBase, colName, orgID, label, nameField, orgName string) bool {
 	col, _ := app.FindCollectionByNameOrId(colName)
 	if col == nil {
@@ -404,10 +354,9 @@ func ensureOwnerMembership(app *pocketbase.PocketBase, memberCol *core.Collectio
 	log.Printf("✅ Linked user to organization '%s' as Owner", org.GetString("name"))
 }
 
-// ensureOperatorOrg finds or creates the single operator organization.
-// Saving a new org fires the org-provisioning hook, which creates its NATS
-// account (the services hub) and Nebula CA like any regular organization.
-// Returns nil when no operator org exists and no name was given.
+// ensureOperatorOrg finds or creates the single operator organization, which
+// the provisioning hook gives a NATS account and Nebula CA like any other.
+// Returns nil when none exists and no name was given.
 func ensureOperatorOrg(app *pocketbase.PocketBase, orgCol *core.Collection, user *core.Record, name string) *core.Record {
 	if existing, _ := app.FindFirstRecordByFilter(orgCol.Id, "is_operator_org = true"); existing != nil {
 		log.Printf("🏢 Operator organization '%s' already exists.", existing.GetString("name"))
@@ -418,8 +367,7 @@ func ensureOperatorOrg(app *pocketbase.PocketBase, orgCol *core.Collection, user
 		return nil
 	}
 
-	// A same-named org may predate the flag (e.g. created via the UI).
-	// Adopt it instead of tripping the unique name index.
+	// Adopt a same-named org instead of tripping the unique name index.
 	org, _ := app.FindFirstRecordByFilter(orgCol.Id, "name = {:name}", dbx.Params{"name": name})
 	if org == nil {
 		org = core.NewRecord(orgCol)
@@ -427,9 +375,7 @@ func ensureOperatorOrg(app *pocketbase.PocketBase, orgCol *core.Collection, user
 		org.Set("active", true)
 		org.Set("owner", user.Id)
 	}
-	// Derived from --operator-org rather than pinned, so a fresh bootstrap and a
-	// `migrate up` over an existing database land on the same code (ADR 0002).
-	// Only when empty -- an existing code is frozen.
+	// Only when empty: an existing code is frozen (ADR 0002).
 	if org.GetString("code") == "" {
 		org.Set("code", orgCodeFor(name, operatorOrgCode))
 	}

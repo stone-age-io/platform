@@ -11,10 +11,8 @@ import (
 	"platform/migrations"
 )
 
-// removed names every field the drop migration is responsible for, with the id
-// the migration keys on. Keyed by id because that is what the migration uses;
-// a test that looked these up by name would pass against a collection that had
-// been rebuilt with different ids and prove nothing.
+// removed names every field the drop migration removes, keyed by the id the
+// migration uses. A lookup by name would pass against a rebuilt collection.
 var removed = []struct {
 	collection string
 	field      string
@@ -25,15 +23,10 @@ var removed = []struct {
 	{"thing_types", "nats_role", "relation_tt_nats_role"},
 }
 
-// restorePreDropSchema puts the old schema back through the REAL importer, so
-// the state under test is the state a live database is actually in rather than
-// one assembled field by field in Go.
-//
-// testdata/pre_drop_contract_layer.json holds the message_schemas collection
-// whole, plus partial entries for the two collections that lost fields. Partial
-// is enough: ImportCollections with deleteMissing=false re-adds every live field
-// the import did not carry by id, so listing only the removed fields restores
-// exactly the pre-migration shape and leaves everything else alone.
+// restorePreDropSchema puts the old schema back through the real importer, so
+// the state under test matches a live database. The fixture lists only the
+// removed fields of the two partial collections; an additive import keeps every
+// other live field.
 func restorePreDropSchema(t *testing.T, app *pocketbase.PocketBase) {
 	t.Helper()
 
@@ -62,11 +55,9 @@ func restorePreDropSchema(t *testing.T, app *pocketbase.PocketBase) {
 	}
 }
 
-// TestDropContractLayerRemovesTheOldSchema is the test the migration set cannot
-// provide on its own. A fresh database imports the already-thinned schema.json,
-// so `migrate up` reaches this migration with nothing left to remove and passes
-// without touching anything. This restores the old shape first, so the removal
-// is what is under test.
+// TestDropContractLayerRemovesTheOldSchema is the test `migrate up` cannot
+// provide: a fresh database has nothing to remove, so this restores the old
+// shape first.
 func TestDropContractLayerRemovesTheOldSchema(t *testing.T) {
 	app := testutil.SetupApp(t)
 	restorePreDropSchema(t, app)
@@ -93,12 +84,10 @@ func TestDropContractLayerRemovesTheOldSchema(t *testing.T) {
 	}
 }
 
-// TestDropContractLayerIsIdempotent covers the path a fresh database takes, and
-// the path a re-run takes if the migration set is ever replayed.
+// TestDropContractLayerIsIdempotent covers a fresh database and a re-run.
 func TestDropContractLayerIsIdempotent(t *testing.T) {
 	app := testutil.SetupApp(t)
 
-	// First call against an already-thinned database: nothing to remove.
 	if err := migrations.DropContractLayer(app); err != nil {
 		t.Fatalf("DropContractLayer on a thinned database: %v", err)
 	}
@@ -112,13 +101,9 @@ func TestDropContractLayerIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestMessageSchemasCannotBeDeletedWhileItsRelationExists pins the reason the
-// migration's step order is what it is. PocketBase refuses to delete a
-// collection that still has relation references pointing at it, so
-// thing_type_operations.schema has to be removed first. Without this test the
-// ordering comment in the migration is an assertion nobody checked, and a
-// well-meaning reorder would fail only on databases that still had the old
-// schema -- which is every real one, and none of the test ones.
+// TestMessageSchemasCannotBeDeletedWhileItsRelationExists pins the migration's
+// step order: PocketBase refuses to delete a collection with relation references
+// to it. A reorder would fail only on real databases with the old schema.
 func TestMessageSchemasCannotBeDeletedWhileItsRelationExists(t *testing.T) {
 	app := testutil.SetupApp(t)
 	restorePreDropSchema(t, app)

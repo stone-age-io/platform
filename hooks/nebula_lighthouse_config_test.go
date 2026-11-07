@@ -7,24 +7,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// WHY THIS TEST EXISTS
+// A DEPENDENCY CONTRACT test, like those in nebula_rotation_test.go.
 //
-// A DEPENDENCY CONTRACT test, like the two beside it in nebula_rotation_test.go:
-// it asserts a pb-nebula behaviour rather than platform code, so an upstream
-// regression or a downgrade fails here instead of in production.
+// The contract is three column NAMES: additional_host_ports, advertise_addrs
+// and local_allow_list, declared by pb-nebula and by schema.json and written by
+// the console form. PocketBase discards a write to a missing field in silence,
+// so a spelling drift would store nothing and change no config, with no error.
 //
-// The contract is three column NAMES. pb-nebula declares additional_host_ports,
-// advertise_addrs and local_allow_list in its own collections manager and reads
-// them back off the record; schema.json declares the same three, and the console
-// form writes them. Nothing checks that the two spellings agree -- and PocketBase
-// DISCARDS A WRITE TO A FIELD THAT DOES NOT EXIST, in silence. So a drift here
-// does not error anywhere: the operator fills in a second lighthouse address, the
-// form saves, the record stores nothing, and config_yaml comes back exactly as it
-// was. The same failure shape as the managed-export names, the re-import that
-// keeps the live field, and the flag PocketBase discarded.
-//
-// It also pins the split between the two halves of the feature, which is the part
-// most likely to be "simplified" by someone who reads them as duplicates:
+// It also pins the split between the two halves, which are not duplicates:
 //
 //   - a lighthouse's addresses are BOOTSTRAP data and belong in every OTHER
 //     host's static_host_map
@@ -61,8 +51,7 @@ func TestLighthouseAddressColumnsReachTheGeneratedConfig(t *testing.T) {
 		lanAddr      = "10.0.0.10:4242"
 	)
 
-	// Every column under test, set through the ordinary record API -- the same
-	// path the console form takes.
+	// Every column under test, set the way the console form sets them.
 	lh := newRecord("nebula_hosts")
 	lh.Set("email", "lh@lighthouse-addr.test")
 	lh.Set("emailVisibility", true)
@@ -111,8 +100,7 @@ func TestLighthouseAddressColumnsReachTheGeneratedConfig(t *testing.T) {
 		t.Fatalf("peer's static_host_map has no entry for the lighthouse at %s; got %v",
 			lighthouseIP, peerCfg.StaticHostMap)
 	}
-	// Nebula tries the list in order and the primary is the operator's stated
-	// first choice, so order is asserted, not just membership.
+	// Nebula tries the list in order, so order is asserted, not just membership.
 	want := []string{primaryAddr, v6Addr, lanAddr}
 	if len(entry) != len(want) {
 		t.Fatalf("peer's static_host_map carries %d addresses, want %d: %v", len(entry), len(want), entry)
@@ -153,18 +141,16 @@ func TestLighthouseAddressColumnsReachTheGeneratedConfig(t *testing.T) {
 			"without it a containerised host advertises docker0 to every peer", blocked, ok)
 	}
 
-	// listen.port still comes from public_host_port alone. A host listens on one
-	// port; the extra entries name other ADDRESSES it is reachable at, and a v6
-	// entry parsed with the old last-colon split would have landed here as 10.
+	// listen.port comes from public_host_port alone; the extra entries are other
+	// ADDRESSES, and a v6 entry split at the last colon would land here.
 	if lhCfg.Listen.Port != 4242 {
 		t.Errorf("listen.port = %d, want 4242 (from public_host_port, not from the address list)",
 			lhCfg.Listen.Port)
 	}
 }
 
-// generatedConfig is the slice of a Nebula config this test reads. Parsed rather
-// than string-matched: `grep advertise_addrs` would pass on a commented-out key
-// and on one rendered into the wrong section.
+// generatedConfig is the slice of a Nebula config this test reads. Parsed, not
+// string-matched, which would pass on a commented-out or misplaced key.
 type generatedConfig struct {
 	StaticHostMap map[string][]string `yaml:"static_host_map"`
 	Lighthouse    struct {

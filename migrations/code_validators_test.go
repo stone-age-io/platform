@@ -13,11 +13,9 @@ import (
 	"platform/migrations"
 )
 
-// patterned names the four collections the migration is responsible for and the
-// id it keys on. Keyed by id for the reason drop_contract_layer_test.go is: a
-// lookup by name would pass against a collection rebuilt with different ids and
-// prove nothing, and this migration's whole premise is that the id in
-// schema.json matches the live one so a re-import actually replaces the field.
+// patterned names the four collections the migration patterns, keyed by field
+// id: the migration only works if the id in schema.json matches the live one,
+// and a lookup by name would not notice a mismatch.
 var patterned = []struct {
 	collection string
 	id         string
@@ -29,8 +27,7 @@ var patterned = []struct {
 }
 
 // restorePreValidatorSchema puts the unpatterned `code` field back through the
-// REAL importer, so the state under test is the state a live database is in
-// rather than one assembled field by field in Go.
+// real importer, so the state under test matches a live database.
 func restorePreValidatorSchema(t *testing.T, app *pocketbase.PocketBase) {
 	t.Helper()
 
@@ -70,18 +67,9 @@ func codeField(t *testing.T, app core.App, collection, id string) *core.TextFiel
 }
 
 // TestCodeValidatorsReachAnExistingField is the test `migrate up` cannot
-// provide. A fresh database imports the already-patterned schema.json, so the
-// migration runs against a field that already has the constraint and passes
-// without changing anything.
-//
-// It is also the specific check migrations/CLAUDE.md demands before trusting any
-// re-import migration: PocketBase's importer re-adds every live field the
-// import did not carry BY ID, and FieldsList.add then keeps the live definition
-// over the imported one. A field whose id in schema.json does not match the
-// live id is therefore silently left alone while the migration logs its tick.
-// `text1997877400` is PocketBase's deterministic id for a field named `code`
-// (the type prefix plus crc32 of the name), which is why this works — assert it
-// rather than assume it.
+// provide: a fresh database already has the constraint. It also checks the
+// re-import trap in migrations/CLAUDE.md: the import only replaces the live
+// field because `text1997877400` is PocketBase's deterministic id for `code`.
 func TestCodeValidatorsReachAnExistingField(t *testing.T) {
 	app := testutil.SetupApp(t)
 	restorePreValidatorSchema(t, app)
@@ -101,14 +89,9 @@ func TestCodeValidatorsReachAnExistingField(t *testing.T) {
 	}
 }
 
-// TestCodeValidatorIsEnforcedOnSave proves the pattern is a constraint rather
-// than a decoration. The definition landing in the collection is necessary but
-// not sufficient — what matters is that PocketBase refuses the write.
-//
-// The rejected values are the ones with consequences, not arbitrary bad input:
-// a dot splits one NATS token into two, `*` and `>` are the NATS wildcards that
-// would widen a generated permission pattern from one identity to every
-// identity, and a space breaks the JetStream domain an edge site's code becomes.
+// TestCodeValidatorIsEnforcedOnSave proves PocketBase refuses the write, not
+// just that the definition landed. The rejected values are the ones with
+// consequences (see CodePattern).
 func TestCodeValidatorIsEnforcedOnSave(t *testing.T) {
 	app := testutil.SetupApp(t)
 
@@ -153,10 +136,8 @@ func TestCodeValidatorIsEnforcedOnSave(t *testing.T) {
 		}
 	}
 
-	// Blank stays legal. `code` is optional on all four collections and the
-	// unique index is partial, so a record without one is an ordinary state --
-	// the platform's pre-onboarding inventory and a provider's service work both
-	// cover gear with no upstream record (ADR 0002).
+	// Blank stays legal: `code` is optional and the unique index is partial
+	// (ADR 0002).
 	r := core.NewRecord(col)
 	r.Set("name", "probe")
 	r.Set("code", "")
@@ -165,13 +146,9 @@ func TestCodeValidatorIsEnforcedOnSave(t *testing.T) {
 	}
 }
 
-// TestNonConformingCodesReportsRatherThanRewrites pins the migration's one
-// deliberate omission. Every other constraint-adding migration here backfills;
-// this one refuses to, because `code` is frozen
-// (schema_update_inventory_code_freeze.go) precisely so that nothing rewrites a
-// string that is printed on a label and baked into a signed subject. Rewriting
-// codes at scale to satisfy a new validator is the exact act the freeze exists
-// to prevent, so the migration reports and leaves the decision to a human.
+// TestNonConformingCodesReportsRatherThanRewrites pins that the migration does
+// not backfill: `code` is frozen (schema_update_inventory_code_freeze.go), so it
+// reports offenders and leaves the fix to a human.
 func TestNonConformingCodesReportsRatherThanRewrites(t *testing.T) {
 	app := testutil.SetupApp(t)
 	restorePreValidatorSchema(t, app)
@@ -199,8 +176,7 @@ func TestNonConformingCodesReportsRatherThanRewrites(t *testing.T) {
 		t.Fatalf("NonConformingCodes = %+v, want exactly the one legacy code", offenders)
 	}
 
-	// The record survived: readable, un-rewritten, and still carrying the code
-	// someone screwed to a wall.
+	// The record is still readable and its code unchanged.
 	reloaded, err := app.FindRecordById("thing_types", bad.Id)
 	if err != nil {
 		t.Fatalf("the non-conforming record became unreadable: %v", err)

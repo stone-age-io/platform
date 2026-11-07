@@ -33,19 +33,14 @@ func scrape(t *testing.T, s *Set, token string, req *http.Request) *httptest.Res
 	return rec
 }
 
-// The exposition must parse with Prometheus's own parser. This is the reason
-// the client library is used rather than a hand-written text encoder: there is
-// no scrape test in CI, so a subtly malformed body — bad label escaping, a
-// duplicated series, a missing type line — would look completely fine in a
-// terminal and be silently unscrapeable.
+// The exposition must parse with Prometheus's own parser. Nothing in CI scrapes
+// it, so a malformed body would otherwise look fine and be unscrapeable.
 func TestExpositionParses(t *testing.T) {
 	s := New("stone_age", "v0.2.0")
 	s.Observe(reportWith(t, map[string]health.Result{
 		"database": health.OK("responding"),
-		// A detail containing the characters that break a naive encoder: quotes,
-		// backslashes and newlines all appear in real check details (Windows
-		// paths, wrapped errors), so anything that leaked one into a label would
-		// break the scrape.
+		// Quotes, backslashes and newlines appear in real check details and
+		// would break the scrape if one leaked into a label.
 		"nats_trust": health.Fail(`rejected "sys": C:\path\x`+"\nsecond line", "fix it"),
 	}))
 
@@ -55,7 +50,7 @@ func TestExpositionParses(t *testing.T) {
 	}
 
 	// UTF8Validation is what a current Prometheus server uses; a zero-value
-	// TextParser has no scheme at all and panics.
+	// TextParser panics.
 	parser := expfmt.NewTextParser(model.UTF8Validation)
 	families, err := parser.TextToMetricFamilies(strings.NewReader(rec.Body.String()))
 	if err != nil {
@@ -74,9 +69,8 @@ func TestExpositionParses(t *testing.T) {
 	}
 }
 
-// promlint catches the convention mistakes that make a metric awkward to query
-// forever: a counter without _total, a byte gauge without _bytes, a help string
-// that is missing.
+// promlint catches naming mistakes such as a counter without _total or a
+// missing help string.
 func TestExpositionPassesPromlint(t *testing.T) {
 	s := New("stone_age", "v0.2.0")
 	s.Observe(reportWith(t, map[string]health.Result{"database": health.OK("responding")}))
@@ -86,18 +80,16 @@ func TestExpositionPassesPromlint(t *testing.T) {
 		t.Fatalf("lint failed: %v", err)
 	}
 	for _, p := range problems {
-		// The Go and process collectors are upstream's and carry a couple of
-		// known naming quirks; only our own namespace is our problem.
+		// Only our own namespace; the upstream collectors have known quirks.
 		if strings.HasPrefix(p.Metric, "stone_age_") {
 			t.Errorf("promlint: %s: %s", p.Metric, p.Text)
 		}
 	}
 }
 
-// A check's state is exposed as a complete state set: one series per state,
-// exactly one of them 1. A plain boolean would collapse warn and skipped into
-// "not ok", which is precisely the distinction the health package exists to
-// keep — see TestSkippedRanksBelowOK.
+// A check's state is a complete state set: one series per state, exactly one of
+// them 1. A boolean would collapse warn and skipped into "not ok" (see
+// TestSkippedRanksBelowOK).
 func TestCheckStateIsACompleteSet(t *testing.T) {
 	s := New("stone_age", "v0.2.0")
 	s.Observe(reportWith(t, map[string]health.Result{
@@ -150,8 +142,7 @@ func TestReadyGaugeTracksReadinessNotWarnings(t *testing.T) {
 	}
 }
 
-// Before the first probe there is no report, and that must read as not ready —
-// the same rule as the HTTP endpoint's nil handling.
+// No report yet must read as not ready, as the HTTP endpoint's nil handling does.
 func TestObserveNilIsNotReady(t *testing.T) {
 	s := New("stone_age", "v0.2.0")
 	s.Observe(nil)
@@ -160,25 +151,20 @@ func TestObserveNilIsNotReady(t *testing.T) {
 	}
 }
 
-// Two Sets must not collide. slackhq/nebula registers collectors into the
-// default registry when a Nebula host runs in-process, which is why this
-// package builds its own — a shared registry would make the endpoint's contents
-// depend on which unrelated library happened to initialise.
+// Two Sets must not collide: each has a private registry, because
+// slackhq/nebula registers collectors into the default one.
 func TestSetsUsePrivateRegistries(t *testing.T) {
 	a := New("stone_age", "v1")
 	b := New("agent", "v1")
 	if a.Registry == b.Registry {
 		t.Fatal("two Sets share a registry")
 	}
-	// Registering the same collector names twice would panic on a shared
-	// registry; reaching here at all is most of the assertion.
+	// A shared registry would have panicked in New.
 	a.Observe(reportWith(t, map[string]health.Result{"x": health.OK("")}))
 	b.Observe(reportWith(t, map[string]health.Result{"x": health.OK("")}))
 }
 
-// The default is an open endpoint, which is the documented choice: aggregate
-// counts with no customer identifiers, and a metrics endpoint that needs a
-// credential is one that mostly does not get scraped.
+// The default is an open endpoint, by design (see Handler).
 func TestNoTokenMeansOpen(t *testing.T) {
 	s := New("stone_age", "v1")
 	rec := scrape(t, s, "", httptest.NewRequest(http.MethodGet, "/metrics", nil))
@@ -187,10 +173,8 @@ func TestNoTokenMeansOpen(t *testing.T) {
 	}
 }
 
-// When a token IS set, both forms every scraper supports must work — Prometheus
-// `authorization` sends Bearer, Prometheus `basic_auth` and most uptime
-// checkers send Basic. Supporting only one would mean the operator's existing
-// scrape config silently 401s.
+// With a token set, both Bearer and Basic must work, or an existing scrape
+// config using the other form gets 401.
 func TestTokenAcceptsBearerAndBasic(t *testing.T) {
 	const token = "s3cret-scrape-token"
 	s := New("stone_age", "v1")

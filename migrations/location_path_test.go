@@ -60,9 +60,8 @@ func TestLocationPathBackfill(t *testing.T) {
 			t.Fatalf("%s: %v", sql, err)
 		}
 	}
-	// What a database from before the field looks like: no paths, one
-	// location that predates generated codes, and a loop made by hand -- the
-	// UI never offers a descendant as a parent, but nothing below it stopped one.
+	// A database from before the field: no paths, one location without a code,
+	// and a hand-made loop.
 	exec("UPDATE {{locations}} SET [[path]] = ''", nil)
 	exec("UPDATE {{locations}} SET [[code]] = '' WHERE [[id]] = {:id}", dbx.Params{"id": building})
 	exec("UPDATE {{locations}} SET [[parent]] = {:b} WHERE [[id]] = {:a}", dbx.Params{"a": loopA, "b": loopB})

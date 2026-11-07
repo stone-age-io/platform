@@ -13,10 +13,8 @@ func fixed(res Result) Func {
 	return func(context.Context) Result { return res }
 }
 
-// The central rule of the report: only a failure makes a deployment unready.
-// Warnings describe things a human should fix and a probe cannot; treating them
-// as failures would have an orchestrator restart a working platform because
-// at-rest encryption is off, which is both useless and self-inflicted downtime.
+// Only a failure makes a deployment unready. A warning is for a human; as a
+// failure it would have an orchestrator restart a working platform.
 func TestOnlyFailuresMakeUnready(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -50,11 +48,8 @@ func TestOnlyFailuresMakeUnready(t *testing.T) {
 	}
 }
 
-// Skipped must not read as OK. A check that never ran and a check that passed
-// are different facts, and collapsing them is how a green tick stops meaning
-// anything — the edge checks skip themselves when the local monitoring port is
-// unreachable, and reporting that as "uplink fine" would be a lie about an
-// islanded site.
+// Skipped must not read as OK: the agent's edge checks skip when the local
+// monitoring port is unreachable, and "ok" would hide an islanded site.
 func TestSkippedRanksBelowOK(t *testing.T) {
 	if StateSkipped.severity() >= StateOK.severity() {
 		t.Fatal("skipped must rank below ok, or an unrun check reads as a passing one")
@@ -94,14 +89,14 @@ func TestPanickingCheckBecomesAFailure(t *testing.T) {
 	if !strings.Contains(boom.Detail, "kaboom") {
 		t.Errorf("the panic value should reach the report, got %q", boom.Detail)
 	}
-	// The other check still ran: one bad check must not lose the whole report.
+	// One bad check must not lose the whole report.
 	if len(rep.Checks) != 2 {
 		t.Errorf("got %d checks, want 2", len(rep.Checks))
 	}
 }
 
-// Results carry the name the registry knows them by, and come back sorted, so
-// two readiness responses can be diffed without spurious reordering.
+// Results carry their registered names and come back sorted, so two responses
+// diff cleanly.
 func TestResultsAreNamedAndSorted(t *testing.T) {
 	var reg Registry
 	reg.Register("zulu", fixed(OK("")))
@@ -122,9 +117,7 @@ func TestResultsAreNamedAndSorted(t *testing.T) {
 	}
 }
 
-// Re-registering a name replaces it rather than running both. Two checks under
-// one label would make the metric series ambiguous — the state set would have
-// two writers racing for the same gauge.
+// Re-registering a name replaces it, so two checks never race for one gauge.
 func TestRegisterReplacesByName(t *testing.T) {
 	var reg Registry
 	reg.Register("dup", fixed(OK("first")))
@@ -140,9 +133,8 @@ func TestRegisterReplacesByName(t *testing.T) {
 	}
 }
 
-// A check that ignores its context must not be able to hang the probe forever.
-// Run gives every check the caller's context; this asserts the deadline is
-// actually propagated, which is the half a check can rely on.
+// Run propagates the caller's deadline to every check, which is what a check
+// relies on to avoid hanging the probe.
 func TestChecksReceiveTheCallerDeadline(t *testing.T) {
 	var reg Registry
 	var gotDeadline bool
@@ -160,8 +152,8 @@ func TestChecksReceiveTheCallerDeadline(t *testing.T) {
 	}
 }
 
-// Readiness maps onto the HTTP status a probe acts on: 503 unready, 200 ready
-// — including ready-with-warnings, since a restart cannot fix a warning.
+// 503 unready, 200 ready, including ready with warnings: a restart cannot fix
+// a warning.
 func TestStatusCodeAndBody(t *testing.T) {
 	var reg Registry
 	reg.Register("warn", fixed(Warn("noisy", "do something")))
@@ -189,9 +181,8 @@ func TestStatusCodeAndBody(t *testing.T) {
 	}
 }
 
-// Before the first probe there is no answer, and "no answer" must read as
-// unready rather than as an empty success — that is exactly the window during
-// startup when traffic should not be routed here yet.
+// Before the first probe, "no answer" must read as unready: traffic should not
+// be routed here yet.
 func TestNilReportIsUnready(t *testing.T) {
 	rec := httptest.NewRecorder()
 	WriteJSON(rec, nil)
@@ -222,16 +213,13 @@ func TestProberSnapshotAndHooks(t *testing.T) {
 	if snap := p.Snapshot(); snap == nil {
 		t.Fatal("Snapshot must be populated by the time Start returns")
 	}
-	// Start runs once synchronously, so both hooks have fired exactly once —
-	// OnChange included, because nil -> first report is a transition.
+	// Both hooks fired once: nil -> first report counts as a transition.
 	if refreshes != 1 || changes != 1 {
 		t.Fatalf("after Start: refreshes=%d changes=%d, want 1 and 1", refreshes, changes)
 	}
 }
 
-// OnRefresh fires every probe and OnChange only on a flip. Collapsing them
-// would either leave the metrics gauges stale between transitions or write a
-// log line every interval forever.
+// OnRefresh fires every probe (metrics) and OnChange only on a flip (logs).
 func TestRefreshFiresEveryProbeChangeOnlyOnFlip(t *testing.T) {
 	var reg Registry
 	res := OK("")

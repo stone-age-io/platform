@@ -16,36 +16,21 @@ import (
 
 // Operator-editable bodies for the emails the platform composes itself.
 //
-// WHY THIS EXISTS AT ALL. PocketBase already has editable mail templates, and
-// they are the right place for anything it sends on its own -- verification,
-// password reset, confirm-email-change, OTP, the new-device auth alert. But that
-// set is CLOSED: the five live on an auth collection as typed fields
-// (core/collection_model_auth_options.go) and there is no mechanism, in the API
-// or in /_, for registering a sixth kind. Any email the platform composes for
-// ITSELF therefore has nowhere to live but Go.
+// PocketBase's own editable templates are a closed set of five on each auth
+// collection, with no way to register a sixth, so the platform's own mails
+// (the org invite) need a home of their own that an operator can edit without a
+// rebuild.
 //
-// It lived in Go, in a library, as a const. Changing one word of the
-// organization invite meant editing pb-tenancy, tagging it, `go get`, rebuild,
-// redeploy -- for copy that an operator is exactly the right person to write and
-// a developer is exactly the wrong one. That is the whole motivation.
+// A collection rather than a file: it is editable in /_ beside the SMTP
+// settings and travels with backups. All rules are nil, so it is
+// superuser-only.
 //
-// WHY A COLLECTION RATHER THAN A FILE. A file needs a volume and shell access to
-// the container; a collection is editable in /_ by the superuser who is already
-// there configuring SMTP, and it travels with the database into a backup. All
-// five rules are nil, so it is superuser-only -- an email body is close enough to
-// code that a tenant owner has no business editing one.
+// The stored body is a fragment, and the shell below is added at send time,
+// because the /_ rich-text editor strips <!DOCTYPE> and <html>.
 //
-// WHY THE BODY IS A FRAGMENT. /_ renders an `editor` field as a rich-text box.
-// Handed a full document it would fight the operator over <!DOCTYPE> and <html>,
-// which TinyMCE strips. So the stored body is the CONTENT, the shell below is
-// added at send time, and what the operator edits in /_ looks like what lands in
-// the mailbox. Go template actions survive that round trip as plain text.
-//
-// WHY EVERY PATH FALLS BACK. A template that does not compile must not be able
-// to stop an invitation: the operator who broke it is not the person waiting on
-// the mail. A missing row, an inactive row, a blank field, and a template that
-// fails to parse or execute all resolve to the compiled-in default. The default
-// is the floor, not a seed -- it is never removed once a row exists.
+// Every path falls back to the compiled-in default (missing or inactive row,
+// blank field, a template that fails to parse or execute), so a broken edit
+// cannot stop an invitation. The default is never removed.
 
 // EmailTemplatesCollection is the collection holding those bodies.
 const EmailTemplatesCollection = "email_templates"
@@ -54,33 +39,27 @@ const EmailTemplatesCollection = "email_templates"
 // form. An active row in EmailTemplatesCollection with a matching Key overrides
 // Subject and Body; this value is what the platform falls back to.
 //
-// Subject is rendered with text/template and Body with html/template. The split
-// is deliberate: a subject line is not markup, and escaping it would put &amp;
-// in front of the reader. A body IS markup, and the values interpolated into it
-// include an organization name and a user-settable display name -- which is
-// precisely the input that must not be able to close a tag. The library this
-// replaced used text/template for both.
+// Subject uses text/template, since escaping it would show &amp; to the reader.
+// Body uses html/template, because it interpolates user-settable names that
+// must not be able to close a tag.
 type EmailTemplate struct {
-	// Key matches the `key` column and is the stable identifier. Changing one
-	// orphans an operator's edits, so treat it like a collection name.
+	// Key matches the `key` column. Changing one orphans an operator's edits.
 	Key string
 
 	// Subject is a text/template source.
 	Subject string
 
-	// Body is an html/template source for the CONTENT of the mail, with no
-	// document shell. See the comment above.
+	// Body is an html/template source for the content only, with no document
+	// shell.
 	Body string
 
-	// Description is written to the row when it is seeded, to say what sends this
-	// mail. It is for the operator reading the collection in /_ and is never read
-	// back.
+	// Description is written to the row when it is seeded, for the operator.
+	// Never read back.
 	Description string
 }
 
 // emailShellOpen and emailShellClose wrap a rendered body fragment into a
-// document. Deliberately plain: table-free, inline-styled, and narrow enough for
-// a phone. This is the part an operator does not have to think about.
+// plain, inline-styled, phone-width document.
 const emailShellOpen = `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -93,20 +72,14 @@ const emailShellClose = `
 </body>
 </html>`
 
-// RegisterEmailTemplates materialises a row for every compiled-in template that
-// does not have one yet, so an operator opening EmailTemplatesCollection in /_
-// finds the editable copy rather than an empty collection and no idea which keys
-// exist.
+// RegisterEmailTemplates creates a row for every compiled-in template that has
+// none yet, so an operator in /_ finds an editable copy of each key.
 //
-// SEEDED HERE RATHER THAN IN A MIGRATION, for three reasons. The Go value stays
-// the single source of the default, instead of being transcribed into a
-// migration that then drifts from it. A template added in a later release shows
-// up on an existing install without anyone writing another migration. And the
-// create is conditional on absence, so an operator's edit is never overwritten
-// -- which a re-running schema import could not promise.
+// Seeded here rather than in a migration: the Go value stays the one source of
+// the default, a template added later appears on existing installs, and an
+// operator's edit is never overwritten.
 //
-// Nothing here can fail startup. A missing collection means the migration has
-// not run yet, and the send path falls back to the compiled-in copy regardless.
+// Nothing here can fail startup; the send path falls back regardless.
 func RegisterEmailTemplates(app *pocketbase.PocketBase, defs ...EmailTemplate) {
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
 		collection, err := se.App.FindCollectionByNameOrId(EmailTemplatesCollection)
@@ -145,11 +118,8 @@ func RegisterEmailTemplates(app *pocketbase.PocketBase, defs ...EmailTemplate) {
 
 // ResolveEmailTemplate returns the subject and body sources to render for def,
 // preferring an active row in EmailTemplatesCollection over the compiled-in
-// default.
-//
-// A blank stored field falls through to the default rather than sending an empty
-// one -- clearing a subject in /_ is far more likely to be an accident than a
-// request for a blank subject line.
+// default. A blank stored field falls through to the default, since clearing
+// one is more likely an accident than a request.
 func ResolveEmailTemplate(app core.App, def EmailTemplate) (subject, body string) {
 	subject, body = def.Subject, def.Body
 
@@ -159,10 +129,8 @@ func ResolveEmailTemplate(app core.App, def EmailTemplate) (subject, body string
 		dbx.Params{"key": def.Key},
 	)
 	if err != nil || rec == nil {
-		// Missing collection, missing row, or deliberately deactivated. All three
-		// mean "use the built-in", and none is worth a log line on every send --
-		// an operator who has not customised a template is the normal case, not a
-		// fault.
+		// No collection, no row, or deactivated: the normal case, not worth a
+		// log line.
 		return subject, body
 	}
 
@@ -187,9 +155,8 @@ func RenderEmail(app core.App, def EmailTemplate, data any) (subject, html strin
 		return subject, html, nil
 	}
 
-	// The stored template is broken. Say so at ERROR -- this one IS a fault, and
-	// it is invisible from the console: the mail still goes out, correctly, which
-	// is exactly why nobody would otherwise find out that their edit never took.
+	// The stored template is broken. Log at ERROR: the fallback mail still goes
+	// out, so nothing else would reveal that the edit never took.
 	app.Logger().Error(
 		"stored email template failed to render, falling back to the built-in default",
 		"collection", EmailTemplatesCollection,
@@ -201,8 +168,7 @@ func RenderEmail(app core.App, def EmailTemplate, data any) (subject, html strin
 }
 
 // renderEmailPair renders one subject/body pair, treating a failure in either as
-// a failure of both. Mixing an operator's subject with a built-in body would
-// produce a mail neither of them wrote.
+// a failure of both, so an operator's subject never pairs with a built-in body.
 func renderEmailPair(key, subjectSrc, bodySrc string, data any) (string, string, error) {
 	st, err := texttemplate.New(key + ":subject").Parse(subjectSrc)
 	if err != nil {
@@ -227,11 +193,8 @@ func renderEmailPair(key, subjectSrc, bodySrc string, data any) (string, string,
 
 // SendTemplatedEmail renders def and sends it to one recipient.
 //
-// The sender identity comes from Settings().Meta, so /_ stays the one place it is
-// configured. SenderName is preferred over AppName because that is the field
-// PocketBase's own mails use, and a deployment that set one and not the other
-// should not get two different "from" names depending on which code sent the
-// mail. The library this replaced used AppName, so those two disagreed.
+// The sender comes from Settings().Meta. SenderName is preferred over AppName
+// because PocketBase's own mails use it, so both send under one "from" name.
 func SendTemplatedEmail(app core.App, def EmailTemplate, to mail.Address, data any) error {
 	subject, html, err := RenderEmail(app, def, data)
 	if err != nil {

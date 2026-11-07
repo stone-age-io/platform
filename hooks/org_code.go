@@ -11,11 +11,9 @@ import (
 	"ganigeorgiev.com/pocketbase/pocketbase/core"
 )
 
-// OrgCodePattern mirrors the `pattern` on organizations.code in schema.json.
-// Exported so bootstrap and the backfill migration can pre-flight a derived
-// code against the same rule the field enforces. Duplicated from the schema
-// rather than derived from it, because both callers run before the import has
-// validated anything -- but duplicated exactly once, not once per caller.
+// OrgCodePattern mirrors the `pattern` on organizations.code in schema.json;
+// keep the two in step. Exported so bootstrap and the backfill migration can
+// pre-flight a derived code before the import has validated anything.
 var OrgCodePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,30}$`)
 
 // OrgCodeMaxLen is the upper bound in the `code` field's pattern,
@@ -26,18 +24,12 @@ const OrgCodeMaxLen = 31
 // run of characters outside [a-z0-9] collapsed to a single hyphen, trimmed, and
 // truncated to OrgCodeMaxLen.
 //
-// It can legitimately return a string the field pattern rejects -- a name with
-// no alphanumerics at all (""), or one that reduces to a single character
-// ("X" -> "x", below the two-character minimum). That is deliberate. The hook
-// below refuses instead of padding or prefixing, because the code is immutable
-// once saved and a guess would be permanent. Asking the operator costs one
-// error message; guessing costs a superuser edit later.
+// It can return a string the pattern rejects ("" or a single character),
+// deliberately: the hook refuses rather than padding, because the code is
+// immutable once saved and a guess would be permanent.
 //
-// A leading digit is NOT one of those cases: "816tech" is a valid code. The
-// pattern required a leading letter until an operator org named exactly that
-// could not be migrated, and nothing downstream justified the restriction --
-// NATS subject tokens, JetStream domains (a leaf's is its Thing's code, bare),
-// KV bucket names and RFC 1123 hostname labels all permit a leading digit.
+// A leading digit is valid ("816tech"): NATS subject tokens, JetStream domains,
+// KV bucket names and RFC 1123 hostname labels all permit one.
 func Slugify(name string) string {
 	var b strings.Builder
 	pendingHyphen := false
@@ -63,21 +55,15 @@ func Slugify(name string) string {
 // RegisterOrgCode fills organizations.code on create when no code was supplied,
 // deriving it from the organization name.
 //
-// Bound to OnRecordCreate rather than OnRecordAfterCreateSuccess because the
-// value has to be persisted WITH the record: the code is frozen by the update
-// rule the moment it exists, so a hook that writes it afterwards would be
-// writing through a rule that forbids the write.
+// Bound to OnRecordCreate, not AfterCreateSuccess, so the value is persisted
+// WITH the record: the update rule freezes the code the moment it exists.
 //
-// One hook covers every creation path. Organizations are created in exactly
-// three places -- admin/OrganizationFormView via the record API, and the System
-// and operator orgs in bootstrap.go -- and the two bootstrap paths go through
-// app.Save, which fires record hooks because RegisterOrgCode is bound in main.go
-// before app.Start() rather than inside OnServe.
+// One hook covers every creation path, bootstrap.go's app.Save included,
+// because it is bound in main.go before app.Start() rather than inside OnServe.
 //
-// There is deliberately no auto-suffixing. A derived code that collides is
-// refused so the operator picks the real one, which is the same stance
-// migrations/schema_update_unique_org_code.go takes toward duplicate codes and
-// for the same reason: silently saving `acme-2` is silently saving it forever.
+// Deliberately no auto-suffixing: a colliding derived code is refused, as
+// migrations/schema_update_unique_org_code.go does, because a silently saved
+// `acme-2` is saved forever.
 func RegisterOrgCode(app *pocketbase.PocketBase, orgCollection string) {
 	app.OnRecordCreate(orgCollection).BindFunc(func(e *core.RecordEvent) error {
 		name := e.Record.GetString("name")

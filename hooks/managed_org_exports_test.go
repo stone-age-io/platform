@@ -13,35 +13,18 @@ import (
 	"platform/internal/testutil"
 )
 
-// WHY THIS TEST EXISTS
+// The console presents the managed export/import pair as read-only and
+// recognises them BY NAME, with a hand-copied literal in
+// ui/src/utils/managedExports.ts. If it drifts, the console offers an Edit that
+// the next org save silently reverts. So this asserts the names the hook
+// creates against the literals the console ships, by reading the .ts file.
 //
-// The console presents the managed export/import pair as read-only, and it
-// recognises them BY NAME -- the same identity ensureManagedExports looks them
-// up by. managedExportName is an unexported Go constant, so the TypeScript side
-// is a hand-copied literal in ui/src/utils/managedExports.ts.
-//
-// A hand-copied literal that drifts fails in the worst available way: the
-// console offers an Edit button, the operator changes the subject, pb-nats
-// re-signs the account JWT, and the next save of that organization puts it
-// back. No error at either end. The same shape as the bugs this repo already
-// writes down -- a flag PocketBase discards, a trigger field bound to the wrong
-// hook, a re-import that silently keeps the live field.
-//
-// So this asserts the names the hook ACTUALLY creates against the literals the
-// console ACTUALLY ships, by reading the .ts file. Same trick as stone-cli's
-// vendored schema: the copy is fine, the copy going stale is not.
-//
-// NOTE ON THE HOOK ITSELF: RegisterManagedOrgExports is bound by
-// internal/testutil, not here. It used to HAVE to be -- pb-tenancy terminated the
-// organizations AfterCreateSuccess chain, so a late bind never fired at all --
-// and while that is fixed (hooks/org_membership.go calls e.Next(), guarded by
-// TestOrgCreateDoesNotTerminateTheHookChain), the harness is still where it
-// belongs: binding where main.go binds is what makes the two agree.
+// RegisterManagedOrgExports is bound by internal/testutil, not here, so it
+// binds where main.go binds.
 
 const managedExportsTS = "../ui/src/utils/managedExports.ts"
 
-// Mirrors the export in managedExports.ts. Parsed rather than restated, so a
-// changed constant fails here instead of being duplicated in a third place.
+// Parses the constant out of managedExports.ts rather than restating it.
 var tsConstRe = regexp.MustCompile(`export const MANAGED_EXPORT_NAME = '([^']+)'`)
 
 func consoleExportName(t *testing.T) string {
@@ -60,9 +43,8 @@ func consoleExportName(t *testing.T) string {
 	return string(m[1])
 }
 
-// One app for the whole file: standing one up runs every migration and
-// bootstraps four libraries, and these are all read-only assertions over the
-// same provisioned pair.
+// One app for the whole file: standing one up is expensive, and these are all
+// read-only assertions over the same provisioned pair.
 type managedFixture struct {
 	app      core.App
 	tenant   *core.Record
@@ -70,19 +52,16 @@ type managedFixture struct {
 	exported *core.Record
 	imported *core.Record
 
-	// Why the provisioned pair could not be loaded, if it could not. Surfaced
-	// by requirePair as a FAILURE and never a skip: a skipped test is a test
-	// that cannot fail, and the first version of this file passed cleanly with
-	// a deliberately drifted constant because -run had filtered out the one
-	// test that populated the fixture.
+	// Why the provisioned pair could not be loaded, if it could not. requirePair
+	// reports it as a FAILURE, never a skip: a skipped test cannot fail.
 	setupErr string
 }
 
 var managed managedFixture
 
 func TestMain(m *testing.M) {
-	// flag.Parse() first: testing.Short() reads a flag, and m.Run() is what
-	// normally parses them -- so without this the check below is always false.
+	// flag.Parse() first: testing.Short() reads a flag that m.Run() would
+	// otherwise parse too late.
 	flag.Parse()
 	if testing.Short() {
 		// Build nothing. Every test that needs this app goes through
@@ -123,8 +102,7 @@ func TestMain(m *testing.M) {
 		owner.Set("password", "owner-password-123")
 		mustSave(owner)
 
-		// The hub. ensureManagedExports refuses to run without an operator org
-		// that already has a NATS account, so it has to exist first.
+		// The hub must exist first: ensureManagedExports needs its NATS account.
 		hub := newRecord("organizations")
 		hub.Set("name", "Operator Co")
 		hub.Set("active", true)
@@ -141,10 +119,9 @@ func TestMain(m *testing.M) {
 
 		managed = managedFixture{app: app, tenant: tenant, hub: hub}
 
-		// The hook logs and swallows its own failures -- a provisioning problem
-		// must not undo the organization create -- so an absent record is the
-		// only signal there is. Recorded rather than panicked so the failure
-		// reads as a test failure with a message.
+		// The hook logs and swallows its own failures, so an absent record is
+		// the only signal. Recorded rather than panicked, so it reads as a test
+		// failure with a message.
 		if exports, err := app.FindAllRecords("nats_account_exports"); err != nil {
 			managed.setupErr = "list exports: " + err.Error()
 		} else if len(exports) != 1 {
@@ -166,12 +143,8 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// requirePair fails -- never skips -- when TestMain could not load the pair.
-//
-// The -short skip below is not an exception to that. A fixture that failed to
-// build is a broken test and must be loud; a fixture that was never asked for
-// is a deliberate opt-out. They arrive here looking identical (an empty
-// `managed`), so the opt-out is checked first and explicitly.
+// requirePair fails, never skips, when TestMain could not load the pair. The
+// -short opt-out looks identical (an empty `managed`), so it is checked first.
 func requirePair(t *testing.T) managedFixture {
 	t.Helper()
 	testutil.SkipIfShort(t)
@@ -200,9 +173,8 @@ func TestConsoleRecognisesTheManagedImportName(t *testing.T) {
 	f := requirePair(t)
 
 	// isManagedImport in the .ts file, restated: ^<export>-[a-z0-9]{15}$. The
-	// id-shaped tail is what keeps a tenant's own "helpdesk-events-eu" editable,
-	// so it is the half most likely to be wrong -- assert the real name against
-	// it, not against a prefix check that could not tell the two apart.
+	// id-shaped tail keeps a tenant's own "helpdesk-events-eu" editable, so a
+	// prefix check would not do.
 	name := consoleExportName(t)
 	pattern := regexp.MustCompile(`^` + regexp.QuoteMeta(name) + `-[a-z0-9]{15}$`)
 
@@ -212,17 +184,14 @@ func TestConsoleRecognisesTheManagedImportName(t *testing.T) {
 			"The console would treat a platform-provisioned import as an ordinary editable one.", got, pattern)
 	}
 
-	// Keyed by the immutable org id, deliberately -- that is what makes a
-	// renamed org a reconcile rather than a delete-and-recreate.
+	// Keyed by the immutable org id, so a renamed org is a reconcile.
 	if want := name + "-" + f.tenant.Id; got != want {
 		t.Errorf("import name %q is not <export>-<org id> (%q)", got, want)
 	}
 }
 
-// The tenant's export shows up in the TENANT's Exports list; the hub import
-// shows up in the OPERATOR's Imports list. Two different screens, and this is
-// what says which record lands on which -- a swap would put the read-only
-// banner in front of the wrong operator.
+// The export sits on the TENANT's account and the import on the OPERATOR hub's:
+// a swap would put the read-only banner on the wrong screen.
 func TestTheManagedPairIsSplitAcrossTheTwoAccounts(t *testing.T) {
 	f := requirePair(t)
 
@@ -251,14 +220,12 @@ func TestTheManagedPairIsSplitAcrossTheTwoAccounts(t *testing.T) {
 }
 
 // The fields the console banner NAMES as reverting are the fields reconcile
-// actually rewrites. Add one to exportFields/importFields and the banner is
-// understating the damage; remove one and it is overstating it. Either way the
-// text needs editing, and this is what says so.
+// rewrites. Changing exportFields/importFields means editing the banner text.
 func TestTheBannerNamesTheFieldsThatActuallyRevert(t *testing.T) {
 	f := requirePair(t)
 
-	// Reconciled on the export: subject, type, description (plus organization,
-	// which is bookkeeping the banner has no reason to mention).
+	// Reconciled on the export: subject, type, description (and organization,
+	// which the banner does not mention).
 	if got := f.exported.GetString("subject"); got != "helpdesk.>" {
 		t.Errorf("export subject = %q, want %q", got, "helpdesk.>")
 	}
@@ -280,9 +247,8 @@ func TestTheBannerNamesTheFieldsThatActuallyRevert(t *testing.T) {
 		t.Error("import local_subject is empty, but reconcile sets it")
 	}
 
-	// Private to the hub. A public export could be imported by any account
-	// that knew the tenant's account key; pb-nats signs the activation token for
-	// the one account allowed_importers lists, and nats-server refuses the rest.
+	// Private to the hub: a public export could be imported by any account
+	// that knew the tenant's account key.
 	if !f.exported.GetBool("token_req") {
 		t.Error("export token_req is false: any account could import the tenant's helpdesk events")
 	}

@@ -7,14 +7,12 @@ import (
 	m "ganigeorgiev.com/pocketbase/pocketbase/migrations"
 )
 
-// schema_update_membership_rules re-imports schema.json so existing deployments
-// pick up the corrected memberships create/update/delete rules. The previous
-// rules used @collection.memberships.X with no row correlation (and "=" on role)
-// which caused requests to return 404 for admins acting on other members.
-// Switched to the back-relation pattern (organization.memberships_via_organization.X
-// for view/update/delete; @request.auth.memberships_via_user.X for create) so the
-// user/role conditions correlate to the SAME membership row. Additive import —
-// safe on fresh DBs.
+// schema_update_membership_rules re-imports the corrected memberships
+// create/update/delete rules. The old rules used @collection.memberships.X with
+// no row correlation, so admins acting on other members got 404. The
+// back-relation pattern (organization.memberships_via_organization.X, and
+// @request.auth.memberships_via_user.X for create) makes the user and role
+// conditions match the same membership row.
 func init() {
 	m.Register(func(app core.App) error {
 		if len(SchemaJSON) == 0 {

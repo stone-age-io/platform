@@ -21,9 +21,8 @@ type fixture struct {
 	owner    *core.Record
 }
 
-// One app for the whole file. Standing one up costs the better part of ten
-// seconds — four libraries bootstrap and every migration runs — and the subtests
-// below only need records that do not collide, not isolation.
+// One app for the whole file: standing one up is slow, and the subtests only
+// need records that do not collide, not isolation.
 func setup(t *testing.T) fixture {
 	t.Helper()
 	app := testutil.SetupApp(t)
@@ -69,8 +68,7 @@ func setup(t *testing.T) fixture {
 	orgA := newOrg("Alpha Industries")
 	orgB := newOrg("Beta Logistics")
 
-	// A role inside org A, so that in the cross-org case below the account is the
-	// only thing wrong and a rejection cannot be blamed on the role.
+	// A role inside org A, so the account is the only thing wrong below.
 	roleA := newRecord("nats_roles")
 	roleA.Set("name", "device")
 	roleA.Set("organization", orgA.Id)
@@ -119,9 +117,8 @@ func (f fixture) newLocation(t *testing.T, name string, org *core.Record) *core.
 func TestRelationTenancy(t *testing.T) {
 	f := setup(t)
 
-	// The bug this guard exists for. pb-nats signs a user JWT with whatever
-	// account_id names (internal/sync/manager.go, generateUserJWT), so a record in
-	// org A naming org B's account yields a working credential inside org B.
+	// The case this guard exists for: pb-nats signs a user JWT with whatever
+	// account_id names, so this would be a working credential inside org B.
 	t.Run("a NATS user cannot borrow another org's account", func(t *testing.T) {
 		err := f.app.Save(f.newNatsUser(t, "borrower", f.accountB))
 		if err == nil {
@@ -133,14 +130,10 @@ func TestRelationTenancy(t *testing.T) {
 	})
 
 	// Moving the record's own organization re-checks everything it already
-	// holds. The unchanged-id shortcut inside the guard is an optimization over
-	// "this was checked against the organization it had"; once that organization
-	// moves, the premise is gone. This passed for as long as the shortcut was
-	// unconditional, and it is the one case the model-hook binding exists for --
-	// no API rule is involved, because every org-scoped update rule already
-	// freezes `organization`. The reload is load-bearing: a record built in
-	// memory has no Original(), so the shortcut never engages and the gap does
-	// not reproduce.
+	// holds: the guard's unchanged-id shortcut assumes the old organization.
+	// Only reachable below the API rules, which freeze `organization`. The
+	// reload is load-bearing: a record built in memory has no Original(), so
+	// the shortcut never engages and the gap does not reproduce.
 	t.Run("moving a record between orgs re-checks the relations it keeps", func(t *testing.T) {
 		rec := f.newNatsUser(t, "emigrant", f.accountA)
 		if err := f.app.Save(rec); err != nil {
@@ -169,8 +162,8 @@ func TestRelationTenancy(t *testing.T) {
 		}
 	})
 
-	// The same hole through a different door: nats_users.updateRule freezes
-	// `organization` and says nothing about account_id.
+	// The same case on update: nats_users.updateRule freezes `organization`
+	// and says nothing about account_id.
 	t.Run("a NATS user cannot be repointed at another org's account", func(t *testing.T) {
 		rec := f.newNatsUser(t, "repointed", f.accountA)
 		if err := f.app.Save(rec); err != nil {
@@ -183,8 +176,7 @@ func TestRelationTenancy(t *testing.T) {
 		}
 	})
 
-	// The guard is derived from the schema rather than a list of fields somebody
-	// remembered, so a relation with no NATS involvement is covered the same way.
+	// The guard is derived from the schema, so a non-NATS relation is covered too.
 	t.Run("a location cannot be parented into another org", func(t *testing.T) {
 		parentInB := f.newLocation(t, "Beta HQ", f.orgB)
 		if err := f.app.Save(parentInB); err != nil {
@@ -197,8 +189,7 @@ func TestRelationTenancy(t *testing.T) {
 			t.Fatal("parented an org A location under an org B location; expected a rejection")
 		}
 
-		// Same write, same-org parent: must succeed, or the assertion above proves
-		// only that the save failed for some reason.
+		// Same write, same-org parent: the paired allow.
 		parentInA := f.newLocation(t, "Alpha HQ", f.orgA)
 		if err := f.app.Save(parentInA); err != nil {
 			t.Fatalf("create parent in org A: %v", err)
@@ -209,12 +200,10 @@ func TestRelationTenancy(t *testing.T) {
 		}
 	})
 
-	// A relation whose target has no `organization` column is none of this
-	// guard's business. memberships.user points at `users`, which is global by
-	// design, and refusing it would make membership creation impossible.
+	// A relation whose target has no `organization` column is left alone:
+	// memberships.user points at the global `users`.
 	t.Run("relations to unowned collections are left alone", func(t *testing.T) {
-		// Not f.owner: creating an org already gave them a membership in it, and
-		// memberships are unique per (organization, user).
+		// Not f.owner, who already has a membership; they are unique per pair.
 		userCol, err := f.app.FindCollectionByNameOrId("users")
 		if err != nil {
 			t.Fatalf("users collection: %v", err)

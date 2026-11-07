@@ -27,21 +27,14 @@ type InviteOptions struct {
 }
 
 // AcceptInvitePath is the endpoint the console posts an invitation token to.
-//
-// Renamed from /api/tenancy/accept-invite during the absorb: the old path named a
-// library that no longer exists, and /api/org/... is the shape every other
-// tenant-scoped route here already uses (see thing_routes.go). The invitation
-// LINKS in already-delivered mail are unaffected -- they point at the console
-// route /accept-invite, which posts here, not at the API directly.
+// Mailed links point at the console route /accept-invite, not here, so this
+// path can change without breaking delivered mail.
 const AcceptInvitePath = "/api/org/invites/accept"
 
-// OrgInviteEmail is the compiled-in default for the organization invitation.
-//
-// This is a fallback, not the source of truth: an active `org_invite` row in
-// email_templates overrides it, and that row is what an operator edits in /_.
-// See hooks/email_templates.go for why it works that way.
-//
-// Body is a fragment -- no document shell, that is added at send time.
+// OrgInviteEmail is the compiled-in default for the organization invitation. An
+// active `org_invite` row in email_templates overrides it. See
+// hooks/email_templates.go for why it works that way. Body is a fragment; the
+// document shell is added at send time.
 var OrgInviteEmail = EmailTemplate{
 	Key:         "org_invite",
 	Description: "Sent when someone is invited to an organization, and again when that invitation is resent.",
@@ -61,10 +54,9 @@ var OrgInviteEmail = EmailTemplate{
 </p>`,
 }
 
-// inviteEmailData is what both the built-in template above and any operator
-// override are rendered against. Adding a field here is safe; removing or
-// renaming one silently blanks it in every customised template, so treat these
-// names as the contract they are.
+// inviteEmailData is what the built-in template and any operator override are
+// rendered against. Adding a field is safe; removing or renaming one silently
+// blanks it in every customised template.
 type inviteEmailData struct {
 	AppName     string
 	OrgName     string
@@ -77,38 +69,15 @@ type inviteEmailData struct {
 // RegisterInvites owns the organization invitation lifecycle: issuing a token,
 // mailing it, reissuing it, and redeeming it.
 //
-// ABSORBED FROM pb-tenancy. What changed, and why:
-//
-//   - Token and expiry moved from OnRecordCreateRequest to OnRecordCreate. The
-//     request hook fires for REST calls only, so an invitation created by a seed,
-//     a migration or a test got neither -- a row with a blank token and a zero
-//     expiry, which the accept endpoint reads as "expired" and deletes. This is
-//     the same trap hooks/CLAUDE.md already documents for pb-nats trigger fields: if it
-//     has to happen on every path, it belongs on the MODEL hook. `invited_by`
-//     stays on the request hook, because it is the request's auth record and has
-//     no meaning without one.
-//
-//   - Resending now reissues. The original re-sent the mail and touched nothing
-//     else, while the console only offers Resend once an invitation has EXPIRED
-//     (InvitationsView.vue disables the button otherwise) -- so every Resend
-//     mailed a link that was already dead, and redeeming it returned 410 and
-//     deleted the invitation. Resend now mints a fresh token and a fresh expiry
-//     before it mails anything.
-//
-//   - Failures are logged through app.Logger() rather than a fmt.Printf gated on
-//     the library's LogToConsole flag, which config.yaml set to false. A failed
-//     invitation email produced no output anywhere: the row was created, the
-//     console showed it as pending, and nothing had gone wrong as far as anyone
-//     could see.
-//
-//   - The mail body is html/template and comes from email_templates, not a Go
-//     const parsed with text/template. InviterName is a user-settable display
-//     name that was being interpolated into HTML unescaped.
+//   - Token and expiry are set on the MODEL hook, so seeds, migrations and tests
+//     get them too; a blank token and zero expiry read as "expired".
+//     `invited_by` stays on the request hook: it is the request's auth record.
+//   - Resend reissues a fresh token and expiry before mailing, because the
+//     console only offers Resend once an invitation has expired.
+//   - Mail failures go to app.Logger(), so a failed invitation is never silent.
 func RegisterInvites(app *pocketbase.PocketBase, opts InviteOptions) {
-	// Token and expiry, on every creation path.
 	app.OnRecordCreate(opts.InviteCollection).BindFunc(func(e *core.RecordEvent) error {
-		// Only fill what is blank. A superuser setting either field explicitly has
-		// made a choice, and this is also what lets a test pin an expiry.
+		// Only fill what is blank, so a superuser or a test can set either.
 		if e.Record.GetString("token") == "" {
 			token, err := generateInviteToken()
 			if err != nil {
@@ -124,7 +93,6 @@ func RegisterInvites(app *pocketbase.PocketBase, opts InviteOptions) {
 		return e.Next()
 	})
 
-	// Who sent it. Request-scoped by nature.
 	app.OnRecordCreateRequest(opts.InviteCollection).BindFunc(func(e *core.RecordRequestEvent) error {
 		if e.Record.GetString("invited_by") == "" && e.Request != nil {
 			if info, err := e.RequestInfo(); err == nil && info.Auth != nil {
@@ -134,10 +102,8 @@ func RegisterInvites(app *pocketbase.PocketBase, opts InviteOptions) {
 		return e.Next()
 	})
 
-	// Mail it, once the row is committed. PocketBase defers *AfterCreateSuccess to
-	// commit (core/db.go, txInfo.OnComplete), so the token in the link is durable
-	// by the time it is sent -- which matters more here than anywhere, because the
-	// recipient of a rolled-back invitation has no way to tell.
+	// PocketBase defers *AfterCreateSuccess to commit, so the mailed token is
+	// durable; the recipient of a rolled-back invitation could not tell.
 	app.OnRecordAfterCreateSuccess(opts.InviteCollection).BindFunc(func(e *core.RecordEvent) error {
 		if err := sendInviteEmail(e.App, e.Record, opts); err != nil {
 			logInviteMailFailure(e.App, e.Record, err, "invite")
@@ -145,17 +111,13 @@ func RegisterInvites(app *pocketbase.PocketBase, opts InviteOptions) {
 		return e.Next()
 	})
 
-	// Resend: reissue, then mail.
+	// Resend: reissue, then mail. A post-commit second write, so the mail never
+	// goes out ahead of its token; clearing the flag makes the re-entry a no-op.
 	app.OnRecordAfterUpdateSuccess(opts.InviteCollection).BindFunc(func(e *core.RecordEvent) error {
 		if !e.Record.GetBool("resend_invite") {
 			return e.Next()
 		}
 
-		// Post-commit, so this is a second write rather than part of the caller's.
-		// That is the point: the mail must not go out ahead of the token it
-		// carries, and a resent link is worthless if the row it names did not
-		// land. Clearing the flag here also makes the re-entry a no-op, so there
-		// is no loop.
 		token, err := generateInviteToken()
 		if err != nil {
 			logInviteMailFailure(e.App, e.Record, err, "resend")
@@ -167,9 +129,7 @@ func RegisterInvites(app *pocketbase.PocketBase, opts InviteOptions) {
 		e.Record.Set("resend_invite", false)
 
 		if err := e.App.Save(e.Record); err != nil {
-			// Nothing is sent. The previous token is still whatever it was, which
-			// is the safe outcome: mailing a link this process failed to persist
-			// would be worse than not mailing one.
+			// Send nothing rather than a link that was never persisted.
 			logInviteMailFailure(e.App, e.Record, err, "resend")
 			return e.Next()
 		}
@@ -191,11 +151,7 @@ func RegisterInvites(app *pocketbase.PocketBase, opts InviteOptions) {
 }
 
 // generateInviteToken returns a cryptographically random, URL-safe token.
-//
-// RawURLEncoding rather than URLEncoding: 32 bytes pad to a trailing "=" under
-// the padded alphabet, which then has to survive a query string intact. 43
-// unpadded characters do not. Tokens issued before this change are unaffected --
-// redemption is an exact-match lookup, not a parse.
+// Unpadded, so no trailing "=" has to survive a query string.
 func generateInviteToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -225,9 +181,7 @@ func logInviteMailFailure(app core.App, invite *core.Record, err error, kind str
 // sendInviteEmail composes and sends the invitation for one invite record.
 func sendInviteEmail(app core.App, invite *core.Record, opts InviteOptions) error {
 	if errs := app.ExpandRecord(invite, []string{"organization", "invited_by"}, nil); len(errs) > 0 {
-		// invited_by is optional and may legitimately be absent; organization is
-		// required, and is checked below. A failure to expand either is worth
-		// reporting rather than sending a mail with a blank organization name.
+		// Report it rather than send a mail with a blank organization name.
 		return fmt.Errorf("expand invite relations: %v", errs)
 	}
 
@@ -263,13 +217,8 @@ func sendInviteEmail(app core.App, invite *core.Record, opts InviteOptions) erro
 	return SendTemplatedEmail(app, OrgInviteEmail, mail.Address{Address: invite.GetString("email")}, data)
 }
 
-// inviteLink builds the console URL that redeems an invitation.
-//
-// Carries the email as well as the token because the console's AcceptInviteView
-// reads both: the token to redeem, the address to prefill the registration form
-// an invitee without an account has to fill in first. The absorbed template sent
-// only the token, so that field was always blank and every invitee retyped an
-// address the system already knew.
+// inviteLink builds the console URL that redeems an invitation. It carries the
+// email too, which AcceptInviteView uses to prefill the registration form.
 func inviteLink(appURL, token, email string) string {
 	q := url.Values{}
 	q.Set("token", token)
@@ -282,10 +231,9 @@ func inviteLink(appURL, token, email string) string {
 
 // acceptInvite redeems a token for the authenticated caller.
 //
-// Requires auth, deliberately: the invitee signs in or registers first, and this
-// endpoint only binds an existing account to an organization. That keeps account
-// creation on the one path that already validates it, and it is why the caller's
-// address is checked against the invitation below rather than trusted from it.
+// Requires auth: the invitee signs in or registers first, keeping account
+// creation on the one path that validates it. So the caller's address is checked
+// against the invitation, not trusted from it.
 func acceptInvite(e *core.RequestEvent, opts InviteOptions) error {
 	authRecord := e.Auth
 
@@ -315,11 +263,8 @@ func acceptInvite(e *core.RequestEvent, opts InviteOptions) error {
 		return e.Error(http.StatusGone, "This invitation has expired", nil)
 	}
 
-	// Case-insensitive: the local part of an address is technically
-	// case-sensitive, but no mail provider anyone uses treats it that way, and an
-	// invitation addressed to Alice@example.com that its recipient cannot redeem
-	// because they registered as alice@example.com is a support ticket, not a
-	// security boundary.
+	// Case-insensitive: no real mail provider treats the local part as
+	// case-sensitive.
 	if !strings.EqualFold(authRecord.Email(), invite.GetString("email")) {
 		return e.ForbiddenError("This invitation was issued to a different email address.", nil)
 	}
@@ -332,8 +277,7 @@ func acceptInvite(e *core.RequestEvent, opts InviteOptions) error {
 		dbx.Params{"user": authRecord.Id, "org": orgID},
 	)
 	if existing != nil {
-		// Already in. Redeeming is then just cleanup, and saying so plainly beats
-		// an error for what is usually a double-clicked link.
+		// Already in, usually a double-clicked link: clean up, no error.
 		if err := e.App.Delete(invite); err != nil {
 			e.App.Logger().Warn("could not delete redundant invitation", "invite", invite.Id, "error", err)
 		}
@@ -360,17 +304,14 @@ func acceptInvite(e *core.RequestEvent, opts InviteOptions) error {
 			return err
 		}
 
-		// Refetched inside the transaction rather than reusing e.Auth, which was
-		// loaded when the request was authenticated and may be stale.
+		// Refetched, since e.Auth may be stale.
 		user, err := txApp.FindRecordById(opts.UserCollection, authRecord.Id)
 		if err != nil {
 			return err
 		}
 
-		// Only when blank. Accepting an invitation to someone else's organization
-		// should not move you out of the one you are working in; the console's
-		// switcher is how you go there. Contrast RegisterOrgMembership, which sets
-		// this unconditionally for an org's own owner.
+		// Only when blank: accepting should not move you out of the org you are
+		// working in. (RegisterOrgMembership sets it unconditionally for an owner.)
 		if user.GetString("current_organization") == "" {
 			user.Set("current_organization", orgID)
 			if err := txApp.Save(user); err != nil {

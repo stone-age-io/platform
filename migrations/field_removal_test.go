@@ -1,10 +1,8 @@
-// Package migrations_test probes the one PocketBase behaviour every
-// schema_update_*.go in this repo is built on: what a re-import of schema.json
-// actually does to the live collections.
+// Package migrations_test tests the migrations against a real PocketBase,
+// including what a re-import of schema.json does to live collections.
 //
-// It is an EXTERNAL test package on purpose. internal/testutil imports
-// platform/migrations to set SchemaJSON and run the migration set, so a test in
-// package `migrations` could not import the harness without a cycle.
+// It is an external test package because internal/testutil imports
+// platform/migrations; an in-package test could not import the harness.
 package migrations_test
 
 import (
@@ -19,26 +17,16 @@ import (
 )
 
 // probeCollection and probeField name any real, non-system field. subject_prefix
-// is a deliberate choice: it is load-bearing (the Publisher widget resolves
-// subjects through it) so it is unlikely to be removed, and if it ever is, this
-// test failing its precondition is the correct way to find out.
+// is load-bearing, so unlikely to be removed; if it is, the precondition fails.
 const (
 	probeCollection = "thing_types"
 	probeField      = "subject_prefix"
 )
 
-// TestReimportCannotRemoveAField pins the trap.
-//
-// Every migration here is "re-import schema.json", which works for CHANGING a
-// rule and for ADDING a field, and does nothing at all for REMOVING one:
-// core.ImportCollections is called with deleteMissing=false (initial_schema.go),
-// and in that mode it walks the live collection's fields and re-adds every one
-// the import did not carry BY ID (core/collection_import.go). The migration then
-// logs its ✅ and the column is still there.
-//
-// If this test ever fails, PocketBase's import semantics changed and the
+// TestReimportCannotRemoveAField pins the trap: with deleteMissing=false,
+// core.ImportCollections re-adds every live field the import did not carry by
+// id, so a re-import logs its ✅ and the column stays. If this fails, the
 // explicit RemoveById calls in the removal migrations are no longer needed.
-// That is a good failure to have to read.
 func TestReimportCannotRemoveAField(t *testing.T) {
 	app := testutil.SetupApp(t)
 
@@ -73,9 +61,8 @@ func TestReimportCannotRemoveAField(t *testing.T) {
 	}
 }
 
-// TestExplicitFieldRemovalDropsTheColumn is the other half: the thing a removal
-// migration must actually do. Asserting the field definition is gone is not
-// enough -- the point of the migration is that the SQLite column goes with it.
+// TestExplicitFieldRemovalDropsTheColumn is the other half: RemoveById + Save
+// drops the SQLite column, not only the definition.
 func TestExplicitFieldRemovalDropsTheColumn(t *testing.T) {
 	app := testutil.SetupApp(t)
 
@@ -88,9 +75,7 @@ func TestExplicitFieldRemovalDropsTheColumn(t *testing.T) {
 		t.Fatalf("precondition failed: %s.%s is not in the freshly imported schema", probeCollection, probeField)
 	}
 
-	// By id, not by name. A removal keyed on the name is the same class of bug as
-	// the re-import trap: it matches whatever is live under that name rather than
-	// the definition the migration was written against.
+	// By id, not by name: a name matches whatever is live under it.
 	col.Fields.RemoveById(f.GetId())
 	if err := app.Save(col); err != nil {
 		t.Fatalf("save %s after removal: %v", probeCollection, err)
@@ -109,8 +94,7 @@ func TestExplicitFieldRemovalDropsTheColumn(t *testing.T) {
 }
 
 // schemaWithoutField returns the repo's schema.json with one field stripped from
-// one collection, which is what a naive "just delete it from schema.json and
-// re-import" migration would feed the importer.
+// one collection.
 func schemaWithoutField(t *testing.T, collection, field string) []byte {
 	t.Helper()
 
@@ -155,9 +139,8 @@ func schemaWithoutField(t *testing.T, collection, field string) []byte {
 	return out
 }
 
-// tableHasColumn asks SQLite directly. A field's presence in the collection
-// model and a column's presence in the table are two different facts, and a
-// removal migration has to land both.
+// tableHasColumn asks SQLite directly: the collection model and the table can
+// disagree.
 func tableHasColumn(t *testing.T, app core.App, table, column string) bool {
 	t.Helper()
 

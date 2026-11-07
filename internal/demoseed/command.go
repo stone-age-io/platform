@@ -11,11 +11,9 @@ import (
 // RegisterCommand wires the `demo-seed` subcommand onto the root command,
 // following the helpdesk sibling's `seed-demo` shape.
 //
-// Guarded behind --confirm on purpose: this ships in the same binary an operator
-// runs in production, and `stone-age demo-seed` typo'd against a live install
-// would inject three fictional tenants — with signed NATS credentials and Nebula
-// certificates — into a real deployment. The flag is the whole safety mechanism.
-// Keep it required.
+// --confirm must stay required: this ships in the production binary, and it is
+// the only thing stopping a stray run from injecting three fictional tenants,
+// with signed credentials, into a live deployment.
 //
 //	./stone-age demo-seed --confirm
 //	./stone-age demo-seed --confirm --things 400
@@ -33,9 +31,7 @@ func RegisterCommand(app *pocketbase.PocketBase) {
 			"partway heals on the next one.\n\n" +
 			"NOT for production deployments — every record is fictional and every seeded " +
 			"login shares a well-known password.",
-		// Every error this command returns explains what to do next. Cobra's
-		// default is to follow that with the full flag list, which pushes the
-		// explanation off a short terminal and answers a question nobody asked.
+		// Every error here says what to do next; the usage dump would bury it.
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			confirm, _ := cmd.Flags().GetBool("confirm")
@@ -84,11 +80,9 @@ func RegisterCommand(app *pocketbase.PocketBase) {
 // preflight refuses to run against a database the seed would silently corrupt,
 // and says which step is missing.
 //
-// This is the same failure `bootstrap` guards against, for the same reason:
-// PocketBase discards a write to a field that does not exist, without an error.
-// A seed run before `migrate up` would report three organizations created and
-// leave every one of them without a `code` — the join key the whole fixture set
-// is built on, and immutable once written.
+// Like `bootstrap`, it must run after `migrate up`: PocketBase silently drops
+// writes to missing fields, so the orgs would save without a `code`, the
+// fixtures' join key, which is immutable once written.
 func preflight(app core.App) error {
 	required := []struct {
 		collection string
@@ -114,14 +108,10 @@ func preflight(app core.App) error {
 		}
 	}
 
-	// pb-nats signs every account and user JWT with the operator seed. Without an
-	// operator the records still save, so the failure would show up much later as
-	// credentials no server will accept.
-	//
-	// `superuser upsert` seeds this, not `bootstrap` — so this check passes one
-	// step earlier than the full setup sequence does. That is correct: the seed
-	// creates its own organizations and its own operator user and genuinely does
-	// not need the System org. What it does lose is below.
+	// pb-nats signs every JWT with the operator seed. Without one the records
+	// still save, and the failure surfaces later as credentials no server accepts.
+	// `superuser upsert` creates the operator, not `bootstrap`; the seed does not
+	// need the System org.
 	op, err := app.FindFirstRecordByFilter("nats_system_operator", "id != ''", nil)
 	if err != nil || op == nil || op.GetString("jwt") == "" {
 		return fmt.Errorf(
@@ -133,12 +123,9 @@ func preflight(app core.App) error {
 				"then seed. Without the operator, every credential this seeds would be unsigned.")
 	}
 
-	// A warning, not a refusal. Two of the three demo organizations are
-	// `managed`, which asks RegisterManagedOrgExports to import their
-	// `helpdesk.>` subtree into the OPERATOR ORG's account. With no operator org
-	// there is no hub to import into, so the hook logs a failure per org and the
-	// rest of the seed is unaffected — a demo without the cross-account wiring is
-	// still a complete demo of everything else.
+	// A warning, not a refusal. The managed orgs import their `helpdesk.>` into
+	// the operator org's account; with no operator org that hook logs a failure
+	// per org and everything else seeds normally.
 	hub, err := app.FindFirstRecordByFilter("organizations", "is_operator_org = true", nil)
 	if err != nil || hub == nil {
 		fmt.Println(

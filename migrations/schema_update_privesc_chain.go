@@ -8,43 +8,27 @@ import (
 )
 
 // schema_update_privesc_chain closes a privilege-escalation chain that let any
-// authenticated user reach platform-operator and from there read the NATS root
-// operator seed. Re-imports the embedded schema.json, then remediates data that
-// the schema change alone cannot fix.
+// authenticated user become a platform operator and read the NATS root operator
+// seed. It re-imports schema.json, then remediates data. Schema changes:
 //
-// SCHEMA CHANGES (in schema.json):
-//
-//   - users.updateRule: added `@request.body.is_operator:isset = false`. The rule
-//     previously guarded only current_organization, so any authenticated user
-//     could PATCH is_operator=true on their own record and become a platform
-//     operator. Nothing else guarded it — there are no hooks on `users`.
-//   - users.createRule: the anonymous branch now requires a pending invite for
-//     the submitted address. It was open, unauthenticated account creation.
-//   - memberships.updateRule: the self-update branch was a bare
-//     `user = @request.auth.id`, which allowed PATCH {"role":"owner"} on your own
-//     membership. It is now restricted to the nats_user link, and no branch may
-//     re-point a membership at another organization.
-//   - 30 rules across 12 collections: `role ?!= "member"` -> an explicit
-//     `role ?= "owner" || role ?= "admin"` allowlist. The deny-list form was also
-//     satisfied by role="badge" — the most restricted role — so badge holders
-//     passed every org-admin check. An allowlist also fails safe for roles added
-//     later.
+//   - users.updateRule: `@request.body.is_operator:isset = false`. Any user could
+//     PATCH is_operator=true on their own record; no hook guards `users`.
+//   - users.createRule: the anonymous branch requires a pending invite for the
+//     address. It was open account creation.
+//   - memberships.updateRule: the bare `user = @request.auth.id` self branch
+//     allowed PATCH {"role":"owner"}. It is now limited to the nats_user link,
+//     and no branch may move a membership to another organization.
+//   - 30 rules across 12 collections: `role ?!= "member"` became the allowlist
+//     `role ?= "owner" || role ?= "admin"`. The deny-list also passed the most
+//     restricted role, and an allowlist fails safe for roles added later.
 //   - nats_system_operator.{private_key,seed,signing_private_key,signing_seed}:
-//     hidden=true, matching how nats_accounts and nebula_ca already treat their
-//     equivalents. Server-side Go reads are unaffected (hidden applies to the
-//     HTTP layer); PublicExport() now omits them, which is what stops them being
-//     copied into audit_logs.
+//     hidden=true. Go reads are unaffected; PublicExport() now omits them, which
+//     keeps them out of audit_logs.
 //
-// DATA REMEDIATION (below): existing audit_logs rows already hold plaintext
-// copies of the operator seed, written before the hidden flags existed. The
-// hidden flag only affects future writes, so those payloads are redacted here.
-//
-// NOTE: redaction is not key rotation. On any deployment where an untrusted
-// party could have read audit_logs, the operator seed must be considered
-// disclosed and the NATS operator key rotated — that cannot be done in a
-// migration because every account JWT has to be re-signed and redistributed.
-//
-// Additive import (deleteMissing=false); safe on fresh DBs.
+// Existing audit_logs rows already hold plaintext copies of the operator seed,
+// so they are redacted below. Redaction is not rotation: where an untrusted
+// party could have read audit_logs, rotate the NATS operator key by hand, which
+// re-signs every account JWT.
 func init() {
 	m.Register(func(app core.App) error {
 		if len(SchemaJSON) == 0 {
@@ -63,13 +47,9 @@ func init() {
 	}, nil)
 }
 
-// redactLeakedOperatorSecrets strips the before/after payloads from audit rows
-// that captured the nats_system_operator record. Those payloads contain the
-// operator seed and signing seed in plaintext.
-//
-// It blanks only the two change payloads and leaves the surrounding row intact,
-// so the audit trail still records that the operator record was touched, by
-// whom, and when — the compliance value is preserved, the secret is not.
+// redactLeakedOperatorSecrets blanks the before/after payloads of audit rows for
+// nats_system_operator, which hold its seeds in plaintext. The rest of the row
+// stays, so the trail still says who touched the record and when.
 //
 // Assumes the default audit collection name. A deployment that overrode
 // audit.collection_name should redact its own table by hand.
@@ -82,8 +62,7 @@ func redactLeakedOperatorSecrets(app core.App) {
 
 	const redacted = `"[redacted: contained the NATS operator seed in plaintext]"`
 
-	// Raw SQL on purpose: this must not fan out into record hooks (which would
-	// re-audit the rows we are scrubbing).
+	// Raw SQL so record hooks do not re-audit the rows being scrubbed.
 	res, err := app.DB().NewQuery(`
 		UPDATE ` + auditCollection + `
 		SET before_changes = {:redacted}, after_changes = {:redacted}
@@ -91,8 +70,7 @@ func redactLeakedOperatorSecrets(app core.App) {
 		  AND (before_changes IS NOT NULL OR after_changes IS NOT NULL)
 	`).Bind(map[string]any{"redacted": redacted}).Execute()
 	if err != nil {
-		// Non-fatal: the schema fix is the important half, and failing the
-		// migration would leave the deployment on the vulnerable rules.
+		// Non-fatal: failing would roll back the rule fix too.
 		log.Printf("⚠️ Could not redact leaked operator secrets from %s: %v", auditCollection, err)
 		log.Printf("⚠️ Redact by hand: UPDATE %s SET before_changes=NULL, after_changes=NULL WHERE collection_name='nats_system_operator';", auditCollection)
 		return

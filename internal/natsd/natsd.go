@@ -1,27 +1,16 @@
 // Package natsd runs a NATS server inside the Control Plane process.
 //
-// The server is an ordinary nats-server. It reads the same nats.conf that
-// `stone-age nats export` writes, and behaves exactly as it would if you ran
-// `nats-server -c nats.conf` yourself. There is no embedded-only mode, no
-// options derived in Go, and no second way for an account JWT to reach it: the
-// NATS support library still publishes account claims over $SYS exactly as it
-// does to an external server.
+// It is an ordinary nats-server reading the nats.conf that `stone-age nats
+// export` writes, exactly as `nats-server -c nats.conf` would. There is no
+// embedded-only mode and no options derived in Go, and account claims still
+// arrive over $SYS. That keeps one code path and makes moving to an external
+// server a config change.
 //
-// That sameness is the point. It keeps one code path in the library, keeps the
-// config a real file you can read and edit, and makes moving to an external
-// server a config change rather than a migration.
-//
-// Clustering follows from that sameness rather than being a separate feature:
-// a `cluster` block in nats.conf is honoured like any other directive, so a
-// Control Plane can be one node of a cluster whose other nodes are ordinary
-// external nats-servers. TestEmbeddedServerClustersWithAPeer pins this, because
-// an earlier version of this comment claimed the opposite and nothing in the
-// code ever enforced it.
-//
-// The one thing to know before choosing it: this server's lifetime is the
-// Control Plane's, so restarting the platform takes a cluster node down with
-// it. That is an operational cost to weigh, not a restriction — run the bus as
-// a separate process (the default) wherever it is the wrong trade.
+// A `cluster` block is honoured like any other directive, so a Control Plane can
+// be one node of a cluster of external nats-servers
+// (TestEmbeddedServerClustersWithAPeer). Restarting the platform then takes that
+// node down with it; run the bus as a separate process (the default) where that
+// is the wrong trade.
 package natsd
 
 import (
@@ -36,16 +25,15 @@ import (
 )
 
 const (
-	// readyTimeout is how long to wait for the server to accept connections
-	// before giving up. Generous: JetStream recovers its store on startup, and
-	// a large store on slow disk is not an error.
+	// readyTimeout is generous because JetStream recovers its store on startup,
+	// and a large store on slow disk is not an error.
 	readyTimeout = 30 * time.Second
 
 	// defaultConfigDir is the output directory the docs use for `nats export`.
 	defaultConfigDir = "./nats-config"
 
 	// DefaultConfigFile is the config --nats loads unless --nats-config says
-	// otherwise. It is what `nats export --output ./nats-config/` produces.
+	// otherwise.
 	DefaultConfigFile = defaultConfigDir + "/nats.conf"
 )
 
@@ -57,16 +45,13 @@ type Server struct {
 // Start loads confPath, starts a NATS server from it, and waits for it to
 // accept connections.
 //
-// clientURL is the address the calling process is configured to dial. It is not
-// used to connect — it is checked against the port the server actually listens
-// on, because the two disagreeing is the one misconfiguration that leaves a
-// process talking to itself and failing. clientURLSetting names the config key
-// clientURL came from (`nats.server_url` in the Control Plane, `nats.local_url`
-// on an edge), so the error can tell the reader which knob to turn.
+// clientURL is the address the calling process dials. It is only checked against
+// the port the server listens on, since a mismatch leaves the process unable to
+// reach its own server. clientURLSetting names the config key it came from
+// (`nats.server_url` in the Control Plane, `nats.local_url` on an edge), for
+// the error message.
 //
-// The returned error is intended to be fatal to startup. A process asked for an
-// embedded server that cannot start should say so and stop, not run on in a
-// state where every credential it issues points at nothing.
+// The returned error is meant to be fatal to startup.
 func Start(confPath, clientURL, clientURLSetting string) (*Server, error) {
 	if _, err := os.Stat(confPath); err != nil {
 		if os.IsNotExist(err) {
@@ -84,8 +69,7 @@ func Start(confPath, clientURL, clientURLSetting string) (*Server, error) {
 		return nil, fmt.Errorf("invalid NATS config %s: %w", confPath, err)
 	}
 
-	// PocketBase owns SIGINT/SIGTERM. Without this nats-server installs its own
-	// handlers and the two fight over shutdown.
+	// PocketBase owns SIGINT/SIGTERM; otherwise the two fight over shutdown.
 	opts.NoSigs = true
 
 	ns, err := natsserver.NewServer(opts)
@@ -93,11 +77,8 @@ func Start(confPath, clientURL, clientURLSetting string) (*Server, error) {
 		return nil, fmt.Errorf("failed to create NATS server: %w", err)
 	}
 
-	// Route NATS output through the platform logger so there is one log stream.
-	// Set before Start so nothing is written anywhere else first.
-	//
-	// A `log_file` in nats.conf is not honoured as a result. That is a known
-	// trade for having one place to look when something goes wrong.
+	// One log stream: set before Start so nothing is written elsewhere first.
+	// A `log_file` in nats.conf is therefore not honoured.
 	logger := newLogger()
 	ns.SetLogger(logger, opts.Debug, opts.Trace)
 
@@ -121,19 +102,15 @@ func Start(confPath, clientURL, clientURLSetting string) (*Server, error) {
 
 // waitReady blocks until the server accepts connections, or fails.
 //
-// It polls rather than calling ReadyForConnections(readyTimeout) once, because
-// a server can log a fatal and never become ready — a JetStream store it cannot
-// open, a system account it will not accept — and waiting out the full timeout
-// to then report a recorded fatal turns a one-second failure into a thirty
-// second one. nats-server's Start() returns after a fatal instead of panicking,
-// so the recorded message is the only diagnosis available.
+// It polls rather than waiting out readyTimeout, because a server can log a
+// fatal and never become ready, and nats-server's Start() then just returns. The
+// recorded fatal is the only diagnosis, and it is reported at once.
 func waitReady(ns *natsserver.Server, logger *logger) error {
 	deadline := time.Now().Add(readyTimeout)
 	for {
 		if ns.ReadyForConnections(250 * time.Millisecond) {
-			// A server can accept connections while a subsystem the config
-			// asked for failed. Refuse it: JetStream silently missing is worse
-			// than not starting, because the twins just never persist.
+			// Ready but with a failed subsystem: refuse, since a silently
+			// missing JetStream means twins never persist.
 			if reason := logger.lastFatal(); reason != "" {
 				return fmt.Errorf("embedded NATS server started but reported a fatal error: %s", reason)
 			}
@@ -151,11 +128,8 @@ func waitReady(ns *natsserver.Server, logger *logger) error {
 // checkPortsAgree fails when the embedded server listens on a different port
 // from the one the calling process dials.
 //
-// Only the port is compared. Hosts differ legitimately all the time — the
-// server binds 0.0.0.0 while the configured URL names a hostname — but a port
-// mismatch cannot be anything except a mistake, and the symptom is miserable to
-// diagnose: the caller sits retrying forever against a server running in its
-// own process.
+// Only the port is compared: hosts differ legitimately (the server binds
+// 0.0.0.0, the URL names a hostname), but a port mismatch is always a mistake.
 func checkPortsAgree(listenURL, configuredURL, setting, confPath string) error {
 	listenPort, err := portOf(listenURL)
 	if err != nil {
@@ -163,7 +137,7 @@ func checkPortsAgree(listenURL, configuredURL, setting, confPath string) error {
 	}
 	configuredPort, err := portOf(configuredURL)
 	if err != nil {
-		// Not our business to validate the caller's URL beyond this check.
+		// Validating the caller's URL is not this check's job.
 		return nil
 	}
 	if listenPort == configuredPort {
@@ -192,25 +166,17 @@ func portOf(rawURL string) (string, error) {
 
 // Stats is the embedded server's own view of itself, for the metrics endpoint.
 //
-// WHY THIS IS IN BOUNDS. Everything here is server-level, not account-level: a
-// NATS server counts its own connections and leaf remotes regardless of which
-// account they authenticated into, and reports its own JetStream store size.
-// None of it requires a credential inside a tenant's account, which is why the
-// Control Plane may publish it while it may not publish, say, the contents of
-// an organization's `twin` bucket.
+// Everything here is server-level, not account-level, so it needs no credential
+// inside a tenant's account and the Control Plane may publish it.
 //
-// Leafnodes is the number of leaf CONNECTIONS currently attached to this
-// server, ACROSS EVERY ACCOUNT. It is a capacity number, not a per-tenant
-// availability signal: a tenant asks about its own sites through
-// $SYS.REQ.ACCOUNT.PING.CONNZ, which is scoped to its account and names each
-// leaf by the server_name its agent set, which is the Thing code.
+// Leafnodes counts leaf connections across every account: a capacity number,
+// not per-tenant availability. A tenant asks about its own sites through
+// $SYS.REQ.ACCOUNT.PING.CONNZ.
 type Stats struct {
 	Connections int
 	Leafnodes   int
-	// Routes is peer connections to other servers in the same cluster. Not
-	// always zero: Start honours a `cluster` block like any other directive, so
-	// a Control Plane peered with external nodes reports them here. See
-	// TestEmbeddedServerClustersWithAPeer.
+	// Routes is peer connections in the same cluster, non-zero when nats.conf
+	// has a `cluster` block (TestEmbeddedServerClustersWithAPeer).
 	Routes        int
 	SlowConsumers int64
 	InMsgs        int64
@@ -224,9 +190,8 @@ type Stats struct {
 }
 
 // Stats reports the embedded server's counters. The second return is false when
-// no embedded server is running (the default topology), so the caller can leave
-// the corresponding metrics unpublished rather than exporting zeros that look
-// like a server with no traffic.
+// no embedded server is running, so the caller can leave the metrics out rather
+// than export zeros that look like an idle server.
 func (s *Server) Stats() (*Stats, bool) {
 	if s == nil || s.ns == nil {
 		return nil, false
@@ -263,12 +228,9 @@ func (s *Server) Stop() {
 	s.ns.WaitForShutdown()
 }
 
-// logger adapts nats-server's Logger onto the standard library log package,
-// which is what the rest of the binary uses.
-//
-// Fatalf deliberately does not exit. nats-server calls it and then returns from
-// Start, so recording the message lets Start report a real reason instead of a
-// bare timeout.
+// logger adapts nats-server's Logger onto the standard library log package.
+// Fatalf does not exit: nats-server calls it and then returns from Start, so the
+// recorded message lets Start report a real reason instead of a timeout.
 type logger struct {
 	mu    sync.Mutex
 	fatal string

@@ -11,13 +11,6 @@ import (
 	"platform/internal/testutil"
 )
 
-// WHY THIS FILE EXISTS
-//
-// Everything under test here was pb-tenancy, and none of it was covered: the
-// library shipped no tests and the platform could not write any against code it
-// did not own. The absorb is the moment that stops being true, and the three bugs
-// below are the ones that were live in production the day it happened.
-
 func mustRecord(t *testing.T, app core.App, collection string) *core.Record {
 	t.Helper()
 	col, err := app.FindCollectionByNameOrId(collection)
@@ -52,9 +45,8 @@ func newOrg(t *testing.T, app core.App, name string, owner *core.Record) *core.R
 	return mustSave(t, app, o)
 }
 
-// An organization's owner needs the membership row, not just the relation: every
-// write branch on the inventory collections resolves authority through
-// memberships.role, so an owner without one cannot write in their own tenant.
+// An owner needs the membership row, not just the relation: authority resolves
+// through memberships.role.
 func TestOrgCreateGivesTheOwnerAMembership(t *testing.T) {
 	app := testutil.SetupApp(t)
 
@@ -80,17 +72,9 @@ func TestOrgCreateGivesTheOwnerAMembership(t *testing.T) {
 	}
 }
 
-// THE REGRESSION THIS FILE IS MOST FOR.
-//
-// pb-tenancy's handler for this event was `return autoCreateOwnerMembership(...)`
-// with no e.Next(), so it TERMINATED the chain -- and because the library bound it
-// from inside its own OnBootstrap callback it was always last, which meant every
-// handler bound after Bootstrap never ran. No handler, no error, no log.
-// RegisterManagedOrgExports on an already-bootstrapped app provisioned nothing,
-// and a Priority: -9999 bind was the only thing that fired.
-//
-// testutil.SetupApp returns a BOOTSTRAPPED app, so binding here is exactly the
-// case that used to be silently inert.
+// An organizations AfterCreateSuccess handler that returns without e.Next()
+// silently drops every handler bound after it (hooks/CLAUDE.md). SetupApp
+// returns a bootstrapped app, so this bind is the late case that would be lost.
 func TestOrgCreateDoesNotTerminateTheHookChain(t *testing.T) {
 	app := testutil.SetupApp(t)
 
@@ -110,10 +94,8 @@ func TestOrgCreateDoesNotTerminateTheHookChain(t *testing.T) {
 	}
 }
 
-// Token and expiry moved from OnRecordCreateRequest to OnRecordCreate. The
-// request hook fires for REST calls only, so an invitation created by a seed, a
-// migration or a test got a blank token and a zero expiry -- which the accept
-// endpoint reads as expired, and deletes. app.Save below IS that non-REST path.
+// Token and expiry are set on the model hook, so a non-REST create (app.Save
+// here) gets them too. A blank token and zero expiry read as expired.
 func TestInviteCreateSetsTokenAndExpiryOffTheRequestPath(t *testing.T) {
 	app := testutil.SetupApp(t)
 
@@ -144,11 +126,9 @@ func TestInviteCreateSetsTokenAndExpiryOffTheRequestPath(t *testing.T) {
 	}
 }
 
-// THE SECOND LIVE BUG. The console only offers Resend once an invitation has
-// EXPIRED (InvitationsView.vue disables the button otherwise), and pb-tenancy's
-// resend re-sent the mail without touching token or expiry -- so every Resend
-// mailed a link that was already dead, and redeeming it returned 410 and deleted
-// the invitation.
+// The console only offers Resend once an invitation has expired
+// (InvitationsView.vue), so a resend must mint a new token and expiry or it
+// mails a dead link.
 func TestResendReissuesTheInvitation(t *testing.T) {
 	app := testutil.SetupApp(t)
 
@@ -170,8 +150,7 @@ func TestResendReissuesTheInvitation(t *testing.T) {
 	invite.Set("resend_invite", true)
 	mustSave(t, app, invite)
 
-	// Reread rather than trusting the in-memory copy: the reissue is a second,
-	// post-commit write.
+	// Reread: the reissue is a second, post-commit write.
 	reloaded, err := app.FindRecordById("invites", invite.Id)
 	if err != nil {
 		t.Fatalf("reload invite: %v", err)
@@ -188,8 +167,8 @@ func TestResendReissuesTheInvitation(t *testing.T) {
 	}
 }
 
-// A resend must not loop: clearing the flag inside the post-commit handler is
-// what stops the second save from re-entering it forever.
+// A resend must not loop: clearing the flag in the post-commit handler stops
+// the second save re-entering it.
 func TestResendDoesNotRecurse(t *testing.T) {
 	app := testutil.SetupApp(t)
 
@@ -220,8 +199,7 @@ func TestResendDoesNotRecurse(t *testing.T) {
 	}
 }
 
-// The whole point of the email_templates collection: an operator edit in /_ has
-// to win, and a broken one must not be able to stop the mail.
+// An operator's edit in /_ must win, and a broken one must not stop the mail.
 func TestEmailTemplateResolution(t *testing.T) {
 	app := testutil.SetupApp(t)
 
@@ -242,7 +220,7 @@ func TestEmailTemplateResolution(t *testing.T) {
 	if !strings.Contains(body, "built-in for Acme") {
 		t.Errorf("body did not use the built-in: %q", body)
 	}
-	// The shell is added at send time, so the stored fragment need not carry one.
+	// The shell is added at send time.
 	if !strings.HasPrefix(body, "<!DOCTYPE html>") {
 		t.Errorf("rendered body is not a document: %q", body)
 	}
@@ -272,7 +250,7 @@ func TestEmailTemplateResolution(t *testing.T) {
 		t.Errorf("subject = %q, want the built-in once the row is inactive", subject)
 	}
 
-	// Broken: the operator who mistyped it is not the person waiting on the mail.
+	// Broken: falls back to the built-in.
 	row.Set("active", true)
 	row.Set("body", "<p>{{.Name</p>")
 	mustSave(t, app, row)
@@ -286,16 +264,12 @@ func TestEmailTemplateResolution(t *testing.T) {
 	}
 }
 
-// The whole path, with the mailer intercepted instead of dialled: an invite is
-// created, the hook expands its relations, renders the template and hands a
-// message to the mail client.
+// The whole path, with the mailer intercepted: create, expand, render, send.
 //
-// The case that matters is a BLANK invited_by. It is a legal state -- the field
-// is optional, and a superuser-created invitation has no request auth to fill it
-// from -- and sendInviteEmail expands it anyway, treating a non-empty error map
-// as a failure. If expanding an empty relation reported an error, every such
-// invitation would silently never be mailed, which is exactly the class of
-// failure this absorb was cleaning up.
+// The case that matters is a blank invited_by, which is legal (a superuser
+// create has no request auth). sendInviteEmail treats any expand error as a
+// failure, so if expanding an empty relation reported one, such invitations
+// would silently never be mailed.
 func TestInviteEmailIsComposedAndSent(t *testing.T) {
 	app := testutil.SetupApp(t)
 
@@ -308,8 +282,7 @@ func TestInviteEmailIsComposedAndSent(t *testing.T) {
 			to = e.Message.To[0].Address
 		}
 		sent = append(sent, subject)
-		// Do not call e.Next(): there is no SMTP server, and the point is what was
-		// composed, not whether it left the building.
+		// No e.Next(): there is no SMTP server.
 		return nil
 	})
 
@@ -337,7 +310,7 @@ func TestInviteEmailIsComposedAndSent(t *testing.T) {
 	if !strings.Contains(body, "Mail Test Co") {
 		t.Errorf("organization name missing from body: %q", body)
 	}
-	// No inviter, so the built-in stands in for one rather than leaving a gap.
+	// No inviter, so the fallback name stands in.
 	if !strings.Contains(body, "An administrator") {
 		t.Errorf("expected the fallback inviter name in body: %q", body)
 	}
@@ -347,9 +320,8 @@ func TestInviteEmailIsComposedAndSent(t *testing.T) {
 	}
 }
 
-// pb-tenancy parsed an HTML email with text/template, so nothing interpolated
-// into it was escaped -- including InviterName, which comes from users.name and
-// is set by whoever owns the account.
+// The body must escape interpolated values: InviterName comes from users.name,
+// which the account's owner sets.
 func TestInviteBodyEscapesUserControlledFields(t *testing.T) {
 	app := testutil.SetupApp(t)
 

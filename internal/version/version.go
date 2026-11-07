@@ -11,21 +11,16 @@ import (
 //
 //	-ldflags "-X platform/internal/version.Version=$(git describe --tags --always --dirty)"
 //
-// and defaults to "dev" for a plain `go build` or `go run`.
-//
-// It surfaces in `stone-age --version` and in the readiness report.
+// and defaults to "dev" for a plain `go build` or `go run`. It surfaces in
+// `stone-age --version` and in the readiness report.
 var Version = "dev"
 
 // Dependency returns the module version of the given import path as recorded in
 // the build info, or "unknown" if this binary was not built as a module.
 //
-// It exists because PocketBase's own pocketbase.Version is only stamped in
-// official PocketBase releases -- in a build that imports it as a library it
-// reads "(untracked)", so `--version` was reporting nothing useful about the
-// half of the stack that decides authorization semantics. The API rules in
-// schema.json are the entire enforcement layer, and how they are evaluated is
-// PocketBase's business, so which PocketBase this binary carries is the second
-// fact any bug report needs.
+// pocketbase.Version reads "(untracked)" when PocketBase is imported as a
+// library, and PocketBase evaluates the API rules that are the whole
+// enforcement layer, so a bug report needs its version from the build info.
 func Dependency(path string) string {
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
@@ -43,12 +38,9 @@ func Dependency(path string) string {
 // use in a multi-line `--version` string. Names are the last path segment, and
 // the version column is aligned.
 //
-// It exists because the module version is the only "stamp" a Go library can
-// carry: there is no ldflags equivalent for a dependency, so the build info is
-// the single source of truth for which pb-nats a given binary was compiled
-// against. That is also the argument for tagging those repos -- an untagged
-// module reads back as v0.0.0-20260822174619-50fca4306606, which names a commit
-// nobody can map to a release, while a tagged one reads v0.1.0.
+// A dependency has no ldflags stamp, so the build info is the only record of
+// which pb-nats a binary carries. Tag those repos: an untagged module reads
+// back as a pseudo-version nobody can map to a release.
 func DependencyLines(paths ...string) string {
 	width := 0
 	for _, p := range paths {

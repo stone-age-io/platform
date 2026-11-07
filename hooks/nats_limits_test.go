@@ -26,9 +26,8 @@ import (
 )
 
 // apiResponse is a decoded response body that prints as its error message and
-// field errors only. A nats_accounts record carries its seeds and private keys,
-// and a failing assertion should not paste key material into a CI log, test keys
-// or not.
+// field errors only, so a failing assertion never pastes a nats_accounts
+// record's key material into a CI log.
 type apiResponse map[string]any
 
 func (r apiResponse) String() string {
@@ -42,10 +41,8 @@ func (r apiResponse) String() string {
 }
 
 // recordAPI serves PocketBase's own API router in-process, so a test can drive
-// the request hooks -- the only layer that can tell an omitted field from a 0 --
-// without a listening server. The harness never serves (see the boundary note at
-// the bottom of testutil.NewApp); this is the record API alone, which is all the
-// request hooks bind to.
+// the request hooks without a listening server. The harness never serves (the
+// boundary note at the bottom of testutil.NewApp); this is the record API alone.
 type recordAPI struct {
 	mux http.Handler
 }
@@ -185,8 +182,8 @@ func unsetLimits() map[string]int {
 	return map[string]int{"max_subscriptions": -1, "max_data": -1, "max_payload": -1}
 }
 
-// One app for every case below: standing one up is most of what a hooks test
-// costs (TESTING.md), and each case works in an organization of its own.
+// One app for every case below, since standing one up is most of a hooks test's
+// cost (TESTING.md); each case works in its own organization.
 func TestNatsLimits(t *testing.T) {
 	app := testutil.SetupApp(t)
 	api := newRecordAPI(t, app)
@@ -196,17 +193,14 @@ func TestNatsLimits(t *testing.T) {
 	t.Run("real server", func(t *testing.T) { testRoleLimitsOnARealServer(t, app, api) })
 }
 
-// A role created without its limits must sign a user JWT with no per-user limit.
-// It used to store 0, which pb-nats signs as a hard limit of zero, and nats-server
-// then disconnected every holder at connect (see the real-server case).
+// A role created without its limits must sign a user JWT with no per-user limit,
+// not a hard zero (see the real-server case).
 //
-// Every path that leaves the fields unset is exercised, because they reach the
-// hook differently: a JSON create with the keys absent (`stone nats-role
-// create` without the flags), null (the console form, for a cleared input), a
-// blank multipart field, the batch endpoint (`stone apply`, when batch is
-// enabled), and a plain app.Save (demoseed and every test in this repo). Each
-// refusal is paired with an accepted write on the same field, so a hook that
-// refused everything would fail.
+// Every path that leaves the fields unset is exercised, because each reaches the
+// hook differently: keys absent (`stone nats-role create`), null (the console
+// form), a blank multipart field, the batch endpoint (`stone apply`), and a
+// plain app.Save. Each refusal is paired with an accepted write on the same
+// field, so a hook that refused everything would fail.
 func testRoleLimits(t *testing.T, app *pocketbase.PocketBase, api *recordAPI) {
 	org, account := newOrgWithAccount(t, app, "limits", "Limits Org", nil)
 	owner := reloadRecord(t, app, "users", org.GetString("owner"))
@@ -365,9 +359,8 @@ func testRoleLimits(t *testing.T, app *pocketbase.PocketBase, api *recordAPI) {
 		}
 		wantLimits(t, reloadRecord(t, app, "nats_roles", role.Id), unsetLimits())
 
-		// At the model layer a 0 and an unset field are the same value, so a 0
-		// from Go code is stored as -1 too. That is the documented trade: only a
-		// request can say "0" on purpose, and a request that does is refused.
+		// At the model layer 0 and unset are the same value, so a 0 from Go code
+		// is stored as -1 too. Only a request can say "0" on purpose.
 		reloaded := reloadRecord(t, app, "nats_roles", role.Id)
 		reloaded.Set("max_subscriptions", 0)
 		if err := app.Save(reloaded); err != nil {
@@ -377,12 +370,10 @@ func testRoleLimits(t *testing.T, app *pocketbase.PocketBase, api *recordAPI) {
 	})
 }
 
-// Account limits are operator-only and have no create path through the API, so
-// only the request layer applies: a write that sets a connection, subscription,
-// payload or data limit to 0 is refused, blank included, since nothing turns an
-// account's blank into -1. JetStream 0 is accepted, because it is a real setting
-// (JetStream off). And a 0 already stored does not block later saves -- the
-// console limits form resubmits all six fields every time.
+// Accounts get only the request layer: a 0 connection, subscription, payload or
+// data limit is refused, blank included. JetStream 0 is accepted (JetStream
+// off). A 0 already stored does not block later saves, since the console limits
+// form resubmits all six fields.
 func testAccountLimits(t *testing.T, app *pocketbase.PocketBase, api *recordAPI) {
 	_, account := newOrgWithAccount(t, app, "acctlimits", "Account Limits", nil)
 	path := "/api/collections/nats_accounts/records/" + account.Id
@@ -523,16 +514,12 @@ func credsFile(t *testing.T, user *core.Record) string {
 	return path
 }
 
-// The evidence for refusing 0 rather than keeping it as "publish-only", taken
-// from a real server rather than from reading its source: a credential signed
-// with Subs 0 is disconnected even though it never subscribes to anything, so it
-// can never publish either. And the fix, end to end: a role created through the
-// API without its limits now mints a credential that connects, subscribes and
-// stays connected.
-//
-// Both credentials come out of the platform: same operator, same account, same
-// pb-nats signing path. The Subs-0 one is the pre-fix role, reproduced by writing
-// the 0 under the hooks and re-signing.
+// The evidence for refusing 0, from a real server: a Subs-0 credential is
+// disconnected without ever subscribing, so it cannot publish either. And the
+// fix end to end: a role created without limits mints a credential that
+// connects, subscribes and stays up. Both credentials come from the same
+// pb-nats signing path; the Subs-0 one writes the 0 under the hooks and
+// re-signs.
 func testRoleLimitsOnARealServer(t *testing.T, app *pocketbase.PocketBase, api *recordAPI) {
 	org, account := newOrgWithAccount(t, app, "realnats", "Real NATS", nil)
 	owner := reloadRecord(t, app, "users", org.GetString("owner"))
@@ -589,14 +576,10 @@ func testRoleLimitsOnARealServer(t *testing.T, app *pocketbase.PocketBase, api *
 			t.Fatalf("setup: re-signed JWT has Subs %d, want the pre-fix 0", got)
 		}
 
-		// Connect and do nothing else: no subscribe, no publish.
-		//
-		// The server answers CONNECT with -ERR 'maximum subscriptions exceeded'
-		// and closes 20ms later, so there are three ways this ends, all of them
-		// the same verdict: the -ERR lands inside the handshake and Connect
-		// fails; or Connect returns and the -ERR closes the connection; or the
-		// server's close wins and the client sees only EOF. Every report is
-		// collected and one of them must name the limit.
+		// Connect and do nothing else. The server answers CONNECT with -ERR
+		// 'maximum subscriptions exceeded' and closes 20ms later, so Connect may
+		// fail, the -ERR may close the connection, or the client may see only
+		// EOF. Every report is collected and one must name the limit.
 		var reports []string
 		closed := make(chan struct{})
 		nc, err := nats.Connect(ns.ClientURL(),
@@ -627,20 +610,9 @@ func testRoleLimitsOnARealServer(t *testing.T, app *pocketbase.PocketBase, api *
 		}
 
 		// The server's own close reason, for the run where the client saw EOF.
-		// It has to be POLLED, because the server's closed-connection accounting
-		// lags the socket in two separate ways and either one alone reads as
-		// "the limit is not enforced":
-		//
-		//   - the connection may not be in the closed ring yet, so Connz comes
-		//     back without it and there is no server report at all;
-		//   - it may be there holding the PROVISIONAL reason "Client Closed",
-		//     which is later replaced by "Maximum Subscriptions Exceeded".
-		//
-		// Both were observed on the same connection id, so this is the server
-		// revising its own record rather than a different connection being
-		// reported. The client side already gets this patience from the 5s
-		// select above; without it here the test asserts against whichever of
-		// the three endings won a race it never meant to run.
+		// It has to be POLLED: the connection may not be in the closed ring yet,
+		// or may hold the provisional reason "Client Closed", later replaced on
+		// the same connection id by "Maximum Subscriptions Exceeded".
 		var server []string
 		deadline := time.Now().Add(2 * time.Second)
 		for {

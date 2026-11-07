@@ -19,12 +19,10 @@ var responseFields = map[string]string{
 	"number1698314504": "allow_response_ttl",
 }
 
-// A fresh database already has these fields -- pb-nats creates nats_roles before
-// schema.json is imported, and a re-import never removes a field -- so testing
-// the end state of a fresh app passes with or without this migration. The shape
-// at risk is a database whose nats_roles predates pb-nats adding them, so the
-// test builds that shape first, proves a write to it is dropped, and only then
-// applies the migration.
+// A fresh app has these fields whether or not schema.json declares them
+// (pb-nats creates nats_roles first). The shape at risk is a nats_roles older
+// than the fields, so the test builds it, proves a write is dropped, and only
+// then applies the migration.
 func TestRoleResponseFieldsRoundTrip(t *testing.T) {
 	app := testutil.SetupApp(t)
 

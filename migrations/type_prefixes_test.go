@@ -19,9 +19,8 @@ var foldedIndexes = map[string]string{
 	"location_types": "CREATE UNIQUE INDEX `idx_location_types_org_code` ON `location_types` (`organization`, `code`) WHERE `code` != ''",
 }
 
-// restoreCaseSensitiveIndexes puts the pre-migration indexes back. A fresh
-// database imports the schema.json that already folds case, so without this the
-// migration runs against nothing and passes for the wrong reason.
+// restoreCaseSensitiveIndexes puts the pre-migration indexes back, since a fresh
+// database already folds case.
 func restoreCaseSensitiveIndexes(t *testing.T, app core.App) {
 	t.Helper()
 	for table, def := range foldedIndexes {

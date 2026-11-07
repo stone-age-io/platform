@@ -1,28 +1,18 @@
 // Package health is the readiness-check engine behind `stone-age serve`.
 //
-// The same package lives in the agent repo. It was copied rather than extracted
-// into a shared module: two small copies that drift are cheaper to live with
-// than a third repo to version, and the two processes check different things.
+// The same package lives in the agent repo, copied on purpose rather than
+// extracted into a shared module: two small copies that drift are cheaper than
+// a third repo to version, and the two processes check different things.
 //
-// WHAT A READINESS CHECK IS FOR HERE. PocketBase already answers /api/health,
-// and that answer is "the HTTP server is listening" — which is true of every
-// interesting failure this platform has. A binary serving 200s while the NATS
-// server does not trust its operator, or while `bootstrap` was run before
-// `migrate up` and every tenancy flag silently went nowhere, is exactly the
-// state an operator needs to be told about. So the checks here are deliberately
-// about *the things that are silently wrong*, not about liveness.
+// PocketBase's /api/health only says the HTTP server is listening, which stays
+// true through every failure that matters here (an untrusted operator,
+// `bootstrap` before `migrate up`). These checks target what is silently wrong,
+// not liveness.
 //
-// WHAT EACH PROCESS MAY CHECK. A check must be answerable first-hand by the
-// process running it. The Control Plane holds the NATS operator and the $SYS
-// account; it has no user credential in any organization's account, so it
-// cannot read an org KV — not `twin`, and not anything a site reports about
-// itself. Those are visible to the console, because a browser connects with the
-// logged-in user own in-account credential, and to the agent, because it runs
-// inside the account. Do not "improve" a check here
-// by giving the Control Plane a credential inside a tenant's account: that
-// turns the platform from a credential issuer into a data-plane participant in
-// every tenant's bus, which is the one boundary the whole NATS design is built
-// around.
+// A check must be answerable first-hand by the process running it. The Control
+// Plane holds no credential in any tenant's account, so it cannot read an org
+// KV. Do not give it one to improve a check: that would make the credential
+// issuer a data-plane participant in every tenant's bus.
 package health
 
 import (
@@ -33,19 +23,11 @@ import (
 	"time"
 )
 
-// State is a single check's verdict.
+// State is a single check's verdict. Only Fail makes the process unready.
 //
-// Four states, and only Fail makes the process unready. The two middle states
-// exist because collapsing them into OK is how a green tick comes to mean
-// nothing:
-//
-//   - Warn is running-but-misconfigured — the deployment works today and a
-//     human should still fix it (at-rest encryption off, no browser-facing
-//     WebSocket URL). Failing on these would refuse to serve stock dev
-//     deployments, which are legitimately in this state.
-//   - Skipped is "this check does not apply here" — no embedded NATS server, no
-//     hub domain configured. Reporting it as OK would claim a check ran when
-//     nothing was examined.
+//   - Warn is running but misconfigured (at-rest encryption off). Failing on it
+//     would refuse to serve stock dev deployments.
+//   - Skipped means the check does not apply here. OK would claim a check ran.
 type State string
 
 const (
@@ -70,13 +52,9 @@ func (s State) severity() int {
 	}
 }
 
-// Result is one check's outcome.
-//
-// Fix is the distinguishing field and is not decoration: these checks exist to
-// be read by someone who has just deployed the binary and does not yet know the
-// bootstrap order. "operator not seeded" sends them to a search engine; "run
-// ./stone-age superuser upsert ... then migrate up then bootstrap" ends the
-// incident. Every non-OK result should carry one.
+// Result is one check's outcome. Every non-OK result should carry a Fix: the
+// exact command for someone who just deployed and does not know the bootstrap
+// order.
 type Result struct {
 	Name   string `json:"name"`
 	State  State  `json:"state"`
@@ -86,8 +64,7 @@ type Result struct {
 	Took string `json:"took,omitempty"`
 }
 
-// OK, Warn, Fail and Skip build results. The name is supplied by the registry,
-// so a check function never has to repeat it.
+// OK, Warn, Fail and Skip build results. The registry supplies the name.
 func OK(detail string) Result   { return Result{State: StateOK, Detail: detail} }
 func Skip(detail string) Result { return Result{State: StateSkipped, Detail: detail} }
 
@@ -99,9 +76,8 @@ func Fail(detail, fix string) Result {
 	return Result{State: StateFail, Detail: detail, Fix: fix}
 }
 
-// Func is a single check. It must respect ctx: Registry.Run gives every check a
-// deadline, and a check that ignores it can hang a readiness probe until the
-// orchestrator restarts a perfectly healthy container.
+// Func is a single check. It must respect ctx's deadline, or it can hang a
+// readiness probe.
 type Func func(ctx context.Context) Result
 
 // Registry holds the checks a process runs. The zero value is usable.
@@ -111,9 +87,8 @@ type Registry struct {
 	checks map[string]Func
 }
 
-// Register adds a check. Registering the same name twice replaces the first —
-// last writer wins rather than silently running two checks under one label,
-// which would make the metric series ambiguous.
+// Register adds a check. The same name twice replaces the first, so one label
+// never covers two checks.
 func (r *Registry) Register(name string, fn Func) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -129,11 +104,9 @@ func (r *Registry) Register(name string, fn Func) {
 // Report is the whole answer: one Result per registered check, plus the summary
 // fields a probe or a human reads first.
 type Report struct {
-	// Ready is false if and only if some check failed. Warnings do not make a
-	// deployment unready — see State.
+	// Ready is false if and only if some check failed.
 	Ready bool `json:"ready"`
-	// State is the worst state across all checks, so a caller can tell "ready,
-	// but you should look at this" from "ready, nothing to report".
+	// State is the worst state across all checks.
 	State   State     `json:"state"`
 	Version string    `json:"version"`
 	Uptime  string    `json:"uptime"`
@@ -142,18 +115,9 @@ type Report struct {
 	Checks  []Result  `json:"checks"`
 }
 
-// Run executes every registered check and assembles a Report.
-//
-// Checks run concurrently. They are independent by construction (each one
-// answers a different question about this process) and several do network I/O,
-// so running them in sequence would make the report's latency the sum of the
-// slowest paths — which matters because a probe has a timeout and this is what
-// it is waiting on.
-//
-// Each check gets the caller's context; use a deadline on it. A panicking check
-// is caught and reported as a failure rather than taking the process down: a
-// diagnostic is the last thing that should be able to crash the thing it is
-// diagnosing.
+// Run executes every registered check concurrently, so a probe waits for the
+// slowest check rather than the sum. Each gets the caller's context; give it a
+// deadline. A panicking check is reported as a failure, not a crash.
 func (r *Registry) Run(ctx context.Context, version string, uptime time.Duration) *Report {
 	r.mu.Lock()
 	names := append([]string(nil), r.names...)
@@ -180,16 +144,11 @@ func (r *Registry) Run(ctx context.Context, version string, uptime time.Duration
 	}
 	wg.Wait()
 
-	// Sorted by name so the JSON body and the scrape output are stable between
-	// calls; an operator diffing two readiness responses should see only what
-	// actually changed.
+	// Sorted so the output is stable between calls.
 	sort.Slice(results, func(i, j int) bool { return results[i].Name < results[j].Name })
 
-	// The worst state PRESENT, seeded from the first result rather than from a
-	// hardcoded StateOK. Seeding it at OK silently floors the answer: skipped
-	// ranks below OK, so a report in which every check skipped would come back
-	// "ok" — claiming a clean bill of health for a set of checks not one of
-	// which ran. An empty registry is the only case that is genuinely OK.
+	// Seeded from the first result, not StateOK: skipped ranks below OK, so an
+	// all-skipped report must not come back "ok". Only an empty registry is OK.
 	worst := StateOK
 	if len(results) > 0 {
 		worst = results[0].State

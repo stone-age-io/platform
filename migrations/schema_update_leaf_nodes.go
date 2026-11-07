@@ -7,24 +7,12 @@ import (
 	m "ganigeorgiev.com/pocketbase/pocketbase/migrations"
 )
 
-// schema_update_leaf_nodes re-imports the embedded schema.json so existing
-// deployments pick up the new `leaf_nodes` auth collection and the read-grant
-// rule additions that let a leaf node (the edge sync identity) mirror its own
-// organization's config:
-//
-//   - new `leaf_nodes` auth collection (single nats_user relation, like `things`).
-//   - things / locations / thing_types / location_types list+view: a leaf_nodes
-//     identity may read records in its own organization (org-scoped, read-only).
-//   - nats_accounts list+view: a leaf_nodes identity may read its own org's
-//     account (for the account JWT).
-//   - nats_users list+view: a leaf_nodes identity may read ONLY the NATS user
-//     linked to it (via the leaf_nodes_via_nats_user back-relation).
-//
-// The operator JWT is deliberately NOT exposed via a collection rule;
-// nats_system_operator stays superuser-only and the operator JWT is served by a
-// dedicated, leaf-node-authenticated route (see hooks/leaf_node_routes.go).
-//
-// Additive import (deleteMissing=false); safe on fresh DBs.
+// schema_update_leaf_nodes adds the `leaf_nodes` auth collection (the edge sync
+// identity) and read branches that let it mirror its own organization's config:
+// the four inventory collections, its organization's nats_accounts row, and only
+// its own linked nats_users row. nats_system_operator stays superuser-only; the
+// operator JWT went through a route instead. Superseded by
+// schema_update_drop_leaf_nodes.go.
 func init() {
 	m.Register(func(app core.App) error {
 		if len(SchemaJSON) == 0 {

@@ -10,16 +10,11 @@ import (
 	"platform/internal/testutil"
 )
 
-// requireMembership is the one guard standing between a route that writes with
-// app.Save() -- bypassing every API rule -- and another tenant's data. Every
-// route using it is covered end to end by scripts/test-authz.sh, but only for
-// the routes that exist today; the reason the helper is shared at all is the
-// route someone writes next. These assert its refusals directly.
-//
-// The two that matter most are the ones this codebase has actually shipped as
-// bugs: a blank active organization (the empty-string tenancy collapse, where
-// '' = '' compared equal and read across tenants) and a membership that does
-// not correlate to the claimed organization.
+// requireMembership guards every route that writes with app.Save(), bypassing
+// the API rules. scripts/test-authz.sh covers today's routes end to end; these
+// assert its refusals directly, for the route someone writes next. The two
+// that matter most: a blank active organization ('' = '' matches across
+// tenants) and a membership that does not correlate to the claimed org.
 
 type orgCtxFixture struct {
 	app    core.App
@@ -85,15 +80,13 @@ func setupOrgCtx(t *testing.T) orgCtxFixture {
 	member := joinAs("member@example.test", "member", orgA)
 	viewer := joinAs("viewer@example.test", "viewer", orgA)
 
-	// The cross-tenant probe: a genuine member of org B, but whose active
-	// organization claims org A. Only the correlated membership lookup catches
-	// this -- the blank check does not, because neither side is blank.
+	// The cross-tenant probe: a member of org B whose active organization
+	// claims org A. Only the correlated membership lookup catches this.
 	outsdr := joinAs("outsider@example.test", "owner", orgB)
 	outsdr.Set("current_organization", orgA.Id)
 	save("outsider pointed at org A", outsdr)
 
-	// owner's context is org A. It was set by the membership hook for whichever
-	// org was created last, so set it explicitly rather than relying on order.
+	// Set explicitly: the membership hook points the owner at the last org created.
 	owner.Set("current_organization", orgA.Id)
 	save("owner context", owner)
 
@@ -113,8 +106,8 @@ func setupOrgCtx(t *testing.T) orgCtxFixture {
 	}
 }
 
-// call runs the guard as a route would, with only the authenticated record to
-// go on -- there is deliberately no way to pass an organization in.
+// call runs the guard as a route would, with only the authenticated record;
+// there is deliberately no way to pass an organization in.
 func (f orgCtxFixture) call(auth *core.Record, roles []string) (string, string, error) {
 	re := &core.RequestEvent{App: f.app, Auth: auth}
 	return hooks.RequireMembership(re, "memberships", roles)
@@ -130,9 +123,8 @@ func status(err error) int {
 func TestRequireMembershipAllowsTheRolesItNames(t *testing.T) {
 	f := setupOrgCtx(t)
 
-	// Paired allow/deny on the SAME caller, for the same reason every check in
-	// test-authz.sh is paired: a guard that refused everything would pass a
-	// deny-only test.
+	// Paired allow/deny on the SAME caller: a guard that refused everything
+	// would pass a deny-only test.
 	t.Run("owner passes the manager gate", func(t *testing.T) {
 		org, role, err := f.call(f.owner, hooks.RolesOrgManager)
 		if err != nil {
@@ -174,9 +166,8 @@ func TestRequireMembershipAllowsTheRolesItNames(t *testing.T) {
 func TestRequireMembershipRefusesABlankOrganization(t *testing.T) {
 	f := setupOrgCtx(t)
 
-	// hooks/membership_lifecycle.go blanks current_organization on the way out
-	// of an organization, so this is an ordinary product state and not a
-	// contrived one. Left unguarded it is the empty-string tenancy collapse.
+	// An ordinary state: hooks/membership_lifecycle.go blanks
+	// current_organization on the way out of an organization.
 	stranded := f.member
 	stranded.Set("current_organization", "")
 
@@ -189,8 +180,7 @@ func TestRequireMembershipRefusesAnUncorrelatedMembership(t *testing.T) {
 	f := setupOrgCtx(t)
 
 	// An owner of org B, claiming org A. Neither side is blank, so only the
-	// correlated lookup refuses this -- and it is the check that makes the
-	// organization come from the membership rather than from the claim.
+	// correlated lookup refuses this.
 	org, _, err := f.call(f.outsdr, hooks.RolesOrgManager)
 	if status(err) != 403 {
 		t.Fatalf("status = %d, want 403; an owner of another organization reached org A", status(err))
@@ -211,9 +201,8 @@ func TestRequireMembershipRefusesAnUncorrelatedMembership(t *testing.T) {
 func TestRequireMembershipRefusesNonUserCallers(t *testing.T) {
 	f := setupOrgCtx(t)
 
-	// A Thing authenticates against `things` and has no membership at all. The
-	// route binding already restricts this; the guard restates it so a change
-	// to the Bind cannot silently widen who reaches the body.
+	// A Thing has no membership. The route's Bind already restricts this; the
+	// guard restates it so a changed Bind cannot widen who reaches the body.
 	if _, _, err := f.call(f.thing, hooks.RolesInventory); status(err) != 401 {
 		t.Errorf("thing: status = %d, want 401", status(err))
 	}
@@ -225,11 +214,8 @@ func TestRequireMembershipRefusesNonUserCallers(t *testing.T) {
 func TestRequireMembershipRefusesAnEmptyRoleList(t *testing.T) {
 	f := setupOrgCtx(t)
 
-	// The footgun this signature exists to close. An empty role list would
-	// build a filter with no role clause and match ANY membership, so a caller
-	// that lost its roles in a refactor would silently widen to every role
-	// rather than fail. It is a programming error, so it is a 500, and the
-	// caller is a genuine owner to prove the refusal is about the roles.
+	// An empty role list would match ANY membership, so it is a 500. The caller
+	// is a genuine owner, to prove the refusal is about the roles.
 	if _, _, err := f.call(f.owner, nil); status(err) != 500 {
 		t.Errorf("status = %d, want 500 for an empty role list", status(err))
 	}

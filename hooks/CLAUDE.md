@@ -109,7 +109,8 @@ The numbers match the feature index in the root `CLAUDE.md`.
       reason — a log that changes when a record is renamed is not a log.
     - Write rules are all `nil`, so the log cannot be forged or edited through
       the API. Deliberately no changed-field list, no retention cron and no
-      transaction dance — `hooks/activity.go` says why.
+      transaction dance — the activity feed's `CHANGELOG.md` entry says why for
+      the first two, and `hooks/activity.go` for the transaction.
     - **The console's "Open record" button is gated on the capability the
       TARGET route needs, not the one that opened the feed.** Every role in an
       org reads the feed, but the three type collections have no detail view —

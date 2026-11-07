@@ -6,14 +6,9 @@ import (
 	"testing"
 )
 
-// The field names GET /api/me/leaf-config puts on the wire are a CROSS-REPO
-// contract: the agent decodes them by name from a different module, and a
-// rename here would compile, deploy, and fail at an edge box with an empty
-// directive in a generated nats-leaf.conf.
-//
-// The route this replaced had no server-side test at all -- its field list was
-// pinned only by a hand-written fixture inside the consumer, which is exactly
-// the arrangement that lets a server-side rename ship green.
+// The field names GET /api/me/leaf-config puts on the wire are a cross-repo
+// contract: the agent decodes them by name, and a rename would compile, deploy,
+// and fail at an edge box with an empty directive in nats-leaf.conf.
 func TestLeafConfigFieldNames(t *testing.T) {
 	got := leafConfigResponse(leafConfig{})
 
@@ -46,9 +41,8 @@ func TestLeafConfigFieldNames(t *testing.T) {
 	}
 }
 
-// The probe the agent polls on every leaf refresh carries exactly the two public
-// account fields, under the same names leaf-config uses, and nothing else -- in
-// particular no `creds`, which is the whole reason the probe exists.
+// The probe carries exactly the two public account fields, under leaf-config's
+// names, and in particular no `creds`.
 func TestAccountJWTFieldNames(t *testing.T) {
 	got := accountJWTResponse("JWT", "PUB")
 
@@ -63,12 +57,10 @@ func TestAccountJWTFieldNames(t *testing.T) {
 	}
 }
 
-// The JetStream domain is the Thing's code, computed rather than stored. A
-// stored domain would be a second name for an identifier the Thing already
-// carries, free to drift from it. Two directives in nats-leaf.conf depend on
-// them agreeing -- `server_name` and `jetstream { domain }` -- and a tenant's
-// site-status dashboard widget matches a leaf's reported server_name (CONNZ)
-// back to a Thing's code, so a divergence here makes every gateway look offline.
+// The JetStream domain is the Thing's code. `server_name` and
+// `jetstream { domain }` in nats-leaf.conf depend on them agreeing, and the
+// site-status widget matches a leaf's server_name (CONNZ) back to the code, so
+// a divergence makes every gateway look offline.
 func TestLeafConfigDomainIsTheCode(t *testing.T) {
 	got := leafConfigResponse(leafConfig{Code: "s01"})
 
@@ -96,9 +88,8 @@ func TestLeafConfigCarriesTheHubValuesVerbatim(t *testing.T) {
 	}
 }
 
-// A platform that is not set up for edge sites says so, naming the setting and
-// its environment variable. The agent would reject the empty value anyway, but
-// it can only name the field, which does not tell anyone what to change.
+// A platform not set up for edge sites says so, naming the setting and its
+// environment variable, which the agent cannot.
 func TestLeafConfigNamesTheMissingHubSetting(t *testing.T) {
 	tests := []struct {
 		leafURL, domain string

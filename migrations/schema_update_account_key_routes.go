@@ -8,68 +8,22 @@ import (
 )
 
 // schema_update_account_key_routes makes nats_accounts.updateRule and
-// nebula_ca.updateRule platform-operator-only, and moves the signing-key
-// operations an organization's owners and admins need into a dedicated route.
+// nebula_ca.updateRule `@request.auth.is_operator = true`, and moves the
+// signing-key operations owners and admins need into a route.
 //
-// THE PROBLEM. Both rules carried an owner/admin branch commented "can only
-// change rotate_keys", implemented as a list of `:changed = false` assertions on
-// the fields that were meant to stay closed. That is a deny-list, and it is the
-// third instance of the same failure in this codebase — after `role ?!= "member"`
-// (satisfied by `badge`) and the `things`/`locations` write branches that
-// restricted fields without naming a role. A rule cannot express "this one field
-// and nothing else"; naming the fields to freeze means everything unnamed is open,
-// including every field added afterwards.
+// Both rules had an owner/admin branch made of `:changed = false` assertions on
+// the fields meant to stay closed: a deny-list, so every unnamed field was open,
+// including any added later. On nats_accounts that left `jwt`, `revocations` and
+// the signing keys writable; on nebula_ca it left `certificate` and `expires_at`,
+// so a tenant could replace its own overlay trust anchor. A rule cannot express
+// "this one field and nothing else".
 //
-// What the two branches actually permitted:
-//
-//   - nats_accounts: `jwt` (the signed account JWT), `revocations` (which user
-//     JWTs the account rejects), `public_key`, `signing_public_key`,
-//     `signing_keys`, `name`, `description`, `active`. Only the six `max_*` limit
-//     fields and `organization` were frozen.
-//   - nebula_ca: `name`, `certificate`, `expires_at` — an owner or admin could
-//     replace the organization's Nebula CA certificate, the trust anchor for its
-//     whole overlay network. Only `validity_years`, `curve` and `organization`
-//     were frozen. Note the branch was commented "can only change rotate_keys"
-//     while nebula_ca HAS NO rotate_keys FIELD, so that comment described an
-//     operation the rule could not perform. (CA rotation does exist now, under a
-//     different field and through a route — see SINCE THIS MIGRATION below.)
-//
-// This was not a cross-role escalation — owner and admin already administer NATS
-// and Nebula — but both rules permitted far more than they claimed, which makes
-// them impossible to review, and the silent-widening-on-new-field property is the
-// part that actually bites.
-//
-// THE REPLACEMENT. Both update rules are now `@request.auth.is_operator = true`.
-// The three operations a tenant legitimately performs on its own account moved to
-//
-//	POST /api/org/nats-account/keys   { "action": "rotate" | "add_signing" | "remove_signing" }
-//
-// (hooks/nats_account_routes.go), gated to owner/admin of the caller's active
-// organization. It takes no record id — the account is derived from the caller's
-// own organization — and a switch statement maps each action to exactly one field,
-// rejecting anything else. That switch is the allowlist a rule could not express.
-//
-// The account limits stay operator-only deliberately: they are the resource
-// envelope the tenant was sold, so raising them is not a tenant action.
-//
-// SINCE THIS MIGRATION. Nebula CA rotation had no route when this landed, because
-// the collection had no trigger field for one. It has both now: pb-nebula v0.3.0
-// added `rotate`, and
-//
-//	POST /api/org/nebula-ca/rotate   { "step": "prepare" | "commit" | "finish" }
-//
-// (hooks/nebula_routes.go) drives the three steps for owner/admin of the caller's
-// own organization. `nebula_ca.updateRule` did not change for it and should not:
-// the allowlist-versus-deny-list reasoning that put the NATS key operations on a
-// route puts CA rotation on one too, and the record it guards is the trust anchor
-// for the whole overlay.
-//
-// NOT AFFECTED: reads. Both collections remain readable by any role in the
-// organization, which is what the console's account and CA detail views rely on.
-// The operator-gated limits editor in admin/OrganizationDetailView.vue keeps
-// working because operators still satisfy the rule.
-//
-// Additive import (deleteMissing=false); safe on fresh DBs.
+// POST /api/org/nats-account/keys (hooks/nats_account_routes.go) takes no record
+// id, derives the account from the caller's organization, and maps each action
+// (rotate, add_signing, remove_signing) to exactly one field. Account limits stay
+// operator-only: they are the envelope the tenant was sold. CA rotation is on a
+// route for the same reason (POST /api/org/nebula-ca/rotate, hooks/nebula_routes.go).
+// Reads are unchanged.
 func init() {
 	m.Register(func(app core.App) error {
 		if len(SchemaJSON) == 0 {
@@ -88,16 +42,15 @@ func init() {
 }
 
 // reportTenantWritableAccountFields tells an upgrading operator how many accounts
-// and CAs existed while the deny-list branches were in force, so they know the
-// scope of what to review. It cannot tell whether anything was actually changed —
-// that is what audit_logs is for — so it only points at where to look.
+// and CAs existed under the deny-list branches. It cannot tell whether any was
+// changed, so it points at audit_logs.
 func reportTenantWritableAccountFields(app core.App) {
 	for _, c := range []struct{ collection, note string }{
 		{"nats_accounts", "jwt / revocations / signing keys were writable by any owner or admin"},
 		{"nebula_ca", "certificate / expires_at were writable by any owner or admin"},
 	} {
 		if _, err := app.FindCollectionByNameOrId(c.collection); err != nil {
-			continue // collection not present on this deployment
+			continue
 		}
 		records, err := app.FindRecordsByFilter(c.collection, "1=1", "created", 0, 0)
 		if err != nil {

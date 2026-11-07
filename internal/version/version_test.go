@@ -5,9 +5,8 @@ import (
 	"testing"
 )
 
-// A module that is not a dependency reads back as "unknown", which is what
-// makes this assertion deterministic: the point under test is the formatting,
-// not the lookup.
+// A module that is not a dependency reads back as "unknown", which keeps this
+// deterministic: the test pins the formatting, not the lookup.
 func TestDependencyLinesAlignsTheVersionColumn(t *testing.T) {
 	got := DependencyLines(
 		"example.com/x/short",

@@ -22,16 +22,9 @@ import (
 	"platform/internal/testutil"
 )
 
-// Nebula certificate expiry: the readiness check, the metric, and the one thing
-// that must hold between them -- both are computed from the same scan, so a
-// green check can never sit beside a metric saying something expired.
-//
-// The dates are written straight onto records rather than produced by signing
-// real certificates with a chosen validity: validity_years is an integer, so
-// "expires in 12 days" and "expired last week" are not states the signing path
-// can be asked for at all. What is under test is the reading of expires_at,
-// which is the column every consumer -- this check, the metric, and the
-// console's ExpiryBadge -- actually looks at.
+// Nebula certificate expiry: the readiness check, the metric, and that both come
+// from the same scan. Dates are written straight onto expires_at (see
+// setExpiry), the column every consumer reads.
 
 type certFixture struct {
 	app  core.App
@@ -43,14 +36,12 @@ type certFixture struct {
 // per offset, each expiring that far from now. A zero offset leaves expires_at
 // unset.
 //
-// It reuses the package's shared app (see managed_org_exports_test.go's
-// TestMain) because standing one up costs ~20s, and clears the two collections
-// first: organization provisioning has already minted a real CA per org with a
-// multi-year expiry, which would drown any fixture.
+// It reuses the package's shared app (managed_org_exports_test.go's TestMain),
+// and clears the collections first because provisioning has already minted a
+// real CA per org.
 func newCertFixture(t *testing.T, caOffsets, hostOffsets []time.Duration) certFixture {
 	t.Helper()
-	// TestMain does not build the shared app under -short, so every consumer of
-	// it has to say so itself.
+	// TestMain does not build the shared app under -short.
 	testutil.SkipIfShort(t)
 
 	app := managed.app
@@ -69,9 +60,8 @@ func newCertFixture(t *testing.T, caOffsets, hostOffsets []time.Duration) certFi
 		},
 	}
 
-	// Hosts, then networks, then CAs: raw SQL does not enforce the relations,
-	// but leaving a network behind pointing at a deleted CA would make the next
-	// subtest's fixture fail for a reason that has nothing to do with expiry.
+	// Hosts, then networks, then CAs, so no row is left pointing at a deleted
+	// one to break the next fixture.
 	for _, c := range []string{"nebula_hosts", "nebula_networks", "nebula_ca"} {
 		if _, err := app.DB().NewQuery("DELETE FROM {{" + c + "}}").Execute(); err != nil {
 			t.Fatalf("clear %s: %v", c, err)
@@ -106,13 +96,10 @@ func newCertFixture(t *testing.T, caOffsets, hostOffsets []time.Duration) certFi
 		}
 	}
 
-	// nebula_hosts.network_id is required, and a network needs a CA. Only built
-	// when there are hosts to put in it.
+	// nebula_hosts.network_id is required, and a network needs a CA.
 	if len(hostOffsets) > 0 {
 		if firstCA == nil {
-			// Only here so the hosts have a network to belong to; left with the
-			// healthy expiry pb-nebula signs it with, so it never influences a
-			// case whose caOffsets said nothing about a CA.
+			// Left with its healthy signed expiry, so it never influences a case.
 			firstCA = mk("nebula_ca", 0, map[string]any{
 				"name":           "fixture-ca-implied",
 				"validity_years": 5,
@@ -126,8 +113,7 @@ func newCertFixture(t *testing.T, caOffsets, hostOffsets []time.Duration) certFi
 		})
 
 		for i, d := range hostOffsets {
-			// nebula_hosts is a PocketBase AUTH collection, so email and
-			// password are mandatory and email must be unique.
+			// An auth collection: email and password are required.
 			rec := mk("nebula_hosts", i, map[string]any{
 				"hostname":        fmt.Sprintf("fixture-host-%d", i),
 				"email":           fmt.Sprintf("host-%d@fixture.test", i),
@@ -144,16 +130,10 @@ func newCertFixture(t *testing.T, caOffsets, hostOffsets []time.Duration) certFi
 	return f
 }
 
-// setExpiry writes expires_at directly, and has to.
-//
-// pb-nebula signs the certificate in its own create hook and derives expires_at
-// from validity_years, so a Set() on the record before Save is overwritten:
-// every host came back expiring in exactly one year no matter what the fixture
-// asked for, and the first version of these tests "passed" a check that was
-// reporting everything healthy. validity_years is an integer anyway, so
-// "expired last week" is not a state the signing path can be asked for.
-//
-// A zero offset clears the column, which is the no-readable-expiry case.
+// setExpiry writes expires_at with raw SQL, and has to: pb-nebula derives it
+// from validity_years in its create hook, overwriting any Set() before Save,
+// and an integer validity cannot express "expired last week". A zero offset
+// clears the column.
 func setExpiry(t *testing.T, app core.App, collection, id string, now time.Time, offset time.Duration) {
 	t.Helper()
 
@@ -225,26 +205,16 @@ func TestCertExpiryCountsExpiredExpiringAndValid(t *testing.T) {
 		t.Errorf("hosts: total=%d expired=%d expiring=%d, want 3/1/1", host.Total, host.Expired, host.Expiring)
 	}
 
-	// Expired and Expiring must not double-count: an expired certificate is not
-	// also "expiring soon", or every alert on the second series keeps firing
-	// forever once the first one does.
+	// Expired and Expiring must not double-count, or an alert on expiring keeps
+	// firing forever once a certificate expires.
 	if host.Total-host.Expired-host.Expiring != 1 {
 		t.Errorf("the three counts do not partition: %d - %d - %d", host.Total, host.Expired, host.Expiring)
 	}
 }
 
-// TestCAGetsALongerWarningWindowThanAHost pins the one thing that stops the two
-// windows collapsing back into a shared constant.
-//
-// A host certificate is renewable, and pb-nebula re-issues one automatically
-// once it has burned through its lifetime -- so 30 days is ample. A CA cannot be
-// renewed at all; the only remedy is rotation, which needs a wait in the middle
-// long enough for every host to fetch a config nobody told it to fetch. Nebula's
-// guide asks for two to three months.
-//
-// The certificate used here sits BETWEEN the two windows on purpose. With one
-// shared 30-day constant it reads as healthy, and the console's rotation panel
-// is first offered to an operator who no longer has time to use it.
+// TestCAGetsALongerWarningWindowThanAHost stops the two windows collapsing into
+// one constant (the reason is on caExpiryWindow). The certificate sits between
+// the windows, so a shared 30-day constant would read it as healthy.
 func TestCAGetsALongerWarningWindowThanAHost(t *testing.T) {
 	day := 24 * time.Hour
 
@@ -274,8 +244,7 @@ func TestCAGetsALongerWarningWindowThanAHost(t *testing.T) {
 	}
 }
 
-// A decommissioned device's lapsed certificate is not a fault anyone should be
-// paged about, and active=false is this platform's decommission flag.
+// A decommissioned (active=false) device's lapsed certificate is not a fault.
 func TestCertExpiryIgnoresDecommissionedHosts(t *testing.T) {
 	f := newCertFixture(t, []time.Duration{400 * 24 * time.Hour}, []time.Duration{-5 * 24 * time.Hour})
 
@@ -311,9 +280,7 @@ func TestCertCheckWarnsButNeverFails(t *testing.T) {
 		{"all healthy", []time.Duration{400 * day}, []time.Duration{200 * day}, health.StateOK, "valid"},
 		{"a host expiring", []time.Duration{400 * day}, []time.Duration{5 * day}, health.StateWarn, "expiring"},
 		{"a host expired", []time.Duration{400 * day}, []time.Duration{-1 * day}, health.StateWarn, "expired"},
-		// The CA is worth naming separately: every host certificate chains to
-		// it, so "1 CA expired" and "1 host certificate expired" are very
-		// different mornings.
+		// The CA is named separately: every host certificate chains to it.
 		{"the CA expired", []time.Duration{-1 * day}, []time.Duration{200 * day}, health.StateWarn, "1 CA expired"},
 		{"nothing issued", nil, nil, health.StateSkipped, "no Nebula certificates"},
 	}
@@ -326,8 +293,8 @@ func TestCertCheckWarnsButNeverFails(t *testing.T) {
 			if res.State != tc.want {
 				t.Errorf("state = %q, want %q (detail: %s)", res.State, tc.want, res.Detail)
 			}
-			// The design point: a lapsed device certificate must not take the
-			// Control Plane out of a load balancer.
+			// A lapsed certificate must not take the Control Plane out of a
+			// load balancer.
 			if res.State == health.StateFail {
 				t.Error("a certificate expiry made the process UNREADY -- readiness means 'stop sending me traffic', " +
 					"and an expired host certificate is not this process being unable to serve")
@@ -360,9 +327,8 @@ func TestCertCheckDoesNotTreatAMissingExpiryAsHealthy(t *testing.T) {
 	}
 }
 
-// Nothing in CI scrapes /metrics, so a malformed body would look completely
-// fine in a terminal and be silently unscrapeable. Same reasoning as
-// internal/metrics/metrics_test.go, applied to the new collector.
+// Nothing in CI scrapes /metrics, so a malformed body would go unnoticed. Same
+// reasoning as internal/metrics/metrics_test.go.
 func TestCertMetricsScrapeCleanly(t *testing.T) {
 	day := 24 * time.Hour
 	f := newCertFixture(t, []time.Duration{400 * day}, []time.Duration{-2 * day, 7 * day})
@@ -396,9 +362,8 @@ func TestCertMetricsScrapeCleanly(t *testing.T) {
 		t.Errorf("promlint: %s: %s", p.Metric, p.Text)
 	}
 
-	// No organization label, anywhere. /metrics is open by default, so a tenant
-	// name beside a certificate inventory is free reconnaissance -- the same
-	// rule that keeps stone_age_records unlabelled by org.
+	// No organization label: /metrics is open by default, so a tenant name
+	// beside a certificate inventory is free reconnaissance.
 	for name, fam := range families {
 		if !strings.HasPrefix(name, "stone_age_certificate") {
 			continue
@@ -414,9 +379,8 @@ func TestCertMetricsScrapeCleanly(t *testing.T) {
 	}
 }
 
-// The check and the metric are read by different people at different times, and
-// the only thing keeping them consistent is that both call the same scan. If
-// one ever grows its own query, this is what notices.
+// The check and the metric agree only because both call the same scan. This
+// notices if one grows its own query.
 func TestCertCheckAndMetricAgree(t *testing.T) {
 	day := 24 * time.Hour
 	f := newCertFixture(t, []time.Duration{400 * day}, []time.Duration{-2 * day, 7 * day, 500 * day})
@@ -438,15 +402,14 @@ func TestCertCheckAndMetricAgree(t *testing.T) {
 		t.Errorf("expiring count disagrees with the check.\n%s", grepLines(body, "stone_age_certificates"))
 	}
 
-	// An absent series is answerable with absent(); a zero timestamp is 1970,
-	// which every "expires soon" alert would fire on forever.
+	// Omit the series rather than emit 0: a zero timestamp is 1970, which every
+	// "expires soon" alert would fire on forever.
 	if strings.Contains(body, `stone_age_certificate_expiry_seconds{kind="nebula_ca"} 0`) {
 		t.Error("expiry timestamp emitted as 0 -- omit the series instead when there is nothing to report")
 	}
 }
 
-// scrapeMetrics renders the exposition through the real /metrics handler, so
-// what is asserted is the bytes a Prometheus server would actually receive.
+// scrapeMetrics renders the exposition through the real /metrics handler.
 func scrapeMetrics(t *testing.T, set *metrics.Set) string {
 	t.Helper()
 	rec := httptest.NewRecorder()

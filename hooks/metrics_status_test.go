@@ -8,18 +8,10 @@ import (
 	"ganigeorgiev.com/pocketbase/pocketbase/tools/router"
 )
 
-// An API-rule rejection must be counted as a 4xx.
-//
-// This is the bug the split-out function exists to pin. PocketBase's router runs
-// its ErrorHandler AFTER the middleware chain unwinds, so a handler that returns
-// an error leaves the tracked status at 0 by the time the metrics middleware
-// sees it. The previous code answered "5xx" for every such case -- and EVERY
-// authorization rejection arrives that way: 400 on a denied create, 404 on a
-// denied update, 401/403 from RequireAuth. The 4xx bucket sat near-empty while a
-// 5xx alert fired on a platform doing exactly its job.
-//
-// The statuses below are this platform's own documented conventions, which is
-// why they are the cases worth naming.
+// An API-rule rejection must be counted as a 4xx. The router's ErrorHandler
+// runs AFTER the middleware unwinds, so a returned error leaves the tracked
+// status at 0, and every authorization rejection arrives that way: 400 on a
+// denied create, 404 on a denied update, 401/403 from RequireAuth.
 func TestStatusClassCountsRuleRejectionsAsClientErrors(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -75,10 +67,9 @@ func TestStatusClassCountsRuleRejectionsAsClientErrors(t *testing.T) {
 	}
 }
 
-// A plain error carries no status of its own. PocketBase's ErrorHandler resolves
-// it through the same ToApiError call used here, which generalises it to 400 --
-// so this asserts the bucket matches what the client is actually sent, rather
-// than what a reader might assume an unclassified error means.
+// A plain error carries no status. ErrorHandler resolves it through the same
+// ToApiError call, which makes it a 400, so the bucket matches what the client
+// is sent.
 func TestStatusClassMatchesWhatTheRouterWouldSend(t *testing.T) {
 	plain := errors.New("something went wrong")
 

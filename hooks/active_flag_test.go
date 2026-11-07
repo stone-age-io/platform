@@ -10,23 +10,14 @@ import (
 	"platform/internal/testutil"
 )
 
-// A deactivated Thing's identities must not come back on their own.
+// A deactivated Thing's identities must not come back on their own: not by
+// re-enabling them, nor by `regenerate`/`revoke`/`renew`, which the libraries
+// answer with a working credential even for an inactive identity.
 //
-// The mirror in hooks/active_flag.go makes them inactive when the Thing is
-// deactivated, and before guardLinkedIdentity nothing stopped an admin bringing
-// one back by itself -- Re-enable on the NATS user page, the Active toggle on
-// the Nebula host form, or `regenerate`/`revoke`/`renew`, each of which pb-nats
-// or pb-nebula answers with a working credential even for an inactive identity.
-// The device was back on the bus or the mesh under a "Deactivated" badge.
-//
-// Every refusal is paired with a save that must still succeed: reactivating the
-// Thing (the mirror passes the guard), and a NATS user no Thing links (the guard
-// is about Things, not about inactive users). A guard that refused everything
-// would pass the refusals alone.
-//
-// Records are RELOADED before every update, for the reason newFlagOrg gives:
-// an in-memory record's Original() is the pre-create state, and the record API
-// -- the path being tested -- always loads the row first.
+// Every refusal is paired with a save that must still succeed (reactivating the
+// Thing, and re-enabling a NATS user no Thing links), so a guard that refused
+// everything fails. Records are reloaded before every update, for the reason
+// newFlagOrg gives.
 func TestDeactivatedThingIdentitiesStayDown(t *testing.T) {
 	app := testutil.SetupApp(t)
 
@@ -115,8 +106,6 @@ func TestDeactivatedThingIdentitiesStayDown(t *testing.T) {
 		t.Fatal("deactivating the Thing should have deactivated both identities (the mirror, which the guard must not block)")
 	}
 
-	// tryRevive applies one change to a freshly loaded identity and reports
-	// whether the save went through.
 	tryRevive := func(collection, id string, fields map[string]any) error {
 		rec := reload(collection, id)
 		for k, v := range fields {
@@ -125,9 +114,8 @@ func TestDeactivatedThingIdentitiesStayDown(t *testing.T) {
 		return app.Save(rec)
 	}
 
-	// Each case starts from a freshly deactivated Thing. Shared state would let
-	// one case that got through leave the identity active for the next, and the
-	// next would then prove nothing about an INACTIVE identity.
+	// Each case starts from a freshly deactivated Thing, so one case that got
+	// through cannot leave the identity active for the next.
 	freshlyDeactivated := func() {
 		t.Helper()
 		setThingActive(true)
@@ -144,10 +132,8 @@ func TestDeactivatedThingIdentitiesStayDown(t *testing.T) {
 	} {
 		t.Run("nats "+c.name+" is refused", func(t *testing.T) {
 			freshlyDeactivated()
-			// A user JWT re-minted for the same key in the same wall-clock
-			// second is byte-identical (TESTING.md, the re-minted credential
-			// bullet), so without this a regenerate that went through would
-			// still compare equal. The baseline is read right before the call.
+			// A JWT re-minted in the same second is byte-identical (TESTING.md,
+			// the re-minted credential bullet), so wait before the baseline.
 			time.Sleep(1100 * time.Millisecond)
 			before := reload("nats_users", linked.Id)
 			if err := tryRevive("nats_users", linked.Id, c.fields); err == nil {
@@ -172,8 +158,7 @@ func TestDeactivatedThingIdentitiesStayDown(t *testing.T) {
 	} {
 		t.Run("nebula "+c.name+" is refused", func(t *testing.T) {
 			freshlyDeactivated()
-			// No clock wait: a re-issue generates a new key pair, so the
-			// certificate differs whatever the time.
+			// No wait: a re-issue generates a new key pair.
 			hostBefore := reload("nebula_hosts", host.Id)
 			if err := tryRevive("nebula_hosts", host.Id, c.fields); err == nil {
 				t.Errorf("%s on a deactivated Thing's Nebula host was allowed", c.name)

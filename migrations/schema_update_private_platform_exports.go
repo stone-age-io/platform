@@ -12,22 +12,16 @@ import (
 // schema_update_private_platform_exports makes the two exports the platform
 // creates for itself private to the one account each is meant for.
 //
-// Both were public (token_req false). A public export can be imported by any
-// account, and an owner may create an import naming any account key, so:
+// Both were public (token_req false), and any account may import a public
+// export. So any tenant could read another's inventory export
+// (inventory-<org id>) given the hub key and the victim's code, and a managed
+// tenant's helpdesk-events export given its account key.
 //
-//   - the per-org inventory export on the provider account (inventory-<org id>)
-//     was readable by every tenant that knew the hub key, which its own import
-//     record shows, and the victim's code, which is printed on labels;
-//   - a managed tenant's helpdesk-events export was readable by any tenant that
-//     knew that tenant's account key.
-//
-// The fix is pb-nats v0.3.3: an export lists the accounts it grants in
-// allowed_importers, and pb-nats signs the activation token for those alone. This
-// migration declares that field and revocations with PocketBase's deterministic
-// ids (pb-nats also creates them, see migrations/CLAUDE.md), then re-saves every
-// managed organization, because ensureManagedExports reconciles only when an
-// organization is saved. The inventory pairs need no re-save: the serve-time
-// sweep reconciles every organization's pair.
+// The fix is pb-nats v0.3.3: pb-nats signs activation tokens only for the
+// accounts in an export's allowed_importers. This declares that field and
+// revocations with PocketBase's deterministic ids (migrations/CLAUDE.md), then
+// re-saves every managed organization, because ensureManagedExports reconciles
+// only on save. The serve-time sweep reconciles the inventory pairs.
 func init() {
 	m.Register(func(app core.App) error {
 		if len(SchemaJSON) == 0 {
@@ -43,9 +37,8 @@ func init() {
 			return fmt.Errorf("find managed organizations: %w", err)
 		}
 		for _, org := range orgs {
-			// Fires syncManaged, whose reconcile logs the fields it changed.
-			// Failures there are logged, not returned, as in
-			// schema_update_subject_token_to_code.go.
+			// Fires syncManaged. Its reconcile failures are logged, not
+			// returned, as in schema_update_subject_token_to_code.go.
 			if err := app.Save(org); err != nil {
 				return fmt.Errorf("re-save organization %q: %w", org.GetString("name"), err)
 			}

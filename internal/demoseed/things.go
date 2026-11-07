@@ -7,13 +7,9 @@ import (
 	"ganigeorgiev.com/pocketbase/pocketbase/core"
 )
 
-// Things and edge sites — the two phases that mint identities.
-//
-// A Thing here is created the way POST /api/org/things creates one: the record,
-// its NATS identity, and (where the fixture asks for it) its Nebula host. Most
-// field sensors get no Nebula host, which is the real design rather than an
-// omission — a probe reaches the bus and nothing else, and the overlay exists
-// for the management path that has to work when the bus does not.
+// Things are created the way POST /api/org/things creates them: the record, its
+// NATS identity and, where the fixture asks, a Nebula host. Most field sensors
+// get no Nebula host by design: the overlay is for the management path.
 
 // seedThings creates the curated fixtures, then generates enough additional
 // devices to reach Options.Things.
@@ -71,9 +67,8 @@ func (s *seeder) thing(t thingFixture) error {
 			r.Set("description", t.Description)
 			r.Set("type", typeID)
 			r.Set("location", locID)
-			// The console used to omit this and every Thing it created was
-			// locked out by things.authRule. Set explicitly for the same reason
-			// the route sets it. Always true: deactivation is an update, below.
+			// things.authRule needs active = true, and bools have no schema
+			// default. Always true here: deactivation is an update, below.
 			r.Set("active", true)
 			r.Set("email", fmt.Sprintf("%s@%s.thing.local", t.Code, t.Org))
 			r.Set("emailVisibility", true)
@@ -90,37 +85,14 @@ func (s *seeder) thing(t thingFixture) error {
 		return err
 	}
 
-	// Decommissioning is an UPDATE, and it goes THROUGH hooks/active_flag.go
-	// rather than around it. Two separate bugs lived in the previous version.
+	// Decommissioning is an update through hooks/active_flag.go: the hook forces
+	// active = true on create, and its true->false edge refreshes the token key,
+	// suspends the NATS identity and blocklists the Nebula host. Never set
+	// nats_users.revoke instead: pb-nats checks revoke first, which rotates to a
+	// fresh working credential and skips the suspend.
 	//
-	// First, `active: false` at create time was silently overwritten. That hook
-	// forces `active = true` on create, because PocketBase bools have no schema
-	// default and things.authRule is `active = true` — so a Thing created
-	// without the field would be locked out of its own API. The seeder asked for
-	// inactive Things, the hook said otherwise, and `stone-age demo-seed`
-	// produced ZERO decommissioned devices on a real install. Nothing caught it
-	// because internal/testutil did not bind that hook, so the harness and the
-	// binary disagreed about what a create does.
-	//
-	// Second, the seeder reached into the nats_users record and set `revoke`
-	// alongside `active = false`. pb-nats checks `revoke` FIRST and returns
-	// early, so the suspend branch never ran — and revoke means "these
-	// credentials leaked": it rotates the key pair and writes back a fresh
-	// WORKING creds_file. Every "decommissioned" demo Thing therefore held a
-	// live NATS credential, which is the precise failure hooks/active_flag.go
-	// documents at length and warns against.
-	//
-	// The true->false flip on the Thing does all of it in one place: the token
-	// key is refreshed, the linked NATS identity is suspended, and the linked
-	// Nebula host is blocklisted. Guarded on the current value so re-running the
-	// seeder does not re-flip an already-decommissioned device.
-	// The record is RE-READ first, and that is load-bearing rather than tidy.
-	// hooks/active_flag.go is edge-triggered on Original().GetBool("active"),
-	// and a record that was just created in memory and saved carries an empty
-	// original snapshot — so `active` reads as false on both sides of the
-	// comparison, the hook sees no edge, and returns without cascading. Loading
-	// the record back gives it a real prior state, which is also what an
-	// operator editing it in the console produces.
+	// The record is re-read first because the hook keys on Original(), and a
+	// record just created in memory has an empty original, so it sees no edge.
 	if t.Inactive {
 		fresh, err := s.app.FindRecordById("things", thing.Id)
 		if err != nil {
@@ -136,10 +108,9 @@ func (s *seeder) thing(t thingFixture) error {
 	return nil
 }
 
-// roleForThingType looks up a thing type's default NATS role by name, from the
-// fixtures rather than the database — the fixture is the source of truth for
-// what the demo means, and a hand-edited role on the record should not silently
-// change what the next generated device gets.
+// roleForThingType looks up a thing type's default NATS role from the fixtures,
+// not the database, so a hand-edited record does not change what the next
+// generated device gets.
 func roleForThingType(org, code string) string {
 	for _, tt := range thingTypes {
 		if tt.Org == org && tt.Code == code {
@@ -149,12 +120,9 @@ func roleForThingType(org, code string) string {
 	return ""
 }
 
-// ------------------------------------------------------------- generated bulk
-
 // fillThings tops the inventory up to Options.Things by generating devices for
-// the thing types that declared a BulkPrefix. Types without one are curated-only:
-// a WMS connector or a rule engine is a single named participant, and cloning it
-// into a fleet of forty would misrepresent what an application Thing is.
+// the thing types that declare a BulkPrefix. Types without one are single named
+// participants (a WMS connector, a rule engine) and stay curated-only.
 func (s *seeder) fillThings() error {
 	target := s.opts.Things
 	have, err := s.countThings()
@@ -165,8 +133,7 @@ func (s *seeder) fillThings() error {
 		return nil
 	}
 
-	// Deterministic order: the fixture order, filtered. Round-robin across types
-	// so the fill is spread over every org rather than exhausting the first.
+	// Fixture order, round-robin across types, so the fill spreads over every org.
 	var bulk []thingTypeFixture
 	for _, tt := range thingTypes {
 		if tt.BulkPrefix != "" && len(tt.BulkLocations) > 0 {
@@ -209,9 +176,8 @@ func (s *seeder) fillThings() error {
 	return nil
 }
 
-// bulkMetadata produces plausible per-device metadata. It does not attempt to
-// satisfy the type's whole metadata_schema: a schema here is advisory, and a
-// half-filled metadata bag is what real inventory looks like.
+// bulkMetadata produces plausible per-device metadata. It does not fill the
+// whole metadata_schema: the schema is advisory.
 func (s *seeder) bulkMetadata(tt thingTypeFixture, n int) map[string]any {
 	m := map[string]any{
 		"serial":   fmt.Sprintf("%s-%s-%05d", tt.BulkPrefix, tt.Org[:2], 10000+n*7),
@@ -251,9 +217,8 @@ func (s *seeder) countThings() (int, error) {
 	return total, nil
 }
 
-// countByCodePrefix counts existing generated devices so sequence numbers resume
-// rather than restart. LIKE is safe here: every prefix is an ASCII literal from
-// the fixtures, with no wildcard characters in it.
+// countByCodePrefix counts existing generated devices so sequence numbers resume.
+// LIKE is safe: every prefix is a fixture literal with no wildcard characters.
 func (s *seeder) countByCodePrefix(orgCode, prefix string) (int, error) {
 	recs, err := s.app.FindAllRecords("things",
 		dbx.NewExp("organization = {:o} AND code LIKE {:p}",

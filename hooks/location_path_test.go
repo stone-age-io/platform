@@ -11,9 +11,8 @@ import (
 
 // TestLocationPath covers ADR 0004's locations.path against a real PocketBase:
 // the path on create, the subtree rewrite on a move, the cycle refusal, and what
-// a deleted parent does to its children -- the last being PocketBase's relation
-// cleanup firing our update hook, which is exactly the kind of behaviour worth
-// pinning in case an upgrade changes it.
+// a deleted parent does to its children (PocketBase's relation cleanup firing
+// our update hook, pinned in case an upgrade changes it).
 func TestLocationPath(t *testing.T) {
 	app := testutil.SetupApp(t)
 

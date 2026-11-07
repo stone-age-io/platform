@@ -3,53 +3,23 @@ package health
 // What a tenant can learn about its own leaf nodes, asked of a real hub with a
 // real leaf attached.
 //
-// These tests assert nats-server's behaviour, not ours. Nothing in the platform
-// ships a view built on them: a console badge for site connectivity was built
-// and removed, because nothing in the schema marks which Things are gateways, so
-// it rendered on every device and polled a whole account's connection list every
-// 15 seconds to tell temperature probes they had no leaf node. The capability is
-// a dashboard recipe now -- a Publisher or Button widget aimed at
-// $SYS.REQ.ACCOUNT.PING.CONNZ -- which is why these still matter: the recipe is
-// only usable if the three facts below hold, and none of them is ours to
-// guarantee.
+// These tests pin nats-server behaviour, not ours. Site connectivity is a
+// dashboard recipe (a widget aimed at $SYS.REQ.ACCOUNT.PING.CONNZ), with no
+// platform route and no heartbeat, and the recipe works only while these hold.
+// Fixtures cannot answer any of it, so it runs against a real hub and leaf.
 //
-// There is deliberately no platform route and no `leaf_status` heartbeat for
-// this either. A heartbeat travels over the very link that breaks, so its
-// absence cannot distinguish "edge down" from "WAN down" from "agent crashed",
-// and the Control Plane could not read one anyway -- it holds the operator and
-// $SYS and no credential inside any tenant account. The hub always knows.
-//
-// Three facts, and the third is the one that silently dismantles the other two:
-//
-//  1. $SYS.REQ.ACCOUNT.PING.CONNZ lists leaf connections, and names each one by
-//     the leaf server's `server_name` -- which is a Thing's code. A site is
-//     therefore identifiable, not merely countable (STATZ gives a bare count).
-//  2. The account scope is enforced by the SERVER, not by any permission we
-//     write. A tenant cannot reach $SYS.REQ.SERVER.PING.LEAFZ -- every account's
-//     leaves -- with a credential carrying no deny list at all, because those
-//     endpoints are served inside the $SYS ACCOUNT and an account is a closed
-//     subject namespace. That is TestTenantCannotReachServerEndpoints, and it is
-//     why no tenant role here ships a $SYS publish deny: a deny would restate
-//     this boundary somewhere weaker and strictly worse.
-//  3. Publish DENY beats publish ALLOW. A user carrying `$SYS.>` in its deny
-//     list cannot reach the account endpoints no matter what its allow list
-//     says -- and the failure surfaces as a request timeout, with the real
-//     reason arriving asynchronously on the connection's error handler. That is
-//     TestDenyingAllOfSysBlocksAccountMonitoring, which exists so nobody
-//     "re-tightens" tenant permissions back to a blanket $SYS deny and then
-//     debugs a dead widget for a day.
-//
-// One more, for the edge agent rather than a dashboard. The agent registers its
-// commands as a NATS micro service, and a $SRV discovery request asked at the
-// hub reaches one behind a leaf only if the leaf's UPLINK credential allows
-// $SRV.> -- the uplink filters $SRV like any other subject, so the agent's own
-// credential is not enough. That is
-// TestServiceDiscoveryCrossesALeafOnlyIfTheUplinkAllowsIt, and it is why the
-// gateway role in internal/demoseed/contract.go carries the grant.
-//
-// Fixtures cannot answer any of this, which is the same reason
-// TestBuildLeafConfIsAcceptedByNATSServer runs the generated config through the
-// real server rather than grepping it.
+//  1. CONNZ names each leaf by its `server_name`, a Thing's code, so a site is
+//     identifiable, not merely countable. TestTenantCanSeeItsOwnLeafConnections.
+//  2. The account, not any permission we write, blocks a tenant from the
+//     operator-wide $SYS.REQ.SERVER.PING.* endpoints. That is why no tenant role
+//     carries a $SYS publish deny. TestTenantCannotReachServerEndpoints.
+//  3. Publish DENY beats publish ALLOW, so a `$SYS.>` deny kills account
+//     monitoring whatever the allow list says, and fails as a bare timeout.
+//     TestDenyingAllOfSysBlocksAccountMonitoring.
+//  4. For the agent: $SRV discovery asked at the hub reaches a service behind a
+//     leaf only if the leaf's uplink credential allows $SRV.>, which is why the
+//     gateway role in internal/demoseed/contract.go carries it.
+//     TestServiceDiscoveryCrossesALeafOnlyIfTheUplinkAllowsIt.
 
 import (
 	"encoding/json"
@@ -68,13 +38,12 @@ import (
 	"github.com/nats-io/nkeys"
 )
 
-// leafServerName is the leaf's `server_name`, which buildLeafConf sets to the
-// JetStream domain, which this design sets to the Thing's code.
+// leafServerName is the leaf's `server_name`, which the agent's buildLeafConf
+// sets to the JetStream domain, which is the Thing's code.
 const leafServerName = "s01"
 
-// The hub answers the account broadcast alongside the leaf, so replies have to
-// be told apart by the server that sent them. A constant rather than the same
-// literal in two places.
+// The hub and the leaf both answer the account broadcast; replies are told
+// apart by server name.
 const hubServerName = "hub"
 
 type leafWorld struct {
@@ -86,8 +55,7 @@ type leafWorld struct {
 	orgKP  nkeys.KeyPair
 }
 
-// mintLeafWorld is mintOperatorWorld plus a tenant account, so a question can be
-// asked from inside an organization rather than only from $SYS.
+// mintLeafWorld is mintOperatorWorld plus a tenant account.
 func mintLeafWorld(t *testing.T) leafWorld {
 	t.Helper()
 
@@ -102,8 +70,7 @@ func mintLeafWorld(t *testing.T) leafWorld {
 		pub, _ := kp.PublicKey()
 		ac := jwt.NewAccountClaims(pub)
 		ac.Name = name
-		// Explicit rather than trusting the zero value: a leaf connection limit
-		// of 0 would refuse the very thing under test.
+		// Explicit: a leaf connection limit of 0 would refuse the leaf.
 		ac.Limits.LeafNodeConn = -1
 		ac.Limits.Conn = -1
 		encoded, err := ac.Encode(okp)
@@ -135,9 +102,8 @@ func mintLeafWorld(t *testing.T) leafWorld {
 	}
 }
 
-// userCreds mints a user in acc with an explicit publish allow/deny, matching
-// the shape pb-nats copies verbatim from nats_users.publish_permissions into the
-// signed JWT. Nil/nil is an unrestricted user.
+// userCreds mints a user in acc with a publish allow/deny, the shape pb-nats
+// copies from nats_users.publish_permissions. Nil/nil is unrestricted.
 func userCreds(t *testing.T, acc nkeys.KeyPair, name string, allow, deny []string) string {
 	t.Helper()
 	ukp, _ := nkeys.CreateUser()
@@ -177,9 +143,9 @@ func startFromConf(t *testing.T, name, conf string) *natsserver.Server {
 }
 
 // startHubWithLeaf brings up an operator-mode hub and attaches one leaf bound to
-// the tenant account, shaped like the file buildLeafConf writes: operator, a
-// MEMORY resolver preloaded with BOTH the org and $SYS accounts, and a remote
-// carrying an `account` key.
+// the tenant account, shaped like the agent's buildLeafConf output: operator, a
+// MEMORY resolver preloaded with both the org and $SYS accounts, and a remote
+// with an `account` key.
 func startHubWithLeaf(t *testing.T, w leafWorld) *natsserver.Server {
 	t.Helper()
 	hub, _ := startHubWithLeafAs(t, w, userCreds(t, w.orgKP, "edge", nil, nil))
@@ -226,19 +192,9 @@ leafnodes {
 }
 `, leafServerName, w.opJWT, w.orgPub, w.orgJWT, w.sysPub, w.sysJWT, leafPort, w.orgPub, remoteCreds))
 
-	// Wait for the leaf to be attached AND NAMED, not merely attached.
-	//
-	// NumLeafNodes() counts the connection, which the hub registers as soon as
-	// the TCP session is accepted. `server_name` arrives later, in the leaf's
-	// own INFO -- so there is a window where the count is 1 and CONNZ reports a
-	// Leafnode entry with an empty name. That window is what every assertion
-	// here actually depends on closing: a site is identified BY its name, and a
-	// nameless leaf is indistinguishable from a leaf for another Thing.
-	//
-	// Waiting on the count was therefore waiting on a proxy for the condition,
-	// and it failed exactly as you would expect a proxy to fail: green on a
-	// developer machine for months, then `name = ""` on a loaded CI runner. Wait
-	// for the fact the test needs.
+	// Wait for the leaf to be named, not merely attached. NumLeafNodes() counts
+	// the connection before `server_name` arrives, and CONNZ meanwhile shows a
+	// nameless Leafnode. Waiting on the count flakes on a loaded CI runner.
 	deadline := time.Now().Add(10 * time.Second)
 	for !leafIsNamed(hub, leafServerName) {
 		if time.Now().After(deadline) {
@@ -252,14 +208,10 @@ leafnodes {
 
 // leafIsNamed reports whether the hub holds a leaf connection carrying `name`.
 //
-// Leafz reports c.leaf.remoteServer where Connz reports c.opts.Name. Different
-// fields, but the ordering makes this a sound wait: client.go fills c.opts from
-// the CONNECT proto before dispatching to processLeafNodeConnect, which is what
-// sets remoteServer -- so a leaf named here is already named in the hub's Connz.
-//
-// What it does NOT establish is anything about the LEAF's own Connz, which also
-// answers the account broadcast and reports its uplink to the hub unnamed. See
-// TestTenantCanSeeItsOwnLeafConnections.
+// Leafz reports c.leaf.remoteServer and Connz reports c.opts.Name, but
+// client.go fills c.opts before processLeafNodeConnect sets remoteServer, so a
+// leaf named here is named in the hub's Connz. It says nothing about the leaf's
+// own Connz (see TestTenantCanSeeItsOwnLeafConnections).
 func leafIsNamed(hub *natsserver.Server, name string) bool {
 	lz, err := hub.Leafz(&natsserver.LeafzOptions{})
 	if err != nil || lz == nil {
@@ -274,14 +226,11 @@ func leafIsNamed(hub *natsserver.Server, name string) bool {
 }
 
 // request asks one monitoring subject as the holder of the creds file at
-// credsPath. The bool is "answered", not "succeeded": a permissions violation
-// surfaces here as a timeout, because the server reports the violation
-// asynchronously on the error handler.
+// credsPath. The bool is "answered": a permissions violation is reported
+// asynchronously, so it surfaces here as a timeout.
 //
-// credsPath is passed in rather than written here on purpose. t.TempDir() names
-// the directory after the test, and a subtest name containing characters
-// Windows rejects (a `$`, say) yields a path that cannot be created -- which
-// presents as a connection failure in a test about permissions.
+// credsPath is passed in because t.TempDir() is named after the (sub)test, and
+// a name Windows rejects (a `$`) would fail as a connection error.
 func request(t *testing.T, hub *natsserver.Server, credsPath, subject string) ([]byte, bool) {
 	t.Helper()
 	nc, err := nats.Connect(hub.ClientURL(),
@@ -306,12 +255,9 @@ func request(t *testing.T, hub *natsserver.Server, credsPath, subject string) ([
 	return msg.Data, true
 }
 
-// requestAll asks one monitoring subject and collects EVERY reply, not the first.
-//
-// $SYS.REQ.ACCOUNT.PING.> is a broadcast: every server serving the account
-// answers it, and with a leaf attached that is two -- the hub and the leaf
-// itself. nats.Request takes whichever arrives first, which is a coin toss under
-// load and is not what "what is connected to my account" means.
+// requestAll asks one monitoring subject and collects every reply.
+// $SYS.REQ.ACCOUNT.PING.> is a broadcast that the hub and the leaf both answer,
+// and nats.Request would take whichever arrives first.
 func requestAll(t *testing.T, hub *natsserver.Server, credsPath, subject string, window time.Duration) [][]byte {
 	t.Helper()
 	nc, err := nats.Connect(hub.ClientURL(),
@@ -357,32 +303,14 @@ func TestTenantCanSeeItsOwnLeafConnections(t *testing.T) {
 	tenant := writeTemp(t, "tenant.creds",
 		userCreds(t, w.orgKP, "acme-user", []string{"$SYS.REQ.ACCOUNT.PING.>", "_INBOX.>"}, nil))
 
-	// EVERY reply, not the first -- and that distinction is the widget recipe's
-	// problem as much as this test's.
-	//
-	// $SYS.REQ.ACCOUNT.PING.CONNZ is a broadcast, and with a leaf attached TWO
-	// servers answer it:
+	// Two servers answer this broadcast:
 	//
 	//	from "hub":  kind="Leafnode" name="s01"   <- a site, named
 	//	from "s01":  kind="Leafnode" name=""      <- the leaf's own uplink
 	//
-	// The leaf's row is its connection back to the hub. It is nameless because
-	// only the SOLICITING side sends CONNECT, so on the leaf that connection has
-	// no c.opts.Name -- and c.opts.Name is precisely what Connz reports
-	// (monitor.go). Nothing is wrong with the row; it is simply not a site.
-	//
-	// This test used to take the first reply and then require every Leafnode row
-	// in it to be named. That holds whenever the hub answers first, which is
-	// almost always, on an idle machine, for months. When the leaf won the race
-	// the only row present was its unnamed uplink, and CI failed with
-	// name = "" -- twice now, both times on a commit touching nothing near this
-	// package. The earlier fix, making startHubWithLeaf wait for the leaf to be
-	// NAMED, was a real repair to a different defect and could never have fixed
-	// this one.
-	//
-	// So a Publisher widget aimed at this subject must aggregate the replies and
-	// read the HUB's, or it will intermittently render a site list holding one
-	// nameless entry and no site.
+	// The uplink is nameless because only the soliciting side sends CONNECT,
+	// and Connz reports c.opts.Name. So a widget on this subject must aggregate
+	// the replies and read the hub's, or it intermittently shows no site.
 	replies := requestAll(t, hub, tenant, "$SYS.REQ.ACCOUNT.PING.CONNZ", 1500*time.Millisecond)
 	if len(replies) == 0 {
 		t.Fatal("a tenant could not read CONNZ for its own account; the dashboard recipe for site connectivity does not work and would need a platform route after all")
@@ -414,8 +342,7 @@ func TestTenantCanSeeItsOwnLeafConnections(t *testing.T) {
 		t.Fatalf("no CONNZ reply from %q among %d replies; the hub is the only server that can name a site", hubServerName, len(replies))
 	}
 
-	// The whole identity story. Without a name here a tenant could only count its
-	// leaves, never say WHICH site is offline.
+	// Without a name a tenant could only count its leaves, not say which is down.
 	var leafNames []string
 	for _, c := range hubReply.Data.Connections {
 		if c.Kind == "Leafnode" {
@@ -430,21 +357,12 @@ func TestTenantCanSeeItsOwnLeafConnections(t *testing.T) {
 	}
 }
 
-// TestTenantCannotReachServerEndpoints is why no tenant role in this platform
-// ships a $SYS publish deny.
-//
-// $SYS.REQ.SERVER.PING.LEAFZ answers for EVERY account's leaves, so a tenant
-// must never reach it -- and it never can, because those endpoints are served
-// inside the $SYS ACCOUNT and an account is a closed subject namespace. The
-// credential below carries an allow list and NO deny list whatsoever, which is
-// the point: the refusal is the server's account scoping, not a subject rule of
-// ours.
-//
-// A `$SYS.>` or `$SYS.REQ.SERVER.>` deny on a tenant role therefore adds no
-// protection, while risking the failure in
-// TestDenyingAllOfSysBlocksAccountMonitoring. Both roles in
-// internal/demoseed/contract.go used to carry one; this is the assertion that
-// licensed removing them.
+// TestTenantCannotReachServerEndpoints is why no tenant role ships a $SYS
+// publish deny. The server endpoints (LEAFZ answers for every account) live in
+// the $SYS account, which a tenant account cannot reach. The credential below
+// has no deny list, so the refusal is account scoping, not a rule of ours. A
+// deny would add nothing and risk TestDenyingAllOfSysBlocksAccountMonitoring.
+// The roles in internal/demoseed/contract.go rely on this.
 func TestTenantCannotReachServerEndpoints(t *testing.T) {
 	w := mintLeafWorld(t)
 	hub := startHubWithLeaf(t, w)
@@ -464,8 +382,7 @@ func TestTenantCannotReachServerEndpoints(t *testing.T) {
 }
 
 // uplinkCreds mints a leaf uplink user whose SUBSCRIBE list is subAllow (nil is
-// unrestricted) and whose publish list is unrestricted. userCreds varies publish
-// only, which is the half the monitoring tests above are about.
+// unrestricted) and whose publish is unrestricted. userCreds varies publish.
 func uplinkCreds(t *testing.T, acc nkeys.KeyPair, subAllow []string) string {
 	t.Helper()
 	ukp, _ := nkeys.CreateUser()
@@ -505,22 +422,17 @@ func connectTo(t *testing.T, srv *natsserver.Server, credsPath string) *nats.Con
 }
 
 // TestServiceDiscoveryCrossesALeafOnlyIfTheUplinkAllowsIt: a micro service on a
-// leaf -- the edge agent, in production -- answers $SRV discovery asked at the
-// hub only when the leaf's uplink credential lets $SRV.> through. The agent's
-// own credential allowing it is not enough.
+// leaf (the agent) answers $SRV discovery asked at the hub only when the leaf's
+// uplink credential lets $SRV.> through. The agent's own grant is not enough.
 //
-// Each case proves the leaf is attached and passing traffic BEFORE asking the
-// discovery question, by getting an answer to an ordinary command first. A
-// silent $SRV.PING means nothing on its own -- it is equally what a leaf that
-// never attached looks like. The service subscribes to $SRV before it adds the
-// command endpoint, and the leaf propagates that interest in order over one
-// connection, so once the command answers, any $SRV interest the uplink allows
-// has already reached the hub.
+// Each case first gets an answer to an ordinary command, because a silent
+// $SRV.PING also looks like a leaf that never attached. The service subscribes
+// to $SRV before the command endpoint, and the leaf propagates interest in
+// order, so once the command answers any allowed $SRV interest is at the hub.
 func TestServiceDiscoveryCrossesALeafOnlyIfTheUplinkAllowsIt(t *testing.T) {
 	w := mintLeafWorld(t)
 
-	// No `$` in these names: a subtest's TempDir is named after it, and Windows
-	// rejects the character in a path.
+	// No `$` in these names: TempDir uses them, and Windows rejects it.
 	cases := []struct {
 		name      string
 		uplinkSub []string
@@ -534,8 +446,7 @@ func TestServiceDiscoveryCrossesALeafOnlyIfTheUplinkAllowsIt(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			hub, leaf := startHubWithLeafAs(t, w, uplinkCreds(t, w.orgKP, tc.uplinkSub))
 
-			// The agent: unrestricted on its own credential, so whatever stops
-			// discovery below can only be the uplink.
+			// The agent is unrestricted, so only the uplink can stop discovery.
 			agent := connectTo(t, leaf, writeTemp(t, "agent.creds", userCreds(t, w.orgKP, "agent", nil, nil)))
 			svc, err := micro.AddService(agent, micro.Config{Name: "stone-agent", Version: "1.0.0"})
 			if err != nil {
@@ -549,7 +460,7 @@ func TestServiceDiscoveryCrossesALeafOnlyIfTheUplinkAllowsIt(t *testing.T) {
 				t.Fatalf("flush: %v", err)
 			}
 
-			// A tenant session at the hub, which is where the console connects.
+			// A tenant session at the hub, where the console connects.
 			console := connectTo(t, hub, writeTemp(t, "console.creds", userCreds(t, w.orgKP, "console", nil, nil)))
 
 			deadline := time.Now().Add(10 * time.Second)
@@ -582,13 +493,10 @@ func TestDenyingAllOfSysBlocksAccountMonitoring(t *testing.T) {
 		deny  []string
 		want  bool
 	}{
-		// The shape tenant roles carried before this feature. Kept as a case
-		// rather than a comment because it is the one people revert to.
+		// The shape people revert to.
 		{name: "blanket sys deny", deny: []string{"$SYS.>"}, want: false},
 
-		// The obvious fix, which does not work: deny beats allow in NATS, so
-		// adding the allow changes nothing. Anyone who tries this sees a
-		// request timeout and no hint that permissions are involved.
+		// Does not work: deny beats allow, and the symptom is a bare timeout.
 		{
 			name:  "blanket deny plus a narrower allow",
 			allow: []string{"$SYS.REQ.ACCOUNT.PING.>"},
@@ -605,8 +513,7 @@ func TestDenyingAllOfSysBlocksAccountMonitoring(t *testing.T) {
 		},
 	}
 
-	// Written with the parent t: a subtest's TempDir is named after the subtest,
-	// and these names are not all safe as path segments on every OS.
+	// Parent t: these subtest names are not safe as TempDir path segments.
 	paths := make([]string, len(cases))
 	for i, tc := range cases {
 		paths[i] = writeTemp(t, fmt.Sprintf("case%d.creds", i),

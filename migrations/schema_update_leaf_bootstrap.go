@@ -7,53 +7,18 @@ import (
 	m "ganigeorgiev.com/pocketbase/pocketbase/migrations"
 )
 
-// schema_update_leaf_bootstrap does two unrelated-looking things that were found
-// in the same pass over the leaf/edge path.
+// schema_update_leaf_bootstrap makes two rule changes.
 //
-// 1. REMOVES THE LEAF-NODE READ BRANCHES from nats_users and nats_accounts.
-//
-// `leaf-sync config` used to assemble a leaf server's config by reading those two
-// collections through the CRUD API, which required granting a leaf-node identity a
-// read branch on each. Two problems with that. It coupled the edge agent to the
-// shape of rules on secret-bearing collections — a correct tightening elsewhere
-// could break every edge box's bootstrap, and had to be reasoned about every time
-// those rules changed. And it stated the edge's blast radius indirectly, as
-// "whatever those branches happen to match", rather than as a fixed list.
-//
-// Both values now come from GET /api/leaf/bootstrap
-// (hooks/leaf_node_routes.go), which reads the records with the app's own
-// privileges and returns six named fields: domain, code, creds, account_jwt,
-// account_pub, operator_jwt. Everything there is either public trust material
-// (the operator and account JWTs are validated by every server in the network) or
-// the leaf's own credential, which it must hold in order to connect. Account
-// seeds and signing keys were never reachable and still are not.
-//
-// After this migration a leaf-node identity can read: its own leaf_nodes record,
-// and the allowlisted config collections it mirrors (things, locations,
-// thing_types, location_types, thing_type_operations, message_schemas). Nothing
-// in nats_* or nebula_* at all. That is finally the same statement the leaf-sync
-// README makes.
-//
-// 2. CLOSES A BADGE WRITE HOLE ON things AND locations.
-//
-// `things` create/update admitted a member through a branch that constrained the
-// FIELDS (nats_user and nebula_host unchanged) without naming a ROLE, and
-// `locations` create/update carried no role check whatsoever. Both were therefore
-// satisfied by `badge` — the kiosk role, the most restricted one, which has no
-// inventory authority in the documented model and gets no inventory navigation in
-// the UI. A badge holder could create and edit Things and Locations, and every
-// edit propagates into each edge node's local KV mirror.
-//
-// This is the same failure as the `role ?!= "member"` deny-list removed earlier in
-// this hardening pass: both described who was excluded, or what was untouchable,
-// instead of stating which roles may act. The branches now carry the canonical
-// row-correlated allowlist (owner, admin, member), so adding a fifth role cannot
-// silently grant it inventory writes.
-//
-// Not changed: members keep create and edit on both collections, and the
-// owner/admin-only split on the nats_user / nebula_host relations stands.
-//
-// Additive import (deleteMissing=false); safe on fresh DBs.
+//  1. It removes the leaf-node read branches from nats_users and nats_accounts.
+//     Reading them through the CRUD API coupled the edge agent to the rules on
+//     secret-bearing collections. A route returned the fixed list of public
+//     trust material and the leaf's own credential instead (GET
+//     /api/leaf/bootstrap, since replaced by GET /api/me/leaf-config). A leaf
+//     node then read nothing in nats_* or nebula_*.
+//  2. It closes a write hole on things and locations. The things branch
+//     restricted fields without naming a role, and locations had no role check,
+//     so `badge` (the kiosk role) could create and edit inventory. Both now
+//     carry the owner/admin/member allowlist.
 func init() {
 	m.Register(func(app core.App) error {
 		if len(SchemaJSON) == 0 {
@@ -71,17 +36,12 @@ func init() {
 	}, nil)
 }
 
-// warnIfEdgeAgentsPredateBootstrapRoute reminds the operator that leaf nodes
-// provisioned before this upgrade are running a leaf-sync binary that may still
-// reach for the collection reads this migration just removed.
-//
-// GET /api/leaf/operator-jwt is deliberately kept, so an old agent's `run` loop
-// and its already-written nats-leaf.conf are unaffected. Only a re-run of
-// `leaf-sync config` on an outdated binary would fail, and it fails loudly with a
-// 404 rather than producing a broken config.
+// warnIfEdgeAgentsPredateBootstrapRoute reminds the operator that existing leaf
+// nodes may run a leaf-sync binary that still reads the removed branches. Only a
+// re-run of `leaf-sync config` on such a binary fails, and it fails loudly.
 func warnIfEdgeAgentsPredateBootstrapRoute(app core.App) {
 	if _, err := app.FindCollectionByNameOrId("leaf_nodes"); err != nil {
-		return // collection not present on this deployment
+		return
 	}
 
 	records, err := app.FindRecordsByFilter("leaf_nodes", "1=1", "created", 0, 0)

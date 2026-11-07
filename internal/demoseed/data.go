@@ -2,17 +2,9 @@ package demoseed
 
 // The fixtures. Everything here is fictional.
 //
-// The three organizations deliberately share their CODES with the three
-// customers the helpdesk's own demo seed marks as platform organizations
-// (northwind, ironbridge, galewind). That is not decoration: organizations.code
-// is the ecosystem's one globally unique identifier (ADR 0002), and it is the
-// token a managed org's exported `helpdesk.>` traffic is rewritten with. Seeding
-// both sides with the same three codes means the two demos JOIN — a ticket in
-// the helpdesk and a Thing here name the same tenant, which is the whole claim
-// the code exists to support. Renaming an org here without renaming it there
-// breaks a demo that is otherwise hard to assemble by hand.
-
-// ---------------------------------------------------------------- shorthands
+// The three org codes (northwind, ironbridge, galewind) match the helpdesk
+// demo seed's platform organizations, so the two demos join on
+// organizations.code (ADR 0002). Keep them in step with the helpdesk repo.
 
 // objSchema is a JSON Schema shorthand. The seeder only ever writes flat object
 // schemas, so these few helpers cover every metadata_schema below.
@@ -41,19 +33,14 @@ func enum(title string, vals ...string) map[string]any {
 	return map[string]any{"type": "string", "title": title, "enum": out}
 }
 
-// ------------------------------------------------------------- organizations
-
 type orgFixture struct {
 	Code, Name, Description string
 
-	// Managed provisions the `helpdesk.>` stream export on this org's account
-	// plus the hub-side import remapped to helpdesk.<code>.>. Two of the three
-	// are managed so a reader sees both states side by side; a demo where every
-	// org is managed teaches nothing about what the flag does.
+	// Managed provisions the `helpdesk.>` export and the hub-side import
+	// remapped to helpdesk.<code>.>. Two of three are managed so both states show.
 	Managed bool
 
-	// NebulaCIDR is the org's overlay range. Distinct per org, so a screenshot
-	// of two organizations' hosts cannot be mistaken for one network.
+	// NebulaCIDR is the org's overlay range, distinct per org.
 	NebulaCIDR string
 }
 
@@ -74,8 +61,6 @@ var orgs = []orgFixture{
 		NebulaCIDR:  "10.40.0.0/16",
 	},
 }
-
-// ------------------------------------------------------------- location types
 
 type typeFixture struct {
 	Org, Code, Name, Description string
@@ -145,13 +130,10 @@ var locationTypes = []typeFixture{
 	{Org: "galewind", Code: "cabinet", Name: "Field Cabinet"},
 }
 
-// ----------------------------------------------------------------- locations
-
 type locationFixture struct {
 	Org, Code, Name, Type, Parent, Description string
 
-	// Real coordinates. The Locations map and the map widget are two of the
-	// console's best screens and both are blank without them.
+	// Real coordinates, so the Locations map and the map widget have content.
 	Lat, Lon float64
 
 	Metadata map[string]any
@@ -161,7 +143,7 @@ type locationFixture struct {
 // A parent is referenced by code and may appear later in this list, which is why
 // seedLocations runs two passes.
 var locations = []locationFixture{
-	// -------------------------------------------------------------- northwind
+	// Northwind.
 	{Org: "northwind", Code: "KC-DC1", Name: "Kansas City Distribution Center", Type: "warehouse",
 		Lat: 39.1141, Lon: -94.6275,
 		Description: "Primary frozen and chilled DC.",
@@ -203,7 +185,7 @@ var locations = []locationFixture{
 		Description: "In transit, last seen St. Louis.",
 		Metadata:    map[string]any{"vin": "1NKDX4EX7PJ118041", "reefer_make": "Thermo King", "capacity_pallets": 26}},
 
-	// ------------------------------------------------------------- ironbridge
+	// Ironbridge.
 	{Org: "ironbridge", Code: "PIT-PLANT", Name: "Pittsburgh Works", Type: "plant",
 		Lat: 40.4406, Lon: -79.9959,
 		Description: "Main production site.",
@@ -224,7 +206,7 @@ var locations = []locationFixture{
 	{Org: "ironbridge", Code: "PIT-MCC1", Name: "MCC Room 1", Type: "cabinet", Parent: "PIT-B1",
 		Lat: 40.4409, Lon: -79.9964},
 
-	// --------------------------------------------------------------- galewind
+	// Galewind.
 	{Org: "galewind", Code: "SWT-OPS", Name: "Sweetwater Operations Center", Type: "control-room",
 		Lat: 32.4709, Lon: -100.4059,
 		Description: "Staffed 24/7. The only site on fibre."},

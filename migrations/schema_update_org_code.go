@@ -12,39 +12,22 @@ import (
 	"platform/hooks"
 )
 
-// schema_update_org_code adds `organizations.code` -- the root of the public
-// namespace, and the only globally unique identifier in the ecosystem (ADR 0002
-// in platform-docs).
+// schema_update_org_code adds `organizations.code`, the root of the public
+// namespace and the only globally unique identifier in the ecosystem (ADR 0002
+// in platform-docs). Without it the managed-org subject rewrite named a tenant
+// by its PocketBase id, a single database's primary key.
 //
-// Everything else in the platform already federates on a code: stone-cli
-// resolves by it, leaf-sync keys KV by it, twin keys are <kind>.<code>.<prop>,
-// and sibling apps resolve a payload thing_code / location_code per
-// (organization, code). What was missing was a code for the ORGANIZATION, so
-// the one place a tenant had to be named -- the managed-org subject rewrite --
-// reached for the PocketBase id instead. That left the ecosystem with two
-// namespace roots, and made the tenant token a single database's primary key.
+// The index is partial, like the five in schema_update_unique_org_code.go, so it
+// imports over existing rows with no code (SQLite treats an empty string as
+// a value, not NULL). hooks.RegisterOrgCode keeps blanks out from here on.
 //
-// Three details worth keeping:
+// The backfill writes through app.DB(), not app.Save(): saving an organization
+// fires the managed-export reconciler, which would provision NATS records in the
+// middle of `migrate up`.
 //
-// The index is PARTIAL, matching the five that schema_update_unique_org_code.go
-// added. Not a hedge: it is what makes this one migration instead of two. A
-// column cannot be backfilled before it exists, and a total unique index cannot
-// be imported over existing rows that have no code, because SQLite treats an empty string as
-// a value rather than as NULL. A partial index imports cleanly at any backfill
-// state, and hooks.RegisterOrgCode makes blanks unreachable from here forward.
-//
-// The backfill writes through app.DB() rather than app.Save(). Saving an
-// organization fires the managed-export reconciler, which would try to
-// provision NATS export/import records in the middle of `migrate up` -- work
-// that has nothing to do with adding a column, on a schema that was imported
-// seconds ago. The column was just created and its values are validated below,
-// so the record layer has nothing to contribute.
-//
-// The sweep runs BEFORE any write, and it is fatal. This deliberately does not
-// resolve collisions by suffixing: the code is immutable once saved, so an
-// auto-assigned `acme-2` is permanent, and choosing which org is the real
-// `acme` is a decision the platform does not get to make. Same stance, and the
-// same reason, as the duplicate refusal in schema_update_unique_org_code.go.
+// Every row is checked before any write, and a problem is fatal. Collisions are
+// not suffixed: the code is immutable, so an auto-assigned `acme-2` would be
+// permanent, and choosing the real `acme` is not the platform's decision.
 func init() {
 	m.Register(func(app core.App) error {
 		if len(SchemaJSON) == 0 {
@@ -52,7 +35,6 @@ func init() {
 			return nil
 		}
 
-		// Import first: the column has to exist before it can be read or written.
 		if err := app.ImportCollectionsByMarshaledJSON(SchemaJSON, false); err != nil {
 			return err
 		}
@@ -129,9 +111,8 @@ func init() {
 		log.Printf("✅ organizations.code added and frozen; %d code(s) backfilled", len(derived))
 		return nil
 	}, func(app core.App) error {
-		// Down: no-op. Dropping the column would discard operator-assigned codes
-		// that may already be printed on labels and embedded in signed account
-		// JWTs, and the field is inert when unused.
+		// No-op: dropping the column would discard codes already printed on
+		// labels and embedded in signed account JWTs.
 		return nil
 	})
 }

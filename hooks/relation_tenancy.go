@@ -7,57 +7,31 @@ import (
 )
 
 // orgFieldName is the column that makes a collection tenant-scoped. Every API
-// rule in schema.json keys off it, so its presence is also the most reliable
-// signal that a record belongs to somebody.
+// rule in schema.json keys off it.
 const orgFieldName = "organization"
 
 // RegisterRelationTenancy refuses a relation that points into another
 // organization's records.
 //
-// WHY THIS IS NOT AN API RULE. `nats_users.createRule` pins the new record's own
-// organization (`@request.body.organization = @request.auth.current_organization`)
-// and says nothing about `account_id`. A rule cannot easily say more: PocketBase
-// can traverse a relation on a STORED field, but `@request.body.account_id` is
-// the raw submitted string, with no target to traverse into. So the check has to
-// live in code.
+// It is not an API rule because no rule can express it: PocketBase traverses a
+// relation on a STORED field, but `@request.body.account_id` is a raw submitted
+// string with no target to traverse into.
 //
-// WHY IT MATTERS. pb-nats resolves the signing account straight off that field —
-// `generateUserJWT` in internal/sync/manager.go does
-// `FindRecordById(AccountCollectionName, record.GetString("account_id"))` and
-// signs with whatever comes back. A tenant owner/admin could therefore create a
-// nats_users row carrying `organization = <their org>` and `account_id = <another
-// tenant's account>`, and receive a valid NATS credential inside that tenant's
-// account. The only thing standing in the way today is that `nats_accounts`
-// list-scoping hides the id, and id secrecy is not an authorization boundary.
+// It matters because pb-nats signs a user JWT with whatever `account_id` names
+// (generateUserJWT in internal/sync/manager.go), so an owner could otherwise
+// mint a credential inside another tenant's account. List-scoping hides the
+// id, but id secrecy is not an authorization boundary.
 //
-// This is the same check hooks/thing_routes.go already makes by hand for the
-// nats_user/nebula_host it links on POST /api/org/things — "without that second
-// check the route would be a cross-tenant credential-theft path". It was simply
-// never made for the CRUD endpoints, or for any of the other eighteen relations
-// with the same shape.
+// It is DERIVED from the schema rather than listing the nineteen relations: if
+// a collection has an `organization` field and a relation on it points at
+// another collection that has one, the two records must agree. A hand-kept
+// list would drift from schema.json; a new relation is covered automatically.
+// Legitimate cross-org linkage (managed exports, hooks/managed_org_exports.go)
+// is subject-based and travels through no relation field.
 //
-// WHY IT IS DERIVED RATHER THAN LISTED. There are nineteen relations between
-// org-scoped collections, and the rule for every one of them is the same
-// sentence. A hand-kept table is one more parallel list to fall out of step with
-// schema.json, which is the failure mode behind most of the authorization bugs
-// this codebase has already paid for. Instead the guard reads the collection the
-// record actually belongs to: if that collection has an `organization` field, and
-// a relation field on it points at another collection that also has one, the two
-// records must agree. Add such a relation tomorrow and it is covered without
-// anyone remembering to come back here.
-//
-// The cross-org linkage that IS legitimate does not travel through a relation
-// field. A managed org's events reach the operator hub through an exported
-// stream and a subject remapped into the hub account's own JWT
-// (hooks/managed_org_exports.go); both the export and the import record sit in
-// the same organization as the account they name. Provenance is subject-based
-// and unforgeable, which is exactly why no relation has to cross a tenant line.
-//
-// This binds the model hooks, so it covers a route doing app.Save() as well as
-// the REST endpoints, and it applies to superusers too. That last part is
-// deliberate: a relation spanning two tenants is corrupt data whoever wrote it,
-// and unlike the immutable-code guard there is no dashboard workflow that needs
-// the exemption.
+// It binds the MODEL hooks, so it covers app.Save() routes as well as REST, and
+// it applies to superusers: a cross-tenant relation is corrupt data whoever
+// wrote it, and no dashboard workflow needs an exemption.
 func RegisterRelationTenancy(app *pocketbase.PocketBase) {
 	guard := func(e *core.RecordEvent) error {
 		if err := checkRelationTenancy(e.App, e.Record); err != nil {
@@ -66,10 +40,8 @@ func RegisterRelationTenancy(app *pocketbase.PocketBase) {
 		return e.Next()
 	}
 
-	// No collection filter: the guard decides for itself from the schema, and a
-	// list of names here would be the parallel list the derivation exists to
-	// avoid. Records in collections with no `organization` field cost one
-	// in-memory field lookup.
+	// No collection filter: the guard decides from the schema. A collection with
+	// no `organization` field costs one in-memory field lookup.
 	app.OnRecordCreate().BindFunc(guard)
 	app.OnRecordUpdate().BindFunc(guard)
 }
@@ -84,17 +56,12 @@ func checkRelationTenancy(app core.App, record *core.Record) error {
 
 	recordOrg := record.GetString(orgFieldName)
 
-	// Whether the record's OWN organization is moving. When it is, nothing
-	// already on the record has been checked against the organization it is
-	// about to have, so the unchanged-id shortcut below has to be switched off.
-	// Leaving it on meant a record could be walked into another tenant while
-	// keeping every relation it already held — the account that signs its JWT
-	// included — and this guard would pass it, because each id was "unchanged".
-	// Unreachable through the record API, where every org-scoped update rule
-	// carries `@request.body.organization:changed = false`, and reachable
-	// through exactly the two paths this file binds model hooks to cover: a
-	// superuser editing in the PocketBase dashboard, and a route using
-	// app.Save().
+	// When the record's OWN organization is moving, nothing on it has been
+	// checked against the new one, so the unchanged-id shortcut below is off.
+	// Otherwise a record could move tenant keeping every relation it held, the
+	// signing account included. The record API forbids the move
+	// (`@request.body.organization:changed = false`); a superuser in the
+	// dashboard and an app.Save() route do not.
 	orgMoved := record.Original().GetString(orgFieldName) != recordOrg
 
 	for _, field := range collection.Fields {
@@ -109,10 +76,8 @@ func checkRelationTenancy(app core.App, record *core.Record) error {
 			continue
 		}
 
-		// On an update, ids already present before this write have been checked
-		// once and cost a query to check again. On a create Original() is empty,
-		// so everything set is examined — as is everything when the record's own
-		// organization is moving, since "checked once" was against the old one.
+		// On an update, ids present before this write were already checked. On a
+		// create Original() is empty, so everything is examined.
 		previous := make(map[string]struct{})
 		if !orgMoved {
 			for _, id := range record.Original().GetStringSlice(rel.Name) {
@@ -120,8 +85,7 @@ func checkRelationTenancy(app core.App, record *core.Record) error {
 			}
 		}
 
-		// GetStringSlice covers both cardinalities, so maxSelect never has to be
-		// consulted here.
+		// GetStringSlice covers both cardinalities.
 		for _, id := range record.GetStringSlice(rel.Name) {
 			if id == "" {
 				continue
@@ -132,15 +96,13 @@ func checkRelationTenancy(app core.App, record *core.Record) error {
 
 			related, err := app.FindRecordById(target.Name, id)
 			if err != nil {
-				// A dangling id is PocketBase's own relation validation to report;
-				// answering it here would just produce a second, worse message.
+				// A dangling id is PocketBase's own relation validation to report.
 				continue
 			}
 
 			if related.GetString(orgFieldName) != recordOrg {
-				// apis.NewBadRequestError, not fmt.Errorf: a plain error from a hook
-				// reaches the client as "Failed to create record." and the operator
-				// never learns which field was wrong.
+				// apis.NewBadRequestError, not fmt.Errorf: a plain hook error
+				// reaches the client as "Failed to create record.".
 				return apis.NewBadRequestError(
 					"The "+rel.Name+" field must reference a record in the same organization.",
 					nil,

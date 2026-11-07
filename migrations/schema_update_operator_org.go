@@ -7,11 +7,10 @@ import (
 	m "ganigeorgiev.com/pocketbase/pocketbase/migrations"
 )
 
-// schema_update_operator_org re-imports the embedded schema.json so existing
-// deployments pick up the new organization flags (`is_system_org`,
-// `is_operator_org`, `managed`), their at-most-one partial unique indexes,
-// and the updateRule guard that keeps org owners from self-setting them.
-// Additive import — fresh DBs that already have the fields treat this as a no-op.
+// schema_update_operator_org re-imports schema.json for the organization flags
+// `is_system_org`, `is_operator_org` and `managed`, their at-most-one partial
+// unique indexes, and the updateRule guard that keeps org owners from setting
+// them.
 func init() {
 	m.Register(func(app core.App) error {
 		if len(SchemaJSON) == 0 {

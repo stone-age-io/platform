@@ -7,12 +7,9 @@ import (
 	m "ganigeorgiev.com/pocketbase/pocketbase/migrations"
 )
 
-// schema_update_leaf_sync_collections re-imports schema.json so existing
-// deployments pick up the leaf_nodes read grants added to thing_type_operations
-// and message_schemas. leaf-sync mirrors these so an edge node can resolve the
-// full thing_type -> operation -> message_schema graph locally. Both rules keep
-// the existing users clause and add the same org-scoped leaf_nodes clause the
-// other synced collections already use. Additive import — safe on fresh DBs.
+// schema_update_leaf_sync_collections adds the org-scoped leaf_nodes read branch
+// to thing_type_operations and message_schemas, so an edge node could resolve
+// the thing_type -> operation -> message_schema graph locally.
 func init() {
 	m.Register(func(app core.App) error {
 		if len(SchemaJSON) == 0 {

@@ -24,19 +24,12 @@ type ServerInfo struct {
 }
 
 // DialInfo opens a TCP connection to a NATS server and reads the INFO line the
-// server sends unprompted on connect.
+// server sends unprompted on connect, before any authentication.
 //
-// WHY THIS AND NOT A CLIENT CONNECTION. Reachability and trust are two
-// different failures with two different fixes, and a single authenticated
-// connect conflates them: "connection refused" (nothing is listening, or the
-// port is wrong) and "authorization violation" (the server is up but does not
-// trust this platform's operator) both surface as a failed Connect. Reading the
-// unauthenticated greeting answers the first question on its own, and
-// CheckCreds below answers the second — so a report can say which one is
-// actually broken.
-//
-// It also costs nothing: every NATS server writes INFO before any client
-// authentication happens, so this needs no credential and creates no session.
+// Not a client connection: an authenticated connect fails the same way whether
+// nothing is listening or the server distrusts the operator. This answers
+// reachability alone, and CheckCreds answers trust, so a report can say which
+// is broken.
 func DialInfo(ctx context.Context, serverURL string, timeout time.Duration) (*ServerInfo, error) {
 	addr, err := hostPort(serverURL)
 	if err != nil {
@@ -60,8 +53,8 @@ func DialInfo(ctx context.Context, serverURL string, timeout time.Duration) (*Se
 	if err != nil {
 		return nil, fmt.Errorf("connected to %s but read no INFO greeting: %w", addr, err)
 	}
-	// A TLS-only listener, or anything that is not a NATS server, will not send
-	// this. Say so plainly rather than reporting a JSON parse error.
+	// A TLS-only listener or a non-NATS service sends no INFO. Say so rather
+	// than report a JSON parse error.
 	if !strings.HasPrefix(line, "INFO ") {
 		return nil, fmt.Errorf("%s answered but did not send a NATS INFO greeting (is it a NATS server, or TLS-only?)", addr)
 	}
@@ -76,17 +69,9 @@ func DialInfo(ctx context.Context, serverURL string, timeout time.Duration) (*Se
 // CheckCreds connects to serverURL with the contents of a .creds file and
 // reports whether the server accepted the credential.
 //
-// This is the check that catches the platform's nastiest silent failure: the
-// operator JWT baked into the running nats-server's config no longer matches
-// the operator in this database (someone regenerated one, or `nats export` was
-// run against a different install, or an old nats.conf outlived a redeploy).
-// Every account claim the Control Plane publishes then fails, no organization's
-// NATS account ever reaches the server, and nothing in the console looks wrong
-// — new devices simply cannot connect, days later, for no stated reason.
-//
-// It takes the creds as a string rather than a path because the credential
-// lives in a database column, not on disk. nkeys parses the same decorated
-// format either way.
+// It catches a nats-server whose configured operator no longer matches this
+// database's: every account claim then fails to publish while the console
+// looks fine. Creds are a string because they live in a database column.
 func CheckCreds(serverURL, creds string, timeout time.Duration) error {
 	jwt, kp, err := parseCreds(creds)
 	if err != nil {
@@ -101,10 +86,7 @@ func CheckCreds(serverURL, creds string, timeout time.Duration) error {
 		),
 		nats.Name("stone-age-readiness"),
 		nats.Timeout(timeout),
-		// One attempt, then give up. This is a diagnostic: a client that
-		// retries in the background would report success for a server it only
-		// reached on the third try, and would keep a connection alive after the
-		// check returned.
+		// One attempt: a diagnostic must not retry or outlive the check.
 		nats.MaxReconnects(0),
 		nats.NoReconnect(),
 	)
@@ -116,13 +98,9 @@ func CheckCreds(serverURL, creds string, timeout time.Duration) error {
 }
 
 // parseCreds pulls the JWT and the signing key out of a decorated .creds file.
-//
-// Both halves failing get one message, because they have one cause and one fix:
-// the creds_file column does not hold a well-formed credential and must be
-// re-minted. Splitting them would also mislead — nkeys treats any undecorated
-// text as a raw JWT, so arbitrary garbage reliably passes the JWT parse and
-// fails at the seed, and an error saying "no usable seed" would send the reader
-// looking for a truncated key rather than a wrong column.
+// Both failures get one message: the fix is the same (re-mint), and nkeys
+// accepts any undecorated text as a JWT, so garbage fails at the seed and a
+// seed-specific error would mislead.
 func parseCreds(creds string) (string, nkeys.KeyPair, error) {
 	const problem = "not a valid .creds file"
 
@@ -143,8 +121,7 @@ func parseCreds(creds string) (string, nkeys.KeyPair, error) {
 // hostPort turns a nats:// URL into a dialable host:port, defaulting the port
 // to 4222 the way every NATS client does.
 func hostPort(rawURL string) (string, error) {
-	// url.Parse needs a scheme to find the host; a bare "localhost:4222" is a
-	// legal thing to have in a config file, so tolerate it.
+	// url.Parse needs a scheme to find the host; tolerate "localhost:4222".
 	if !strings.Contains(rawURL, "://") {
 		rawURL = "nats://" + rawURL
 	}

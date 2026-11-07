@@ -2,10 +2,8 @@
 // against a throwaway data dir, with the embedded libraries set up, the full
 // migration set applied, and the platform's own provisioning hooks bound.
 //
-// The hooks are the point. Most of what this platform does on a write happens in
-// a hook — an organization mints a NATS account and a Nebula CA, a deactivated
-// Thing has its NATS identity revoked — so a harness that skipped them would let
-// a test assert on records that production never produces the same way.
+// The hooks matter: most of what a write does here happens in one, so a harness
+// without them would assert on records production never produces.
 package testutil
 
 import (
@@ -40,23 +38,14 @@ func repoRoot() (string, error) {
 // SkipIfShort skips a test that needs the real PocketBase harness when `-short`
 // is set.
 //
-// WHAT `-short` MEANS IN THIS REPO: skip the tests that stand up a real
-// PocketBase. Nothing else. That is not a style choice, it is where the time
-// actually is -- standing one app up costs the better part of ten seconds
-// because four libraries bootstrap their collections and every migration runs,
-// and `go test ./...` does it about thirty times. `hooks`, `internal/demoseed`
-// and `migrations` are minutes; every other package is seconds.
+// In this repo `-short` skips only the tests that stand up a real PocketBase
+// (~10s each, about thirty times a run). The real-nats-server tests in
+// internal/health and internal/natsd are deliberately not skipped: they are
+// cheap and assert the server's own trust decisions.
 //
-// So the real-nats-server tests in internal/health and internal/natsd are
-// deliberately NOT skipped. They cost about ten seconds between them, and they
-// are the ones asserting the server's own trust decisions -- exactly the
-// coverage you least want to drop from the pass you run most often. `-short`
-// buys nothing by skipping them and costs the assertions a mock cannot make.
-//
-// This lives in SetupApp rather than in each test, so a test written next year
-// is in the right set without anyone remembering. The two packages with a
-// TestMain that builds ONE shared app guard it themselves; they have to, since
-// TestMain runs before any test can be skipped.
+// SetupApp calls it, so new tests land in the right set. The two packages whose
+// TestMain builds one shared app guard it themselves, since TestMain runs
+// before any test can skip.
 func SkipIfShort(t *testing.T) {
 	t.Helper()
 	if testing.Short() {
@@ -66,13 +55,10 @@ func SkipIfShort(t *testing.T) {
 
 // SetupApp boots a real PocketBase against t.TempDir(), applies every migration,
 // and binds the platform's provisioning hooks. The returned app is ready for
-// record CRUD.
+// record CRUD. Skipped under `-short` (see SkipIfShort).
 //
-// Skipped under `-short` -- see SkipIfShort.
-//
-// No NATS server is involved. pb-nats generates keys and signs JWTs locally; the
-// claim publish queues and drains if a server ever appears, which in a test it
-// never does.
+// No NATS server is involved: pb-nats signs JWTs locally and the claim publish
+// only queues.
 func SetupApp(t *testing.T) *pocketbase.PocketBase {
 	t.Helper()
 	SkipIfShort(t)
@@ -84,11 +70,8 @@ func SetupApp(t *testing.T) *pocketbase.PocketBase {
 	return app
 }
 
-// NewApp is SetupApp without the testing.T, for a TestMain that wants ONE app
-// shared across a package's read-only tests. Standing an app up costs a few
-// seconds — four libraries bootstrap their collections and every migration runs
-// — so a package with a dozen assertions against the same fixture set pays that
-// once rather than a dozen times.
+// NewApp is SetupApp without the testing.T, for a TestMain that shares one app
+// across a package's read-only tests, paying the boot cost once.
 //
 // The caller owns the directory and must call ResetBootstrapState when done.
 func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
@@ -97,9 +80,8 @@ func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
 		return nil, err
 	}
 
-	// migrations/initial_schema.go returns nil when this is empty — marking
-	// itself applied while importing nothing — so a harness that forgot it would
-	// produce an app with no platform fields and no error.
+	// migrations/initial_schema.go silently imports nothing when this is empty,
+	// leaving an app with no platform fields and no error.
 	schema, err := os.ReadFile(filepath.Join(root, "schema.json"))
 	if err != nil {
 		return nil, fmt.Errorf("read schema.json: %w", err)
@@ -121,24 +103,15 @@ func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
 	natsOpts := pbnats.DefaultOptions()
 	nebulaOpts := pbnebula.DefaultOptions()
 
-	// Push pb-nats's two publish timers past the life of any test.
-	//
-	// Saving a NATS account arms a 3s debounce (sync.Manager.enqueue) and a 30s
-	// ticker (publisher.processQueuePeriodically), both of which call
-	// ProcessPublishQueue — which runs a record query against the app. Neither is
-	// tied to the app's lifecycle, so when a test finishes and ResetBootstrapState
-	// drops the database handle, a timer that fires afterwards panics with a nil
-	// dereference inside core.BaseApp.RecordQuery. It is a real ordering hazard in
-	// the library rather than anything the caller does wrong; a long-lived server
-	// never sees it because the app outlives every timer.
-	//
-	// Pushing both out is deliberate rather than incidental: nothing in the test
-	// suite exercises the publish path, because there is no NATS server for a
-	// claim to reach. What is under test is what lands in the DATABASE.
+	// Push pb-nats's two publish timers (the 3s debounce and the 30s queue
+	// ticker) past the life of any test. Neither is tied to the app's
+	// lifecycle, so one firing after ResetBootstrapState panics with a nil
+	// dereference in core.BaseApp.RecordQuery. No test exercises the publish
+	// path; there is no NATS server.
 	natsOpts.DebounceInterval = time.Hour
 	natsOpts.PublishQueueInterval = time.Hour
 
-	// First, exactly as in main.go: a cross-tenant relation is refused before any
+	// First, as in main.go: a cross-tenant relation is refused before any
 	// library acts on the record.
 	hooks.RegisterRelationTenancy(app)
 
@@ -163,32 +136,17 @@ func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
 		NatsMaxJetStreamMemoryStorage: 64 * 1024 * 1024,
 		NebulaDefaultCAValidityYears:  5,
 	})
-	// After provisioning, exactly as main.go binds it: both handlers sit on the
-	// organization's AfterUpdateSuccess and run in registration order, and the
-	// mirror is written assuming the account already exists by the time it looks.
-	// Binding it earlier here would make the harness disagree with the server on
-	// the one ordering this hook depends on.
+	// After provisioning, as in main.go: both handlers sit on the organization's
+	// AfterUpdateSuccess and run in registration order, and this one assumes
+	// the account already exists.
 	hooks.RegisterOrgActiveFlag(app, hooks.OrgActiveFlagOptions{
 		OrgCollection:         orgCollection,
 		NatsAccountCollection: natsOpts.AccountCollectionName,
 	})
-	// Registered here rather than in the test that needs it, and it must still be
-	// bound before app.Bootstrap() below.
-	//
-	// This used to be a hard requirement rather than a convention. pb-tenancy
-	// deferred its own hook registration to OnBootstrap, and its organizations
-	// AfterCreateSuccess handler returned without e.Next() -- so it TERMINATED
-	// the chain, and every handler on that event bound after Bootstrap never ran,
-	// silently. A test that called RegisterManagedOrgExports on the app this
-	// function returns got no export, no import, and no error; a priority -9999
-	// bind was the only thing that fired. That hook is now
-	// hooks.RegisterOrgMembership and it calls e.Next(), so a late bind would
-	// work. Registering before Bootstrap stays anyway: this harness is only
-	// equivalent to main.go if it binds where main.go binds.
-	//
-	// Quiet for tests that do not care: syncManaged only provisions when
-	// organizations.managed is true, and its removal path is silent when there
-	// is nothing to remove.
+	// Bound before app.Bootstrap(), as in main.go. A late bind now works (the
+	// org hooks call e.Next()), but the harness is only equivalent to main.go
+	// if it binds where main.go binds. Quiet for tests that do not care: it
+	// acts only when organizations.managed is true.
 	hooks.RegisterManagedOrgExports(app, hooks.ManagedOrgExportsOptions{
 		OrgCollection:     orgCollection,
 		AccountCollection: natsOpts.AccountCollectionName,
@@ -196,10 +154,8 @@ func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
 		ImportCollection:  natsOpts.ImportCollectionName,
 		ExportSubject:     "helpdesk.>", // main.go's default for nats.managed_export_subject
 	})
-	// Off, as main.go's default leaves it, so no test that does not ask for
-	// inventory events finds an export/import pair it did not expect. A test
-	// that wants them binds a second, enabled registration on the app this
-	// returns (hooks/inventory_events_test.go).
+	// Off, as main.go's default leaves it. A test that wants inventory events
+	// binds a second, enabled registration (hooks/inventory_events_test.go).
 	hooks.RegisterInventoryEvents(app, hooks.InventoryEventsOptions{
 		Enabled:            false,
 		OrgCollection:      orgCollection,
@@ -213,21 +169,17 @@ func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
 		LocalSubject:       "stone-age.>",
 	})
 
-	// Absorbed from pb-tenancy, and bound in the position the library's own
-	// bootstrap-registered hook effectively occupied. RegisterOrgMembership is
-	// what gives a new organization's owner their `owner` membership row, which
-	// every write rule resolves authority through -- a harness without it would
-	// produce owners who cannot write in their own tenant, which production
-	// owners can.
+	// Gives a new organization's owner their `owner` membership row, which every
+	// write rule resolves authority through. Bound where the absorbed pb-tenancy
+	// hook used to run.
 	hooks.RegisterOrgMembership(app, hooks.OrgMembershipOptions{
 		OrgCollection:        orgCollection,
 		MembershipCollection: membershipCollection,
 		UserCollection:       "users",
 	})
-	// RegisterInvites binds record hooks AND a route. Only the record hooks
-	// matter here (this harness never serves), but they are the half that decides
-	// what a write does: token, expiry and invited_by on create, reissue on
-	// resend. See the note at the bottom of this function about that boundary.
+	// RegisterInvites binds record hooks and a route. Only the record hooks run
+	// here (token, expiry and invited_by on create, reissue on resend); see the
+	// boundary note at the bottom of this function.
 	hooks.RegisterInvites(app, hooks.InviteOptions{
 		MembershipCollection: membershipCollection,
 		InviteCollection:     inviteCollection,
@@ -235,18 +187,10 @@ func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
 		ExpiryDays:           7, // main.go's default for tenancy.invite_expiry_days
 	})
 
-	// These two were missing, and their absence was not neutral -- it made the
-	// harness DISAGREE with production about what a write does.
-	//
-	// RegisterActiveFlag forces `active = true` on every things CREATE,
-	// because PocketBase bools have no schema default and the authRule is
-	// `active = true`. Without it bound here, a test could create an inactive
-	// device and assert on it happily while the real binary overwrote the flag --
-	// which is exactly what happened: internal/demoseed asked for inactive Things
-	// at create time, the harness let it, and `stone-age demo-seed` on a real
-	// install produced none.
-	//
-	// RegisterMembershipLifecycle clears a departing member's
+	// Both change what a write does. RegisterActiveFlag forces `active = true` on
+	// every things create (bools have no schema default and the authRule needs
+	// it); without it a test could create an inactive Thing production never
+	// would. RegisterMembershipLifecycle clears a departing member's
 	// current_organization, which the inventory read rules scope on.
 	hooks.RegisterActiveFlag(app, hooks.ActiveFlagOptions{
 		ThingCollection:      "things",
@@ -258,31 +202,23 @@ func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
 		UserCollection:       "users",
 	})
 
-	// Changes what a write stores, so it belongs here: a role saved without its
-	// limits gets -1 rather than the 0 every JWT reads as "none". Without it the
-	// harness would mint the dead credentials production no longer mints.
+	// Changes what a write stores: a role saved without its limits gets -1, not
+	// the 0 a JWT reads as "none".
 	hooks.RegisterNatsLimits(app, hooks.NatsLimitsOptions{
 		RoleCollection:    natsOpts.RoleCollectionName,
 		AccountCollection: natsOpts.AccountCollectionName,
 	})
 
-	// DELIBERATELY NOT REGISTERED, and this is the harness's actual boundary
-	// rather than an oversight:
+	// Deliberately not registered, because each binds only app.OnServe
+	// (observability also OnTerminate) and this harness never serves:
 	//
 	//   RegisterLeafConfigRoutes, RegisterCredentialRoutes,
 	//   RegisterNatsAccountRoutes, RegisterThingRoutes,
 	//   RegisterClientConfigRoutes, RegisterObservability
 	//
-	// Every one of those binds ONLY app.OnServe (observability also OnTerminate),
-	// and this harness never serves -- it does record CRUD against a bootstrapped
-	// app. Binding them would add no behaviour, so a test that needs to exercise
-	// a route has to stand up a served app or use scripts/test-authz.sh, which is
-	// what that script exists for. Observability would additionally start a
-	// background prober that dials NATS, which no test has.
-	//
-	// So: every hook that changes what a WRITE does is bound here; nothing that
-	// only answers HTTP is. Say which of those two a new registrar is before
-	// deciding it belongs.
+	// Test routes with a served app or scripts/test-authz.sh. The rule: every
+	// hook that changes what a write does is bound here; nothing that only
+	// answers HTTP is.
 	if err := app.Bootstrap(); err != nil {
 		return nil, fmt.Errorf("bootstrap: %w", err)
 	}

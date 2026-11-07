@@ -10,23 +10,16 @@ import (
 // schema_update_device_active_flag adds the `active` flag to things, sets the
 // authRule to `active = true`, and gives things the manageRule it was missing.
 //
-// It also did this for leaf_nodes, which schema_update_drop_leaf_nodes.go later
-// removed. That half is edited out rather than left to fail: the second backfill
-// pass below is fatal, and on a fresh database there is no leaf_nodes table for
-// it to update. Editing the body keeps the migration NAME, which is what the
-// _migrations ledger and the schema_version readiness check key on.
+// It once did the same for leaf_nodes. That half was removed with the collection
+// (schema_update_drop_leaf_nodes.go), because the fatal second pass below would
+// fail on a fresh database with no such table. The migration name stays, since
+// the _migrations ledger and the schema_version readiness check key on it.
 //
-// The backfill is the load-bearing part. `active` is a new bool column, so every
-// existing row gets SQLite's zero value — false. Importing the new authRule
-// without the UPDATE below would lock every already-provisioned device and edge
-// box out of the API on the next deploy. Order matters: backfill first, import
-// second, so there is no window in which the rule is live over unbacked rows.
-//
-// Also note the migration writes the column directly rather than iterating
-// records through app.Save(). That deliberately bypasses hooks/active_flag.go —
-// a save would fire the update hook, and while the was==now guard makes it a
-// no-op here, going through the ORM to set a column that every row must have is
-// slower and less obvious than saying so in SQL.
+// The backfill is load-bearing: a new bool column lands as false, so importing
+// the authRule without the UPDATE would lock every provisioned device out of the
+// API on deploy. It runs before the import so the rule is never live over
+// unbacked rows. Plain SQL, not app.Save(): hooks/active_flag.go would have
+// nothing to do.
 func init() {
 	m.Register(func(app core.App) error {
 		if len(SchemaJSON) == 0 {
@@ -34,9 +27,8 @@ func init() {
 			return nil
 		}
 
-		// Backfill before the rule goes live. The columns may not exist yet on a
-		// fresh database (the import below creates them), so a failure here is
-		// expected in that case and is not fatal — there are no rows to strand.
+		// On a fresh database the column does not exist yet, so a failure here is
+		// expected and not fatal: there are no rows to strand.
 		res, err := app.DB().NewQuery("UPDATE {{things}} SET [[active]] = true WHERE [[active]] IS NULL OR [[active]] = false").Execute()
 		if err != nil {
 			log.Printf("ℹ️ Skipped the things active backfill (column not present yet): %v", err)
@@ -48,8 +40,7 @@ func init() {
 			return err
 		}
 
-		// Fresh databases created the columns during the import above, so run the
-		// backfill once more to cover rows the import may have brought along.
+		// Second pass, now that the import has created the column.
 		if _, err := app.DB().NewQuery("UPDATE {{things}} SET [[active]] = true WHERE [[active]] IS NULL OR [[active]] = false").Execute(); err != nil {
 			return err
 		}

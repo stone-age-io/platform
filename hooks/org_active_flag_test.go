@@ -13,19 +13,12 @@ import (
 )
 
 // newFlagOrg creates an organization with a fresh owner and hands back the RELOADED
-// record.
+// record. The reload is load-bearing (see TestRelationTenancy): a record saved
+// in memory carries an Original() describing the blank pre-create state, so an
+// edge-keyed hook never fires, and the suite would pass against a hook that
+// refuses nothing. Real callers go through the record API, which loads first.
 //
-// The reload is load-bearing, for the reason TestRelationTenancy spells out
-// about its own: a record built and saved in memory carries an Original() that
-// still describes the blank pre-create state, so a hook keyed on a true->false
-// transition compares false against false and never fires. Every real caller
-// here is the record API, which loads the row before applying the patch. Keeping
-// the in-memory object would test a path that does not exist and would have
-// passed this suite against a hook that refuses nothing -- which is exactly what
-// it did on the first run.
-//
-// `slug` is separate from `name` because organization names have spaces in them
-// and the owner's address is derived from it.
+// `slug` builds the owner's address, since names have spaces.
 func newFlagOrg(t *testing.T, app *pocketbase.PocketBase, slug, name string, flags map[string]any) *core.Record {
 	t.Helper()
 
@@ -85,14 +78,9 @@ func accountActive(t *testing.T, app *pocketbase.PocketBase, accountID string) b
 	return rec.GetBool("active")
 }
 
-// The whole point of the feature: `active` on an organization is not decoration.
-//
-// Both directions are asserted on the same record, because a mirror that only
-// ever writes false would pass a deactivation test while making reactivation
-// impossible -- and reactivation is the half that makes this safe to expose at
-// all. Clearing the flag withdraws the account claim; setting it republishes,
-// and every creds_file in the tenant is still valid because nothing here
-// revokes a user.
+// Both directions on the same record: a mirror that only writes false would
+// pass a deactivation test while making reactivation, the half that makes this
+// safe to expose, impossible.
 func TestOrgDeactivationMirrorsOntoTheNatsAccount(t *testing.T) {
 	app := testutil.SetupApp(t)
 
@@ -121,13 +109,8 @@ func TestOrgDeactivationMirrorsOntoTheNatsAccount(t *testing.T) {
 }
 
 // An organization created with `active` already clear must not be handed a live
-// NATS account.
-//
-// The mirror binds to update only -- there is nothing to compare against on a
-// create -- so this is enforced by ensureOrgNatsAccount inheriting the flag
-// rather than hardcoding true, which is what it used to do. Without that one
-// line the tenant is provisioned connectable and stays that way until somebody
-// happens to save the organization again.
+// NATS account. The mirror binds to update only, so ensureOrgNatsAccount
+// inheriting the flag is what enforces this.
 func TestAnOrgCreatedInactiveGetsAnInactiveAccount(t *testing.T) {
 	app := testutil.SetupApp(t)
 
@@ -138,15 +121,9 @@ func TestAnOrgCreatedInactiveGetsAnInactiveAccount(t *testing.T) {
 	}
 }
 
-// The mirror is LEVEL-triggered, and this is the test that would fail if
-// somebody rewrote it as an edge.
-//
-// Two properties ride on it. The error this hook returns is only actionable if
-// re-saving retries, and on an edge trigger the retry is dead by construction:
-// the second save sees was == now and returns early, so the one lever the
-// operator has does nothing. And an account flipped directly in the PocketBase
-// dashboard -- which is a superuser path with no rule and no hook over it --
-// would otherwise stay out of step with the organization forever.
+// The mirror is LEVEL-triggered; this fails if it is rewritten as an edge. A
+// returned error is only actionable if re-saving retries, and an account
+// flipped directly in the PocketBase dashboard must come back into line.
 func TestTheMirrorCorrectsDriftRatherThanOnlyWatchingEdges(t *testing.T) {
 	app := testutil.SetupApp(t)
 
@@ -171,13 +148,8 @@ func TestTheMirrorCorrectsDriftRatherThanOnlyWatchingEdges(t *testing.T) {
 }
 
 // The platform's own organizations are refused, and an ordinary one is not.
-//
-// Paired deliberately: a refusal test on its own passes just as well against a
-// hook that refuses everything, which would take the whole feature out while
-// looking green. The operator organization's account is the hub every managed
-// tenant's helpdesk.> import resolves against, so withdrawing it is a
-// platform-wide outage triggered by an unlabelled checkbox -- and the system
-// organization has no provisioned account to mirror in the first place.
+// Paired, because a refusal test alone passes against a hook that refuses
+// everything.
 func TestInfrastructureOrgsCannotBeDeactivated(t *testing.T) {
 	app := testutil.SetupApp(t)
 
@@ -194,8 +166,7 @@ func TestInfrastructureOrgsCannotBeDeactivated(t *testing.T) {
 				t.Errorf("the refusal should be ErrInfrastructureOrgActive, got: %v", err)
 			}
 
-			// The flag really did not move. A hook that returns an error after
-			// the value is already persisted would fail here.
+			// The flag really did not move, so the refusal came before the write.
 			reloaded, findErr := app.FindRecordById("organizations", org.Id)
 			if findErr != nil {
 				t.Fatalf("reload the organization: %v", findErr)
@@ -206,8 +177,7 @@ func TestInfrastructureOrgsCannotBeDeactivated(t *testing.T) {
 		})
 	}
 
-	// The pairing. An ordinary organization is still deactivatable, so the
-	// refusal above is about these two rows and not about the operation.
+	// The pairing: an ordinary organization is still deactivatable.
 	t.Run("an ordinary org still can be", func(t *testing.T) {
 		org, account := newOrgWithAccount(t, app, "ordinary", "Ordinary Tenant", nil)
 		org.Set("active", false)
@@ -221,10 +191,8 @@ func TestInfrastructureOrgsCannotBeDeactivated(t *testing.T) {
 }
 
 // A delete blanks the relations into an organization rather than removing them,
-// so on a live tenant it used to leave the NATS account published with a blank
-// organization. The guard asks for the two things that make a delete leave
-// nothing behind: suspended (the account withdrawn) and empty. Each refusal is
-// paired with the same delete succeeding once its reason is gone.
+// so it needs the organization suspended (account withdrawn) and empty. Each
+// refusal is paired with the same delete succeeding once its reason is gone.
 func TestOrgDeleteNeedsItSuspendedAndEmpty(t *testing.T) {
 	app := testutil.SetupApp(t)
 

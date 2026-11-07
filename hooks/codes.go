@@ -16,20 +16,14 @@ import (
 // Generated Thing and Location codes -- ADR 0003 in platform-docs.
 //
 // A generated code is `PFX-XXX-XXX`, or `XXX-XXX` when the record's type has no
-// prefix. The shape comes from BEC Systems' "Human-Friendly Industrial Device
-// IDs": short, random, chunked, from an alphabet with the look-alikes removed.
-// The prefix is ours; everything after it means nothing, deliberately.
+// prefix: short, random, chunked, from an alphabet without look-alikes.
 //
-// WHY RANDOM. A sparse random space is a check digit for free: an organization
-// with a thousand cameras uses about 0.0005% of the codes under one prefix, so a
-// mistyped code almost always matches nothing and the scanner says "not found".
-// Sequential codes are the opposite -- a typo of CAM-042 is CAM-043, a real
-// record, and the tech lands on the wrong device with nothing looking wrong.
+// Random because a sparse space is a free check digit: a typo almost always
+// matches nothing, where a sequential code's typo lands on the neighbouring
+// device.
 //
-// WHY ONE GENERATOR, HERE. ui/src/utils/subjectResolver.ts once carried a header
-// claiming it mirrored a Go package nobody ever wrote. A second generator in
-// TypeScript would drift the same way, and a code is frozen and printed, so drift
-// would be permanent. A client that wants a generated code leaves it blank.
+// This is the only generator. Do not add a TypeScript copy: a code is frozen and
+// printed, so drift would be permanent. A client wanting a code leaves it blank.
 
 const (
 	thingsCollection        = "things"
@@ -47,15 +41,12 @@ const (
 )
 
 // TypePrefixPattern mirrors the `pattern` on thing_types.prefix and
-// location_types.prefix in schema.json. Letters only, so the boundary between
-// prefix and random part is always visible: CA-9KD-4PX reads as "type, then
-// noise", which a digit inside the prefix would blur.
+// location_types.prefix in schema.json. Letters only, so the prefix stays
+// visibly separate from the random part.
 var TypePrefixPattern = regexp.MustCompile(`^[A-Z]{1,4}$`)
 
-// codeAttempts bounds the collision retry. A collision needs two draws from
-// roughly 210 million codes per prefix to meet, so a second attempt is already
-// astronomically rare; eight only exists so that a bug (say, an alphabet cut to
-// one symbol) fails loudly instead of looping.
+// codeAttempts bounds the collision retry. A second attempt is already rare;
+// the bound makes a bug fail loudly instead of looping.
 const codeAttempts = 8
 
 // codeKind names the pair of collections behind one kind of code.
@@ -87,10 +78,8 @@ func GenerateCode(prefix string) (string, error) {
 	return code, nil
 }
 
-// codeChunk draws three symbols until the chunk holds at least one letter AND
-// one digit. That keeps a chunk recognisably a code, and it means a chunk can
-// never spell a three-letter word. About half of all draws qualify (14,490 of
-// 27,000), so the loop rarely runs twice.
+// codeChunk draws three symbols until the chunk holds at least one letter and
+// one digit, so it never spells a word. About half of all draws qualify.
 func codeChunk() (string, error) {
 	n := big.NewInt(int64(len(codeSymbols)))
 	for {
@@ -110,9 +99,8 @@ func codeChunk() (string, error) {
 }
 
 // codeInUse reports whether any Thing or Location in the organization already
-// holds code, ignoring case. Both collections are checked so a generated code
-// never clashes across kinds, prefix or no prefix: the unique indexes are per
-// collection and cannot see each other.
+// holds code, ignoring case. Both are checked because the unique indexes are
+// per collection and cannot see each other.
 func codeInUse(app core.App, orgID, code string) (bool, error) {
 	for _, collection := range []string{thingsCollection, locationsCollection} {
 		n, err := app.CountRecords(collection,
@@ -130,9 +118,8 @@ func codeInUse(app core.App, orgID, code string) (bool, error) {
 }
 
 // NewUniqueCode generates a code under prefix that no Thing or Location in the
-// organization holds. Exported for POST /api/org/things, which needs the code
-// before it saves anything: the Thing's synthetic email and its NATS username
-// are both built from it.
+// organization holds. POST /api/org/things calls it because it builds the
+// synthetic email and NATS username from the code before saving anything.
 func NewUniqueCode(app core.App, orgID, prefix string) (string, error) {
 	for range codeAttempts {
 		code, err := GenerateCode(prefix)
@@ -151,9 +138,8 @@ func NewUniqueCode(app core.App, orgID, prefix string) (string, error) {
 }
 
 // typePrefix returns the prefix of the type record typeID, scoped to orgID. A
-// blank typeID is an untyped record and has no prefix. A type that does not
-// exist, or belongs to another organization, is reported as an error rather than
-// quietly treated as "no prefix": the caller asked for that type's codes.
+// blank typeID has no prefix; a missing or foreign type is an error, not "no
+// prefix".
 func typePrefix(app core.App, typeCollection, typeID, orgID string) (string, error) {
 	if typeID == "" {
 		return "", nil
@@ -168,25 +154,18 @@ func typePrefix(app core.App, typeCollection, typeID, orgID string) (string, err
 // RegisterCodes binds code generation and the prefix rules:
 //
 //   - things / locations create: a blank code is replaced with a generated one
-//     under the record's type prefix. Every Thing and Location therefore has a
-//     code from here on -- which is what lets each one carry a label, and what
-//     ADR 0004's location path needs. Presence is guaranteed by this hook, not
-//     by `required` in the schema, the same technique organizations.code uses.
-//   - thing_types / location_types create and update: a prefix already used by
-//     the OTHER type collection in the organization is refused. Thing prefixes
-//     and Location prefixes are separate sets; the partial unique index on each
-//     collection covers its own half and cannot see the other table.
+//     under the record's type prefix. This hook, not `required` in the schema,
+//     guarantees every record a code (ADR 0004's location path needs one).
+//   - thing_types / location_types create and update: a prefix the OTHER type
+//     collection in the organization holds is refused, because each partial
+//     unique index cannot see the other table.
 //
-// OnRecordCreate rather than an after-success hook, for the reason
-// RegisterOrgCode gives: `code` is frozen by the update rule the moment it
-// exists, so it has to be written WITH the record. Model hooks fire for
-// app.Save too, so the admin panel, the record API and every server-side save
-// all go through here.
+// OnRecordCreate, for the reason RegisterOrgCode gives: `code` is frozen the
+// moment it exists, so it must be written with the record. Model hooks also
+// cover app.Save.
 //
-// There is deliberately no route that hands out codes ahead of a create. It
-// existed briefly (GET /api/codes/suggest) and was removed: leaving the code
-// blank already gets one, and a batch of labels prints from the list after the
-// records exist. A code in hand before its record was the only thing it added.
+// Deliberately no route hands out codes ahead of a create; blank-at-save covers
+// every need.
 func RegisterCodes(app *pocketbase.PocketBase) {
 	for _, kind := range codeKinds {
 		app.OnRecordCreate(kind.collection).BindFunc(func(e *core.RecordEvent) error {

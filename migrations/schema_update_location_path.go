@@ -13,17 +13,13 @@ import (
 // and fills it for the locations that already exist. hooks/location_path.go
 // keeps it current from then on.
 //
-// The backfill writes with plain UPDATEs rather than app.Save, so no hook,
-// realtime event or activity row fires for what is a computed column appearing,
-// not an edit anyone made.
+// The backfill uses plain UPDATEs rather than app.Save, so no hook, realtime
+// event or activity row fires for a computed column nobody edited.
 //
-// A location whose parent chain loops back on itself, or leaves the
-// organization, gets no path and is named in the log. Nothing is refused and
-// nothing is guessed: the UI never offered a descendant as a parent, so a loop
-// here was made by hand, and which member should be the root is the same kind of
-// decision earlier migrations leave to a person. Make one member a root (or give
-// it a correct parent), then save the rest once each, top down: the hook builds
-// a path from the parent's, and refuses while the parent has none.
+// A location whose parent chain loops or leaves the organization gets no path
+// and is logged; which member should be the root is a person's decision. Fix one
+// root, then save the rest top down: the hook refuses while the parent has no
+// path.
 func init() {
 	m.Register(ApplyLocationPath, nil)
 }

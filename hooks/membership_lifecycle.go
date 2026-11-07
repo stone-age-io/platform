@@ -17,53 +17,25 @@ type MembershipLifecycleOptions struct {
 // RegisterMembershipLifecycle closes a user's tenant context when the
 // membership that justified it is removed.
 //
-// When this was written, every read rule on the inventory collections was
-// `organization = @request.auth.current_organization`, with no membership or
-// role branch -- deliberately, because reads are org-scoped rather than
-// role-scoped (see AUTHORIZATION.md). That made users.current_organization the entire
-// read boundary for a console user, and nothing was clearing it when the
-// membership behind it went away. (The read rules have since gained a
-// correlated membership clause -- migrations/schema_update_tenancy_sentinel.go
-// -- so a removed member now loses reads with the membership itself. This hook
-// stays as the second half: it keeps the context honest, so the console does
-// not land a removed user in an organization it can no longer read.) Removing someone from an organization
-// therefore removed their ability to WRITE (every write branch names a role, and
-// resolves it through memberships) while leaving them able to read the whole
-// tenant's inventory, indefinitely:
+// users.current_organization is the read scope every org-scoped rule keys on,
+// so a value the rules trust needs something keeping it true. The read rules
+// also correlate a membership (migrations/schema_update_tenancy_sentinel.go),
+// so a removed member loses reads with the membership; this hook keeps the
+// context honest, so the console does not land them in an org they cannot read.
 //
-//   - the token keeps working for its remaining lifetime, and
-//   - `users` has an empty authRule, so they can log back in afterwards and land
-//     straight back in the organization they were removed from.
+// Clear, do not switch: the console's loadContext() falls back to the first
+// remaining membership (ui/src/stores/auth.ts), and a server-side guess could
+// drop someone into a tenant they did not choose.
 //
-// This is the same class of bug as nats_users.active: a value the rules trust
-// with nothing keeping it true. The platform already wrote the doctrine down for
-// devices -- a flag is not a control unless something acts on it -- and
-// current_organization is that flag for humans.
+// No RefreshTokenKey(), unlike hooks/active_flag.go: rules read
+// @request.auth.current_organization from the user record, which is loaded on
+// every request, so clearing it takes effect at once. Refreshing the key would
+// also sign the user out of the orgs they still belong to.
 //
-// Three choices worth not re-litigating:
-//
-// Clear, do not switch. The console's loadContext() already falls back to the
-// first remaining membership, or to no organization at all when there are none
-// (ui/src/stores/auth.ts). Picking a replacement here would be the server
-// guessing, and a wrong guess silently drops someone into a tenant they did not
-// choose.
-//
-// No RefreshTokenKey(), unlike hooks/active_flag.go. That file needs it because
-// a device's authRule is evaluated at the auth endpoint only, so nothing about
-// an existing token re-checks it. Here the rules read
-// @request.auth.current_organization out of the user record, which PocketBase
-// loads from the database on every request -- so clearing the column takes
-// effect on the next request with no token surgery. Refreshing the key would
-// also sign the user out of the organizations they are still a legitimate member
-// of, which is a second bug rather than extra safety.
-//
-// Bound to OnRecordDelete and run BEFORE the delete, not to
-// OnRecordAfterDeleteSuccess. After*Success fires once the transaction has
-// committed, so a failure there leaves the membership gone and the access open
-// with nobody watching -- fail-open, for the one control that matters. Running
-// first means a failure aborts the removal instead: the operator sees an error
-// and retries, and the worst case is a context cleared for a membership that
-// still exists, which the org switcher fixes by itself.
+// Bound to OnRecordDelete, BEFORE the delete, not OnRecordAfterDeleteSuccess:
+// After*Success runs after the commit, so a failure there would fail open. Here
+// a failure aborts the removal, and the worst case is a context cleared for a
+// membership that still exists, which the org switcher fixes.
 func RegisterMembershipLifecycle(app *pocketbase.PocketBase, opts MembershipLifecycleOptions) {
 	app.OnRecordDelete(opts.MembershipCollection).BindFunc(func(e *core.RecordEvent) error {
 		userID := e.Record.GetString("user")
@@ -75,14 +47,12 @@ func RegisterMembershipLifecycle(app *pocketbase.PocketBase, opts MembershipLife
 
 		user, err := e.App.FindRecordById(opts.UserCollection, userID)
 		if err != nil {
-			// The user is being deleted, and this membership is one of the
-			// records cascading behind them. There is no context left to close.
+			// The user is being deleted and this membership is cascading.
 			return e.Next()
 		}
 
 		if user.GetString("current_organization") != orgID {
-			// They were removed from some other organization than the one they
-			// are looking at. Leave the context alone.
+			// Removed from an organization other than the one they are in.
 			return e.Next()
 		}
 

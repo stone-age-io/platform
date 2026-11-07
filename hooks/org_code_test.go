@@ -5,10 +5,9 @@ import (
 	"testing"
 )
 
-// The same pattern schema.json puts on organizations.code. Slugify is allowed
-// to return values this rejects (see the cases below); what must never happen
-// is Slugify returning something that PASSES the pattern but is not the code we
-// meant, because a code is immutable the moment it is saved.
+// The same pattern schema.json puts on organizations.code. Slugify may return
+// values this rejects, but never one that passes and is not the code meant,
+// because a code is immutable once saved.
 var pattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,30}$`)
 
 func TestSlugify(t *testing.T) {
@@ -44,9 +43,8 @@ func TestSlugify(t *testing.T) {
 	}
 }
 
-// A derived code has to satisfy the field pattern or the save fails with a
-// validation error rather than the hook's own message, so the length ceiling
-// matters as much as the character set.
+// A derived code has to satisfy the field pattern, length ceiling included, or
+// the save fails with a validation error instead of the hook's message.
 func TestSlugifyTruncatesWithoutLeavingATrailingHyphen(t *testing.T) {
 	// 40 characters, with the 31st and 32nd both non-alphanumeric, so a naive
 	// truncation would end on a hyphen and fail the pattern.
@@ -60,12 +58,8 @@ func TestSlugifyTruncatesWithoutLeavingATrailingHyphen(t *testing.T) {
 	}
 }
 
-// The two cases the hook is expected to reject. Pinned so a future change to
-// Slugify that "helpfully" repairs them is a test failure and a decision,
-// rather than a silent shift to codes nobody chose.
-//
-// "3M" used to be in this list. It is not any more: the pattern now permits a
-// leading digit, so "3m" is a code the hook accepts.
+// The two cases the hook is expected to reject. Pinned so a change to Slugify
+// that repairs them is a deliberate decision. A leading digit ("3m") is valid.
 func TestSlugifyDoesNotInventAValidCode(t *testing.T) {
 	for _, in := range []string{"!!!", "X"} {
 		if got := Slugify(in); pattern.MatchString(got) {

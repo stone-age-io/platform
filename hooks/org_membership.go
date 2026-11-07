@@ -18,34 +18,17 @@ type OrgMembershipOptions struct {
 // RegisterOrgMembership gives a new organization's owner the membership row that
 // says so, and points them at it.
 //
-// The membership is not decoration: it is the ONLY thing that grants authority.
-// No API rule consults `organizations.owner`. The memberships and invites rules
-// used to, and that made the field a standing grant that outlived the owner
-// membership -- an owner an admin removed or demoted kept invite and membership
-// powers, and could re-add themselves. So an owner without a membership row
-// can do nothing in their own tenant, and the two have to be created together.
+// The membership is the ONLY thing that grants authority: no API rule consults
+// `organizations.owner`, because a standing grant on that field would outlive
+// the owner membership (a removed owner could re-add themselves). So an owner
+// with no membership row can do nothing in their own tenant, and the two are
+// created together.
 //
-// ABSORBED FROM pb-tenancy, WITH ONE FIX. This was
-// `tenancy.autoCreateOwnerMembership`, and its handler was
-// `return autoCreateOwnerMembership(...)` -- no e.Next(). That TERMINATED the
-// organizations AfterCreateSuccess chain. Because the library registered it from
-// inside its own OnBootstrap callback, it landed after every hooks.Register* call
-// in main.go, so it was always last and nothing downstream noticed. Anything
-// binding that event after Bootstrap got silence: no handler, no error, no log.
-// It cost real time -- RegisterManagedOrgExports on an already-bootstrapped test
-// app provisioned nothing, and a Priority: -9999 bind was the only thing that
-// fired -- and it is why internal/testutil has to mirror main.go's registration
-// order. The e.Next() below is that fix. The ordering constraint in testutil is
-// no longer load-bearing, but it is still correct, so it stays.
-//
-// The existence check is new too. The original always created, and would have
-// collided with the unique (user, organization) index on any path that ran twice;
-// bootstrap.go's ensureOwnerMembership already took the same defensive stance for
-// the same reason.
-//
-// Registered in main.go in the same position the library's hook effectively
-// occupied -- after provisioning and managed exports -- so the observable order
-// of work on an organization create is unchanged.
+// The handler must call e.Next(): the pb-tenancy original did not, which
+// silently dropped every handler bound after it (hooks/CLAUDE.md,
+// TestOrgCreateDoesNotTerminateTheHookChain). It checks for an existing row
+// because the unique (user, organization) index would refuse a second create.
+// Registered in main.go after provisioning and managed exports.
 func RegisterOrgMembership(app *pocketbase.PocketBase, opts OrgMembershipOptions) {
 	app.OnRecordAfterCreateSuccess(opts.OrgCollection).BindFunc(func(e *core.RecordEvent) error {
 		if err := ensureOwnerMembershipAndContext(e.App, e.Record, opts); err != nil {
@@ -54,16 +37,14 @@ func RegisterOrgMembership(app *pocketbase.PocketBase, opts OrgMembershipOptions
 		return e.Next()
 	})
 
-	// An operator reassigning the owner (admin/OrganizationFormView) gets the new
-	// owner the membership that makes the field mean something. Membership only:
-	// unlike a create, a reassignment does not move anyone's console context.
+	// An operator reassigning the owner (admin/OrganizationFormView) gives the
+	// new owner an owner membership. Membership only: a reassignment does not
+	// move anyone's console context.
 	//
-	// The REQUEST hook, so it fires only when the owner is changed through the API,
-	// never on an unrelated save -- a level-triggered version would quietly re-add
-	// an owner whom an admin had removed, the next time an operator touched the
-	// organization. Only a request loads the row fresh, which is what makes
-	// Original() the pre-edit owner here (see hooks/CLAUDE.md). The previous
-	// owner keeps whatever membership they had; an admin removes it if wanted.
+	// The REQUEST hook, edge-keyed, so it fires only when the owner changes: a
+	// level-triggered version would re-add an owner an admin had removed on the
+	// next unrelated save. A request loads the row fresh, so Original() is the
+	// pre-edit owner. The previous owner keeps whatever membership they had.
 	app.OnRecordUpdateRequest(opts.OrgCollection).BindFunc(func(e *core.RecordRequestEvent) error {
 		was := e.Record.Original().GetString("owner")
 		if err := e.Next(); err != nil {
@@ -79,10 +60,8 @@ func RegisterOrgMembership(app *pocketbase.PocketBase, opts OrgMembershipOptions
 func ensureOwnerMembershipAndContext(app core.App, org *core.Record, opts OrgMembershipOptions) error {
 	ownerID := org.GetString("owner")
 	if ownerID == "" {
-		// organizations.owner is required by the schema, so this is unreachable
-		// through the API. It stays because a migration or a seed writing through
-		// SaveNoValidate is not, and a blank relation here would produce a
-		// membership belonging to nobody.
+		// Unreachable through the API (owner is required), but a SaveNoValidate
+		// seed or migration could create a membership belonging to nobody.
 		return nil
 	}
 
@@ -90,20 +69,12 @@ func ensureOwnerMembershipAndContext(app core.App, org *core.Record, opts OrgMem
 		return err
 	}
 
-	// Point the owner at the organization they now own.
-	//
-	// Unconditional, preserving the absorbed behaviour: creating an organization
-	// switches its owner's console context to it, even if they were already in
-	// another one. Contrast the invite-acceptance path, which sets this only when
-	// blank -- joining someone else's organization should not move you out of your
-	// own. Both were inherited as-is; the asymmetry is deliberate enough to keep,
-	// since an org you just had created FOR you is almost always where you want to
-	// land, and the console has a switcher either way.
+	// Point the owner at the organization they now own, unconditionally. Invite
+	// acceptance sets this only when blank, since joining someone else's org
+	// should not move you out of your own. The asymmetry is deliberate.
 	user, err := app.FindRecordById(opts.UserCollection, ownerID)
 	if err != nil {
-		// The owner relation points at a user that is not there. Not this hook's
-		// problem to resolve, and not worth failing a create over, but it is a
-		// broken record and nobody else is looking at it.
+		// A dangling owner relation: logged, not worth failing a create over.
 		app.Logger().Warn("organization owner has no user record, context not set",
 			"organization", org.Id, "owner", ownerID, "error", err)
 		return nil
@@ -111,9 +82,8 @@ func ensureOwnerMembershipAndContext(app core.App, org *core.Record, opts OrgMem
 
 	user.Set("current_organization", org.Id)
 	if err := app.Save(user); err != nil {
-		// The membership is the part that grants capability and it is already
-		// written. A context that did not move is a switcher click, not a failure
-		// worth unwinding an organization create for.
+		// The membership, which grants capability, is already written; a context
+		// that did not move is a switcher click.
 		app.Logger().Warn("could not set current_organization for new organization owner",
 			"organization", org.Id, "owner", ownerID, "error", err)
 	}

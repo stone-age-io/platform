@@ -6,15 +6,12 @@ import (
 	"testing"
 )
 
-// generatedShape is what GenerateCode must always produce: an optional prefix
-// of one to four capitals, then two three-symbol chunks from the 30-symbol
-// alphabet. Written out here rather than built from codeSymbols, so a change to
-// the alphabet has to change this test on purpose.
+// generatedShape is what GenerateCode must always produce. Written out rather
+// than built from codeSymbols, so an alphabet change must change this test too.
 var generatedShape = regexp.MustCompile(`^([A-Z]{1,4}-)?[3-9A-HJ-NP-Y]{3}-[3-9A-HJ-NP-Y]{3}$`)
 
-// The codePattern every inventory code has to satisfy (migrations.CodePattern,
-// restated to keep this test inside the hooks package). A generated code the
-// field rejects would fail its own save.
+// migrations.CodePattern, restated to keep this test inside the hooks package.
+// A generated code the field rejects would fail its own save.
 var inventoryCodePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$`)
 
 func TestAlphabetDropsTheLookAlikes(t *testing.T) {
@@ -28,8 +25,8 @@ func TestAlphabetDropsTheLookAlikes(t *testing.T) {
 	}
 }
 
-// Enough draws that a broken chunk rule shows up. About half of all raw draws
-// fail it, so a regression that skipped the check would fail within a handful.
+// About half of all raw draws fail the chunk rule, so a regression that skipped
+// it fails within a handful of these draws.
 func TestGenerateCodeShape(t *testing.T) {
 	for _, prefix := range []string{"", "CA", "BLDG"} {
 		for range 2000 {
@@ -60,15 +57,10 @@ func TestGenerateCodeShape(t *testing.T) {
 	}
 }
 
-// Random means neighbours differ. A source that is not random at all repeats
-// constantly, which is the failure that turns a mistyped code back into
-// somebody else's record.
-//
-// But one repeat is not that failure. There are 14,490² ≈ 2.1e8 codes, so by
-// the birthday bound 2,000 honest draws repeat once about 1% of the time
-// (2000² / 2N), and failing on the first repeat made CI flaky. Three or more
-// repeats has odds of about 1 in 7 million from a working source, and a broken
-// one (constant, or a short cycle) produces hundreds.
+// A broken source (constant, or a short cycle) repeats hundreds of times. One
+// repeat is not that failure: 2,000 honest draws from ~2.1e8 codes repeat once
+// about 1% of the time, so failing on it is flaky. Three or more has odds of
+// about 1 in 7 million.
 func TestGenerateCodeIsNotRepetitive(t *testing.T) {
 	seen := map[string]bool{}
 	repeats := 0
@@ -93,8 +85,7 @@ func TestTypePrefixPattern(t *testing.T) {
 			t.Errorf("prefix %q should be accepted", ok)
 		}
 	}
-	// Lowercase, digits, a separator, too long, empty. A digit is the one worth
-	// pinning: it would blur where the prefix ends and the random part begins.
+	// A digit would blur where the prefix ends and the random part begins.
 	for _, bad := range []string{"ca", "C4", "CA-", "BLDGS", ""} {
 		if TypePrefixPattern.MatchString(bad) {
 			t.Errorf("prefix %q should be refused", bad)

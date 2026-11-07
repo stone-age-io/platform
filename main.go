@@ -30,9 +30,9 @@ var embeddedFS embed.FS
 //go:embed schema.json
 var schemaJSON []byte
 
-// loadConfig handles the Viper initialization
+// loadConfig initializes Viper.
 func loadConfig() {
-	// 1. Check for --config flag manually
+	// Read --config by hand: Cobra has not parsed flags yet.
 	configPath := ""
 	for i, arg := range os.Args {
 		if arg == "--config" && i+1 < len(os.Args) {
@@ -47,7 +47,6 @@ func loadConfig() {
 		}
 	}
 
-	// 2. Set Configuration Source
 	if configPath != "" {
 		viper.SetConfigFile(configPath)
 	} else {
@@ -57,15 +56,12 @@ func loadConfig() {
 		viper.AddConfigPath("/etc/stone-age/")
 	}
 
-	// 3. Environment Variables
 	viper.SetEnvPrefix("STONE_AGE")
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
 
-	// 4. Set Defaults
 	setDefaults()
 
-	// 5. Read Config
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 			if configPath != "" {
@@ -80,68 +76,53 @@ func loadConfig() {
 	}
 }
 
-// setDefaults must define a value for EVERY key the program later reads.
-// Anything read without a default silently becomes the zero value when
-// config.yaml is absent — which for an int means 0, and 0 is a legal-looking
-// but wrong limit (a Nebula CA valid for zero years, a zero-byte NATS payload
-// cap). Keep this list in sync with config.yaml.
+// setDefaults must define a value for every key the program later reads.
+// Without one, an absent config.yaml yields the zero value, and 0 is a
+// legal-looking but wrong limit (a CA valid for zero years). Keep this list in
+// sync with config.yaml.
 func setDefaults() {
 	// Tenancy
 	viper.SetDefault("tenancy.invite_expiry_days", 7)
 
 	// NATS
 	viper.SetDefault("nats.operator_name", "stone-age.io")
-	// 4222 is the NATS default and the port `nats export` writes into nats.conf.
-	// This default used to be 4422, which disagreed with the exported config,
-	// the README, and the docs — the symptom was a Control Plane stuck in
-	// bootstrap mode against a server that was running fine on another port.
+	// The port `nats export` writes into nats.conf.
 	viper.SetDefault("nats.server_url", "nats://localhost:4222")
-	// WebSocket listeners for the browser console, served at runtime by
-	// GET /api/client-config. Empty by default: the UI then falls back to its
-	// compiled-in ws://localhost:9222, which is the listener `nats export`
-	// generates. Not derived from server_url — that is a TCP address for this
-	// process, on a different port and often a different hostname.
+	// Browser WebSocket URLs, served by GET /api/client-config. Empty means the
+	// UI's compiled-in ws://localhost:9222, the listener `nats export` writes.
+	// Never derived from server_url, which is this process's TCP address.
 	viper.SetDefault("nats.websocket_urls", []string{})
-	// Where an edge box's leaf remote dials this deployment, and the hub's own
-	// JetStream domain. Served to gateways by GET /api/me/leaf-config; see the
-	// comment on hooks.LeafConfigRoutesOptions for why neither is derived from
-	// nats.server_url.
+	// Served by GET /api/me/leaf-config. hooks.LeafConfigRoutesOptions says why
+	// neither is derived from nats.server_url.
 	viper.SetDefault("nats.leaf_url", "")
 	viper.SetDefault("nats.jetstream_domain", "hub")
 	viper.SetDefault("nats.log_to_console", false)
-	// Fair-use ceilings stamped into every new organization's signed account
-	// JWT. config.yaml carries the reasoning; the short version is that disk
-	// tracks what the plan is sold with, memory is a blast-radius limit that is
-	// the same for everyone, and the connection and subscription numbers are
-	// headroom to alarm on rather than a fence.
+	// Fair-use ceilings stamped into each new org's account JWT. config.yaml
+	// carries the reasoning.
 	viper.SetDefault("nats.default_limits.max_connections", 100)
 	viper.SetDefault("nats.default_limits.max_subscriptions", 5000)
 	viper.SetDefault("nats.default_limits.max_payload", 1048576)
 	viper.SetDefault("nats.default_limits.max_jetstream_disk_storage", 5*1024*1024*1024)
 	viper.SetDefault("nats.default_limits.max_jetstream_memory_storage", 64*1024*1024)
-	// Run a NATS server inside this process instead of alongside it. Off by
-	// default: the normal topology is a separate nats-server. See --nats.
+	// Off by default: the normal topology is a separate nats-server. See --nats.
 	viper.SetDefault("nats.embedded", false)
 	viper.SetDefault("nats.embedded_config", natsd.DefaultConfigFile)
-	// At-rest encryption is OFF by default, deliberately: an empty key means the
-	// private_key/seed columns are stored in plaintext. Set it to exactly 32
-	// characters (preferably via STONE_AGE_NATS_ENCRYPTION_KEY) to turn it on,
-	// and keep a backup — losing an enabled key loses the encrypted records.
+	// Empty means at-rest encryption is off and the private_key/seed columns are
+	// plaintext. When set it must be 32 characters; losing it loses the
+	// encrypted records.
 	viper.SetDefault("nats.encryption_key", "")
-	// Subject subtree exported from every managed org's account into the
-	// operator hub account (import remaps it to "<prefix>.{orgCode}.>").
+	// Exported from each managed org into the operator account, imported as
+	// "<prefix>.{orgCode}.>".
 	viper.SetDefault("nats.managed_export_subject", "helpdesk.>")
-	// Inventory events on the bus (plans/inventory-events.md). Off until a
-	// provider wants them. The local subject is what each organization's own
-	// account sees, and is configurable because a white-labelled deployment may
-	// not want "stone-age." in its tenants' subjects.
+	// plans/inventory-events.md. The local subject is configurable so a
+	// white-labelled deployment can drop "stone-age." from tenant subjects.
 	viper.SetDefault("nats.inventory_events_enabled", false)
 	viper.SetDefault("nats.inventory_local_subject", "stone-age.>")
 
 	// Nebula
 	viper.SetDefault("nebula.log_to_console", false)
 	viper.SetDefault("nebula.default_ca_validity_years", 10)
-	// Off by default, same rationale as nats.encryption_key above.
+	// Same as nats.encryption_key.
 	viper.SetDefault("nebula.encryption_key", "")
 
 	// Audit
@@ -150,32 +131,23 @@ func setDefaults() {
 	viper.SetDefault("audit.retention.max_records", 0)
 	viper.SetDefault("audit.retention.interval", "0 2 * * *")
 
-	// Branding (operator-level overrides for logo / theme / app name).
-	// Empty disables overrides; the embedded default branding is used.
+	// Empty serves the embedded default branding.
 	viper.SetDefault("branding.dir", "")
 
-	// Observability. /api/ready is always served — a readiness probe that can be
-	// switched off is one that gets switched off and then cannot be explained.
-	// /metrics can be turned off, and defaults to unauthenticated: the series it
-	// exposes are aggregate counts and process statistics with no customer
-	// identifiers, and an endpoint requiring a credential is one that mostly
-	// does not get scraped. Set metrics.token to close it.
+	// /api/ready cannot be switched off. /metrics is open by default (aggregate
+	// counts, no customer identifiers); metrics.token closes it.
 	viper.SetDefault("metrics.enabled", true)
 	viper.SetDefault("metrics.token", "")
 	viper.SetDefault("readiness.interval", "15s")
 	viper.SetDefault("readiness.timeout", "5s")
 }
 
-// validateEncryptionKey rejects a malformed at-rest encryption key at startup.
-//
-// An empty key is valid and is the default: at-rest encryption is opt-in, and
-// leaving it off stores the private_key/seed columns in plaintext. A key of any
-// other length than 32 bytes is never valid though — AES-256 needs exactly that
-// — so it is a typo or a truncated secret, and the only safe response is to
-// refuse to start rather than provision records that cannot be decrypted.
+// validateEncryptionKey refuses to start on an at-rest key that is set but not
+// 32 bytes (AES-256), rather than provision records that cannot be decrypted.
+// Empty is valid: encryption is opt-in.
 func validateEncryptionKey(key, name string) {
 	if key == "" {
-		return // encryption disabled — the default
+		return
 	}
 	if len(key) != 32 {
 		log.Fatalf("❌ %s must be exactly 32 bytes when set (got %d). Leave it empty to disable at-rest encryption.", name, len(key))
@@ -183,8 +155,7 @@ func validateEncryptionKey(key, name string) {
 }
 
 // requireDuration reads a duration setting and refuses one that does not parse.
-// viper.GetDuration turns a typo into 0 without a word, and every caller treats
-// 0 as "not set", so a max_age of "30d" used to switch retention off quietly.
+// viper.GetDuration turns a typo into 0, which every caller reads as "not set".
 // Empty is still "not set".
 func requireDuration(key string) time.Duration {
 	s := strings.TrimSpace(viper.GetString(key))
@@ -203,39 +174,23 @@ func main() {
 
 	app := pocketbase.New()
 
-	// Pass embedded schema to initial migration
 	migrations.SchemaJSON = schemaJSON
 
-	// Register migrate command. Automigrate writes a new migration file whenever a
-	// collection is changed through the admin UI — helpful during development,
-	// wrong in production, where the migrations directory is not part of the
-	// deployed artifact and schema drift should arrive as reviewed code. Detect
-	// `go run` the way PocketBase's own docs do: its throwaway binary lands under
-	// the OS temp dir, whereas a released build does not.
+	// Automigrate only under `go run` (its binary lands in the OS temp dir, the
+	// check PocketBase's docs use). In production schema changes arrive as
+	// reviewed migrations, not admin UI edits.
 	isGoRun := strings.HasPrefix(os.Args[0], os.TempDir())
 	migratecmd.MustRegister(app, app.RootCmd, migratecmd.Config{
 		Automigrate: isGoRun,
 	})
 
-	// Register the config flag with Cobra
 	app.RootCmd.PersistentFlags().String("config", "", "Path to config file")
 
-	// `--version` on the root command. PocketBase sets this to its OWN version,
-	// which is "(untracked)" in a module build -- so before this the platform
-	// binary answered `--version` with a string that named neither the platform
-	// nor PocketBase usefully. A bug report needs both: the API rules are the
-	// entire authorization layer here, and their semantics are PocketBase's.
-	// The pb-* libraries are listed alongside PocketBase for the same reason:
-	// that is where NATS credential minting, Nebula CA issuance and the audit
-	// trail actually live, so "which pb-nats is this" is the second fact any
-	// credential or authorization bug report needs. They are read from the build
-	// info, not stamped -- a library has no ldflags equivalent -- which is
-	// precisely why those repos carry tags: an untagged module reads back here as
-	// a pseudo-version naming a commit.
-	//
-	// pb-tenancy was on this list until it was absorbed. The answer to "which
-	// tenancy code is this" is now the platform version on the line above, which
-	// is the point of absorbing it.
+	// PocketBase sets --version to its own, which is "(untracked)" in a module
+	// build. A bug report needs the platform version plus PocketBase (whose
+	// semantics the API rules use) and the pb-* libraries (credential minting,
+	// CA issuance, audit). Library versions come from build info, so an untagged
+	// one reads back as a pseudo-version.
 	app.RootCmd.Version = version.Version + "\n" + version.DependencyLines(
 		"ganigeorgiev.com/pocketbase/pocketbase",
 		"github.com/skeeeon/pb-nats",
@@ -243,16 +198,9 @@ func main() {
 		"github.com/skeeeon/pb-audit",
 	)
 
-	// Embedded NATS server. Registered as persistent flags on the root command,
-	// the same way --config above is, because PocketBase does not add the
-	// `serve` subcommand until app.Start() — which registers and executes in one
-	// call, leaving no point where a serve-only flag could be attached.
-	//
-	// Only `serve` acts on these; the other commands open the database directly
-	// and have no bus to talk to.
-	//
-	// Bound to viper so the setting can equally come from config.yaml or
-	// STONE_AGE_NATS_EMBEDDED. An unset flag falls through to those.
+	// Root persistent flags because PocketBase adds `serve` inside app.Start(),
+	// leaving nowhere to attach a serve-only flag. Only `serve` acts on them.
+	// Bound to viper, so an unset flag falls through to config or env.
 	app.RootCmd.PersistentFlags().Bool("nats", false,
 		"serve: run a NATS server in this process, using the config from `nats export`")
 	app.RootCmd.PersistentFlags().String("nats-config", natsd.DefaultConfigFile,
@@ -264,82 +212,48 @@ func main() {
 		log.Fatalf("❌ Failed to bind --nats-config: %v", err)
 	}
 
-	// --- Tenancy ---
-	// Platform-owned since the pb-tenancy absorb. The library's collection and
-	// API-rule half never ran here anyway -- schema.json has owned those since the
-	// initial import, and every rule it would have written had been replaced -- so
-	// what came back in-tree is the half that did: owner membership, the
-	// invitation lifecycle, and the accept endpoint. See hooks/org_membership.go
-	// and hooks/invites.go.
-	//
-	// tenancy.log_to_console is gone with it. Mail failures now go through
-	// app.Logger() unconditionally, because the one thing that flag did here was
-	// silence them.
-	//
-	// Collection names are constants, not config. schema.json names every
-	// collection literally in its API rules (@collection.memberships, nats_users,
-	// ...), so a renamed collection only ever broke authorization. The library
-	// collections (NATS, Nebula, audit) take their names from each library's
-	// DefaultOptions(), which match schema.json.
+	// Collection names are constants, not config: schema.json names collections
+	// literally in its API rules, so renaming one only breaks authorization.
 	const (
 		orgCollection        = "organizations"
 		membershipCollection = "memberships"
 		inviteCollection     = "invites"
 	)
-	// Assigned unconditionally: setDefaults guarantees a sane value, so the old
-	// viper.IsSet guard only obscured whether the key could be missing.
+	// No IsSet guard: setDefaults guarantees a value.
 	inviteExpiryDays := viper.GetInt("tenancy.invite_expiry_days")
 
-	// --- NATS ---
 	natsOptions := pbnats.DefaultOptions()
 	natsOptions.OperatorName = viper.GetString("nats.operator_name")
 	natsOptions.NATSServerURL = viper.GetString("nats.server_url")
 	natsOptions.LogToConsole = viper.GetBool("nats.log_to_console")
 	natsOptions.EncryptionKey = viper.GetString("nats.encryption_key")
 
-	// --- Nebula ---
 	nebulaOptions := pbnebula.DefaultOptions()
 	nebulaOptions.LogToConsole = viper.GetBool("nebula.log_to_console")
 	nebulaOptions.DefaultCAValidityYears = viper.GetInt("nebula.default_ca_validity_years")
 	nebulaOptions.EncryptionKey = viper.GetString("nebula.encryption_key")
 
-	// At-rest encryption is opt-in, but a key of the wrong length is always a
-	// misconfiguration. Fail at startup rather than at the first key write, which
-	// would leave an org half-provisioned.
+	// At startup, not at the first key write, which would half-provision an org.
 	validateEncryptionKey(natsOptions.EncryptionKey, "nats.encryption_key")
 	validateEncryptionKey(nebulaOptions.EncryptionKey, "nebula.encryption_key")
 
-	// --- Audit ---
 	auditOptions := pbaudit.DefaultOptions()
-	// Canonical key is audit.log_to_console, matching the tenancy/nats/nebula
-	// sections. The legacy audit.log_console spelling is still honoured so an
-	// existing config.yaml does not silently lose the setting.
+	// audit.log_console is the legacy spelling, still honoured.
 	auditOptions.LogToConsole = viper.GetBool("audit.log_to_console") || viper.GetBool("audit.log_console")
 
-	// Never audit the NATS root operator record. That record holds the root of
-	// the entire NATS chain of trust — its seed signs every account and user JWT
-	// on the platform — and there is no reason to keep a second copy of any of
-	// it in a queryable collection. The hidden flags on those fields are the
-	// primary defence; this is belt and braces.
-	//
-	// The activity feed is excluded for a different reason: it is itself derived
-	// from audited writes, so auditing it doubles the audit volume for every
-	// console action -- two rows for the write, then two more for the feed entry
-	// describing it -- and audit.retention is off by default. It carries no
-	// information the audit row for the same write does not already have.
+	// Never audit the root operator: its seed signs every JWT on the platform,
+	// and hidden fields are the primary defence. The activity feed is derived
+	// from audited writes, so auditing it would only double the volume.
 	auditOptions.EventFilter = func(collectionName, eventType string) bool {
 		return collectionName != "nats_system_operator" &&
 			collectionName != hooks.ActivityCollection
 	}
 
-	// Which collections keep their VALUES in the audit trail. Everything else
-	// records the NAMES of the fields that moved. See auditSnapshotCollections.
 	auditOptions.SnapshotCollections = auditSnapshotCollections(
 		orgCollection, membershipCollection,
 		natsOptions.RoleCollectionName, nebulaOptions.NetworkCollectionName,
 	)
 
-	// Retention policy (optional)
 	maxAgeStr := viper.GetString("audit.retention.max_age")
 	maxRecords := viper.GetInt("audit.retention.max_records")
 	if maxAgeStr != "" || maxRecords > 0 {
@@ -353,13 +267,10 @@ func main() {
 		auditOptions.Retention = retention
 	}
 
-	// Registered ahead of the libraries so it runs first: a cross-tenant relation
-	// is rejected before pb-nats mints a JWT from it. A later rollback would undo
-	// the write either way, but there is no reason to sign anything for a record
-	// that is about to be refused.
+	// Before the libraries, so a cross-tenant relation is refused before pb-nats
+	// signs a JWT from it.
 	hooks.RegisterRelationTenancy(app)
 
-	// Setup Libraries (Hooks & APIs)
 	if err := pbaudit.Setup(app, auditOptions); err != nil {
 		log.Fatalf("Failed to register audit setup: %v", err)
 	}
@@ -370,12 +281,9 @@ func main() {
 		log.Fatalf("Failed to register Nebula setup: %v", err)
 	}
 
-	// Register CLI Commands (for generating configs, keys, etc.)
-	//
-	// `nats export` writes a leafnode listener and the hub's JetStream domain
-	// because edge sites need both. The domain is nats.jetstream_domain, the
-	// same key GET /api/me/leaf-config serves as hub_domain, so the hub and its
-	// edges are told one name rather than two that can disagree.
+	// `nats export` writes a leafnode listener and the hub's JetStream domain,
+	// which edge sites need. The domain comes from nats.jetstream_domain, the
+	// key GET /api/me/leaf-config serves as hub_domain: keep both on one key.
 	natsCommandOptions := pbnats.DefaultCommandOptions()
 	natsCommandOptions.AccountCollectionName = natsOptions.AccountCollectionName
 	natsCommandOptions.EncryptionKey = natsOptions.EncryptionKey
@@ -383,28 +291,24 @@ func main() {
 	natsCommandOptions.DefaultJetstreamDomain = viper.GetString("nats.jetstream_domain")
 	pbnats.RegisterCommandsWithOptions(app, natsCommandOptions)
 
-	// Platform-owned hooks: every org gets an immutable `code`, the root of the
-	// public namespace (ADR 0002). Registered before the provisioning hook so a
-	// code exists on the record the moment anything else reads it.
+	// Org codes (ADR 0002). Before provisioning, so the code exists before
+	// anything else reads the record.
 	hooks.RegisterOrgCode(app, orgCollection)
 
-	// Thing and Location codes are generated when left blank, and type prefixes
-	// stay separate between the two (ADR 0003).
+	// Thing and Location codes (ADR 0003).
 	hooks.RegisterCodes(app)
 
-	// Every location stores its path of codes from the root (ADR 0004). After
-	// RegisterCodes, so a generated code is in place before the path is built.
+	// locations.path (ADR 0004). After RegisterCodes, so a generated code is in
+	// place before the path is built.
 	hooks.RegisterLocationPath(app)
 
-	// A NATS limit left unset is -1, never 0, which a JWT reads as "none": a role
-	// created without its limits signed credentials that could not stay
-	// connected. See hooks/nats_limits.go.
+	// An unset NATS limit is -1, never 0, which a JWT reads as "none".
 	hooks.RegisterNatsLimits(app, hooks.NatsLimitsOptions{
 		RoleCollection:    natsOptions.RoleCollectionName,
 		AccountCollection: natsOptions.AccountCollectionName,
 	})
 
-	// Platform-owned hooks: auto-provision NATS account + Nebula CA per new org.
+	// NATS account and Nebula CA for each new org.
 	provisioningOptions := hooks.OrgProvisioningOptions{
 		OrgCollection:                 orgCollection,
 		NatsAccountCollection:         natsOptions.AccountCollectionName,
@@ -421,21 +325,16 @@ func main() {
 	}
 	hooks.RegisterOrgProvisioning(app, provisioningOptions)
 
-	// Platform-owned hooks: `active` on an organization withdraws its NATS
-	// account, which is the only thing it has ever been allowed to mean.
-	//
-	// POSITION IS DELIBERATE: after RegisterOrgProvisioning, because both bind to
-	// the organization's AfterUpdateSuccess and handlers run in registration
-	// order. Provisioning is create-if-missing and does its work ahead of
-	// e.Next(), so an organization whose account had failed to provision has one
-	// by the time the mirror looks for it.
+	// organizations.active withdraws the NATS account and nothing else. Must
+	// follow RegisterOrgProvisioning: both bind AfterUpdateSuccess, and
+	// provisioning (create-if-missing, before e.Next()) must run first so a
+	// failed account exists by the time this looks for it.
 	hooks.RegisterOrgActiveFlag(app, hooks.OrgActiveFlagOptions{
 		OrgCollection:         orgCollection,
 		NatsAccountCollection: natsOptions.AccountCollectionName,
 	})
 
-	// Platform-owned hooks: managed orgs export their service-event subtree
-	// into the operator hub account with an org-prefixed local subject.
+	// Managed orgs export a subtree into the operator account, org-prefixed.
 	managedExportSubject := viper.GetString("nats.managed_export_subject")
 	if !strings.HasSuffix(managedExportSubject, ".>") {
 		log.Fatalf("❌ nats.managed_export_subject must end in '.>' (got %q)", managedExportSubject)
@@ -448,19 +347,16 @@ func main() {
 		ExportSubject:     managedExportSubject,
 	})
 
-	// Inventory events: the Control Plane publishes Thing and Location changes
-	// in the operator account, and a per-org export/import pair maps them into
-	// each organization's account. After provisioning, which creates the
-	// account the pair is wired to. See hooks/inventory_events.go.
+	// Inventory events, published in the operator account and mapped into each
+	// org by an export/import pair. After provisioning, which creates the
+	// account. See hooks/inventory_events.go.
 	inventoryLocalSubject := viper.GetString("nats.inventory_local_subject")
 	if !strings.HasSuffix(inventoryLocalSubject, ".>") {
 		log.Fatalf("❌ nats.inventory_local_subject must end in '.>' (got %q)", inventoryLocalSubject)
 	}
-	// The provider account carries both subtrees: the managed import lands on
-	// helpdesk.<code>.> and inventory events are published under
-	// <prefix>.<code>.>. Sharing a first token would let one overlap the other
-	// (helpdesk.x.<code> beside helpdesk.<code>), exporting managed orgs'
-	// helpdesk traffic to whichever tenant's code lined up.
+	// Both subtrees live in the operator account as <prefix>.<code>.>. A shared
+	// first token lets them overlap, exporting managed orgs' helpdesk traffic to
+	// whichever tenant's code lined up.
 	firstToken := func(s string) string { return strings.SplitN(s, ".", 2)[0] }
 	if firstToken(inventoryLocalSubject) == firstToken(managedExportSubject) {
 		log.Fatalf("❌ nats.inventory_local_subject (%q) and nats.managed_export_subject (%q) must start with different tokens",
@@ -480,15 +376,9 @@ func main() {
 		ServerURL:          viper.GetString("nats.server_url"),
 	})
 
-	// Owner membership, and the invitation lifecycle. Absorbed from pb-tenancy;
-	// see hooks/org_membership.go for what changed.
-	//
-	// POSITION IS DELIBERATE. The library registered its organizations
-	// AfterCreateSuccess handler from inside its own OnBootstrap callback, which
-	// put it after every hooks.Register* call here -- so provisioning and managed
-	// exports ran before it. Registering it at this point reproduces that order
-	// exactly. It no longer TERMINATES the chain, which is what made a late bind
-	// silently inert, so a new handler may now be bound after this one.
+	// Owner membership and invitations (hooks/org_membership.go,
+	// hooks/invites.go). Registered after provisioning and managed exports so
+	// they run first on org create. It calls e.Next(), so later binds still run.
 	hooks.RegisterOrgMembership(app, hooks.OrgMembershipOptions{
 		OrgCollection:        orgCollection,
 		MembershipCollection: membershipCollection,
@@ -501,57 +391,45 @@ func main() {
 		ExpiryDays:           inviteExpiryDays,
 	})
 
-	// Give every mail the platform composes itself a row an operator can edit in
-	// /_ . Every template listed here is seeded on first serve if it is missing,
-	// and never overwritten after that. A new one is added by appending it to this
-	// call -- see hooks/email_templates.go.
+	// Operator-editable mail templates, seeded on first serve if missing and
+	// never overwritten. Add one by appending it here (hooks/email_templates.go).
 	hooks.RegisterEmailTemplates(app, hooks.OrgInviteEmail)
 
-	// The tenant-facing activity feed: who changed what in the console, and when.
-	// Bound to the REQUEST hooks because they are the only layer that knows the
-	// actor -- see hooks/activity.go for why, and for the invariant that decides
-	// which collections it covers.
+	// Tenant activity feed. See hooks/activity.go.
 	hooks.RegisterActivity(app)
 
-	// Makes `active` on things mean something. The authRule only stops
-	// new logins; this invalidates outstanding tokens and revokes the device's
-	// NATS identity, which is where its real capability lives.
+	// things.active: the authRule only stops new logins; this also invalidates
+	// tokens and revokes the NATS identity, where the real capability lives.
 	hooks.RegisterActiveFlag(app, hooks.ActiveFlagOptions{
 		ThingCollection:      "things",
 		NatsUserCollection:   natsOptions.UserCollectionName,
 		NebulaHostCollection: nebulaOptions.HostCollectionName,
 	})
 
-	// Closes a departing member's tenant context. The inventory read rules trust
-	// users.current_organization on its own, so a membership delete that leaves
-	// it pointing at the old org leaves the reader inside it.
+	// The inventory read rules trust users.current_organization alone, so a
+	// removed member's must be cleared.
 	hooks.RegisterMembershipLifecycle(app, hooks.MembershipLifecycleOptions{
 		MembershipCollection: membershipCollection,
 		UserCollection:       "users",
 	})
 
-	// Self-service credential rotation. Reading credentials needs no route (the
-	// nats_users rules are row-scoped to the caller's own identity); rotation does,
-	// because it must permit a write to exactly one field.
+	// Credential rotation is a route because a rule cannot permit a write to
+	// exactly one field. Reads need no route: the rules are row-scoped.
 	hooks.RegisterCredentialRoutes(app, hooks.CredentialRoutesOptions{
 		NatsUserCollection:   natsOptions.UserCollectionName,
 		MembershipCollection: membershipCollection,
 		ThingCollection:      "things",
 	})
 
-	// Signing-key operations on an org's own NATS account. Same reason as above:
-	// the update rule cannot permit three trigger fields and forbid the limits,
-	// so nats_accounts.updateRule is operator-only and these live in a route.
+	// Signing-key operations. A rule cannot permit the trigger fields and forbid
+	// the limits, so nats_accounts.updateRule is operator-only.
 	hooks.RegisterNatsAccountRoutes(app, hooks.NatsAccountRoutesOptions{
 		NatsAccountCollection: natsOptions.AccountCollectionName,
 		MembershipCollection:  membershipCollection,
 	})
 
-	// CA rotation and the host-certificate audit for an org's own overlay. Same
-	// shape again: nebula_ca.updateRule is operator-only, and its comment asked
-	// for a route the day pb-nebula grew a rotation trigger -- which v0.3.0 did.
-	// The audit is here because deciding whether a certificate still matches its
-	// network means parsing a Nebula certificate, which the browser cannot do.
+	// CA rotation (nebula_ca.updateRule is operator-only) and the host
+	// certificate audit, which must parse Nebula certificates server-side.
 	hooks.RegisterNebulaRoutes(app, hooks.NebulaRoutesOptions{
 		NebulaCACollection:      nebulaOptions.CACollectionName,
 		NebulaNetworkCollection: nebulaOptions.NetworkCollectionName,
@@ -559,10 +437,8 @@ func main() {
 		MembershipCollection:    membershipCollection,
 	})
 
-	// Thing creation with optional identity provisioning, in one transaction. The
-	// console used to do this in three unguarded calls, so a late failure orphaned
-	// a signed NATS credential; it also never set `active`, so every Thing it made
-	// was locked out of the API by things.authRule.
+	// A Thing and its optional identities in one transaction, so a late failure
+	// cannot orphan a signed credential.
 	hooks.RegisterThingRoutes(app, hooks.ThingRoutesOptions{
 		ThingCollection:         "things",
 		OrgCollection:           orgCollection,
@@ -574,20 +450,12 @@ func main() {
 		NebulaNetworkCollection: nebulaOptions.NetworkCollectionName,
 	})
 
-	// Deployment facts the SPA needs at runtime but cannot be compiled with —
-	// currently just the browser-facing NATS WebSocket URLs. A build-time
-	// constant would mean a frontend rebuild per operator, which is the same
-	// problem the branding overlay avoids.
-	//
-	// Validated at startup rather than shipped to the browser to fail there.
-	// The env-var override is the reason this is worth a check: viper splits a
-	// string env value on WHITESPACE, so STONE_AGE_NATS_WEBSOCKET_URLS with
-	// comma-separated URLs yields one entry containing both, and the only
-	// symptom would be a console that cannot connect for no stated reason.
+	// Browser NATS URLs, served at runtime so the embedded UI needs no rebuild
+	// per operator. Validated here because viper splits an env value on
+	// whitespace, so comma-separated URLs arrive as one entry.
 	natsWebsocketURLs := viper.GetStringSlice("nats.websocket_urls")
 	for _, u := range natsWebsocketURLs {
-		// Checked before the scheme, because a comma-joined list still starts
-		// with a valid scheme and would otherwise sail through as one URL.
+		// Before the scheme check: a comma-joined list still starts with one.
 		if strings.Contains(u, ",") {
 			log.Fatalf("❌ nats.websocket_urls entry %q contains a comma, so it is one malformed URL rather than a list.\n"+
 				"       In config.yaml write a YAML list: websocket_urls: [\"wss://a:9222\", \"wss://b:9222\"]\n"+
@@ -602,9 +470,7 @@ func main() {
 		NatsWebsocketURLs: natsWebsocketURLs,
 	})
 
-	// Everything a gateway needs to stand up its NATS leaf server. Checked here
-	// for the same reason websocket_urls is: an edge box that gets an empty
-	// leaf URL writes a nats-leaf.conf whose remote dials nowhere, and the only
+	// A bad leaf URL gives an edge box a remote that dials nowhere, and the only
 	// symptom is a site that never appears.
 	natsLeafURL := viper.GetString("nats.leaf_url")
 	if natsLeafURL != "" &&
@@ -622,14 +488,10 @@ func main() {
 		HubDomain:             viper.GetString("nats.jetstream_domain"),
 	})
 
-	// Embedded NATS server. Bound to OnServe rather than OnBootstrap on purpose:
-	// the support library calls e.Next() *before* it seeds the NATS operator, so
-	// a bootstrap handler registered after its Setup actually runs earlier, when
-	// the operator JWT does not exist yet and there is nothing to serve.
-	//
-	// A consequence is that the JWT publisher spends its first few seconds in
-	// bootstrap mode before its retry ticker finds the server. That is the
-	// normal, already-handled path — anything it queues drains on connect.
+	// OnServe, not OnBootstrap: pb-nats calls e.Next() before it seeds the
+	// operator, so a later bootstrap handler would run with no operator JWT.
+	// The JWT publisher then spends a few seconds in bootstrap mode; its queue
+	// drains on connect.
 	var embeddedNATS *natsd.Server
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 		if !viper.GetBool("nats.embedded") {
@@ -641,9 +503,7 @@ func main() {
 			"nats.server_url",
 		)
 		if err != nil {
-			// Refuse to serve. Running on would mean issuing credentials for a
-			// bus that isn't there, which looks like it worked until a device
-			// tries to connect.
+			// Refuse to serve credentials for a bus that is not there.
 			return err
 		}
 		embeddedNATS = srv
@@ -655,19 +515,9 @@ func main() {
 		return e.Next()
 	})
 
-	// --- Readiness + metrics ---
-	//
-	// GET /api/ready answers "is this deployment actually working", which
-	// PocketBase's own /api/health does not: every interesting failure here —
-	// `bootstrap` run before `migrate up`, a NATS server that does not trust
-	// this operator — leaves a binary serving 200s. GET /metrics exposes the
-	// same checks as a state set alongside this process's HTTP traffic, its own
-	// row counts, and (only with --nats) the embedded bus's counters.
-	//
-	// Nothing here reaches inside an organization's NATS account, because this
-	// process holds no credential in one. Per-site liveness is read by the
-	// console, whose browser connects as the logged-in user, and exported by the
-	// agent from the edge.
+	// GET /api/ready and /metrics. PocketBase's /api/health serves 200 through
+	// every failure that matters here (an untrusted operator, say). Nothing reads
+	// inside an org's NATS account: this process holds no credential in one.
 	hooks.RegisterObservability(app, hooks.ObservabilityOptions{
 		Version:               version.Version,
 		OrgCollection:         orgCollection,
@@ -681,8 +531,7 @@ func main() {
 		NatsWebsocketURLs:     natsWebsocketURLs,
 		NatsEncryptionKey:     natsOptions.EncryptionKey,
 		NebulaEncryptionKey:   nebulaOptions.EncryptionKey,
-		// Closure, not a value: `serve --nats` assigns embeddedNATS during
-		// OnServe, long after this registration runs.
+		// A closure: embeddedNATS is assigned later, in OnServe.
 		EmbeddedNATS:   func() *natsd.Server { return embeddedNATS },
 		ProbeInterval:  requireDuration("readiness.interval"),
 		ProbeTimeout:   requireDuration("readiness.timeout"),
@@ -690,19 +539,16 @@ func main() {
 		MetricsToken:   viper.GetString("metrics.token"),
 	})
 
-	// 6. Serve Embedded UI with SPA Support
+	// Embedded UI with SPA fallback.
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 		subFS, err := fs.Sub(embeddedFS, "pb_public")
 		if err != nil {
 			return err
 		}
 
-		// Operator branding overlay: serves files (theme.css, logo.svg,
-		// branding.json, etc.) from a host directory under /branding/*.
-		// The route is always registered — index.html unconditionally <link>s
-		// theme.css and the SPA fetches branding.json — so we serve silent
-		// fallbacks for those two when no overlay directory is configured,
-		// otherwise the browser console fills with 404s on stock deployments.
+		// Branding overlay under /branding/*. Always registered, with empty
+		// fallbacks for theme.css and branding.json, because index.html and the
+		// SPA always request those two.
 		var brandingFS fs.FS
 		if brandingDir := viper.GetString("branding.dir"); brandingDir != "" {
 			info, statErr := os.Stat(brandingDir)
@@ -755,15 +601,11 @@ func main() {
 		return e.Next()
 	})
 
-	// Register Bootstrap Command
 	addBootstrapCommand(app, orgCollection, membershipCollection, natsOptions)
 	addInitCommand(app)
 
-	// `demo-seed`: three fictional tenants with the full contract, identity and
-	// edge surface. Registered AFTER every hook above, which is what makes the
-	// seed go in through the platform's own provisioning rather than around it —
-	// an organization it creates gets its NATS account and Nebula CA from
-	// RegisterOrgProvisioning, exactly as one created in the console does.
+	// After every hook above, so the seed goes through the platform's own
+	// provisioning, exactly as a console-created org does.
 	demoseed.RegisterCommand(app)
 
 	if err := app.Start(); err != nil {
@@ -771,45 +613,23 @@ func main() {
 	}
 }
 
-// auditSnapshotCollections names the collections whose before/after VALUES are
-// written into audit_logs. Every other collection records `changed_fields`
-// only -- the NAMES of the fields that moved.
+// auditSnapshotCollections names the collections whose before/after values are
+// written into audit_logs. Every other collection records only
+// `changed_fields`, the names of the fields that moved.
 //
-// WHY THIS LIST IS SHORT. A pb-audit snapshot is PublicExport(): every field
-// a collection does not mark `hidden`. Two of this platform's fields are
-// deliberately not hidden, because the identity owning them has to read them
-// back — `nats_users.creds_file`, which contains the user's NKEY seed, and
-// `nebula_hosts.config_yaml`, which carries the host private key inline. The
-// credential note in AUTHORIZATION.md is right that
-// ROW SCOPING is what protects those, and that hiding them would break the
-// browser's NATS connection and the config download for no gain. But
-// audit_logs has no row scoping: it is one flat collection holding a copy of
-// every record. So a value protected by scoping is not protected here, and
-// before this list existed every credential the platform had ever minted was
-// sitting in audit_logs in plaintext — outside at-rest encryption, which
-// covers the `seed` and `private_key` columns rather than the credential
-// files derived from them, and outliving rotation, since the creds replaced
-// because they leaked stay in before_changes.
+// A snapshot copies every unhidden field, and some credentials are unhidden on
+// purpose (nats_users.creds_file, nebula_hosts.config_yaml): row scoping
+// protects them, and audit_logs has no row scoping. So list only collections
+// whose diffs a human reads, and never one holding a credential, JWT,
+// certificate or bearer token. It is an allowlist because a redaction list
+// silently misses the next sensitive field. AUTHORIZATION.md has the long form.
 //
-// So: name the collections whose diffs a human actually reads, and leave out
-// anything holding a credential, a JWT, a certificate or a bearer token.
-// An allowlist, because a list of fields to redact stops covering a
-// sensitive field the moment someone adds one, and does so silently — the
-// same reason every write rule in schema.json names the roles it admits.
+// Left out: nats_users, nebula_hosts, nats_accounts, nebula_ca, invites
+// (`token`), nats_account_exports/imports (account tokens), and
+// nats_publish_queue. nats_roles is in: it holds no secret, and its diff
+// records a change to what an identity may do on the bus.
 //
-// Deliberately absent, and why: nats_users, nebula_hosts, nats_accounts,
-// nebula_ca (credentials, JWTs, certificates); invites (`token` is a bearer
-// credential); nats_account_exports / nats_account_imports (platform-
-// reconciled, read-only in the console, and carrying account tokens);
-// nats_publish_queue (internal churn nobody reads a diff of).
-//
-// nats_roles IS here on purpose: it holds the publish/subscribe permission
-// templates, so a diff of it is a record of someone changing what an
-// identity may do on the bus. That is among the most worthwhile diffs on the
-// platform, and the collection carries no secret.
-//
-// Guarded by TestAuditSnapshotCollectionsHoldNoCredentials, which reads
-// schema.json: the whole point of the list is which collections are NOT on it.
+// TestAuditSnapshotCollectionsHoldNoCredentials guards it against schema.json.
 func auditSnapshotCollections(orgCollection, membershipCollection, natsRoleCollection, nebulaNetworkCollection string) []string {
 	return []string{
 		orgCollection,

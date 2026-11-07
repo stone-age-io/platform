@@ -7,9 +7,8 @@ import (
 	m "ganigeorgiev.com/pocketbase/pocketbase/migrations"
 )
 
-// schema_update_stage3 re-imports the embedded schema.json so that earlier
-// deployments pick up the new `message_schemas` collection and the `schema`
-// relation field on `thing_type_operations`. Additive; safe on fresh DBs.
+// schema_update_stage3 re-imports schema.json for the `message_schemas`
+// collection and the `schema` relation field on `thing_type_operations`.
 func init() {
 	m.Register(func(app core.App) error {
 		if len(SchemaJSON) == 0 {

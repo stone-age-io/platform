@@ -8,8 +8,7 @@ import (
 // ActivityCollection is the tenant-facing feed of who changed what.
 const ActivityCollection = "activity"
 
-// The actions a feed entry can carry. They are the `action` select values, so
-// they are stable strings rather than an enum.
+// The actions a feed entry can carry: the `action` select values.
 const (
 	ActionCreated     = "created"
 	ActionUpdated     = "updated"
@@ -17,9 +16,8 @@ const (
 	ActionProvisioned = "provisioned"
 )
 
-// Actor types. `superuser` exists because superusers BYPASS API rules and the
-// PocketBase dashboard at /_ drives the same record endpoints, so the caller on
-// one of these writes is not always a `users` record.
+// Actor types. The PocketBase dashboard at /_ drives the same record endpoints,
+// so the caller is not always a `users` record.
 const (
 	ActorUser      = "user"
 	ActorSuperuser = "superuser"
@@ -28,28 +26,16 @@ const (
 // activityCollections are the collections whose writes reach the feed, and the
 // product noun each is reported as.
 //
-// THIS LIST IS THE SAFETY ARGUMENT, not a convenience. The invariant is:
+// This list is the safety argument. An entry must be visible to exactly those
+// who could read the record it describes, and the feed's read rule is
+// org-scoped with no role branch, so it may only cover collections whose own
+// read rule is the same. `memberships`, `invites`, `nats_roles` and
+// `nebula_networks` stop at owner/admin and must stay out. Adding an entry is an
+// authorization change; TestActivityCollectionsAreOrgReadable pins it.
 //
-//	an activity entry is visible to exactly those who could read the record
-//	it describes.
-//
-// A flat collection that mirrors other collections inherits none of their
-// scoping -- which is what audit_logs taught this codebase expensively. The
-// feed's own read rule is org-scoped with no role branch, so it may only
-// describe records whose OWN read rule is org-scoped with no role branch.
-// Exactly five collections qualify. `memberships`, `invites`, `nats_roles` and
-// `nebula_networks` stop at owner/admin, so putting them here would tell a
-// member that an invitation was sent and to whom -- a record they cannot read.
-//
-// Adding an entry is therefore an authorization change, not a feature toggle.
-// TestActivityCollectionsAreOrgReadable reads schema.json and fails if any
-// collection here has a role branch in its listRule.
-//
-// A hand-kept list rather than a derivation from the schema, deliberately, and
-// the opposite of hooks/relation_tenancy.go: there the rule is the same sentence
-// for every relation and a list would be the thing that drifts, while here
-// "which writes a tenant cares about" is a product judgement that no schema
-// fact expresses.
+// Hand-kept rather than derived from the schema (unlike
+// hooks/relation_tenancy.go): which writes a tenant cares about is a product
+// judgement no schema fact expresses.
 var activityCollections = map[string]string{
 	"things":                "thing",
 	"locations":             "location",
@@ -58,9 +44,8 @@ var activityCollections = map[string]string{
 	"thing_type_operations": "thing operation",
 }
 
-// ActivityCollectionNames returns the collections the feed covers. Exported for
-// main.go, which must exclude the feed from audit snapshots, and for the test
-// that pins the invariant above.
+// ActivityCollectionNames returns the collections the feed covers. main.go uses
+// it to exclude the feed from audit snapshots.
 func ActivityCollectionNames() []string {
 	names := make([]string, 0, len(activityCollections))
 	for name := range activityCollections {
@@ -71,43 +56,25 @@ func ActivityCollectionNames() []string {
 
 // RegisterActivity records tenant-visible console writes into the feed.
 //
-// WHY REQUEST HOOKS. The actor is the whole problem, and request hooks are the
-// only layer that knows it. `core.RecordEvent` -- what the model hooks deliver
-// -- carries a Context, but nothing in PocketBase ever puts auth into it; the
-// only context.WithValue calls in the framework are in its own tests. That is
-// also why pb-audit passes nil for request info on its success hooks.
-// `core.RecordRequestEvent` embeds *core.RequestEvent, which has Auth.
+// Request hooks, because they are the only layer that knows the actor.
+// `core.RecordEvent` carries a Context, but nothing in PocketBase puts auth into
+// it (which is also why pb-audit passes nil request info on its success hooks).
 //
-// WHY THE SNAPSHOT IS TAKEN BEFORE e.Next(). The entry should describe what the
-// request asked for, not what the request plus every server-side hook did.
-// hooks/active_flag.go calls RefreshTokenKey() before its save, and pb-nats and
-// pb-nebula both write generated fields back on the way through -- all of which
-// would be attributed to the person who clicked. Capturing first is also the
-// rule TESTING.md already states for exactly this reason: take the "before"
-// state immediately before the action it belongs to.
+// The snapshot is taken before e.Next(), so the entry describes what the
+// request asked for, not what server-side hooks (RefreshTokenKey, pb-nats and
+// pb-nebula generated fields) wrote on the way through.
 //
-// WHAT e.Next() RETURNING NIL MEANS. For plain CRUD it means committed: with no
-// enclosing transaction core.BaseApp.create/update take the autocommit path, and
-// delete commits its own transaction before returning. It is NOT guaranteed
-// under the batch API (apis/batch.go drives these same handlers inside
-// RunInTransaction), which is disabled by default and unused by the console.
-// That is why the entry is saved through e.App, not the root app: inside a
-// batch e.App is the transaction, so the row commits or rolls back with the
-// write it describes. Saving through the root app there deadlocked -- the
-// transaction holds SQLite's only write connection, and the root app waited on
-// it until the batch timed out.
+// The entry is saved through e.App, not the root app. For plain CRUD a nil
+// e.Next() means committed. Under the batch API (off by default, unused by the
+// console) e.App is the transaction, so the row commits or rolls back with its
+// write; the root app would deadlock waiting on SQLite's only write connection.
 //
-// THE ENTRY LANDS AFTER THE RESPONSE. e.Next() writes the HTTP response as well
-// as performing the save, so a client can receive its 200 before the feed row
-// exists. A console that saves and immediately reloads the feed may not see its
-// own entry for a beat. That is inherent to logging after the fact and is not
-// worth a transaction to remove -- but it is why a test that reads the feed
-// straight after a write needs to wait.
+// The entry lands after the response, so a client that saves and reloads the
+// feed may miss its own entry for a beat, and a test must wait. Not worth a
+// transaction to remove.
 //
-// FAILURES ARE LOGGED, NEVER FATAL. The opposite of hooks/org_provisioning.go,
-// and deliberately: provisioning is an INVARIANT whose failure leaves the tenant
-// broken, while this is an OBSERVATION whose failure must not cost the user
-// their write.
+// Failures are logged, never fatal, unlike hooks/org_provisioning.go: this is an
+// observation, and it must not cost the user their write.
 func RegisterActivity(app *pocketbase.PocketBase) {
 	names := ActivityCollectionNames()
 
@@ -116,10 +83,8 @@ func RegisterActivity(app *pocketbase.PocketBase) {
 		if err := e.Next(); err != nil {
 			return err
 		}
-		// The id is the ONE field that cannot be captured before the write: a
-		// new record has no id until PocketBase assigns it during the save, so
-		// describe() saw an empty string. Everything else is still the
-		// pre-write snapshot, which is the point.
+		// The one field captured after the write: a new record has no id until
+		// the save assigns it.
 		entry.ResourceID = e.Record.Id
 		entry.save(e.App)
 		return nil
@@ -167,9 +132,7 @@ func describe(e *core.RecordRequestEvent, action string) entry {
 		Organization: e.Record.GetString(orgFieldName),
 		Action:       action,
 		Resource:     noun,
-		// Empty on a create -- PocketBase assigns the id during the save, so the
-		// create hook overwrites this once e.Next() has returned. Update and
-		// delete both have it already.
+		// Empty on a create; the create hook fills it in after the save.
 		ResourceID:    e.Record.Id,
 		ResourceLabel: recordLabel(e.Record),
 	}
@@ -186,15 +149,10 @@ func describe(e *core.RecordRequestEvent, action string) entry {
 	return ent
 }
 
-// save writes the row, best-effort.
-//
-// Callers pass the request's app (e.App), never the captured root app. For
-// plain CRUD the two are the same; under the batch API only e.App can write,
-// because the batch transaction holds the single write connection.
+// save writes the row, best-effort. Pass the request's app (e.App), never the
+// root app: under the batch API only e.App can write.
 func (ent entry) save(app core.App) {
-	// No organization means nothing to scope the row to, and the column is
-	// required. Unreachable through these collections -- every one of them
-	// requires an organization -- so this is a guard, not a case.
+	// A guard: every covered collection requires an organization.
 	if ent.Organization == "" {
 		return
 	}
@@ -223,17 +181,13 @@ func (ent entry) save(app core.App) {
 	}
 }
 
-// RecordActivity writes one feed entry from a route.
+// RecordActivity writes one feed entry from a route. A route that writes with
+// app.Save() bypasses the request hooks, so it must log itself. Today that is
+// only POST /api/org/things; the other org routes touch collections the feed
+// must not cover.
 //
-// Routes that write with app.Save() bypass the request hooks entirely, so a
-// route that creates something a tenant should see has to say so itself. Today
-// that is POST /api/org/things; the other org routes touch collections the feed
-// does not cover, and giving them a call would break the invariant rather than
-// improve the feed.
-//
-// The actor comes from the request event, never from an argument, for the same
-// reason the organization does: a caller cannot attribute an entry to someone
-// else.
+// The actor comes from the request event, never an argument, so a caller cannot
+// attribute an entry to someone else.
 func RecordActivity(app core.App, re *core.RequestEvent, orgID, action, resource, resourceID, resourceLabel string) {
 	ent := entry{
 		Organization:  orgID,
@@ -253,16 +207,9 @@ func RecordActivity(app core.App, re *core.RequestEvent, orgID, action, resource
 	ent.save(app)
 }
 
-// recordLabel is the human name of the record an entry describes.
-//
-// A SNAPSHOT, not a join. The feed is append-only, and a log whose lines change
-// when somebody renames a record is not a log -- it also has to keep reading
-// correctly after the record is deleted, which is precisely when a relation
-// would give nothing back.
-//
-// All five covered collections carry `name`; all but thing_type_operations also
-// carry `code`. One resolver covers them, which is a direct dividend of keeping
-// the collection list narrow.
+// recordLabel is the human name of the record an entry describes. A snapshot,
+// not a join: a log must not change when a record is renamed, and must still
+// read after it is deleted. All five covered collections carry `name`.
 func recordLabel(record *core.Record) string {
 	return firstNonEmpty(record.GetString("name"), record.GetString("code"), record.Id)
 }
@@ -277,10 +224,8 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-// actorLabel is the human name of whoever acted, snapshotted for the same
-// reason recordLabel is: the feed has to stay readable after the account is
-// gone, and `actor` is a plain id precisely so that deleting a user does not
-// rewrite every row that mentions them.
+// actorLabel is the human name of whoever acted, snapshotted like recordLabel.
+// `actor` is a plain id so that deleting a user does not rewrite every row.
 func actorLabel(auth *core.Record) string {
 	return firstNonEmpty(auth.GetString("name"), auth.Email(), auth.Id)
 }

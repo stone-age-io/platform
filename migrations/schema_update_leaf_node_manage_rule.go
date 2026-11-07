@@ -7,13 +7,10 @@ import (
 	m "ganigeorgiev.com/pocketbase/pocketbase/migrations"
 )
 
-// schema_update_leaf_node_manage_rule re-imports schema.json so existing
-// deployments pick up the new `leaf_nodes` manageRule. With manageRule unset,
-// only superusers could change a leaf node's PocketBase password — meaning a
-// lost leaf-sync credential could not be recovered from the console. The rule
-// now lets an org Admin/Owner reset their own organization's leaf node
-// credentials (the UI's "Reset credentials" action), mirroring the collection's
-// updateRule. Additive import (deleteMissing=false); safe on fresh DBs.
+// schema_update_leaf_node_manage_rule adds a `leaf_nodes` manageRule, mirroring
+// its updateRule, so an owner or admin can reset a lost leaf-sync password from
+// the console; without one only superusers could. leaf_nodes was later dropped
+// (schema_update_drop_leaf_nodes.go).
 func init() {
 	m.Register(func(app core.App) error {
 		if len(SchemaJSON) == 0 {

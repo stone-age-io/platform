@@ -19,53 +19,29 @@ type NebulaRoutesOptions struct {
 }
 
 // RegisterNebulaRoutes adds the two Nebula operations an organization's owners
-// and admins are meant to perform on their own overlay, neither of which a
-// PocketBase API rule can express.
+// and admins perform on their own overlay, neither of which a PocketBase API
+// rule can express.
 //
-// WHY ROTATION IS A ROUTE. `nebula_ca.updateRule` is operator-only, and from the
-// authz hardening pass until this route landed its comment said: "There is no
-// tenant-triggered CA rotation today because there is no trigger field for one.
-// Rolling a CA is an operator operation. If that changes, add a route rather than
-// a branch here." pb-nebula v0.3.0 added the trigger field, so that is what this
-// is; the rule comment now points back here.
+// Rotation is a route, not a branch on the operator-only `nebula_ca.updateRule`
+// (whose comment points here), for the reason nats_account_routes.go is: a rule
+// cannot say "this one field and nothing else", and a deny-list on the
+// collection holding the mesh's trust anchor would silently re-open every
+// field added later. The switch below IS the allowlist: one field, three values.
 //
-// The reason it is not a rule branch is the reason nats_account_routes.go exists:
-// a rule cannot say "this one field and nothing else". An owner/admin branch on
-// `nebula_ca` would have to deny-list `certificate`, `private_key`,
-// `next_certificate`, `next_private_key`, `previous_certificate`, `expires_at`,
-// `curve`, `validity_years`, `name` and `organization` — and would silently
-// re-open every field added to the collection afterwards. On the collection that
-// holds the trust anchor for the tenant's entire mesh, that is the wrong shape.
-// The switch below IS the allowlist: one field, three permitted values.
+// The tenant may rotate because pb-nebula interlocks it: `prepare` is
+// reversible, `commit` is idempotent, and `finish` refuses while any active host
+// still holds a certificate from the outgoing CA. The dangerous part is the WAIT
+// between steps, and that belongs to whoever operates the devices. The tenant
+// still cannot write key material, set a validity, or name another org's CA:
+// the CA comes from the caller's active organization, as in
+// resolveOwnOrgNatsAccount.
 //
-// WHY THE TENANT IS ALLOWED TO DO IT AT ALL. Rotation is bounded and interlocked
-// on the library side. `prepare` is fully reversible — it publishes trust and
-// touches neither issuance nor any host certificate. `commit` is idempotent and
-// resumable. `finish` refuses while any active host still holds a certificate
-// from the outgoing CA, which is the step that would otherwise take a fleet off
-// the mesh silently. The dangerous part of rotating a CA is the WAIT in the
-// middle, and the wait belongs to whoever operates the devices — which is the
-// tenant, not us.
-//
-// WHAT THE TENANT STILL CANNOT DO: write the certificate or key material
-// directly, set a validity, or aim any of this at another organization. The CA is
-// derived from the caller's own active organization and never named in the
-// request, exactly as in resolveOwnOrgNatsAccount.
-//
-// WHY THE AUDIT IS A ROUTE. pb-nebula signed host certificates at /32 until
-// v0.3.0, which gives a host a route covering only itself — every existing
-// certificate carries the wrong mask until it is re-signed. The library finds
-// them and logs one line per host, which is the right surface for an operator
-// tailing a server and the wrong one for a console that wants to badge the rows
-// and put the fix beside them. Answering it needs a Nebula certificate parsed,
-// so it cannot be done in the browser; `pbnebula.HostCertNetworkIsStale` is the
-// one predicate, and this hands its verdict to the UI.
-//
-// The audit is READ-ONLY, and that restraint is the point. Re-signing moves a
-// certificate's fingerprint, and a fingerprint is what `pki.blocklist` revokes,
-// so a sweep would rewrite every peer config in the mesh. The fix is `renew` on
-// one host at a time, which `nebula_hosts.updateRule` already permits an
-// owner/admin to set — so there is deliberately no bulk endpoint here.
+// The audit is a route because it needs a Nebula certificate parsed, which the
+// browser cannot do; pbnebula.HostCertNetworkIsStale is the one predicate for
+// the /32 defect (certificates signed before pb-nebula v0.3.0). It is READ-ONLY
+// with deliberately no bulk fix: re-signing moves the fingerprint that
+// `pki.blocklist` revokes, so a sweep would rewrite every peer config. The fix
+// is `renew`, one host at a time.
 func RegisterNebulaRoutes(app *pocketbase.PocketBase, opts NebulaRoutesOptions) {
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
 		se.Router.POST("/api/org/nebula-ca/rotate", func(re *core.RequestEvent) error {
@@ -76,10 +52,8 @@ func RegisterNebulaRoutes(app *pocketbase.PocketBase, opts NebulaRoutesOptions) 
 				return re.BadRequestError("invalid request body", err)
 			}
 
-			// The allowlist. pb-nebula validates the TRANSITION (commit before
-			// prepare, finish with hosts still on the old CA) and returns a
-			// message naming the blocker; this only guarantees that whatever
-			// reaches the record is one of the three verbs.
+			// The allowlist. pb-nebula validates the TRANSITION; this only
+			// guarantees the record gets one of the three verbs.
 			switch body.Step {
 			case "prepare", "commit", "finish":
 			default:
@@ -94,9 +68,8 @@ func RegisterNebulaRoutes(app *pocketbase.PocketBase, opts NebulaRoutesOptions) 
 			ca.Set("rotate", body.Step)
 
 			if err := re.App.Save(ca); err != nil {
-				// pb-nebula's validator refuses an out-of-order step and names
-				// the host blocking a finish. Surface it: that message is the
-				// whole reason the interlock is usable.
+				// pb-nebula's message names the out-of-order step or the host
+				// blocking a finish, so surface it.
 				return re.BadRequestError(err.Error(), err)
 			}
 
@@ -121,10 +94,9 @@ func RegisterNebulaRoutes(app *pocketbase.PocketBase, opts NebulaRoutesOptions) 
 // resolveOwnOrgNebulaCA returns the Nebula CA of the caller's active
 // organization, but only if the caller is an owner or admin there.
 //
-// Mirrors resolveOwnOrgNatsAccount exactly, including the refusal to distinguish
-// "not a member" from "insufficient role". The organization comes from the
-// authenticated record and never from the request, so this cannot be aimed at
-// another tenant's CA.
+// Mirrors resolveOwnOrgNatsAccount, including not distinguishing "not a member"
+// from "insufficient role". The organization comes from the authenticated
+// record, never the request.
 func resolveOwnOrgNebulaCA(re *core.RequestEvent, opts NebulaRoutesOptions) (*core.Record, error) {
 	orgID, _, err := requireMembership(re, opts.MembershipCollection, rolesOrgManager)
 	if err != nil {
@@ -145,16 +117,12 @@ func resolveOwnOrgNebulaCA(re *core.RequestEvent, opts NebulaRoutesOptions) (*co
 // auditOwnOrgHostCerts returns the ids of the caller's organization's hosts
 // whose certificate no longer matches the network they belong to.
 //
-// INACTIVE HOSTS ARE EXCLUDED, and not as an optimization. An inactive host is
-// revoked — its fingerprint sits in every peer's pki.blocklist — so re-signing
-// it would publish a new fingerprint while the old certificate stayed valid and
-// unblocklisted, silently un-revoking it. Badging one would invite exactly that.
-// pb-nebula's own sweeps skip them for the same reason.
+// Inactive hosts are excluded: an inactive host is revoked by fingerprint, so
+// re-signing it would silently un-revoke it, and badging one invites that.
+// pb-nebula's own sweeps skip them too.
 //
-// A host whose certificate or network cannot be read is omitted rather than
-// reported. The caller uses this to decide whether to offer a re-issue button,
-// and a row that cannot be evaluated is not a row we know to be wrong; the
-// library's bootstrap audit logs those cases for an operator.
+// A host whose certificate or network cannot be read is omitted, not reported:
+// it is not known to be wrong, and the library's bootstrap audit logs it.
 func auditOwnOrgHostCerts(re *core.RequestEvent, opts NebulaRoutesOptions) ([]string, error) {
 	orgID, _, err := requireMembership(re, opts.MembershipCollection, rolesOrgManager)
 	if err != nil {
@@ -167,12 +135,10 @@ func auditOwnOrgHostCerts(re *core.RequestEvent, opts NebulaRoutesOptions) ([]st
 		return nil, re.InternalServerError("could not list Nebula hosts", err)
 	}
 
-	// One lookup per network rather than per host: a 200-host network would
-	// otherwise re-read the same CIDR 200 times.
+	// One lookup per network rather than per host.
 	cidrs := map[string]string{}
 
-	// Never nil: the caller reads this as "no host needs attention", and a JSON
-	// null would read as "the audit did not run".
+	// Never nil: a JSON null would read as "the audit did not run".
 	stale := []string{}
 
 	for _, host := range hosts {
@@ -201,7 +167,5 @@ func auditOwnOrgHostCerts(re *core.RequestEvent, opts NebulaRoutesOptions) ([]st
 }
 
 // Both routes here gate on rolesOrgManager via requireMembership
-// (hooks/org_context.go), so the two cannot drift apart on who is allowed to
-// look: the audit tells you which hosts hold a wrong certificate, which is the
-// same class of infrastructure detail the rotation lever acts on, and
-// nebula_hosts' own read rules already stop at owner/admin.
+// (hooks/org_context.go), matching nebula_hosts' own read rules, which stop at
+// owner/admin.
