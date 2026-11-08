@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, computed, nextTick, provide } from 'vue'
+import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useNatsStore } from '@/stores/nats'
 import { useDashboardStore } from '@/stores/dashboard'
@@ -25,6 +26,7 @@ import type { WidgetType } from '@/types/dashboard'
 // NATS credential, which is the real limit, and none edits PocketBase inventory.
 
 const authStore = useAuthStore()
+const router = useRouter()
 const natsStore = useNatsStore()
 const dashboardStore = useDashboardStore()
 const uiStore = useUIStore()
@@ -156,10 +158,31 @@ function handleSave() {
 }
 
 function handleReloadRemote() {
-  if (dashboardStore.activeDashboard?.kvKey) {
-    dashboardStore.loadRemoteDashboard(dashboardStore.activeDashboard.kvKey)
-  }
+  const key = dashboardStore.activeDashboard?.kvKey
+  if (!key) return
+  if (!dashboardStore.isDirty) return void dashboardStore.loadRemoteDashboard(key)
+  requestConfirm(
+    'Load the newer version?',
+    'Someone saved a newer version of this dashboard. Loading it discards your unsaved changes.',
+    () => dashboardStore.loadRemoteDashboard(key),
+    'Discard and load',
+  )
 }
+
+// Leaving the Visualizer drops a shared dashboard's unsaved edits; the
+// beforeunload handler below covers closing the tab, this covers the app's own
+// links. A switched organization remounts the page instead and is not caught.
+let leaveConfirmed = false
+onBeforeRouteLeave((to) => {
+  if (leaveConfirmed || !dashboardStore.isDirty) return true
+  requestConfirm(
+    'Discard unsaved changes?',
+    `"${dashboardStore.activeDashboard?.name || 'This dashboard'}" has changes that are not saved. Leaving discards them.`,
+    () => { leaveConfirmed = true; router.push(to.fullPath) },
+    'Discard',
+  )
+  return false
+})
 
 function handleRefreshDashboard() {
   unsubscribeAllWidgets(false) // false = wipe data
@@ -234,7 +257,9 @@ watch(() => natsStore.isConnected, (connected) => {
   if (connected) subscribeAllWidgets()
 })
 
-watch(() => dashboardStore.activeDashboardId, async () => {
+// activeLoadId, not the id: reopening a shared dashboard (Update) keeps its id,
+// and a changed widget subject must still be resubscribed.
+watch(() => dashboardStore.activeLoadId, async () => {
   unsubscribeAllWidgets(true) 
   if (window.innerWidth < 1024) isSidebarOpen.value = false
   await nextTick()

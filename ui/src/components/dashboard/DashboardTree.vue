@@ -18,6 +18,7 @@
           :structure="content"
           :active-id="activeId"
           @select="$emit('select', $event)"
+          @rename="$emit('rename', $event)"
           @delete="$emit('delete', $event)"
           @duplicate="$emit('duplicate', $event)"
           @export="$emit('export', $event)"
@@ -57,7 +58,11 @@
             </button>
             
             <div class="menu-divider"></div>
-            
+
+            <button class="menu-item" @click="handleRename(item.key)">
+              <Pencil class="menu-icon" :size="16" aria-hidden="true" />
+              <span class="menu-text">Rename</span>
+            </button>
             <button class="menu-item" @click="handleDuplicate(item.key)">
               <Copy class="menu-icon" :size="16" aria-hidden="true" />
               <span class="menu-text">Duplicate</span>
@@ -81,7 +86,7 @@
 </template>
 
 <script setup lang="ts">
-import { Copy, FileDown, Folder, FolderOpen, House, LayoutDashboard, Trash2 } from '@lucide/vue'
+import { Copy, FileDown, Folder, FolderOpen, House, LayoutDashboard, Pencil, Trash2 } from '@lucide/vue'
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { useDashboardStore } from '@/stores/dashboard'
 
@@ -96,6 +101,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   select: [key: string]
+  rename: [key: string]
   delete: [key: string]
   duplicate: [key: string]
   export: [key: string]
@@ -109,7 +115,8 @@ const items = computed(() => {
   const result: { name: string; key: string }[] = []
   for (const [key, value] of Object.entries(props.structure)) {
     if (typeof value === 'string') {
-      result.push({ name: key, key: value })
+      // The dashboard's own name; the key's last segment only if it has none.
+      result.push({ name: dashboardStore.remoteNames[value] || key, key: value })
     }
   }
   return result.sort((a, b) => a.name.localeCompare(b.name))
@@ -145,6 +152,11 @@ function toggleMenu(key: string) {
 function handleSetStartup(key: string) {
   dashboardStore.setStartupDashboard(key, 'kv')
   activeMenuId.value = null
+}
+
+function handleRename(key: string) {
+  activeMenuId.value = null
+  emit('rename', key)
 }
 
 function handleDuplicate(key: string) {

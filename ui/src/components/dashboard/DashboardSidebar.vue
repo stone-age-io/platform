@@ -69,6 +69,7 @@
               :structure="remoteTree"
               :active-id="activeDashboardId"
               @select="selectRemoteDashboard"
+              @rename="startRemoteRename"
               @delete="confirmDelete($event, 'remote')"
               @duplicate="handleRemoteDuplicate"
               @export="handleRemoteExport"
@@ -137,7 +138,7 @@
       <div v-if="showRename" class="sidebar-modal-overlay" @click.self="showRename = false">
         <div class="nd-modal">
           <div class="modal-header">
-            <h3>{{ renameId ? 'Rename Dashboard' : 'New Dashboard' }}</h3>
+            <h3>{{ renameId || renameKey ? 'Rename Dashboard' : 'New Dashboard' }}</h3>
             <button class="close-btn" @click="showRename = false">✕</button>
           </div>
           <div class="modal-body">
@@ -153,7 +154,7 @@
           </div>
           <div class="modal-actions">
             <button class="btn-secondary" @click="showRename = false">Cancel</button>
-            <button class="btn-primary" @click="saveRename">{{ renameId ? 'Rename' : 'Create' }}</button>
+            <button class="btn-primary" @click="saveRename">{{ renameId || renameKey ? 'Rename' : 'Create' }}</button>
           </div>
         </div>
       </div>
@@ -320,7 +321,7 @@
 
 <script setup lang="ts">
 import { Cloud, FileDown, FileUp, LayoutDashboard, Plug, RefreshCw, TriangleAlert } from '@lucide/vue'
-import { ref, computed, watch, nextTick, onMounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, inject } from 'vue'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useNatsStore } from '@/stores/nats'
 import DashboardListItem from './DashboardListItem.vue'
@@ -335,8 +336,29 @@ const natsStore = useNatsStore()
 
 const activeTab = ref<'local' | 'shared'>('local')
 
+// VisualizerView's confirm dialog.
+const requestConfirm = inject<(title: string, message: string, onConfirm: () => void, confirmText?: string) => void>('requestConfirm')
+
+/**
+ * Run `action` (which opens another dashboard) unless the open shared one has
+ * unsaved edits; then ask first. Only a shared dashboard can be dirty: a local
+ * one saves every change as it is made.
+ */
+function unlessUnsaved(action: () => void) {
+  if (!dashboardStore.isDirty || !requestConfirm) return action()
+  const name = dashboardStore.activeDashboard?.name || 'this dashboard'
+  requestConfirm(
+    'Discard unsaved changes?',
+    `"${name}" has changes that are not saved. Opening another dashboard discards them.`,
+    action,
+    'Discard',
+  )
+}
+
 const showRename = ref(false)
 const renameId = ref<string | null>(null)
+// A shared dashboard being renamed (its KV key). renameId is a local one.
+const renameKey = ref<string | null>(null)
 const renameName = ref('')
 const renameInput = ref<HTMLInputElement | null>(null)
 
@@ -416,18 +438,23 @@ function closeSidebar() {
 }
 
 function selectDashboard(dashboard: Dashboard) {
-  dashboardStore.setActiveDashboard(dashboard)
-  emit('close')
+  unlessUnsaved(() => {
+    dashboardStore.setActiveDashboard(dashboard)
+    emit('close')
+  })
 }
 
 function selectRemoteDashboard(key: string) {
-  dashboardStore.loadRemoteDashboard(key)
-  emit('close')
+  unlessUnsaved(() => {
+    dashboardStore.loadRemoteDashboard(key)
+    emit('close')
+  })
 }
 
 function createNewDashboard() {
   if (activeTab.value === 'local') {
     // With no id, the rename modal doubles as the create modal.
+    renameKey.value = null
     openNameModal(null, 'New Dashboard')
   } else {
     shareForm.value = {
@@ -444,7 +471,17 @@ function createNewDashboard() {
 function startRename(id: string) {
   const dashboard = dashboards.value.find(d => d.id === id)
   if (!dashboard) return
+  renameKey.value = null
   openNameModal(id, dashboard.name)
+}
+
+function startRemoteRename(key: string) {
+  const active = dashboardStore.activeDashboard
+  const current = active?.storage === 'kv' && active.kvKey === key
+    ? active.name
+    : dashboardStore.remoteNames[key] || key.split('.').pop() || key
+  renameKey.value = key
+  openNameModal(null, current)
 }
 
 function openNameModal(id: string | null, name: string) {
@@ -458,12 +495,25 @@ function openNameModal(id: string | null, name: string) {
 }
 
 function saveRename() {
-  if (!renameName.value.trim()) return
-  if (renameId.value) dashboardStore.renameDashboard(renameId.value, renameName.value)
-  else dashboardStore.createDashboard(renameName.value.trim())
-  showRename.value = false
-  renameId.value = null
-  renameName.value = ''
+  const name = renameName.value.trim()
+  if (!name) return
+  const close = () => {
+    showRename.value = false
+    renameId.value = null
+    renameKey.value = null
+    renameName.value = ''
+  }
+  if (renameKey.value) {
+    dashboardStore.renameRemoteDashboard(renameKey.value, name)
+    close()
+  } else if (renameId.value) {
+    dashboardStore.renameDashboard(renameId.value, name)
+    close()
+  } else {
+    // Creating opens the new dashboard.
+    close()
+    unlessUnsaved(() => { dashboardStore.createDashboard(name) })
+  }
 }
 
 function startDuplicateLocal(id: string) {
@@ -556,18 +606,13 @@ function handleShare(id: string) {
 
 function handleModalSubmit() {
   if (!shareForm.value.name.trim()) return
-  
+  const form = { ...shareForm.value, name: shareForm.value.name.trim(), folder: shareForm.value.folder.trim() }
+
+  // Sharing and creating both open the result, so they go through the check.
   if (modalMode.value === 'share') {
-    dashboardStore.uploadLocalToRemote(
-      shareForm.value.id, 
-      shareForm.value.folder.trim(),
-      shareForm.value.name.trim()
-    )
+    unlessUnsaved(() => { dashboardStore.uploadLocalToRemote(form.id, form.folder, form.name) })
   } else if (modalMode.value === 'create') {
-    dashboardStore.createRemoteDashboard(
-      shareForm.value.name.trim(),
-      shareForm.value.folder.trim()
-    )
+    unlessUnsaved(() => { dashboardStore.createRemoteDashboard(form.name, form.folder) })
   } else if (modalMode.value === 'duplicate') {
     dashboardStore.duplicateRemoteDashboard(
       shareForm.value.id, // sourceKey

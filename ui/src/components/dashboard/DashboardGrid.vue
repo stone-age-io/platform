@@ -94,9 +94,9 @@ const isMobile = ref(window.innerWidth < 768)
 
 const breakpoints = { lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }
 
-const gridKey = computed(() => {
-  return dashboardStore.activeDashboardId || 'no-dashboard'
-})
+// Every open, not the id: a shared dashboard reloaded with Update keeps its id
+// and must still be laid out afresh.
+const gridKey = computed(() => `load-${dashboardStore.activeLoadId}`)
 
 const cols = computed(() => {
   const count = props.columnCount || 12
@@ -200,6 +200,14 @@ function hasWidgetSetChanged(currentIds: string[], newIds: string[]): boolean {
   const newIdSet = new Set(newIds)
   return currentIds.some(id => !newIdSet.has(id))
 }
+
+// A newly opened dashboard: take its positions as they are. The watcher below
+// only notices widgets added or removed, and a reload can move them all.
+// From the store, not props: this runs before the parent re-renders, when
+// props.widgets may still be the previous dashboard's.
+watch(() => dashboardStore.activeLoadId, () => {
+  layoutItems.value = mapWidgetsToLayout(dashboardStore.activeWidgets)
+})
 
 watch(() => props.widgets, (newWidgets) => {
   if (isMobile.value) return

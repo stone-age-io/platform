@@ -619,6 +619,7 @@ export interface Dashboard {
   modified: number
   widgets: WidgetConfig[]
   variables?: DashboardVariable[]
+  /** Legacy, ignored: older files carry it. Every dashboard opens locked (stores/dashboard.ts). */
   isLocked?: boolean
   storage?: StorageType
   kvKey?: string
@@ -898,7 +899,6 @@ export function createDefaultDashboard(name: string): Dashboard {
     modified: now,
     widgets: [],
     variables: [],
-    isLocked: false,
     storage: 'local',
     columnCount: 12
   }

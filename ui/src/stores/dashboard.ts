@@ -15,12 +15,35 @@ interface DashboardExportFile {
   dashboards: Dashboard[]
 }
 
+function newId(prefix: 'dashboard' | 'widget', now: number): string {
+  return `${prefix}_${now}_${Math.random().toString(36).substr(2, 9)}`
+}
+
+/**
+ * New dashboard and widget ids for a copy. A copy that kept its source's ids
+ * was indistinguishable from it: switching between the two rebuilt nothing,
+ * and widget data buffers (keyed by widget id) carried over.
+ */
+function withFreshIds(d: Dashboard): Dashboard {
+  const now = Date.now()
+  d.id = newId('dashboard', now)
+  d.widgets = d.widgets.map(w => ({ ...w, id: newId('widget', now) }))
+  return d
+}
+
 export const useDashboardStore = defineStore('dashboard', () => {
   const natsStore = useNatsStore()
 
   const localDashboards = ref<Dashboard[]>([])
   const remoteKeys = ref<string[]>([])
+  // KV key -> the dashboard's own name, for the sidebar. The key ends in a
+  // random suffix and is no name to show anyone.
+  const remoteNames = ref<Record<string, string>>({})
   const activeDashboard = ref<Dashboard | null>(null)
+  // Bumped on every open, including reopening the same dashboard. The grid and
+  // the subscriptions key on this rather than the id: a reload of a shared
+  // dashboard keeps its id, and must still rebuild.
+  const activeLoadId = ref(0)
   const currentVariableValues = ref<Record<string, string>>({})
 
   // Settings
@@ -42,7 +65,12 @@ export const useDashboardStore = defineStore('dashboard', () => {
 
   const activeDashboardId = computed(() => activeDashboard.value?.id || null)
   const activeWidgets = computed<WidgetConfig[]>(() => activeDashboard.value?.widgets || [])
-  const isLocked = computed(() => activeDashboard.value?.isLocked ?? false)
+  // Locking is an editing mode, not part of the layout, so it is not saved:
+  // every dashboard opens locked (a new one opens unlocked, to be built). A saved
+  // lock let one editor's Save leave a shared dashboard unlocked on every wall
+  // display that showed it.
+  const locked = ref(true)
+  const isLocked = computed(() => locked.value)
   
   const isAtLimit = computed(() => localDashboards.value.length >= MAX_DASHBOARDS)
   const isApproachingLimit = computed(() => localDashboards.value.length >= Math.floor(MAX_DASHBOARDS * 0.8))
@@ -78,17 +106,14 @@ export const useDashboardStore = defineStore('dashboard', () => {
 
   function clearStorageError() { storageError.value = null }
 
-  // Lock Management
-  // Locking is an editing mode, not a layout change, so it never marks a shared
-  // dashboard dirty; a shared one carries the lock state with the next real save.
+  // Lock Management: never saved and never marks a dashboard dirty (see `locked`).
   function toggleLock() {
     setLocked(!isLocked.value)
   }
 
-  function setLocked(locked: boolean) {
+  function setLocked(value: boolean) {
     if (!activeDashboard.value) return
-    activeDashboard.value.isLocked = locked
-    if (activeDashboard.value.storage === 'local') saveToStorage()
+    locked.value = value
   }
 
   // Variable Management
@@ -162,7 +187,6 @@ export const useDashboardStore = defineStore('dashboard', () => {
       if (stored) {
         const parsed = JSON.parse(stored)
         localDashboards.value = parsed.dashboards || []
-        localDashboards.value.forEach(d => { if (d.isLocked === undefined) d.isLocked = false })
 
         let dashboardToLoad: Dashboard | undefined
 
@@ -196,9 +220,10 @@ export const useDashboardStore = defineStore('dashboard', () => {
 
         if (dashboardToLoad) setActiveDashboard(dashboardToLoad)
       } else {
+        // First visit: an empty dashboard, open to be built.
         const defaultDash = createDefaultDashboard('My Dashboard')
         localDashboards.value = [defaultDash]
-        setActiveDashboard(defaultDash)
+        setActiveDashboard(defaultDash, { unlocked: true })
         saveToStorage()
       }
     } catch (err) {
@@ -219,7 +244,9 @@ export const useDashboardStore = defineStore('dashboard', () => {
         lastSelectedDashboard: lastSelectedDashboard.value
       }))
       const data = {
-        dashboards: localDashboards.value,
+        // isLocked is dropped: dashboards saved before the lock stopped being
+        // saved still carry one, and nothing reads it.
+        dashboards: localDashboards.value.map(({ isLocked: _, ...d }) => d),
         activeDashboardId: activeDashboard.value?.storage === 'local' ? activeDashboard.value.id : null,
       }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
@@ -266,10 +293,23 @@ export const useDashboardStore = defineStore('dashboard', () => {
       for await (const key of iter) {
         keys.push(key)
       }
+      // One read per key for its name. A bucket holds tens of dashboards, not
+      // thousands; a key that fails to read keeps showing its key.
+      const names: Record<string, string> = {}
+      await Promise.all(keys.map(async key => {
+        try {
+          const entry = await kv.get(key)
+          const name = entry ? JSON.parse(decodeBytes(entry.value))?.name : undefined
+          if (typeof name === 'string' && name.trim()) names[key] = name.trim()
+        } catch { /* show the key */ }
+      }))
       remoteKeys.value = keys
+      remoteNames.value = names
     } catch (err: any) {
-      if (err.message?.includes('stream not found')) remoteKeys.value = []
-      else console.error('[Dashboard] Failed to list keys:', err)
+      if (err.message?.includes('stream not found')) {
+        remoteKeys.value = []
+        remoteNames.value = {}
+      } else console.error('[Dashboard] Failed to list keys:', err)
     }
   }
 
@@ -286,10 +326,12 @@ export const useDashboardStore = defineStore('dashboard', () => {
       dashboard.storage = 'kv'
       dashboard.kvKey = key
       dashboard.kvRevision = entry.revision
-      if (dashboard.isLocked === undefined) dashboard.isLocked = false
-      
+      // Shared before copies got their own ids, it still carries its local
+      // source's. Re-id it in memory; the next save stores the new ids.
+      if (localDashboards.value.some(d => d.id === dashboard.id)) withFreshIds(dashboard)
+
       setActiveDashboard(dashboard)
-      watchRemoteKey(key, entry.revision)
+      watchRemoteKey(key)
     } catch (err: any) {
       console.error('[Dashboard] Failed to load remote:', err)
       storageError.value = `Failed to load: ${err.message}`
@@ -308,6 +350,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
       delete toSave.storage
       delete toSave.kvKey
       delete toSave.kvRevision
+      delete toSave.isLocked
       toSave.modified = Date.now()
       
       const data = encodeString(JSON.stringify(toSave))
@@ -343,8 +386,8 @@ export const useDashboardStore = defineStore('dashboard', () => {
     if (folder) key = `${folder}.${key}`
     
     dashboard.kvKey = key
-    
-    setActiveDashboard(dashboard)
+
+    setActiveDashboard(dashboard, { unlocked: true })
     isDirty.value = true
     await saveRemoteDashboard()
   }
@@ -355,7 +398,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
     const local = localDashboards.value.find(d => d.id === localId)
     if (!local) return
 
-    const remote = JSON.parse(JSON.stringify(local)) as Dashboard
+    const remote = withFreshIds(JSON.parse(JSON.stringify(local)) as Dashboard)
     remote.storage = 'kv'
     delete remote.kvRevision
     
@@ -377,8 +420,16 @@ export const useDashboardStore = defineStore('dashboard', () => {
     try {
       const kv = await getKv()
       await kv.delete(key)
+      if (startupDashboard.value?.storage === 'kv' && startupDashboard.value.id === key) {
+        startupDashboard.value = null
+      }
+      // Open a local one rather than leave a blank "No Dashboard Selected".
+      if (activeDashboard.value?.storage === 'kv' && activeDashboard.value.kvKey === key) {
+        openFirstLocal()
+      } else {
+        saveToStorage()
+      }
       await refreshRemoteKeys()
-      if (activeDashboard.value?.kvKey === key) activeDashboard.value = null
     } catch (err: any) {
       storageError.value = err.message
     }
@@ -401,23 +452,61 @@ export const useDashboardStore = defineStore('dashboard', () => {
       let newKey = `${slug}-${rand}`
       if (folder) newKey = `${folder}.${newKey}`
       
-      const newDash: Dashboard = {
+      const newDash: Dashboard = withFreshIds({
         ...source,
-        id: `dashboard_${now}_${Math.random().toString(36).substr(2, 9)}`,
         name: newName,
         created: now,
         modified: now,
-        storage: 'kv',
-        kvKey: newKey,
-        isLocked: false 
-      }
+      })
+      // Where it lives is the key, not the stored document.
+      delete newDash.storage
+      delete newDash.kvKey
       delete newDash.kvRevision
-      
+      delete newDash.isLocked
+
       const data = encodeString(JSON.stringify(newDash))
       await kv.put(newKey, data)
       await refreshRemoteKeys()
     } catch (err: any) {
       storageError.value = err.message
+    }
+  }
+
+  /**
+   * Rename a shared dashboard. Its key stays: the key is only where it is
+   * stored, and the sidebar shows the name.
+   *
+   * The open one is renamed in memory, so its unsaved edits are not saved
+   * behind the user's back: it saves now only if it had none. Any other is
+   * rewritten in KV, refused if someone saved it since it was read.
+   */
+  async function renameRemoteDashboard(key: string, newName: string): Promise<boolean> {
+    const name = newName.trim()
+    if (!name || !enableSharedDashboards.value) return false
+    const active = activeDashboard.value
+    if (active?.storage === 'kv' && active.kvKey === key) {
+      const hadEdits = isDirty.value
+      active.name = name
+      active.modified = Date.now()
+      isDirty.value = true
+      if (!hadEdits) await saveRemoteDashboard()
+      return true
+    }
+    try {
+      const kv = await getKv()
+      const entry = await kv.get(key)
+      if (!entry) throw new Error('Dashboard not found')
+      const doc = JSON.parse(decodeBytes(entry.value)) as Dashboard
+      doc.name = name
+      doc.modified = Date.now()
+      await kv.put(key, encodeString(JSON.stringify(doc)), { previousSeq: entry.revision })
+      remoteNames.value = { ...remoteNames.value, [key]: name }
+      return true
+    } catch (err: any) {
+      storageError.value = err.message?.includes('wrong last sequence')
+        ? 'Rename failed: the dashboard was changed by someone else. Try again.'
+        : `Rename failed: ${err.message}`
+      return false
     }
   }
 
@@ -434,21 +523,24 @@ export const useDashboardStore = defineStore('dashboard', () => {
     }
   }
 
-  function watchRemoteKey(key: string, currentRevision: number) {
+  function watchRemoteKey(key: string) {
     if (activeWatcher) {
       try { activeWatcher.stop() } catch {}
       activeWatcher = null
     }
     remoteChanged.value = false
     if (!natsStore.isConnected || !enableSharedDashboards.value) return
-    
+
     ;(async () => {
       try {
         const kv = await getKv()
         const iter = await kv.watch({ key })
         activeWatcher = iter
         for await (const e of iter) {
-          if (e.key === key && e.revision > currentRevision) {
+          // Against the revision held now, not the one at load: our own save
+          // advances kvRevision, so its echo here is not someone else's change.
+          const active = activeDashboard.value
+          if (e.key === key && active?.kvKey === key && e.revision > (active.kvRevision ?? 0)) {
             remoteChanged.value = true
           }
         }
@@ -460,7 +552,12 @@ export const useDashboardStore = defineStore('dashboard', () => {
   // fall back to a local (device-wide) one.
   function leaveRemoteDashboard() {
     remoteKeys.value = []
+    remoteNames.value = {}
     if (activeDashboard.value?.storage !== 'kv') return
+    openFirstLocal()
+  }
+
+  function openFirstLocal() {
     if (localDashboards.value.length === 0) {
       localDashboards.value.push(createDefaultDashboard('My Dashboard'))
     }
@@ -468,12 +565,15 @@ export const useDashboardStore = defineStore('dashboard', () => {
   }
 
   // Dashboard Actions
-  function setActiveDashboard(dashboard: Dashboard) {
+  /** Open a dashboard, locked unless it was just created to be built. */
+  function setActiveDashboard(dashboard: Dashboard, opts: { unlocked?: boolean } = {}) {
     if (activeWatcher) {
       try { activeWatcher.stop() } catch {}
       activeWatcher = null
     }
     activeDashboard.value = dashboard
+    activeLoadId.value++
+    locked.value = !opts.unlocked
     initVariables(dashboard.variables)
     isDirty.value = false
     remoteChanged.value = false
@@ -494,7 +594,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
     }
     const dashboard = createDefaultDashboard(name)
     localDashboards.value.push(dashboard)
-    setActiveDashboard(dashboard)
+    setActiveDashboard(dashboard, { unlocked: true })
     saveToStorage()
     return dashboard
   }
@@ -554,7 +654,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
     clone.created = now
     clone.modified = now
     clone.storage = 'local'
-    clone.isLocked = false
+    delete clone.isLocked
     delete clone.kvKey
     delete clone.kvRevision
     clone.widgets = clone.widgets.map(w => ({ ...w, id: `widget_${now}_${Math.random().toString(36).substr(2, 9)}` }))
@@ -638,6 +738,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
       delete copy.storage
       delete copy.kvKey
       delete copy.kvRevision
+      delete copy.isLocked
       return copy
     })
     
@@ -662,7 +763,6 @@ export const useDashboardStore = defineStore('dashboard', () => {
       dashboard.id = `dashboard_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
       dashboard.modified = Date.now()
       dashboard.storage = 'local'
-      dashboard.isLocked = dashboard.isLocked ?? false
       localDashboards.value.push(dashboard)
       saveToStorage()
       return dashboard
@@ -701,7 +801,6 @@ export const useDashboardStore = defineStore('dashboard', () => {
             id: `dashboard_${now}_${Math.random().toString(36).substr(2, 9)}`,
             modified: now,
             storage: 'local',
-            isLocked: dashboard.isLocked ?? false,
             widgets: dashboard.widgets.map(w => ({ ...w, id: `widget_${now}_${Math.random().toString(36).substr(2, 9)}` }))
           }
           localDashboards.value.push(newDashboard)
@@ -737,14 +836,14 @@ export const useDashboardStore = defineStore('dashboard', () => {
   })
   
   return {
-    localDashboards, remoteKeys, activeDashboardId, activeDashboard, activeWidgets, currentVariableValues,
+    localDashboards, remoteKeys, remoteNames, activeLoadId, activeDashboardId, activeDashboard, activeWidgets, currentVariableValues,
     storageError, dashboardCount, isAtLimit, isApproachingLimit, isLocked, isDirty, remoteChanged,
     kvBucketName, enableSharedDashboards, startupDashboard, MAX_DASHBOARDS, knownFolders,
     loadFromStorage, saveToStorage, getStorageSize, clearStorageError, toggleLock, setLocked,
     setActiveDashboard, leaveRemoteDashboard, setStartupDashboard, clearStartupDashboard, setVariableValue, addVariable,
     updateVariable, removeVariable, createDashboard, deleteDashboard, refreshRemoteKeys,
     loadRemoteDashboard, saveRemoteDashboard, createRemoteDashboard, deleteRemoteDashboard,
-    uploadLocalToRemote, duplicateRemoteDashboard, fetchRemoteDashboardJson, updateDashboard,
+    uploadLocalToRemote, duplicateRemoteDashboard, renameRemoteDashboard, fetchRemoteDashboardJson, updateDashboard,
     renameDashboard, duplicateDashboard, addWidget, updateWidget, removeWidget, getWidget,
     updateWidgetLayout, batchUpdateLayout, exportDashboard, exportDashboards, exportAllDashboards,
     importDashboard, importDashboards
