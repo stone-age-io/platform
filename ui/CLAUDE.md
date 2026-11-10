@@ -57,12 +57,21 @@ routine "bump everything" pass must not drag them along:
 
 Holding Tailwind 3 back has a security cost: it keeps vulnerable build-time
 dependencies in the tree. `overrides` in `ui/package.json` forces
-`postcss-selector-parser` to `^7.1.6` (GHSA-rj75-hqrm-r3gf) under Tailwind 3,
-which asks for `^6`. 7.0.0's one breaking change is "insertions during iteration
-are safe". When the override went in, all 27 built CSS files came out
-byte-identical with and without it, and that comparison is the only evidence it
-is safe. Repeat it after any Tailwind config change. Remove the override with
-the Tailwind 4 migration. `braces` (via `chokidar`/`micromatch`) also shows in
+`postcss-selector-parser` to exactly `7.1.6` (GHSA-rj75-hqrm-r3gf) under
+Tailwind 3, which asks for `^6`. 7.0.0's one breaking change is "insertions
+during iteration are safe". When the override went in, all 27 built CSS files
+came out byte-identical with and without it, and that comparison is the only
+evidence it is safe. Repeat it after any Tailwind config change, and after any
+`npm update`. Remove the override with the Tailwind 4 migration.
+
+**The pin is exact, not `^7.1.6`, because 7.2.0 breaks the build in silence.**
+Under Tailwind 3 it escapes an already-escaped selector a second time:
+`.disabled\:opacity-40:disabled` comes out as `.disabled\\\:opacity-40:disabled`,
+which matches nothing. 127 selectors in the main stylesheet went that way (every
+`disabled:`, `focus:`, `active:` and `sm:btn-*` utility), while `vue-tsc`, the
+build, Vitest and `npm audit` all stayed green. A routine `npm update` pulled it
+in through the caret. To move the pin, build before and after and compare the
+CSS files byte for byte. `braces` (via `chokidar`/`micromatch`) also shows in
 `npm audit`, but no fixed release exists. All of these parse only our own CSS
 and globs, at build time.
 

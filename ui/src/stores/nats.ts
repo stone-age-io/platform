@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, shallowRef, computed } from 'vue'
 import { 
   wsconnect, 
   credsAuthenticator, 
@@ -21,7 +21,9 @@ export const useNatsStore = defineStore('nats', () => {
   const authStore = useAuthStore()
   const toast = useToast()
 
-  const nc =ref<NatsConnection | null>(null)
+  // shallowRef: the client is a class instance with its own internals. A deep
+  // ref would proxy all of it, and every publish or subscribe would walk that.
+  const nc = shallowRef<NatsConnection | null>(null)
   const status = ref<'disconnected' | 'connecting' | 'connected' | 'reconnecting'>('disconnected')
   const lastError = ref<string | null>(null)
   const autoConnect = ref(false)

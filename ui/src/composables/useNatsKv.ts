@@ -1,4 +1,4 @@
-import { ref, onUnmounted } from 'vue'
+import { ref, shallowRef, onUnmounted } from 'vue'
 import { Kvm, type KV } from '@nats-io/kv'
 import { useNatsStore } from '@/stores/nats'
 import { useToast } from '@/composables/useToast'
@@ -24,7 +24,8 @@ export function useNatsKv(bucketName: string = TWIN_BUCKET, baseKey?: string) {
   const encoder = new TextEncoder()
   const decoder = new TextDecoder()
 
-  const kv = ref<KV | null>(null)
+  // shallowRef, like the connection in stores/nats.ts: never proxy the client.
+  const kv = shallowRef<KV | null>(null)
   const entries = ref<Map<string, KvEntry>>(new Map())
   const loading = ref(false)
   const exists = ref(false)
