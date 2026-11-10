@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=328         # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=330        # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -855,6 +855,15 @@ req GET "/me/leaf-config" "$TA"
 expect "org owner cannot reach /api/me/leaf-config" "401|403|404" "$RCODE" "$RBODY"
 req GET "/me/leaf-config" ""
 expect "anonymous cannot reach /api/me/leaf-config" "401|403|404" "$RCODE" "$RBODY"
+
+# The reverse binding: redeeming an invitation is for users. A membership is a
+# user's, so a Thing token is turned away at the route (403) instead of reaching
+# the handler and failing on the membership save. The token is bogus on purpose:
+# the user's 404 is the handler answering, which shows the route admitted them.
+req POST "/org/invites/accept" "$TLC" '{"token":"no-such-invitation"}'
+expect "a thing cannot reach /api/org/invites/accept" 403 "$RCODE" "$RBODY"
+req POST "/org/invites/accept" "$TA" '{"token":"no-such-invitation"}'
+expect "a user CAN reach /api/org/invites/accept (unknown token)" 404 "$RCODE" "$RBODY"
 
 # And the collection this replaced is actually gone, not merely unused. Asked as
 # a SUPERUSER so a 404 can only mean the collection does not exist -- a rule

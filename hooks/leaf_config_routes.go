@@ -69,33 +69,17 @@ func RegisterLeafConfigRoutes(app *pocketbase.PocketBase, opts LeafConfigRoutesO
 				return re.BadRequestError("this thing has no code; a leaf node's JetStream domain is its code", nil)
 			}
 
-			natsUserID := thing.GetString("nats_user")
-			if natsUserID == "" {
-				return re.NotFoundError("no NATS identity assigned to this thing yet", nil)
-			}
-			natsUser, err := re.App.FindRecordById(opts.NatsUserCollection, natsUserID)
+			// The same lookup and checks as the account-jwt probe below.
+			natsUser, account, err := callerAccount(re, opts)
 			if err != nil {
-				return re.NotFoundError("linked NATS identity not found", nil)
+				return err
 			}
 			creds := natsUser.GetString("creds_file")
 			if creds == "" {
 				return re.NotFoundError("linked NATS identity has no creds_file (provisioning incomplete)", nil)
 			}
-
-			account, err := re.App.FindRecordById(opts.NatsAccountCollection, natsUser.GetString("account_id"))
-			if err != nil {
-				return re.NotFoundError("nats_account not found", nil)
-			}
-			// Defense in depth: never serve an account from another organization.
-			// Blank is refused first, since blank equals blank.
-			if thing.GetString("organization") == "" || account.GetString("organization") != thing.GetString("organization") {
-				return re.NotFoundError("nats_account not found", nil)
-			}
 			accountJWT := account.GetString("jwt")
 			accountPub := account.GetString("public_key")
-			if accountJWT == "" || accountPub == "" {
-				return re.NotFoundError("nats_account missing jwt/public_key", nil)
-			}
 
 			opJWT, err := operatorJWT(re)
 			if err != nil {
@@ -140,9 +124,9 @@ func RegisterLeafConfigRoutes(app *pocketbase.PocketBase, opts LeafConfigRoutesO
 }
 
 // callerAccount returns the calling Thing's own NATS identity and the account
-// that identity belongs to, read with the app's privileges. It makes the same
-// lookup and checks as the leaf-config handler, so the probe never names a
-// different account. Change the two together.
+// that identity belongs to, read with the app's privileges. Both routes here
+// call it, so the probe never names a different account than leaf-config
+// serves. A returned account always has a jwt and a public_key.
 func callerAccount(re *core.RequestEvent, opts LeafConfigRoutesOptions) (natsUser, account *core.Record, err error) {
 	thing := re.Auth // no id parameter to aim elsewhere
 

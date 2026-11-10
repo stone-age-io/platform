@@ -588,6 +588,13 @@ func main() {
 
 			if f, err := subFS.Open(path); err == nil {
 				f.Close()
+				// Vite puts a content hash in every name under assets/, so a
+				// file there never changes and can be cached for good. Nothing
+				// else gets the header: index.html and sw.js keep their names
+				// across releases. Compression is the proxy's job, not ours.
+				if strings.HasPrefix(path, "assets/") {
+					e.Response.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+				}
 				return e.FileFS(subFS, path)
 			}
 

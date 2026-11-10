@@ -144,7 +144,9 @@ func RegisterInvites(app *pocketbase.PocketBase, opts InviteOptions) {
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
 		se.Router.POST(AcceptInvitePath, func(e *core.RequestEvent) error {
 			return acceptInvite(e, opts)
-		}).Bind(apis.RequireAuth())
+			// Users only. A membership is a user's, so a Thing or NATS identity
+			// token has no business here and gets a 403, not a failed save.
+		}).Bind(apis.RequireAuth(opts.UserCollection))
 
 		return se.Next()
 	})
