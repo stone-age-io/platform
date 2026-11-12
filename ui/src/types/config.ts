@@ -1,4 +1,4 @@
-import type { ButtonPadCell, ThresholdRule,MapMarker, SwitchWidgetConfig, SliderWidgetConfig, StatusMapping, TableColumn, DynamicMarkerPopupField, ScannerRule, ChartType, ChartSeries, FloorPlanTypeBinding } from './dashboard'
+import type { ButtonPadCell, ThresholdRule,MapMarker, SwitchWidgetConfig, SliderWidgetConfig, GaugeWidgetConfig, StatusMapping, TableColumn, DynamicMarkerPopupField, ScannerRule, ChartType, ChartSeries, FloorPlanTypeBinding } from './dashboard'
 
 export interface WidgetFormState {
   // Common
@@ -53,13 +53,8 @@ export interface WidgetFormState {
   statTrendWindow: number
   statTrendUpIsBad: boolean
   
-  // Gauge Widget
-  gaugeStyle: 'arc' | 'bar'
-  gaugeMin: number
-  gaugeMax: number
-  gaugeUnit: string
-  gaugeDecimals: string       // '' = automatic
-  gaugeZones: Array<{ min: number; max: number; color: string }>
+  // Gauge: the config object itself, edited in place by GaugeFields.
+  gaugeConfig: GaugeWidgetConfig
   
   // Map Widget
   mapCenterLat: number
@@ -178,12 +173,7 @@ export function createEmptyFormState(): WidgetFormState {
     statShowTrend: true,
     statTrendWindow: 10,
     statTrendUpIsBad: false,
-    gaugeStyle: 'arc',
-    gaugeMin: 0,
-    gaugeMax: 100,
-    gaugeUnit: '',
-    gaugeDecimals: '',
-    gaugeZones: [],
+    gaugeConfig: { min: 0, max: 100, zones: [] },
     mapCenterLat: 39.8283,
     mapCenterLon: -98.5795,
     mapZoom: 4,

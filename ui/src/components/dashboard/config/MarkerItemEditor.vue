@@ -270,37 +270,6 @@
         </div>
         </template>
 
-        <div class="num-grid">
-          <div class="num-col">
-            <label>Min</label>
-            <input
-              :value="gaugeConfig.min"
-              @input="updateGaugeField('min', Number(($event.target as HTMLInputElement).value))"
-              type="number"
-              class="form-input"
-            />
-          </div>
-          <div class="num-col">
-            <label>Max</label>
-            <input
-              :value="gaugeConfig.max"
-              @input="updateGaugeField('max', Number(($event.target as HTMLInputElement).value))"
-              type="number"
-              class="form-input"
-            />
-          </div>
-        </div>
-
-        <div class="form-row">
-          <label>Unit</label>
-          <input
-            :value="gaugeConfig.unit"
-            @input="updateGaugeField('unit', ($event.target as HTMLInputElement).value)"
-            type="text"
-            class="form-input"
-            placeholder="%"
-          />
-        </div>
         <div class="form-row">
           <label>JSONPath (optional)</label>
           <input
@@ -312,13 +281,13 @@
           />
         </div>
 
-        <div class="form-row">
-          <label>Zones</label>
-          <GaugeZoneEditor
-            :model-value="gaugeConfig.zones || []"
-            @update:model-value="updateGaugeField('zones', $event)"
-          />
-        </div>
+        <!-- The scale is the gauge widget's own form; only the source above is the row's. -->
+        <GaugeFields
+          compact
+          :model-value="gaugeConfig"
+          :errors="errors"
+          @update:model-value="emitUpdate({ gaugeConfig: { ...gaugeConfig, ...$event } })"
+        />
       </template>
     </div>
   </div>
@@ -330,7 +299,7 @@ import { CircleHelp, Database, Gauge, Send, SlidersHorizontal, ToggleRight, Type
 import { computed } from 'vue'
 import type { MapMarkerItem, SwitchWidgetConfig, MapItemTextConfig, MapItemKvConfig, SliderWidgetConfig, MapItemGaugeConfig, MapItemType } from '@/types/dashboard'
 import { createDefaultItem } from '@/types/dashboard'
-import GaugeZoneEditor from '@/components/dashboard/GaugeZoneEditor.vue'
+import GaugeFields from './GaugeFields.vue'
 import SwitchFields from './SwitchFields.vue'
 import SliderFields from './SliderFields.vue'
 
@@ -462,24 +431,6 @@ function handleTypeChange(event: Event) {
 .item-badge.slider { color: var(--color-primary); }
 .item-badge.gauge { color: var(--color-info); }
 
-.num-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.num-col {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.num-col label {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--muted);
-}
 .item-badge.kv { color: var(--color-secondary); }
 
 .item-label {

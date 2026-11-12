@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest'
 
 import SwitchFields from './SwitchFields.vue'
 import SliderFields from './SliderFields.vue'
-import type { SliderWidgetConfig, SwitchWidgetConfig } from '@/types/dashboard'
+import GaugeFields from './GaugeFields.vue'
+import type { GaugeWidgetConfig, SliderWidgetConfig, SwitchWidgetConfig } from '@/types/dashboard'
 
 // One form serves the widget's modal and a marker row, so what it emits is
 // what both of them save.
@@ -106,5 +107,38 @@ describe('SliderFields', () => {
     const key = (w: ReturnType<typeof mount>) => w.findAll('input[type="text"]')[1].attributes('placeholder')
     expect(key(mount(SliderFields, { props: { modelValue: slider } }))).not.toContain('{thing}')
     expect(key(mount(SliderFields, { props: { modelValue: slider, perThing: true } }))).toContain('{thing}')
+  })
+})
+
+describe('GaugeFields', () => {
+  const gauge: GaugeWidgetConfig = { min: 0, max: 100, zones: [] }
+  const lastGauge = (w: ReturnType<typeof mount>) => {
+    const all = w.emitted('update:modelValue') as unknown[][]
+    return all[all.length - 1][0] as GaugeWidgetConfig
+  }
+
+  // Blank means "pick from the value's size", which is stored as no value at all.
+  it('stores blank decimals as automatic', async () => {
+    const w = mount(GaugeFields, { props: { modelValue: { ...gauge, decimals: 2 } } })
+    const decimals = w.find('input[placeholder="Automatic"]')
+    await decimals.setValue('')
+    expect(lastGauge(w).decimals).toBeUndefined()
+    await decimals.setValue('3')
+    expect(lastGauge(w).decimals).toBe(3)
+  })
+
+  // A marker row is always a bar, so it is not offered the choice.
+  it('offers the style only when asked', () => {
+    expect(mount(GaugeFields, { props: { modelValue: gauge } }).text()).not.toContain('Style')
+    expect(mount(GaugeFields, { props: { modelValue: gauge, showStyle: true } }).text()).toContain('Style')
+  })
+
+  // A marker row's config also holds where to read the value. Editing the
+  // scale must hand those fields back untouched.
+  it('keeps fields it does not edit', async () => {
+    const row = { ...gauge, mode: 'kv', kvBucket: 'twin', kvKey: 'thing.a.level' }
+    const w = mount(GaugeFields, { props: { modelValue: row } })
+    await w.findAll('input[type="number"]')[1].setValue('250')
+    expect(lastGauge(w)).toMatchObject({ max: 250, mode: 'kv', kvBucket: 'twin', kvKey: 'thing.a.level' })
   })
 })

@@ -26,6 +26,8 @@ and this file starts where the versioned releases do.
   same form as the widget**, and saved in the same shape. A switch row gains a
   default state for core mode, and honours a confirmation message if its config
   has one. No saved dashboard changes.
+- **A gauge row on a marker uses the gauge widget's form for its scale**, and
+  gains the decimal places field the row already honoured.
 - **The switch widget no longer refuses a payload that is not JSON.** Text
   that does not parse is sent as typed, as a marker's switch row always did, so
   a bare `ON` works. Text that starts with `{` or `[` and does not parse shows a

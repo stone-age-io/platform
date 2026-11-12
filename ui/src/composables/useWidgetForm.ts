@@ -310,30 +310,26 @@ const typeHandlers: WidgetTypeHandlers = {
   // --- gauge ---
   gauge: {
     hydrate(widget, state) {
-      state.gaugeStyle = widget.gaugeConfig?.style === 'bar' ? 'bar' : 'arc'
-      state.gaugeMin = widget.gaugeConfig?.min ?? 0
-      state.gaugeMax = widget.gaugeConfig?.max ?? 100
-      state.gaugeUnit = widget.gaugeConfig?.unit || ''
-      state.gaugeDecimals = widget.gaugeConfig?.decimals != null ? String(widget.gaugeConfig.decimals) : ''
-      state.gaugeZones = widget.gaugeConfig?.zones ? [...widget.gaugeConfig.zones] : []
+      state.gaugeConfig = {
+        ...state.gaugeConfig,
+        ...widget.gaugeConfig,
+        // The zone editor edits a zone in place, so the form needs its own copies.
+        zones: (widget.gaugeConfig?.zones || []).map(z => ({ ...z })),
+      }
     },
     validate(form, errors) {
-      if (!Number.isFinite(form.gaugeMin) || !Number.isFinite(form.gaugeMax) || form.gaugeMax <= form.gaugeMin) {
+      const c = form.gaugeConfig
+      if (!Number.isFinite(c.min) || !Number.isFinite(c.max) || c.max <= c.min) {
         errors.gaugeRange = 'Max must be a number above min'
       }
-      const d = String(form.gaugeDecimals).trim()
-      if (d && !/^[0-6]$/.test(d)) errors.gaugeDecimals = 'A whole number from 0 to 6, or blank for automatic'
+      if (c.decimals !== undefined && !(Number.isInteger(c.decimals) && c.decimals >= 0 && c.decimals <= 6)) {
+        errors.gaugeDecimals = 'A whole number from 0 to 6, or blank for automatic'
+      }
     },
     buildUpdates(form) {
+      const c = form.gaugeConfig
       return {
-        gaugeConfig: {
-          style: form.gaugeStyle === 'bar' ? 'bar' : undefined,
-          min: form.gaugeMin,
-          max: form.gaugeMax,
-          unit: form.gaugeUnit.trim() || undefined,
-          decimals: String(form.gaugeDecimals).trim() ? Number(String(form.gaugeDecimals).trim()) : undefined,
-          zones: [...form.gaugeZones],
-        },
+        gaugeConfig: { ...c, unit: c.unit?.trim() || undefined, zones: [...(c.zones || [])] },
       }
     },
   },
