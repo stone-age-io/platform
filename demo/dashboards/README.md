@@ -22,7 +22,8 @@ Every widget subscribes to a subject that `../rules/northwind/telemetry.yaml`
 publishes, or reads a twin key those rules write. Run that rule-router first:
 
 ```bash
-rule-router --config config/rule-scheduler.yaml --rules demo/rules/northwind
+RR_NATS_CREDSFILE=/path/to/console-dana.creds \
+  rule-router --config demo/rules/rule-router.yaml --rules demo/rules/northwind
 ```
 
 All subscriptions are core NATS (`useJetStream: false`), matching the rules'

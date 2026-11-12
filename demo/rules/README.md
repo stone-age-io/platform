@@ -39,43 +39,18 @@ it needs KV and a PocketBase URL and these rules need neither.
 In NATS operator mode the **account is the tenant boundary**. Each seeded
 organization holds its own account, and a connection authenticated into one
 cannot publish into another. So each directory above is its own rule-router
-process with its own credential:
+process with its own credential, all sharing [`rule-router.yaml`](rule-router.yaml):
 
 ```bash
-rule-router --config config/rule-scheduler.yaml --rules demo/rules/northwind
+RR_NATS_CREDSFILE=/path/to/console-dana.creds   rule-router --config demo/rules/rule-router.yaml --rules demo/rules/northwind
+RR_NATS_CREDSFILE=/path/to/console-marcus.creds rule-router --config demo/rules/rule-router.yaml --rules demo/rules/ironbridge
+RR_NATS_CREDSFILE=/path/to/console-sofia.creds  rule-router --config demo/rules/rule-router.yaml --rules demo/rules/galewind
 ```
 
-```bash
-rule-router --config config/rule-scheduler.yaml --rules demo/rules/ironbridge
-```
-
-```bash
-rule-router --config config/rule-scheduler.yaml --rules demo/rules/galewind
-```
-
-**Point `--rules` at the organization's directory, never at `demo/rules`.**
-rule-router walks the path recursively, so the parent loads all three files into
-one process — and two thirds of the rules then publish subjects the connection
-has no permission for, filling the log with authorization errors for rules that
-are perfectly correct.
-
-**Two features, not one.** These files used to need only
-`features.scheduler: true`. The diagnostics responders added since are NATS
-triggers, and it is `features.router` that starts the core-NATS subscriber which
-serves them:
-
-```yaml
-features:
-  router: true
-  scheduler: true
-  gateway: false
-```
-
-Leave `router` at the `false` that ships in `config/rule-scheduler.yaml` and the
-reply rules load without a word of complaint, subscribe to nothing, and every
-diagnostics request times out. Nothing in the log names the cause. Turning it on
-costs the schedule rules nothing — a rule-router with no JetStream-mode NATS
-trigger creates no consumers.
+Run them from the platform repository root. **Point `--rules` at one
+organization's directory, never at `demo/rules`**: the parent loads all three
+files into one process, and two thirds of the rules then publish subjects the
+connection has no permission for.
 
 ## The bus: use the platform's own embedded NATS
 
@@ -85,16 +60,10 @@ same `nats.conf` that `nats export` writes. It is an ordinary nats-server in
 every credential below is a signed JWT the platform minted.
 
 ```bash
-./stone-age superuser upsert admin@demo.local 'demo-pass-1234'
-./stone-age migrate up
-./stone-age bootstrap --email admin@demo.local --org "System" --operator-org "816tech"
+./stone-age init --email admin@demo.local --operator-org "816tech"
 ./stone-age demo-seed --confirm
-./stone-age nats export -o ./nats-config
-./stone-age serve --nats --nats-config ./nats-config/nats.conf
+./stone-age serve --nats
 ```
-
-`nats export` writes absolute paths into the generated config, so `serve --nats`
-runs from wherever you like.
 
 An external `nats-server -c nats-config/nats.conf` works exactly the same way —
 same config, same credentials. Only the process boundary differs.
@@ -112,15 +81,11 @@ account and nowhere else:
    `marcus@ironbridge.example`, `sofia@galewind.example`, password `demo1234`.
 2. **NATS → Users**, open the user linked to that membership (`console-dana`,
    `console-marcus`, `console-sofia`), **Download credentials**.
-3. Point rule-router at it: `nats.credsFile: /path/to/user.creds`.
+3. Pass its path as `RR_NATS_CREDSFILE` (above).
 
 That credential is broad on purpose and it is still bounded by the account, so
 the worst it can do is make a mess of one tenant's own bus. Do not reuse the
 pattern for a real device — a device gets `device`.
-
-> On Windows, quote the path in YAML with **single** quotes. A backslash path in
-> double quotes is a YAML escape sequence, and `C:\Users\…` fails to parse with
-> `did not find expected hexdecimal number`.
 
 ## What you should see
 

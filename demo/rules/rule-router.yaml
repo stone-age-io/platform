@@ -1,0 +1,31 @@
+# rule-router config for the demo telemetry rules. One process per
+# organization, each with that organization's credential (README.md):
+#
+#   RR_NATS_CREDSFILE=/path/to/console-dana.creds \
+#     rule-router --config demo/rules/rule-router.yaml --rules demo/rules/northwind
+
+features:
+  # The scheduler publishes the simulated telemetry. The router serves the
+  # `.diag` request/reply rules: with it off they load, subscribe to nothing,
+  # and every diagnostics request times out with nothing in the log.
+  router: true
+  scheduler: true
+  gateway: false
+
+nats:
+  urls:
+    - nats://localhost:4222
+  # Overridden per process with RR_NATS_CREDSFILE, which works only because
+  # the key is present here. Single quotes for a Windows path.
+  credsFile: "/path/to/user.creds"
+  tls:
+    enable: false
+
+logging:
+  level: info
+  outputPath: stdout
+  encoding: console
+
+# Off, because three processes on one host would fight over one port.
+metrics:
+  enabled: false
