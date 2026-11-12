@@ -292,7 +292,7 @@ Keep it in step with the table above.
 Features with a long note get one line here. The note lives where the code does.
 
 1. **Authentication & Multi-Tenancy** - PocketBase auth, OAuth2, organization switching, RBAC
-2. **Dashboard/Visualizer** - Grid-based dashboards, 16 widget types, variable substitution
+2. **Dashboard/Visualizer** - Grid-based dashboards, 18 widget types, variable substitution
 3. **NATS Integration** - Account/User/Role provisioning, real-time WebSocket connection
 4. **Nebula Networks** - Certificate Authority, network, and host management
 5. **Resource Inventory** - Things and Locations with type definitions and metadata. `metadata_schema` is a form hint, not a contract (`ui/CLAUDE.md`)

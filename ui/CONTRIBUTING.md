@@ -140,7 +140,7 @@ Then open `/dev/widgets` and look at it.
 
 - **There is no plugin system.** No `import.meta.glob`, no manifest, no
   self-registration. `WIDGETS` is an explicit map and is meant to stay one —
-  sixteen widget types that change twice a year do not need a framework, and the
+  eighteen widget types that change twice a year do not need a framework, and the
   map is less code than the switch it replaced.
 - **Widget config field names are frozen.** They are `chartConfig`,
   `gaugeConfig` and so on because every dashboard ever saved — in localStorage,

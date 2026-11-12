@@ -99,8 +99,8 @@ ui/
 │   │   ├── layout/     # AppHeader, AppSidebar, MainLayout
 │   │   ├── ui/         # Base UI primitives (BaseCard, ResponsiveList)
 │   │   ├── dashboard/  # Dashboard grid, widget containers, variables
-│   │   │   └── config/ # 16 per-widget config panels + shared editors
-│   │   ├── widgets/    # 16 widget type components
+│   │   │   └── config/ # 18 per-widget config panels + shared editors
+│   │   ├── widgets/    # 18 widget type components
 │   │   │   └── map/    # Map marker sub-components (detail, kv, publish, switch, text)
 │   │   ├── map/        # FloorPlanMap component
 │   │   ├── nats/       # NATS-specific components (KvDashboard)
@@ -171,7 +171,7 @@ hand-written `<button>` blocks, where the omission is total: a widget missing
 from it cannot be added at all.
 
 - **It is a map, not a plugin system**, and must stay one. No `import.meta.glob`,
-  no manifest, no self-registration, no schema-driven form generation. Sixteen
+  no manifest, no self-registration, no schema-driven form generation. Eighteen
   widget types that change twice a year do not need a framework, and the object
   is less code than the switch it replaced.
 - **Declaration order is the palette's order**, grouped by `category` in
