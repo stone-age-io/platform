@@ -6,12 +6,7 @@ VictoriaMetrics. This file is what to type once it is running.
 The companion config in the access-control repo
 (`demo/telegraf/northwind-access.conf`) writes access events into the **same**
 VictoriaMetrics from the **same** account, so the queries below cross both apps.
-Neither config is required by the other — run one, or both.
-
-Every query here was run against a live estate before being written down. The
-numbers quoted are what it actually read at the time, not what it ought to read.
-The one exception is [Where things are](#where-things-are), which is new with
-ADR 0004 and says so.
+Neither needs the other.
 
 ## What has to be running
 
@@ -19,35 +14,18 @@ VictoriaMetrics, Telegraf, and something publishing.
 
 ```bash
 victoria-metrics -storageDataPath=./vmdata -retentionPeriod=30d
-```
-
-```bash
 telegraf --config demo/telegraf/northwind.conf
 ```
 
-The traffic comes from `rule-router --rules demo/rules/northwind` (see
-[../rules/README.md](../rules/README.md)). The access half additionally needs the
-four `access-controller` processes: the scheduler publishes taps and injects
-alarms, but the *decisions*, the posture changes and the controller heartbeats
-are emitted by the controllers themselves. Run the scheduler alone and only
-`event_kind="alarm"` fills in — a correct reading of the bus, not a broken
-config, and worth knowing before you debug an empty screen.
+- The traffic comes from the Northwind rules ([../rules](../rules/README.md)).
+- The access half also needs the four `access-controller` processes, which emit
+  the decisions, posture changes and heartbeats. With the scheduler alone, only
+  `event_kind="alarm"` fills in.
+- [Where things are](#where-things-are) also needs the inventory feed in
+  [../inventory](../inventory/README.md).
 
-[Where things are](#where-things-are) also needs the inventory feed in
-[../inventory](../inventory/README.md): nats-auth-manager and a second
-rule-router. Without it every reading still arrives, tagged by `thing` alone,
-and the join queries return nothing.
-
-VictoriaMetrics ships a query UI at **http://localhost:8428/vmui/**. No Grafana
-needed to work through this file.
-
-## VictoriaMetrics is storage here, and nothing else
-
-It holds history for charts, comparison and reporting. It decides nothing.
-Thresholds and alarms belong on the bus, in rule-router, at the edge, where they
-still work with the WAN down — and where they are not sitting behind a 10-second
-flush, an ingest, and an evaluation interval. Do not put an alert path in front
-of this. The access app already has one that runs beside the controllers.
+VictoriaMetrics has a query UI at **http://localhost:8428/vmui/**. It is storage
+for history and decides nothing: alarms belong on the bus, in rule-router.
 
 ---
 
@@ -57,8 +35,7 @@ of this. The access app already has one that runs beside the controllers.
 thing_celsius
 ```
 
-Twelve probes at once — ten fixtures and both reefers' return-air probes.
-Establishes that it is real in about two seconds.
+Twelve probes at once: ten fixtures and both reefers' return-air probes.
 
 ## Cold chain
 
@@ -66,25 +43,14 @@ Establishes that it is real in about two seconds.
 thing_celsius - thing_setpoint_c
 ```
 
-The best query in the set. Freezers hold −18 and chillers +2, so raw temperature
-cannot be compared across zones; drift from setpoint normalises the whole estate
-onto one zero-centred line, and one panel then serves every zone type. Reads ±0.1
-to ±1 on a healthy estate.
-
-This works because the probes publish their setpoint alongside the reading, in
-the same payload, on the same subject. That is a property of the thing type's
-contract, not of this query.
+Drift from setpoint puts freezers (−18) and chillers (+2) on one zero-centred
+line. It works because each probe publishes its setpoint in the same payload.
 
 ```
 avg_over_time(thing_celsius{thing="TP-001"}[10m])
 ```
 
-Worth saying out loud while you show it: **the windowed average is a query, not a
-pipeline.** Nothing computes it in advance, nothing accumulates state, and there
-is no stream processor in the path. A window only needs to become a *message*
-when something has to act on it — an alarm, or a downstream system that wants
-15-minute records. A window that only needs to become a number on a chart is
-this.
+A windowed average is a query, not a pipeline: nothing computes it in advance.
 
 ## The failing device
 
@@ -92,41 +58,26 @@ this.
 thing_percent < 25
 ```
 
-Returns exactly one series: `TP-005`, around 19–20%, in `KC-DC1-FZ1`. One line,
-one answer, no dashboard.
+One series: `TP-005`, around 19–20%, in `KC-DC1-FZ1`. It is also the excursion
+probe (about −9 against −18, on a 47-minute cron), so it eventually shows in the
+drift query too.
 
-TP-005 is also the excursion probe — it reports about −9 against a −18 setpoint,
-on a 47-minute cron, so leave the demo running and it eventually appears in the
-drift query too. A sensor dying in a freezer that is warming, which is the
-scenario the seed was built to tell.
-
-## Liveness — what an inventory count cannot tell you
+## Liveness
 
 ```
 count by (thing) (count_over_time(thing_uptime[3m]))
 ```
 
-Heartbeats per device over three minutes. A device that stops reporting drops out
-of the result.
-
-This is the query that earns the whole exercise. `stone_age_records{collection=
-"things"}` counts devices **configured** and can never fire on a device going
-quiet — its HELP text says so. Availability is a property of traffic, and traffic
-is on the bus.
+Heartbeats per device over three minutes; a device that stops reporting drops
+out. `stone_age_records` counts devices configured and cannot tell you this.
 
 ```
 count_over_time(access_count{event_kind="heartbeat"}[1m])
 ```
 
-Per-controller beats at a 15-second cadence, so `< 3` is a box that has gone
-quiet, named by site and code. `controller_heartbeats_received_total` on
-accessd's own `/metrics` is labelled by status only — deliberately, because a
-per-controller label there would size every deployment's label set to its
-customer's estate. The subject carries what the label cannot.
-
-Note what this is **not**: accessd's own sweep already flips a controller offline
-after 45 seconds, and that is where the alarm belongs. This is the history of
-that fact — how often, how long, which site, over months.
+Per-controller beats at a 15-second cadence, so `< 3` is a quiet box, named by
+site and code. accessd already alarms on this after 45 seconds; this is the
+history of it.
 
 ## Access decisions
 
@@ -134,38 +85,22 @@ that fact — how often, how long, which site, over months.
 sum by (reason) (count_over_time(access_count{event_kind="tap"}[15m]))
 ```
 
-Read `allow_grant 15`, `deny_no_access 1`, `deny_revoked 1` on a quiet quarter
-hour. These are the codes `policy.Decide` actually produced against seeded
-credentials — edit an access group in the console and the next taps change the
-graph. Nothing in the rules file types a reason string.
+The reason codes `policy.Decide` produced, such as `allow_grant`,
+`deny_no_access` and `deny_revoked`. Edit an access group in the console and the
+next taps change the graph.
 
 ```
 sum by (thing) (count_over_time(access_count{event_kind="alarm"}[1h]))
 ```
 
-Alarms by portal. Forced, held, held_clear, intrusion.
+Alarms by portal: forced, held, held_clear, intrusion.
 
 ```
 sum(count_over_time(access_count{event_kind="tap", allow="true"}[1h]))
   / sum(count_over_time(access_count{event_kind="tap"}[1h]))
 ```
 
-Allow rate. Useful as a single stat; useless as an alarm, because the right value
-is a property of the site.
-
-## Two apps, one system
-
-This section used to be one line, `{location="KC-DC1"}`, returning badge
-decisions and building telemetry side by side. It relied on both configs tagging
-`location` from the subject. Readings from `northwind.conf` no longer carry a
-location (ADR 0004; see the config's header), so that selector now finds only
-the access half.
-
-What the two apps still share is `thing`, and the inventory. The access config
-in the access-control repo has not changed and still tags `location` from
-`acc.{location}.…`, so its events keep working with a bare selector. To put the
-two side by side by where things are *now*, join through `stone_thing_info` as
-in [Where things are](#where-things-are).
+Allow rate, as a single stat.
 
 ## Fleet
 
@@ -173,32 +108,21 @@ in [Where things are](#where-things-are).
 count by (version) (thing_uptime)
 ```
 
-Firmware spread. Reads `{} 6`, `{version="0.4.0"} 2`, `{version="1.9.0"} 1` —
-the empty group is the probes and door sensors, whose heartbeat payloads carry no
-version. That is honest rather than tidy: a device that does not report its
-firmware should not be counted as running any particular one.
+Firmware spread. The empty group is the probes and door sensors, whose
+heartbeats carry no version.
 
 ---
 
 ## Where things are
 
-**Not yet run against a live estate.** The inventory feed that produces these
-series ([../inventory/README.md](../inventory/README.md)) was run end to end on
-the bus, but Telegraf and VictoriaMetrics were not part of that run. Until they
-are, treat everything in this section as the intended query, not a measured one.
-Two things in particular need confirming: that MetricsQL accepts `@ end()` in
-this position, and that the series land as `stone_thing_info` and
-`stone_location_info`.
+**Not yet run against a live estate**: the inventory feed was run on the bus,
+but not through Telegraf and VictoriaMetrics. Treat these as intended queries.
+How the join works, and its limits:
+[Observability §5](https://github.com/stone-age-io/platform-docs/blob/main/docs/observability.md).
 
-Readings carry `thing` and nothing about place. `stone_thing_info` carries the
-rest, one series per Thing, value `1`, refreshed every minute:
-
-```
-stone_thing_info{thing="TP-003", name="Temperature Probe 003", thing_type="temp-probe",
-                 location="KC-DC1-CH1", location_path="/KC-DC1/KC-DC1-CH1/"} 1
-```
-
-Join on `(org, thing)`, because a code is unique only inside its organization:
+Readings carry `thing` only. `stone_thing_info` carries the rest, one series per
+Thing, refreshed every minute. Join on `(org, thing)`, since a code is unique
+only inside its organization:
 
 ```
 avg by (location) (
@@ -208,15 +132,7 @@ avg by (location) (
 )
 ```
 
-`@ end()` reads the inventory once, at the end of the range, and applies it to
-every reading in the range. A probe moved on Tuesday shows all week under where
-it is now; correct a wrong location in the console and a minute later every past
-reading follows. That is the default on purpose. ADR 0004, "Why not attribute
-readings to where they were", has the reason.
-
-**Everything under one place.** A path holds codes from the root down, with `/`
-at both ends, so a regex on it selects a whole subtree. PromQL regexes are
-anchored, so the pattern needs `.*` at each end:
+Everything under one place, by path:
 
 ```
 thing_celsius
@@ -224,32 +140,22 @@ thing_celsius
     (stone_thing_info{location_path=~".*/KC-DC1/.*"} @ end())
 ```
 
-**One line per location inside it:** the same, wrapped in `avg by (location)`.
-
-**Sites side by side.** A Grafana variable from the location series, and a
-repeated panel filtering by it:
+Sites side by side, as a Grafana variable for a repeated panel:
 
 ```
 label_values(stone_location_info{location_type="warehouse"}, location)
 ```
 
-Comparing ancestor levels in one query, every site as a series in a single
-panel, would need `label_replace` with a depth-fixed regex. It is not shipped.
-The repeated panel does the same job and reads plainly.
-
-**For a few minutes after a move, a panel ending now can error.** Until the old
-info series goes stale, two series match the moved Thing, and `group_left`
-refuses the join with a duplicate-series error. It clears without anyone doing
-anything. A range that ends earlier is unaffected.
+The access config still tags `location` from its subject, so its events work
+with a bare selector; to put them beside readings by current place, join
+through `stone_thing_info` as above.
 
 ---
 
 ## Metric reference
 
-Everything from `northwind.conf`'s readings input lands as measurement `thing`,
-and everything from the access config as `access`. VictoriaMetrics names each
-series `<measurement>_<field>`, so the field name is the metric name's second
-half.
+Readings land as measurement `thing` and access events as `access`, so each
+series is `<measurement>_<field>`.
 
 | Metric | What it is | Labels |
 |---|---|---|
@@ -269,147 +175,35 @@ half.
 | `access_count` | constant 1 — one sample per access event | `location` `thing` `thing_type` `event_kind` `allow` `reason` `source` `type` `point` |
 
 `org` is on everything. `event_kind` is `tap`, `alarm`, `state` or `heartbeat`.
-`thing_type` is the portal type, or the literal `ctrl` for a controller — in
-which case `thing` is the controller code.
+`thing_type` is the portal type, or `ctrl` for a controller. Readings carry no
+`location`: place comes from `stone_thing_info`, where it is current.
 
-**No `location` on readings, and no `app_kind`.** Both came from the subject's
-second slot, which is a place on a device and an app subtree token on an
-application. A place tagged at ingestion is fixed forever, and a moved Thing's
-history would stay where it was. Both now come from `stone_thing_info`, where
-they are current. `thing_lines` still carries `site`, because the WMS puts it in
-the payload: it is the shipment's own data, not where the connector sits.
-
----
-
-## Extending it — what happens when you add a message type
-
-**Fields are automatic. Subjects are not.** That asymmetry is the whole answer,
-and it is deliberate on both halves.
-
-### Fields: every number, no config
-
-Feed the parser a payload with one of everything and this is what comes out:
-
-```json
-{"ts":"…","celsius":-18.2,"setpoint_c":-18.0,"probe":"TP-011","new_metric":42.5,
- "new_label":"alpha","enabled":true,"door_count":7,
- "nested":{"depth":3,"name":"x"},"arr":[1,2,3]}
-```
-
-```
-thing arr_0=1,arr_1=2,arr_2=3,celsius=-18.2,door_count=7,nested_depth=3,new_metric=42.5,setpoint_c=-18
-```
-
-- **Every JSON number becomes a field**, named after its key. Add `new_metric` to
-  a payload a subject below already matches and `thing_new_metric` appears in
-  VictoriaMetrics with no edit to anything.
-- **Strings and booleans are dropped** unless named in `tag_keys`. `probe`,
-  `new_label` and `enabled` vanished without a word.
-- **Nested objects flatten** with `_`: `nested.depth` → `nested_depth`.
-- **Arrays become indexed fields**: `arr_0`, `arr_1`, `arr_2`. A variable-length
-  array therefore produces a growing set of metric names — avoid putting one in a
-  payload you intend to measure.
-
-The string/number asymmetry is a **safety feature, not a limitation**. A number
-is a value: ingesting one adds a series. A string is a label: ingesting one
-*multiplies* series, and a single unbounded string field — an order number, a
-trace id, a cardholder — is a cardinality bomb that is painful to undo after the
-fact. Numbers opt out, strings opt in. That is the right default and it is the
-same rule the tag lists in the configs are already following.
-
-### Subjects: one line per new operation, on purpose
-
-A new **thing of an existing type** needs nothing: `telemetry.*.*.temperature`
-already covers an eleventh probe. A new **operation** — a new subject suffix —
-is not ingested at all, because nothing subscribes to it. Nothing warns you
-either; the series simply never appears.
-
-The tempting fix is to widen the patterns to `telemetry.*.*.*` and be done. Do
-not, and the reason is concrete: `asset.*.*.*` also matches
-`asset.TRL-1180.REEFER-1180.setpoint`, a *subscribe*-side subject with no `ts`
-field, and every message on it then logs
-
-```
-E! Error in plugin: could not parse: 'json_time_key' could not be found
-```
-
-one line per message, forever. It also matches `.diag` **requests**, whose body
-is whatever the requester sent — frequently empty. Widening trades one curation
-decision for permanent log spam and junk series.
-
-The real reason the list is written out longhand is that **it is an editorial
-decision, not a mechanical one.** This config deliberately ingests 32 of the 44
-subjects the rules file publishes and skips the other 12 — setpoint echoes
-because an echo is an assertion rather than a measurement, `.diag` because
-request/reply has no feed, `$KV.twin.>` because that state is already durable
-with history, `.render` because it is a screen's contents. No wildcard can
-express *"this is a measurement"*.
-
-### If you want it generated
-
-The platform already holds the answer. Thing types carry a `subject_prefix`,
-operations carry a `subject_suffix` **and a `capability`** — `publish`,
-`subscribe`, `request` or `reply` — and the console composes exactly these
-strings on the Thing Type screen. So the `subjects` array is derivable: every
-`{subject_prefix}.{subject_suffix}` whose capability is `publish`, with the
-location and thing slots wildcarded.
-
-One caveat keeps the editorial point alive: `publish_setpoint_echo` is
-`capability: "publish"` and is excluded here anyway. Capability gets you most of
-the list; measurement-versus-assertion is still a human call. A generator should
-print the candidate list for someone to strike lines from, not write the file
-unattended.
-
-### Checklist
+## Adding a message type
 
 | Change | What you do |
 |---|---|
 | New numeric field on a subject already matched | nothing — it appears as `thing_<field>` |
 | New string field you want to group by | add it to `tag_keys`, after checking it is bounded |
 | New string field you do not add | nothing appears, and nothing warns you |
-| New subject suffix / new operation | add one line to `subjects` |
+| New subject suffix (a new operation) | add one line to `subjects` |
 | New thing of an existing type | nothing |
 
-Row three is the operational risk worth naming: the failure mode is **silence**,
-not an error. The cheapest check after adding a type is
+The subject list is written out by hand on purpose: it ingests measurements and
+skips echoes, `.diag` requests, `$KV.twin.>` and screen contents, which no
+wildcard can tell apart. A wider pattern also matches subjects with no `ts`
+field and logs a parse error per message. After adding a type, check the field
+arrived:
 
 ```bash
 curl -s localhost:8428/api/v1/label/__name__/values
 ```
 
-and confirming the field you expected is in the list.
-
----
-
 ## Things that will look broken and are not
 
-**`thing_duration` is empty most of the day.** The dock door rules are gated
-`5-21` in `America/Chicago`, so dwell times appear during warehouse shift and
-nowhere else. Same for `event_kind="state"`, which needs a posture change — the
-nightly gate lockdown fires it at 20:00.
-
-**Instant queries return nothing for the first half-minute.** VictoriaMetrics
-evaluates an instant query at `now - 30s` by default, so until there is more than
-that much history the evaluation point predates all the data. Wait, or use a
-range.
-
-**Zones roll up to their site through the path, not a regex.** Telemetry
-probes sit in zones (`KC-DC1-FZ1`) and door sensors at site level (`KC-DC1`),
-because that is where each thing actually sits in the inventory. This section
-used to roll zones up with a `label_replace` over the location code, which only
-worked because the demo's zone codes happen to start with their site's. The
-path makes it structural: `location_path=~".*/KC-DC1/.*"` is everything at the
-site and in every zone under it, whatever the codes look like. See
-[Where things are](#where-things-are).
-
-## Do not build a prediction panel on this data
-
-`predict_linear(thing_percent[1h], 86400*30)` will render, look impressive, and
-mean nothing. The generator emits **bounded noise, not shapes** — batteries here
-jitter across a couple of tenths of ADC noise, they do not drain, and the rules
-file says so where it sets the range. Every `random` band in
-`demo/rules/northwind/telemetry.yaml` is a claim about physics, not a trend.
-
-Trend and prediction queries are legitimate against real devices. Against this
-seed they fabricate a slope out of noise, which is the one way a demo can lie
-about the product rather than about the data.
+- **`thing_duration` is empty most of the day.** The dock door rules run
+  `5-21` in `America/Chicago`. `event_kind="state"` needs a posture change; the
+  nightly gate lockdown fires one at 20:00.
+- **Instant queries return nothing for the first half-minute**, because
+  VictoriaMetrics evaluates them at `now - 30s`.
+- **Do not build a prediction panel.** The generator emits bounded noise, not
+  trends, so `predict_linear` fabricates a slope.
