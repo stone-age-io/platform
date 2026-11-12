@@ -1,4 +1,4 @@
-import type { ButtonPadCell, ThresholdRule,MapMarker, StatusMapping, TableColumn, DynamicMarkerPopupField, ScannerRule, ChartType, ChartSeries, FloorPlanTypeBinding } from './dashboard'
+import type { ButtonPadCell, ThresholdRule,MapMarker, SwitchWidgetConfig, SliderWidgetConfig, StatusMapping, TableColumn, DynamicMarkerPopupField, ScannerRule, ChartType, ChartSeries, FloorPlanTypeBinding } from './dashboard'
 
 export interface WidgetFormState {
   // Common
@@ -39,26 +39,11 @@ export interface WidgetFormState {
   chartYMin: string           // '' = fitted to the data
   chartYMax: string
 
-  // Switch Widget
-  switchMode: 'kv' | 'core'
-  switchDefaultState: 'on' | 'off'
-  switchStateSubject: string
-  switchOnPayload: string
-  switchOffPayload: string
-  switchLabelOn: string
-  switchLabelOff: string
-  switchConfirm: boolean
-  
-  // Slider Widget
-  sliderMode: 'kv' | 'core'
-  sliderStateSubject: string
-  sliderValueTemplate: string
-  sliderMin: number
-  sliderMax: number
-  sliderStep: number
-  sliderDefault: number
-  sliderUnit: string
-  sliderConfirm: boolean
+  // Switch and slider: the config object itself, edited in place by
+  // SwitchFields and SliderFields. No flat copy of its fields, and none of the
+  // common subject or KV fields above are used for these two.
+  switchConfig: SwitchWidgetConfig
+  sliderConfig: SliderWidgetConfig
   
   // Stat Widget
   statFormat: string
@@ -185,23 +170,8 @@ export function createEmptyFormState(): WidgetFormState {
     chartThresholds: [],
     chartYMin: '',
     chartYMax: '',
-    switchMode: 'kv',
-    switchDefaultState: 'off',
-    switchStateSubject: '',
-    switchOnPayload: '{"state": "on"}',
-    switchOffPayload: '{"state": "off"}',
-    switchLabelOn: 'ON',
-    switchLabelOff: 'OFF',
-    switchConfirm: false,
-    sliderMode: 'core',
-    sliderStateSubject: '',
-    sliderValueTemplate: '{value}',
-    sliderMin: 0,
-    sliderMax: 100,
-    sliderStep: 1,
-    sliderDefault: 50,
-    sliderUnit: '',
-    sliderConfirm: false,
+    switchConfig: { mode: 'kv', onPayload: { state: 'on' }, offPayload: { state: 'off' } },
+    sliderConfig: { mode: 'core', min: 0, max: 100, step: 1, defaultValue: 50 },
     statFormat: '',
     statUnit: '',
     statDecimals: '',

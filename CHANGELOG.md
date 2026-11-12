@@ -22,6 +22,14 @@ and this file starts where the versioned releases do.
   key or payload held a literal `{name}` matching a dashboard variable now has
   it filled in.
 - **The slider's value template fills every `{value}`**, not only the first.
+- **A switch or slider row on a map or floor-plan marker is configured with the
+  same form as the widget**, and saved in the same shape. A switch row gains a
+  default state for core mode, and honours a confirmation message if its config
+  has one. No saved dashboard changes.
+- **The switch widget no longer refuses a payload that is not JSON.** Text
+  that does not parse is sent as typed, as a marker's switch row always did, so
+  a bare `ON` works. Text that starts with `{` or `[` and does not parse shows a
+  warning under the box, since a missing quote is the likely cause.
 
 ### Fixed
 

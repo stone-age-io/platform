@@ -60,10 +60,8 @@ function optionalNumber(text: string): number | undefined {
 function hydrateSubject(widget: WidgetConfig, state: WidgetFormState): void {
   if (widget.type === 'button') {
     state.subject = widget.buttonConfig?.publishSubject || ''
-  } else if (widget.type === 'switch') {
-    state.subject = widget.switchConfig?.publishSubject || ''
-  } else if (widget.type === 'slider') {
-    state.subject = widget.sliderConfig?.publishSubject || ''
+  } else if (widget.type === 'switch' || widget.type === 'slider') {
+    // Their subjects are in form.switchConfig and form.sliderConfig.
   } else {
     state.subject = widget.dataSource.subject || ''
     if (widget.dataSource.subjects && widget.dataSource.subjects.length > 0) {
@@ -76,13 +74,7 @@ function hydrateSubject(widget: WidgetConfig, state: WidgetFormState): void {
 
 /** Widgets store their KV bucket and key in different places. */
 function hydrateKvFields(widget: WidgetConfig, state: WidgetFormState): void {
-  if (widget.type === 'switch' && widget.switchConfig?.mode === 'kv') {
-    state.kvBucket = widget.switchConfig.kvBucket || ''
-    state.kvKey = widget.switchConfig.kvKey || ''
-  } else if (widget.type === 'slider' && widget.sliderConfig?.mode === 'kv') {
-    state.kvBucket = widget.sliderConfig.kvBucket || ''
-    state.kvKey = widget.sliderConfig.kvKey || ''
-  } else if (widget.type === 'kv') {
+  if (widget.type === 'kv') {
     state.kvBucket = widget.dataSource.kvBucket || ''
     state.kvKey = widget.dataSource.kvKey || ''
   } else if ((widget.type === 'status' || widget.type === 'markdown') && widget.dataSource.type === 'kv') {
@@ -152,6 +144,40 @@ function needsSubscriptionValidation(widgetType: WidgetType, form: WidgetFormSta
   if (widgetType === 'markdown') return true
   if (widgetType === 'status' && form.dataSourceType === 'subscription') return true
   return false
+}
+
+/** What a switch and a slider share: KV mode, or a pair of subjects. */
+interface ControlSource {
+  mode: 'kv' | 'core'
+  kvBucket?: string
+  kvKey?: string
+  publishSubject?: string
+  stateSubject?: string
+}
+
+function validateControlSource(c: ControlSource, errors: Record<string, string>, v: Validator): void {
+  if (c.mode === 'kv') {
+    const b = v.validateKvBucket(c.kvBucket || '')
+    if (!b.valid) errors.kvBucket = b.error!
+    const k = v.validateKvKey(c.kvKey || '')
+    if (!k.valid) errors.kvKey = k.error!
+  } else {
+    const r = v.validateSubject(c.publishSubject || '')
+    if (!r.valid) errors.publishSubject = r.error!
+  }
+}
+
+/** Trimmed, and only the fields the chosen mode uses, so a stale subject is not saved under KV mode. */
+function controlSource(c: ControlSource): ControlSource {
+  return c.mode === 'kv'
+    ? { mode: 'kv', kvBucket: c.kvBucket?.trim() || '', kvKey: c.kvKey?.trim() || '', publishSubject: '', stateSubject: undefined }
+    : {
+      mode: 'core',
+      kvBucket: undefined,
+      kvKey: undefined,
+      publishSubject: c.publishSubject?.trim() || '',
+      stateSubject: c.stateSubject?.trim() || undefined,
+    }
 }
 
 // ============================================================================
@@ -449,110 +475,59 @@ const typeHandlers: WidgetTypeHandlers = {
   },
 
   // --- switch ---
+  // The form holds the config object and SwitchFields edits it, so there is
+  // nothing to hydrate field by field.
   switch: {
     hydrate(widget, state) {
-      state.switchMode = widget.switchConfig?.mode || 'kv'
-      state.switchDefaultState = widget.switchConfig?.defaultState || 'off'
-      state.switchStateSubject = widget.switchConfig?.stateSubject || ''
-      // `??`, not `||`: false, 0, "" and null are valid payloads.
-      state.switchOnPayload = JSON.stringify(widget.switchConfig?.onPayload ?? { state: 'on' })
-      state.switchOffPayload = JSON.stringify(widget.switchConfig?.offPayload ?? { state: 'off' })
-      state.switchLabelOn = widget.switchConfig?.labels?.on || 'ON'
-      state.switchLabelOff = widget.switchConfig?.labels?.off || 'OFF'
-      state.switchConfirm = widget.switchConfig?.confirmOnChange || false
+      state.switchConfig = { ...state.switchConfig, ...widget.switchConfig }
     },
     validate(form, errors, v) {
-      if (form.switchMode === 'kv') {
-        const b = v.validateKvBucket(form.kvBucket)
-        if (!b.valid) errors.kvBucket = b.error!
-        const k = v.validateKvKey(form.kvKey)
-        if (!k.valid) errors.kvKey = k.error!
-      } else {
-        const r = v.validateSubject(form.subject)
-        if (!r.valid) errors.subject = r.error!
-      }
-      // buildUpdates JSON.parses both payloads, so they must parse. Stricter than
-      // v.validateJson on purpose, which accepts empty and `{{`-templated text.
-      for (const [field, text] of [['switchOnPayload', form.switchOnPayload], ['switchOffPayload', form.switchOffPayload]] as const) {
-        try { JSON.parse(text) } catch {
-          errors[field] = 'Must be valid JSON, e.g. {"state": "on"}, "on", true or 1'
-        }
-      }
+      validateControlSource(form.switchConfig, errors, v)
     },
     buildUpdates(form) {
-      const config: any = {
-        mode: form.switchMode,
-        onPayload: JSON.parse(form.switchOnPayload),
-        offPayload: JSON.parse(form.switchOffPayload),
-        labels: {
-          on: form.switchLabelOn.trim(),
-          off: form.switchLabelOff.trim(),
+      const c = form.switchConfig
+      return {
+        switchConfig: {
+          ...controlSource(c),
+          // Core mode has no stored state to read, so it needs a default.
+          defaultState: c.mode === 'core' ? c.defaultState || 'off' : undefined,
+          onPayload: c.onPayload,
+          offPayload: c.offPayload,
+          labels: { on: c.labels?.on?.trim() || 'ON', off: c.labels?.off?.trim() || 'OFF' },
+          confirmOnChange: !!c.confirmOnChange,
+          confirmMessage: c.confirmMessage,
         },
-        confirmOnChange: form.switchConfirm,
       }
-      if (form.switchMode === 'kv') {
-        config.kvBucket = form.kvBucket.trim()
-        config.kvKey = form.kvKey.trim()
-        config.publishSubject = ''
-      } else {
-        config.publishSubject = form.subject.trim()
-        config.defaultState = form.switchDefaultState
-        config.stateSubject = form.switchStateSubject.trim() || undefined
-      }
-      return { switchConfig: config }
     },
   },
 
   // --- slider ---
   slider: {
     hydrate(widget, state) {
-      state.sliderMode = widget.sliderConfig?.mode || 'core'
-      state.sliderStateSubject = widget.sliderConfig?.stateSubject || ''
-      state.sliderValueTemplate = widget.sliderConfig?.valueTemplate || '{value}'
-      state.sliderMin = widget.sliderConfig?.min ?? 0
-      state.sliderMax = widget.sliderConfig?.max ?? 100
-      state.sliderStep = widget.sliderConfig?.step || 1
-      state.sliderDefault = widget.sliderConfig?.defaultValue ?? 50
-      state.sliderUnit = widget.sliderConfig?.unit || ''
-      state.sliderConfirm = widget.sliderConfig?.confirmOnChange || false
+      // The widget keeps its JSONPath on the widget, a marker row in the config.
+      // The form edits it in the config; buildUpdates puts it back.
+      state.sliderConfig = { ...state.sliderConfig, ...widget.sliderConfig, jsonPath: widget.jsonPath || '' }
     },
     validate(form, errors, v) {
-      if (form.sliderMode === 'kv') {
-        const b = v.validateKvBucket(form.kvBucket)
-        if (!b.valid) errors.kvBucket = b.error!
-        const k = v.validateKvKey(form.kvKey)
-        if (!k.valid) errors.kvKey = k.error!
-      } else {
-        const r = v.validateSubject(form.subject)
-        if (!r.valid) errors.subject = r.error!
-      }
-      if (form.jsonPath) {
-        const j = v.validateJsonPath(form.jsonPath)
+      validateControlSource(form.sliderConfig, errors, v)
+      if (form.sliderConfig.jsonPath) {
+        const j = v.validateJsonPath(form.sliderConfig.jsonPath)
         if (!j.valid) errors.jsonPath = j.error!
       }
     },
     buildUpdates(form) {
-      const config: any = {
-        mode: form.sliderMode,
-        valueTemplate: form.sliderValueTemplate.trim() || '{value}',
-        min: form.sliderMin,
-        max: form.sliderMax,
-        step: form.sliderStep,
-        defaultValue: form.sliderDefault,
-        unit: form.sliderUnit.trim(),
-        confirmOnChange: form.sliderConfirm,
-      }
-      if (form.sliderMode === 'kv') {
-        config.kvBucket = form.kvBucket.trim()
-        config.kvKey = form.kvKey.trim()
-        config.publishSubject = ''
-      } else {
-        config.publishSubject = form.subject.trim()
-        config.stateSubject = form.sliderStateSubject.trim() || undefined
-      }
+      const { jsonPath, ...c } = form.sliderConfig
       return {
-        jsonPath: form.jsonPath.trim() || undefined,
-        sliderConfig: config,
+        jsonPath: jsonPath?.trim() || undefined,
+        sliderConfig: {
+          ...c,
+          ...controlSource(c),
+          // A cleared number field reads as 0, and a step of 0 never moves.
+          step: c.step > 0 ? c.step : 1,
+          valueTemplate: c.valueTemplate?.trim() || undefined,
+          unit: c.unit?.trim() || '',
+          confirmOnChange: !!c.confirmOnChange,
+        },
       }
     },
   },

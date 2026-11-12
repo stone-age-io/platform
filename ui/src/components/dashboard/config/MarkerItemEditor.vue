@@ -90,131 +90,13 @@
         </div>
       </template>
       
-      <template v-if="item.type === 'switch'">
-        <div class="form-row">
-          <label>Mode</label>
-          <select 
-            :value="switchConfig.mode" 
-            @change="updateSwitchField('mode', ($event.target as HTMLSelectElement).value)"
-            class="form-input"
-          >
-            <option value="kv">KV (Stateful)</option>
-            <option value="core">CORE (Pub/Sub)</option>
-          </select>
-        </div>
-        
-        <template v-if="switchConfig.mode === 'kv'">
-          <div class="form-row">
-            <label>KV Bucket</label>
-            <input 
-              :value="switchConfig.kvBucket"
-              @input="updateSwitchField('kvBucket', ($event.target as HTMLInputElement).value)"
-              type="text" 
-              class="form-input"
-              :class="{ 'has-error': errors?.kvBucket }"
-              placeholder="device-states"
-            />
-            <div v-if="errors?.kvBucket" class="error-text">{{ errors.kvBucket }}</div>
-          </div>
-          
-          <div class="form-row">
-            <label>KV Key</label>
-            <input 
-              :value="switchConfig.kvKey"
-              @input="updateSwitchField('kvKey', ($event.target as HTMLInputElement).value)"
-              type="text" 
-              class="form-input"
-              :class="{ 'has-error': errors?.kvKey }"
-              placeholder="device.switch"
-            />
-            <div v-if="errors?.kvKey" class="error-text">{{ errors.kvKey }}</div>
-          </div>
-        </template>
-        
-        <template v-if="switchConfig.mode === 'core'">
-          <div class="form-row">
-            <label>Publish Subject</label>
-            <input 
-              :value="switchConfig.publishSubject"
-              @input="updateSwitchField('publishSubject', ($event.target as HTMLInputElement).value)"
-              type="text" 
-              class="form-input"
-              :class="{ 'has-error': errors?.publishSubject }"
-              placeholder="device.control"
-            />
-            <div v-if="errors?.publishSubject" class="error-text">{{ errors.publishSubject }}</div>
-          </div>
-          
-          <div class="form-row">
-            <label>State Subject (optional)</label>
-            <input 
-              :value="switchConfig.stateSubject"
-              @input="updateSwitchField('stateSubject', ($event.target as HTMLInputElement).value)"
-              type="text" 
-              class="form-input"
-              placeholder="device.state"
-            />
-            <div class="help-text">Subscribe for state updates. Defaults to publish subject.</div>
-          </div>
-        </template>
-        
-        <div class="form-row-pair">
-          <div class="form-row">
-            <label>ON Payload</label>
-            <input 
-              :value="onPayloadStr"
-              @change="updatePayload('on', ($event.target as HTMLInputElement).value)"
-              type="text" 
-              class="form-input"
-              placeholder='{"state":"on"}'
-            />
-          </div>
-          <div class="form-row">
-            <label>OFF Payload</label>
-            <input 
-              :value="offPayloadStr"
-              @change="updatePayload('off', ($event.target as HTMLInputElement).value)"
-              type="text" 
-              class="form-input"
-              placeholder='{"state":"off"}'
-            />
-          </div>
-        </div>
-        
-        <div class="form-row-pair">
-          <div class="form-row">
-            <label>ON Label</label>
-            <input 
-              :value="switchLabels.on"
-              @input="updateSwitchLabel('on', ($event.target as HTMLInputElement).value)"
-              type="text" 
-              class="form-input"
-              placeholder="ON"
-            />
-          </div>
-          <div class="form-row">
-            <label>OFF Label</label>
-            <input 
-              :value="switchLabels.off"
-              @input="updateSwitchLabel('off', ($event.target as HTMLInputElement).value)"
-              type="text" 
-              class="form-input"
-              placeholder="OFF"
-            />
-          </div>
-        </div>
-        
-        <div class="form-row">
-          <label class="checkbox-label">
-            <input 
-              type="checkbox" 
-              :checked="switchConfig.confirmOnChange"
-              @change="updateSwitchField('confirmOnChange', ($event.target as HTMLInputElement).checked)"
-            />
-            <span>Require confirmation before toggle</span>
-          </label>
-        </div>
-      </template>
+      <SwitchFields
+        v-if="item.type === 'switch'"
+        compact
+        :model-value="switchConfig"
+        :errors="errors"
+        @update:model-value="emitUpdate({ switchConfig: $event })"
+      />
 
       <template v-if="item.type === 'text'">
         <div class="form-row">
@@ -330,149 +212,14 @@
           />
         </div>
       </template>
-      <template v-if="item.type === 'slider'">
-        <div class="form-row">
-          <label>Mode</label>
-          <select
-            :value="sliderConfig.mode"
-            @change="updateSliderField('mode', ($event.target as HTMLSelectElement).value)"
-            class="form-input"
-          >
-            <option value="kv">KV (Stateful)</option>
-            <option value="core">CORE (Pub/Sub)</option>
-          </select>
-        </div>
-
-        <template v-if="sliderConfig.mode === 'kv'">
-        <div class="form-row">
-          <label>KV Bucket</label>
-          <input
-            :value="sliderConfig.kvBucket"
-            @input="updateSliderField('kvBucket', ($event.target as HTMLInputElement).value)"
-            type="text"
-            class="form-input"
-            placeholder="twin_desired"
-          />
-        </div>
-        <div class="form-row">
-          <label>KV Key</label>
-          <input
-            :value="sliderConfig.kvKey"
-            @input="updateSliderField('kvKey', ($event.target as HTMLInputElement).value)"
-            type="text"
-            class="form-input"
-            :placeholder="perThing ? 'thing.{thing}.setpoint' : 'device.setpoint'"
-          />
-        </div>
-        </template>
-
-        <template v-else>
-        <div class="form-row">
-          <label>Publish Subject</label>
-          <input
-            :value="sliderConfig.publishSubject"
-            @input="updateSliderField('publishSubject', ($event.target as HTMLInputElement).value)"
-            type="text"
-            class="form-input"
-            :placeholder="perThing ? 'cmd.{thing}.setpoint' : 'device.set_setpoint'"
-          />
-        </div>
-        <div class="form-row">
-          <label>State Subject</label>
-          <input
-            :value="sliderConfig.stateSubject"
-            @input="updateSliderField('stateSubject', ($event.target as HTMLInputElement).value)"
-            type="text"
-            class="form-input"
-            placeholder="Defaults to the publish subject"
-          />
-        </div>
-        </template>
-
-        <div class="num-grid">
-          <div class="num-col">
-            <label>Min</label>
-            <input
-              :value="sliderConfig.min"
-              @input="updateSliderField('min', Number(($event.target as HTMLInputElement).value))"
-              type="number"
-              class="form-input"
-            />
-          </div>
-          <div class="num-col">
-            <label>Max</label>
-            <input
-              :value="sliderConfig.max"
-              @input="updateSliderField('max', Number(($event.target as HTMLInputElement).value))"
-              type="number"
-              class="form-input"
-            />
-          </div>
-          <div class="num-col">
-            <label>Step</label>
-            <input
-              :value="sliderConfig.step"
-              @input="updateSliderField('step', Number(($event.target as HTMLInputElement).value))"
-              type="number"
-              step="any"
-              class="form-input"
-            />
-          </div>
-          <div class="num-col">
-            <label>Default</label>
-            <input
-              :value="sliderConfig.defaultValue"
-              @input="updateSliderField('defaultValue', Number(($event.target as HTMLInputElement).value))"
-              type="number"
-              step="any"
-              class="form-input"
-            />
-          </div>
-        </div>
-
-        <div class="form-row">
-          <label>Unit</label>
-          <input
-            :value="sliderConfig.unit"
-            @input="updateSliderField('unit', ($event.target as HTMLInputElement).value)"
-            type="text"
-            class="form-input"
-            placeholder="C"
-          />
-        </div>
-        <div class="form-row">
-          <label>Value Template (optional)</label>
-          <input
-            :value="sliderConfig.valueTemplate"
-            @input="updateSliderField('valueTemplate', ($event.target as HTMLInputElement).value)"
-            type="text"
-            class="form-input"
-            placeholder="{value}"
-          />
-          <div class="help-text">Empty publishes the bare number. <code v-pre>{value}</code> is replaced.</div>
-        </div>
-        <div class="form-row">
-          <label>JSONPath (optional)</label>
-          <input
-            :value="sliderConfig.jsonPath"
-            @input="updateSliderField('jsonPath', ($event.target as HTMLInputElement).value)"
-            type="text"
-            class="form-input"
-            placeholder="$.setpoint"
-          />
-        </div>
-
-        <div class="form-row">
-          <label class="checkbox-label">
-            <input
-              type="checkbox"
-              :checked="!!sliderConfig.confirmOnChange"
-              @change="updateSliderField('confirmOnChange', ($event.target as HTMLInputElement).checked)"
-            />
-            <span>Ask before writing</span>
-          </label>
-        </div>
-      </template>
+      <SliderFields
+        v-if="item.type === 'slider'"
+        compact
+        :per-thing="perThing"
+        :model-value="sliderConfig"
+        :errors="errors"
+        @update:model-value="emitUpdate({ sliderConfig: $event })"
+      />
 
       <template v-if="item.type === 'gauge'">
         <div class="form-row">
@@ -581,9 +328,11 @@
 import type { Component } from 'vue'
 import { CircleHelp, Database, Gauge, Send, SlidersHorizontal, ToggleRight, Type } from '@lucide/vue'
 import { computed } from 'vue'
-import type { MapMarkerItem, MapItemSwitchConfig, MapItemTextConfig, MapItemKvConfig, MapItemSliderConfig, MapItemGaugeConfig, MapItemType } from '@/types/dashboard'
+import type { MapMarkerItem, SwitchWidgetConfig, MapItemTextConfig, MapItemKvConfig, SliderWidgetConfig, MapItemGaugeConfig, MapItemType } from '@/types/dashboard'
 import { createDefaultItem } from '@/types/dashboard'
 import GaugeZoneEditor from '@/components/dashboard/GaugeZoneEditor.vue'
+import SwitchFields from './SwitchFields.vue'
+import SliderFields from './SliderFields.vue'
 
 const props = defineProps<{
   item: MapMarkerItem
@@ -613,7 +362,7 @@ function getItemIcon(type: MapItemType): Component {
   }
 }
 
-const switchConfig = computed<MapItemSwitchConfig>(() => {
+const switchConfig = computed<SwitchWidgetConfig>(() => {
   return props.item.switchConfig || {
     mode: 'kv',
     kvBucket: '',
@@ -646,32 +395,11 @@ const kvConfig = computed<MapItemKvConfig>(() => {
 // The fallbacks mirror createDefaultItem, so an item with no config object (a
 // dashboard exported before these types existed) edits as a blank one instead
 // of throwing.
-const sliderConfig = computed<MapItemSliderConfig>(() =>
+const sliderConfig = computed<SliderWidgetConfig>(() =>
   props.item.sliderConfig || { mode: 'kv', min: 0, max: 100, step: 1, defaultValue: 0 })
 
 const gaugeConfig = computed<MapItemGaugeConfig>(() =>
   props.item.gaugeConfig || { mode: 'kv', min: 0, max: 100 })
-
-const switchLabels = computed(() => {
-  return switchConfig.value.labels || { on: 'ON', off: 'OFF' }
-})
-
-const onPayloadStr = computed(() => {
-  const val = switchConfig.value.onPayload
-  if (typeof val === 'object' && val !== null) {
-    return JSON.stringify(val)
-  }
-  // Anything else as a string, so a string like "{" is not double-encoded.
-  return String(val ?? '')
-})
-
-const offPayloadStr = computed(() => {
-  const val = switchConfig.value.offPayload
-  if (typeof val === 'object' && val !== null) {
-    return JSON.stringify(val)
-  }
-  return String(val ?? '')
-})
 
 function emitUpdate(updates: Partial<MapMarkerItem>) {
   emit('update:item', { ...props.item, ...updates })
@@ -679,11 +407,6 @@ function emitUpdate(updates: Partial<MapMarkerItem>) {
 
 function updateField(field: keyof MapMarkerItem, value: any) {
   emitUpdate({ [field]: value })
-}
-
-function updateSwitchField(field: keyof MapItemSwitchConfig, value: any) {
-  const newSwitchConfig = { ...switchConfig.value, [field]: value }
-  emitUpdate({ switchConfig: newSwitchConfig })
 }
 
 function updateTextField(field: keyof MapItemTextConfig, value: any) {
@@ -696,44 +419,8 @@ function updateKvField(field: keyof MapItemKvConfig, value: any) {
   emitUpdate({ kvConfig: newKvConfig })
 }
 
-function updateSliderField(field: keyof MapItemSliderConfig, value: any) {
-  emitUpdate({ sliderConfig: { ...sliderConfig.value, [field]: value } })
-}
-
 function updateGaugeField(field: keyof MapItemGaugeConfig, value: any) {
   emitUpdate({ gaugeConfig: { ...gaugeConfig.value, [field]: value } })
-}
-
-function updateSwitchLabel(which: 'on' | 'off', value: string) {
-  const newLabels = { ...switchLabels.value, [which]: value }
-  const newSwitchConfig = { ...switchConfig.value, labels: newLabels }
-  emitUpdate({ switchConfig: newSwitchConfig })
-}
-
-function updatePayload(which: 'on' | 'off', value: string) {
-  let parsed: any = value
-  
-  // If it looks like JSON ({ or [), save the parsed object when valid and the
-  // raw string when not.
-  const trimmed = value.trim()
-  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-    try {
-      parsed = JSON.parse(value)
-    } catch {
-      parsed = value
-    }
-  } else {
-    // Try parsing numbers/booleans
-    try {
-      parsed = JSON.parse(value)
-    } catch {
-      parsed = value
-    }
-  }
-  
-  const field = which === 'on' ? 'onPayload' : 'offPayload'
-  const newSwitchConfig = { ...switchConfig.value, [field]: parsed }
-  emitUpdate({ switchConfig: newSwitchConfig })
 }
 
 function handleTypeChange(event: Event) {
@@ -840,12 +527,6 @@ function handleTypeChange(event: Event) {
   color: var(--muted);
 }
 
-.form-row-pair {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
 .form-input,
 .form-textarea {
   width: 100%;
@@ -897,11 +578,5 @@ function handleTypeChange(event: Event) {
   width: 16px;
   height: 16px;
   accent-color: var(--color-primary);
-}
-
-@media (max-width: 500px) {
-  .form-row-pair {
-    grid-template-columns: 1fr;
-  }
 }
 </style>

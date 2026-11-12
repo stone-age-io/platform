@@ -160,13 +160,15 @@ export interface KvWidgetConfig {
   thresholds?: ThresholdRule[]
 }
 
+/** The switch widget, and a switch row on a map or floor-plan marker. */
 export interface SwitchWidgetConfig {
   mode: 'kv' | 'core'
   kvBucket?: string
   kvKey?: string
   defaultState?: 'on' | 'off'
   stateSubject?: string
-  publishSubject: string
+  /** Core mode only. */
+  publishSubject?: string
   onPayload: any
   offPayload: any
   confirmOnChange?: boolean
@@ -177,9 +179,15 @@ export interface SwitchWidgetConfig {
   }
 }
 
+/**
+ * The slider widget, and a setpoint row on a map or floor-plan marker. The row
+ * publishes on release, not per frame, so a drag is one write.
+ */
 export interface SliderWidgetConfig {
   mode: 'core' | 'kv'
-  publishSubject: string
+  /** Core mode only. */
+  publishSubject?: string
+  /** Where the current value is read in core mode. Defaults to the publish subject. */
   stateSubject?: string
   kvBucket?: string
   kvKey?: string
@@ -188,6 +196,7 @@ export interface SliderWidgetConfig {
   step: number
   defaultValue: number
   unit?: string
+  /** `{value}` is replaced. Absent publishes the bare number. */
   valueTemplate?: string
   jsonPath?: string
   confirmOnChange?: boolean
@@ -377,21 +386,6 @@ export interface DynamicMarkerSource {
 // Adding a member is safe; removing one breaks every saved dashboard using it.
 export type MapItemType = 'publish' | 'switch' | 'text' | 'kv' | 'slider' | 'gauge'
 
-export interface MapItemSwitchConfig {
-  mode: 'kv' | 'core'
-  kvBucket?: string
-  kvKey?: string
-  publishSubject?: string
-  stateSubject?: string
-  onPayload: any
-  offPayload: any
-  confirmOnChange?: boolean
-  labels?: {
-    on?: string
-    off?: string
-  }
-}
-
 export interface MapItemTextConfig {
   subject: string
   jsonPath?: string
@@ -402,40 +396,16 @@ export interface MapItemTextConfig {
 }
 
 /**
- * A setpoint row, with the same `mode` split as the switch item. Publishes on
- * release, not per frame, so a drag is one write.
+ * A read-only level row: the gauge widget's scale, plus where to read it. A
+ * widget's source is its `dataSource`; a row has no widget around it, so it
+ * carries its own. Bar only: an arc is unreadable in a 280px panel.
  */
-export interface MapItemSliderConfig {
-  mode: 'kv' | 'core'
-  kvBucket?: string
-  kvKey?: string
-  publishSubject?: string
-  /** Where the current value is read in core mode. Defaults to the publish subject. */
-  stateSubject?: string
-  min: number
-  max: number
-  step: number
-  defaultValue: number
-  unit?: string
-  /** `{value}` is replaced. Absent publishes the bare number. */
-  valueTemplate?: string
-  jsonPath?: string
-  confirmOnChange?: boolean
-  confirmMessage?: string
-}
-
-/** A read-only level row. Bar only: an arc is unreadable in a 280px panel. */
-export interface MapItemGaugeConfig {
+export interface MapItemGaugeConfig extends Omit<GaugeWidgetConfig, 'style'> {
   mode: 'kv' | 'core'
   kvBucket?: string
   kvKey?: string
   subject?: string
   jsonPath?: string
-  min: number
-  max: number
-  unit?: string
-  decimals?: number
-  zones?: { min: number; max: number; color: string }[]
 }
 
 export interface MapItemKvConfig {
@@ -452,10 +422,11 @@ export interface MapMarkerItem {
   payload?: string
   actionType?: 'publish' | 'request'
   timeout?: number
-  switchConfig?: MapItemSwitchConfig
+  // A switch or slider row is configured exactly as the widget is.
+  switchConfig?: SwitchWidgetConfig
   textConfig?: MapItemTextConfig
   kvConfig?: MapItemKvConfig
-  sliderConfig?: MapItemSliderConfig
+  sliderConfig?: SliderWidgetConfig
   gaugeConfig?: MapItemGaugeConfig
 }
 

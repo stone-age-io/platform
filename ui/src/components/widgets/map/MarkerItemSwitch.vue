@@ -62,7 +62,7 @@ const switchConfig = computed(() => {
     stateSubject: resolveTemplate(cfg.stateSubject, vars),
     onPayload: cfg.onPayload,
     offPayload: cfg.offPayload,
-    defaultState: 'off' as const
+    defaultState: cfg.defaultState ?? ('off' as const)
   }
 })
 
@@ -83,7 +83,7 @@ function handleToggle() {
     const action = state.value === 'on' ? 'turn off' : 'turn on'
     requestConfirm(
       'Confirm Toggle',
-      `Are you sure you want to ${action} "${props.item.label}"?`,
+      props.item.switchConfig.confirmMessage || `Are you sure you want to ${action} "${props.item.label}"?`,
       () => toggle(),
       'Confirm'
     )

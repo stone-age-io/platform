@@ -1,0 +1,63 @@
+/* Shared by SwitchFields and SliderFields. The classes come from
+   assets/forms.css; this only tightens them for a row inside a marker. */
+
+.compact .form-group {
+  margin-bottom: 10px;
+}
+
+.compact .form-group label {
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  opacity: 1;
+}
+
+.compact .form-input,
+.compact .form-textarea {
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.compact .form-textarea {
+  min-height: 0;
+}
+
+.compact .help-text,
+.compact .error-text {
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+/* `.form-group label` outranks `.checkbox-label`, so restate the row here. */
+.compact .form-group label.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.compact .checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+}
+
+.compact .pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.compact .range-inputs {
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+@media (max-width: 500px) {
+  .compact .pair {
+    grid-template-columns: 1fr;
+  }
+}

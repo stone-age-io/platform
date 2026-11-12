@@ -40,7 +40,7 @@ import { extractJsonPath } from '@/utils/jsonPath'
 import { fillTemplate } from '@/utils/templates'
 import { resolveTemplate } from '@/utils/variables'
 import { toNumber } from '@/utils/gaugeScale'
-import type { DataSourceConfig, MapItemSliderConfig, MapMarkerItem } from '@/types/dashboard'
+import type { DataSourceConfig, SliderWidgetConfig, MapMarkerItem } from '@/types/dashboard'
 
 /**
  * Marker item: setpoint slider, the write-side counterpart to the switch row for
@@ -68,8 +68,8 @@ const requestConfirm = inject<
 
 // Typed, not inferred: an inferred literal has no optional fields, so every
 // `cfg.value.unit` below would be a type error on the fallback branch.
-const DEFAULTS: MapItemSliderConfig = { mode: 'kv', min: 0, max: 100, step: 1, defaultValue: 0 }
-const cfg = computed<MapItemSliderConfig>(() => props.item.sliderConfig ?? DEFAULTS)
+const DEFAULTS: SliderWidgetConfig = { mode: 'kv', min: 0, max: 100, step: 1, defaultValue: 0 }
+const cfg = computed<SliderWidgetConfig>(() => props.item.sliderConfig ?? DEFAULTS)
 const isKv = computed(() => cfg.value.mode !== 'core')
 
 const vars = computed(() => dashboardStore.currentVariableValues)
