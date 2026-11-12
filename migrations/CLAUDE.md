@@ -58,6 +58,5 @@ touches an API rule, also read `AUTHORIZATION.md` and run
   id — `<type>` + crc32 of the field name — for anything a library also creates,
   and diff a real install before trusting that a re-import migration did what it
   says.** Only field definitions freeze this way; collection rules are applied
-  normally, which is why those two collections' org-scoped rules are live while
-  their field definitions were inert. Changing an id is safe: PocketBase reuses
+  normally. Changing an id is safe: PocketBase reuses
   the existing field object rather than recreating the column.
