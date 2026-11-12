@@ -47,19 +47,10 @@ npm run dev
 ```bash
 ./stone-age init --email admin@example.com --operator-org "816tech"   # password: prompt or STONE_AGE_BOOTSTRAP_PASSWORD
 ```
-`init` (`init.go`) runs four commands in their load-bearing order:
-`superuser upsert`, `migrate up`, `bootstrap`, `nats export`. The last three run
-as child processes of the same binary, with the root flags (`--dir`, `--config`)
-forwarded. It writes the NATS config where `--nats-config` points, and that
-`nats.conf` is its marker: once it exists, `init` does nothing.
-`docker-entrypoint.sh` calls it. The four commands still work by hand, in that
-order. `nats export` cannot run any earlier, because there is no operator in the
-database until `bootstrap` has run.
-`bootstrap` writes `is_operator` / `is_system_org` / `is_operator_org`, which only
-exist after the schema is imported. PocketBase silently drops writes to fields
-that don't exist, so running `bootstrap` first yields a platform with no operator;
-it now refuses to run before the migrations. This is also the only way to grant
-operator status apart from the admin panel — the API cannot.
+`init` runs `superuser upsert`, `migrate up`, `bootstrap` and `nats export`, in that
+order, and does nothing once its `nats.conf` exists. `bootstrap` refuses to run
+before the migrations (it writes fields only the schema creates), and it and the
+admin panel are the only ways to grant operator status.
 
 ### Production Build
 ```bash
@@ -74,11 +65,6 @@ go build -o stone-age .
 ```
 
 The edge agent is a separate repo — [stone-age-io/agent](https://github.com/stone-age-io/agent) — and has its own deployment flow.
-
-### NPM Scripts
-- `npm run dev` - Vite dev server with HMR
-- `npm run build` - TypeScript check + production build to `../pb_public`
-- `npm run preview` - Preview production build
 
 ### Tests
 - `go test -short ./...` - the pass to run while working (~19s). It skips only
@@ -103,7 +89,7 @@ The edge agent is a separate repo — [stone-age-io/agent](https://github.com/st
   `core.App` types that do not match
 - **Cobra** for CLI commands (bootstrap, NATS management)
 - **Viper** for configuration management
-- **Key libraries**: pb-audit, pb-nats, pb-nebula, nats-io/jwt, slackhq/nebula (tenancy was pb-tenancy until it was absorbed into `hooks/`)
+- **Key libraries**: pb-audit, pb-nats, pb-nebula, nats-io/jwt, slackhq/nebula. Tenancy is in-tree in `hooks/`
 
 ### Frontend
 Vue 3, Vite 8, Pinia 4, Vue Router 5, TypeScript 6, Tailwind 3.4 + daisyUI 4.12,
@@ -123,8 +109,12 @@ platform/
 ├── go.mod, go.sum          # Go dependencies
 ├── config.yaml             # Application configuration
 ├── schema.json             # PocketBase collection schema
-├── hooks/                  # Server-side hooks: org provisioning, leaf-config route, thing routes
+├── hooks/                  # Server-side hooks and custom routes
+├── internal/               # health, metrics, natsd (embedded NATS), demoseed, testutil
 ├── migrations/             # Schema migrations (re-import schema.json)
+├── scripts/                # test-authz.sh, check-sort-fields.sh
+├── demo/                   # Demo rules, dashboards, Telegraf and inventory feed
+├── plans/                  # Design notes for work in progress
 ├── ui/                     # Frontend Vue 3 application (tree in ui/CLAUDE.md)
 ├── AUTHORIZATION.md        # Authorization and credential rules, long form
 ├── TESTING.md              # Testing notes, long form
@@ -144,45 +134,19 @@ Located at project root. Key sections:
 - `metrics` - `GET /metrics` on/off and the optional scrape token
 - `branding` - Operator branding overlay directory
 
-**`nats.server_url` and `nats.websocket_urls` are not the same address.** The
-first is the TCP address *this process* dials to publish account claims; the
-second is the WebSocket listener a *browser* dials, on a different port and
-often a different host. Never derive one from the other — a Control Plane
-publishing to `nats://nats:4222` inside a container says nothing about what a
-browser can reach. `websocket_urls` is served to the SPA at runtime by
-`GET /api/client-config` (`hooks/client_config_routes.go`), deliberately not
-baked in at build time: the UI is embedded in the binary, so a build-time
-constant would mean a frontend rebuild per operator — the same problem
-`branding.dir` exists to avoid.
+**`nats.server_url` and `nats.websocket_urls` are not the same address**: the
+first is where this process dials, the second where a browser dials, served at
+runtime by `GET /api/client-config`. Never derive one from the other. The URL
+rules: `ui/CLAUDE.md`.
 
-The console resolves these URLs in three tiers, and a device override never
-merges with the defaults. The reasons, and the other URL rules: `ui/CLAUDE.md`.
-
-### Environment Variables
-Prefix: `STONE_AGE_`
-```bash
-STONE_AGE_NATS_SERVER_URL="nats://localhost:4222"
-STONE_AGE_AUDIT_LOG_TO_CONSOLE=true
-```
-
-### Config Priority (highest to lowest)
-1. Environment variables (`STONE_AGE_*`) - override everything
-2. CLI flag: `--config /path/to/config.yaml`
-3. Current directory: `./config.yaml`
-4. System: `/etc/stone-age/config.yaml`
-5. Hardcoded defaults
+Every key has a `STONE_AGE_*` environment override, which beats `--config`,
+`./config.yaml`, `/etc/stone-age/config.yaml` and the defaults in `main.go`.
 
 ## Code Conventions
 
 The frontend (Vue/TypeScript) conventions are in `ui/CLAUDE.md`.
 
 ### Backend (Go)
-
-**Hooks Pattern**:
-```go
-app.OnBootstrap().BindFunc(func(e *core.BootstrapEvent) error { /* init */ })
-app.OnRecordAfterCreateSuccess("collection").BindFunc(func(e *core.RecordEvent) error { /* provision */ })
-```
 
 **Logging**: Structured with emoji prefixes
 
@@ -254,7 +218,7 @@ reasoning, and the incident that taught it, are in `AUTHORIZATION.md`.
   `auditSnapshotCollections` is an allowlist.
 - **A gateway reads nothing in `nats_*` or `nebula_*`.** Extend
   `GET /api/me/leaf-config` instead of adding a read branch.
-- **An empty NATS allow list grants nothing** (pb-nats v0.3.0 and later). Write
+- **An empty NATS allow list grants nothing.** Write
   full access as an explicit `>`.
 - **An unset NATS limit is -1, and 0 is refused.** In a JWT 0 means none, and a
   credential with 0 subscriptions is disconnected as soon as it connects.
@@ -267,14 +231,6 @@ reasoning, and the incident that taught it, are in `AUTHORIZATION.md`.
 - **Only an owner or admin ever knows a Thing's password.**
 - **Run `./scripts/test-authz.sh` after any rule change.** Pair every "cannot"
   with a "can" on the same record.
-
-PocketBase traps that bite here (`hooks/CLAUDE.md`):
-- A hook that returns without `e.Next()` silently drops every handler bound after it.
-- `Record.Original()` is the state at the last database READ, not before this write.
-- pb-nats trigger fields fire from `app.Save()` only because pb-nats binds them
-  to the MODEL hook.
-- A record request hook's `RequestInfo().Body` holds prepared values, not what
-  the client sent: a number field's `null` is already 0 there.
 
 Schema traps (`migrations/CLAUDE.md`):
 - A `schema.json` change needs a new `migrations/schema_update_*.go`. A new
@@ -295,7 +251,6 @@ Features with a long note get one line here. The note lives where the code does.
 3. **NATS Integration** - Account/User/Role provisioning, real-time WebSocket connection
 4. **Nebula Networks** - Certificate Authority, network, and host management
 5. **Resource Inventory** - Things and Locations with type definitions and metadata. `metadata_schema` is a form hint, not a contract (`ui/CLAUDE.md`)
-6. **Digital Twin** - Live state via NATS KV buckets, revision history
 7. **Audit Logging** - operator-only. Field values are recorded only for the
    collections in `auditSnapshotCollections` (`hooks/CLAUDE.md`)
 7b. **Tenant activity feed** - org-scoped and carries no record values. Adding a
@@ -339,7 +294,7 @@ One line each. The `CLAUDE.md` in each file's directory says more.
 - `hooks/relation_tenancy.go` - the one enforcement hook: no relation may point into another organization
 - `hooks/org_provisioning.go` - every organization's NATS account and Nebula CA
 - `hooks/active_flag.go` / `hooks/org_active_flag.go` - device deactivation and org suspension. Read both before changing either
-- `hooks/codes.go` / `hooks/location_path.go` - generated codes (ADR 0003) and `locations.path` (ADR 0004)
+- `hooks/codes.go` / `hooks/location_path.go` - generated codes and `locations.path` (ADRs 0003 and 0004 in platform-docs)
 - `hooks/nebula_routes.go` - Nebula CA rotation
 - `hooks/activity.go` - the tenant activity feed
 - `hooks/schema_fields.go` - the fields that exist only after `schema.json` is imported
