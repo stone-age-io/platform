@@ -62,7 +62,7 @@ and it is where you check your own before you open a PR.
 
 ## Adding a widget
 
-Two files. It used to be six, and two of those failed silently.
+Two files: the component and one entry in `widgets.ts`.
 
 ### 1. The component
 
@@ -177,7 +177,6 @@ turns a field you merely *included* into a 404.
 - Types live in `src/types/`.
 - **Do not add org-change handling to a page.** `MainLayout` keys its
   `<router-view>` on the active organization, so switching remounts the page.
-  Eighteen hand-copied handlers used to do this and had drifted.
 - Tailwind 3 + daisyUI 4 and TypeScript 6 are **pinned**. `ui/CLAUDE.md` says
   why at length; a routine "bump everything" pass must not drag them along, and
   CI fails if a major moves.
