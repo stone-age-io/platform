@@ -11,6 +11,15 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-12
+
+Mostly removals. Inventory events, the `/32` certificate audit and ten
+`/metrics` series are gone, and a Nebula network's CIDR can no longer change
+after it is created. Also a Button Pad dashboard widget, shared-dashboard
+fixes, and an invite-accept route bound to user logins. Upgrading is
+`migrate up` (the container does it on start); check the metric names below
+against your dashboards and alerts first.
+
 ### Upgrading
 
 - **`nats.inventory_events_enabled` and `nats.inventory_local_subject` are
@@ -29,8 +38,26 @@ and this file starts where the versioned releases do.
   `stone_age_certificates_expiring`. Move any dashboard or alert on them; see
   Removed. `stone_age_nats_users_revoked` stays.
 
+### Added
+
+- **A Button Pad dashboard widget**: one widget holding a fixed rows × columns
+  grid of publish-only buttons, with gaps where a position is empty. It keeps
+  its shape on a phone, where separate Button widgets are paired two to a row
+  and a remote built from them lost its layout. No request/reply,
+  hold-to-repeat or per-key state.
+
 ### Changed
 
+- **Every dashboard opens locked** (a new one opens unlocked), and the lock is
+  no longer saved. One editor's save used to leave a shared dashboard unlocked
+  on every display.
+- **Shared dashboards can be renamed.** The KV key stays the same.
+- **Hashed console assets are cached for a year** (`Cache-Control: immutable`).
+  Vite content-hashes everything under `assets/`; `index.html` and `sw.js`
+  are not cached this way.
+- **The floor plan's zoom range follows the image**: one level out and five in
+  from the fitted zoom, never less than 4× native. Zoom is fractional, so
+  Fit fills the widget instead of rounding down to a whole level.
 - **A Nebula network's `cidr_range` cannot change once the network exists.**
   pb-nebula regenerates host configs on a CIDR change but re-signs no
   certificate, and Nebula routes the overlay from the certificate, so the edit
@@ -58,6 +85,34 @@ and this file starts where the versioned releases do.
   `stone_age_certificate_expiry_seconds - time() < 30*86400` (90 days for
   `kind="nebula_ca"`). `stone_age_certificates_expired` and the expiry
   timestamp remain.
+
+### Fixed
+
+- **`POST /api/org/invites/accept` is bound to user logins.** A Thing or NATS
+  identity token is refused with `403` at the route, instead of reaching the
+  handler and failing on the membership save.
+- **The `$SYS` account is found by the operator's `system_account_id`**, as
+  pb-nats does, not by the name "System Account". An organization named like
+  it could have been picked up by `leaf-config` and the readiness check.
+- **A database error during the cross-collection type-prefix check now refuses
+  the save.** It used to let a clashing prefix through.
+- **Shared dashboards:** the list shows each dashboard's name, not its KV key;
+  switching between a shared copy and its local source rebuilds the grid and
+  subscriptions; saving no longer offers Update for your own change; deleting
+  the open dashboard opens another instead of a blank screen; and unsaved
+  changes are confirmed before you leave.
+- **Durations:** `500ms` is 500 milliseconds, not 500 minutes.
+- **Accepting an invitation switches to that organization**, not to the last
+  membership in an unsorted list.
+- **The organization delete and owner fields say what actually happens**:
+  delete removes memberships and leaves inventory, the NATS account and the
+  Nebula CA orphaned; reassigning the owner gives the new owner an owner
+  membership and the previous owner keeps theirs.
+- **File tokens:** a token whose mint was in flight at logout is discarded.
+- **KV watchers report every bucket-open error**, not only "not found".
+- **The `postcss-selector-parser` override is pinned to exactly 7.1.6.**
+  7.2.0 escapes selectors twice under Tailwind 3, and 127 selectors in the main
+  stylesheet stopped matching while every check stayed green.
 
 ## [0.16.0] - 2026-11-05
 
@@ -3171,7 +3226,8 @@ repository public. Each of these was reproduced before being fixed.
 - `scripts/test-authz.sh` grew from 135 to 147 checks, covering the membership
   lifecycle, the code uniqueness constraint, and the frozen leaf-node code.
 
-[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/stone-age-io/platform/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/stone-age-io/platform/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/stone-age-io/platform/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/stone-age-io/platform/compare/v0.13.1...v0.14.0
