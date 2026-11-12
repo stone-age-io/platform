@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { DownloadIcon, LighthouseIcon, NetworkIcon, RefreshCw, TriangleAlert } from '@lucide/vue'
-import { ref, computed, onMounted } from 'vue'
+import { DownloadIcon, LighthouseIcon, NetworkIcon, RefreshCw } from '@lucide/vue'
+import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { formatDate } from '@/utils/format'
-import { fetchStaleHostIds, expectedCertNetwork } from '@/utils/nebula'
 import type { NebulaHost } from '@/types/pocketbase'
 import DangerZone from '@/components/common/DangerZone.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
@@ -21,14 +20,8 @@ const host = ref<NebulaHost | null>(null)
 const loading = ref(true)
 const deleting = ref(false)
 const regenerating = ref(false)
-const certIsStale = ref(false)
 
 const hostId = route.params.id as string
-
-/** What the certificate should say, for display; the server does the comparison. */
-const expectedNetwork = computed(() =>
-  expectedCertNetwork(host.value?.overlay_ip, host.value?.expand?.network_id?.cidr_range),
-)
 
 async function loadHost() {
   loading.value = true
@@ -43,9 +36,6 @@ async function loadHost() {
   } finally {
     loading.value = false
   }
-
-  // Advisory, after loading ends: an unreachable audit endpoint must not blank the page.
-  certIsStale.value = (await fetchStaleHostIds()).has(hostId)
 }
 
 async function handleDelete() {
@@ -161,27 +151,6 @@ onMounted(() => {
         </div>
       </div>
       
-      <!-- The /32 warning is a banner: nothing else shows the failure (the
-           handshake completes and no traffic moves). -->
-      <div v-if="certIsStale" class="alert alert-warning items-start">
-        <TriangleAlert :size="20" class="inline-block shrink-0" />
-        <div>
-          <h3 class="font-bold">Certificate does not match this network</h3>
-          <div class="text-sm mt-1">
-            Nebula builds this host's overlay route from the network in its certificate,
-            so a certificate issued at the wrong mask leaves the host unable to reach
-            any peer — with no error anywhere.
-            <template v-if="expectedNetwork">
-              It should carry <code class="font-mono">{{ expectedNetwork }}</code>.
-            </template>
-          </div>
-          <div class="text-sm mt-1">
-            Re-issue it below, then redeploy this host's config.
-          </div>
-        </div>
-        <button v-if="host.active" class="btn btn-sm" @click="confirmRegenerate">Re-issue</button>
-      </div>
-
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         
         <div class="space-y-6">

@@ -20,7 +20,7 @@ touches a file in that directory.
 |---|---|
 | `AUTHORIZATION.md` | an API rule in `schema.json`, a route or hook that writes with `app.Save()`, a credential, a `can.*` gate |
 | `TESTING.md` | Go tests, `scripts/test-authz.sh`, or gofmt on Windows |
-| `hooks/CLAUDE.md` | PocketBase hook mechanics, and features 7, 7b, 11, 12, 14, 15–15d, 16–16c |
+| `hooks/CLAUDE.md` | PocketBase hook mechanics, and features 7, 7b, 11, 12, 14, 15, 15b, 15d, 16–16c |
 | `migrations/CLAUDE.md` | any `schema.json` change or migration |
 | `ui/CLAUDE.md` | the frontend: pinned majors, NATS URL tiers, the router guard, Vitest, and features 5, 13, 17–19 |
 
@@ -315,8 +315,6 @@ Features with a long note get one line here. The note lives where the code does.
 15. **Decommissioning a device** - `things.active`. Deactivate, never delete (`hooks/CLAUDE.md`)
 15b. **Rotating an organization's Nebula CA** - three steps, because the wait
     between them is the feature (`hooks/CLAUDE.md`)
-15c. **The `/32` certificate defect** - nothing re-signs automatically. `renew`
-    one host at a time (`hooks/CLAUDE.md`)
 15d. **Suspending an organization** - `organizations.active` withdraws the NATS
     account and does nothing else (`hooks/CLAUDE.md`)
 16. **Organization code** - ids for storage, codes for addressing. `code` is
@@ -343,9 +341,8 @@ One line each. The `CLAUDE.md` in each file's directory says more.
 - `hooks/org_provisioning.go` - every organization's NATS account and Nebula CA
 - `hooks/active_flag.go` / `hooks/org_active_flag.go` - device deactivation and org suspension. Read both before changing either
 - `hooks/codes.go` / `hooks/location_path.go` - generated codes (ADR 0003) and `locations.path` (ADR 0004)
-- `hooks/nebula_routes.go` - Nebula CA rotation and the `/32` certificate audit
+- `hooks/nebula_routes.go` - Nebula CA rotation
 - `hooks/activity.go` - the tenant activity feed
-- `hooks/inventory_events.go` / `hooks/inventory_exports.go` - Thing and Location changes on the bus as `stone-age.inventory.>`, off by default (`plans/inventory-events.md`)
 - `hooks/schema_fields.go` - the fields that exist only after `schema.json` is imported
 - `hooks/client_config_routes.go` - `GET /api/client-config` (the NATS URLs a browser dials)
 - `internal/health/`, `internal/metrics/`, `hooks/{observability,readiness,metrics,cert_expiry}.go` - readiness and metrics

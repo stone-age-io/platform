@@ -5,7 +5,6 @@ import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
 import { useServerSearch } from '@/composables/useServerSearch'
 import { formatDate } from '@/utils/format'
-import { fetchStaleHostIds } from '@/utils/nebula'
 import type { NebulaHost } from '@/types/pocketbase'
 import type { Column } from '@/components/ui/ResponsiveList.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
@@ -52,17 +51,6 @@ function onSort(next: string) {
   sort.value = next
   page.value = 1 // a new order makes the old page number meaningless
   loadHosts()
-}
-
-/**
- * Hosts whose certificate does not match their network (the /32 defect, or an
- * overlay_ip edited since). Loaded once, not per page. Shown here because the
- * host otherwise looks entirely healthy.
- */
-const staleHostIds = ref<Set<string>>(new Set())
-
-async function loadStaleHosts() {
-  staleHostIds.value = await fetchStaleHostIds()
 }
 
 const columns: Column<NebulaHost>[] = [
@@ -116,7 +104,6 @@ function handleRowClick(host: NebulaHost) {
 
 onMounted(() => {
   loadHosts()
-  loadStaleHosts()
 })
 </script>
 
@@ -237,13 +224,6 @@ onMounted(() => {
           <div class="flex flex-wrap items-center gap-1">
             <StatusBadge :active="item.active" />
             <ExpiryBadge :value="item.expires_at" size="sm" />
-            <span
-              v-if="staleHostIds.has(item.id)"
-              class="badge badge-sm badge-warning"
-              title="This certificate's network does not match the host's network. Nebula builds the overlay route from it, so the host cannot reach any peer. Open the host to re-issue."
-            >
-              Wrong mask
-            </span>
           </div>
         </template>
 
@@ -251,13 +231,6 @@ onMounted(() => {
           <div class="flex flex-wrap items-center gap-1">
             <StatusBadge :active="item.active" />
             <ExpiryBadge :value="item.expires_at" size="sm" />
-            <span
-              v-if="staleHostIds.has(item.id)"
-              class="badge badge-sm badge-warning"
-              title="This certificate's network does not match the host's network. Open the host to re-issue."
-            >
-              Wrong mask
-            </span>
           </div>
         </template>
 

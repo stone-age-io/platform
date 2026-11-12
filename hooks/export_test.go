@@ -46,24 +46,6 @@ func RequireMembership(re *core.RequestEvent, membershipCollection string, roles
 	return requireMembership(re, membershipCollection, roles)
 }
 
-// Inventory events. The sweep and the platform-events identity run from
-// OnServe, which no test reaches.
-var (
-	InventoryFields     = inventoryFields
-	InventorySubject    = inventorySubject
-	InventoryImportName = inventoryImportName
-)
-
-func InventoryExportName(orgID string) string { return inventoryExportName(orgID) }
-
-func SweepInventoryExports(app core.App, opts InventoryEventsOptions) {
-	sweepInventoryExports(app, opts)
-}
-
-func EnsurePlatformEventsUser(app core.App, opts InventoryEventsOptions) (string, error) {
-	return ensurePlatformEventsUser(app, opts)
-}
-
 // The $SYS account lookup, so a test can name an org after it.
 func FindSystemAccount(app core.App, accountCollection string) (*core.Record, error) {
 	return findSystemAccount(app, accountCollection)

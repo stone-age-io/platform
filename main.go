@@ -114,10 +114,6 @@ func setDefaults() {
 	// Exported from each managed org into the operator account, imported as
 	// "<prefix>.{orgCode}.>".
 	viper.SetDefault("nats.managed_export_subject", "helpdesk.>")
-	// plans/inventory-events.md. The local subject is configurable so a
-	// white-labelled deployment can drop "stone-age." from tenant subjects.
-	viper.SetDefault("nats.inventory_events_enabled", false)
-	viper.SetDefault("nats.inventory_local_subject", "stone-age.>")
 
 	// Nebula
 	viper.SetDefault("nebula.log_to_console", false)
@@ -347,35 +343,6 @@ func main() {
 		ExportSubject:     managedExportSubject,
 	})
 
-	// Inventory events, published in the operator account and mapped into each
-	// org by an export/import pair. After provisioning, which creates the
-	// account. See hooks/inventory_events.go.
-	inventoryLocalSubject := viper.GetString("nats.inventory_local_subject")
-	if !strings.HasSuffix(inventoryLocalSubject, ".>") {
-		log.Fatalf("❌ nats.inventory_local_subject must end in '.>' (got %q)", inventoryLocalSubject)
-	}
-	// Both subtrees live in the operator account as <prefix>.<code>.>. A shared
-	// first token lets them overlap, exporting managed orgs' helpdesk traffic to
-	// whichever tenant's code lined up.
-	firstToken := func(s string) string { return strings.SplitN(s, ".", 2)[0] }
-	if firstToken(inventoryLocalSubject) == firstToken(managedExportSubject) {
-		log.Fatalf("❌ nats.inventory_local_subject (%q) and nats.managed_export_subject (%q) must start with different tokens",
-			inventoryLocalSubject, managedExportSubject)
-	}
-	hooks.RegisterInventoryEvents(app, hooks.InventoryEventsOptions{
-		Enabled:            viper.GetBool("nats.inventory_events_enabled"),
-		OrgCollection:      orgCollection,
-		AccountCollection:  natsOptions.AccountCollectionName,
-		UserCollection:     natsOptions.UserCollectionName,
-		RoleCollection:     natsOptions.RoleCollectionName,
-		ExportCollection:   natsOptions.ExportCollectionName,
-		ImportCollection:   natsOptions.ImportCollectionName,
-		ThingCollection:    "things",
-		LocationCollection: "locations",
-		LocalSubject:       inventoryLocalSubject,
-		ServerURL:          viper.GetString("nats.server_url"),
-	})
-
 	// Owner membership and invitations (hooks/org_membership.go,
 	// hooks/invites.go). Registered after provisioning and managed exports so
 	// they run first on org create. It calls e.Next(), so later binds still run.
@@ -428,13 +395,10 @@ func main() {
 		MembershipCollection:  membershipCollection,
 	})
 
-	// CA rotation (nebula_ca.updateRule is operator-only) and the host
-	// certificate audit, which must parse Nebula certificates server-side.
+	// CA rotation (nebula_ca.updateRule is operator-only).
 	hooks.RegisterNebulaRoutes(app, hooks.NebulaRoutesOptions{
-		NebulaCACollection:      nebulaOptions.CACollectionName,
-		NebulaNetworkCollection: nebulaOptions.NetworkCollectionName,
-		NebulaHostCollection:    nebulaOptions.HostCollectionName,
-		MembershipCollection:    membershipCollection,
+		NebulaCACollection:   nebulaOptions.CACollectionName,
+		MembershipCollection: membershipCollection,
 	})
 
 	// A Thing and its optional identities in one transaction, so a late failure

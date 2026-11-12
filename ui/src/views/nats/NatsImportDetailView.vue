@@ -103,7 +103,7 @@ onMounted(loadImport)
         </div>
       </div>
 
-      <ManagedRecordNotice v-if="managed" kind="import" :name="importRecord?.name" />
+      <ManagedRecordNotice v-if="managed" kind="import" />
 
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         <!-- Left Column -->

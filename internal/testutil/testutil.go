@@ -160,20 +160,6 @@ func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
 		ImportCollection:  natsOpts.ImportCollectionName,
 		ExportSubject:     "helpdesk.>", // main.go's default for nats.managed_export_subject
 	})
-	// Off, as main.go's default leaves it. A test that wants inventory events
-	// binds a second, enabled registration (hooks/inventory_events_test.go).
-	hooks.RegisterInventoryEvents(app, hooks.InventoryEventsOptions{
-		Enabled:            false,
-		OrgCollection:      orgCollection,
-		AccountCollection:  natsOpts.AccountCollectionName,
-		UserCollection:     natsOpts.UserCollectionName,
-		RoleCollection:     natsOpts.RoleCollectionName,
-		ExportCollection:   natsOpts.ExportCollectionName,
-		ImportCollection:   natsOpts.ImportCollectionName,
-		ThingCollection:    "things",
-		LocationCollection: "locations",
-		LocalSubject:       "stone-age.>",
-	})
 
 	// Gives a new organization's owner their `owner` membership row, which every
 	// write rule resolves authority through. Bound where the absorbed pb-tenancy

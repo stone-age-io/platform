@@ -86,16 +86,17 @@ async function handleSubmit() {
     const data: any = {
       name: formData.value.name,
       description: formData.value.description || null,
-      cidr_range: formData.value.cidr_range,
       ca_id: formData.value.ca_id,
       active: formData.value.active,
     }
     
     if (isEdit.value) {
+      // cidr_range is frozen after create (nebula_networks.updateRule), so it is not sent.
       await pb.collection('nebula_networks').update(networkId!, data)
       toast.success('Network updated')
     } else {
       data.organization = authStore.currentOrgId
+      data.cidr_range = formData.value.cidr_range
       await pb.collection('nebula_networks').create(data)
       toast.success('Network created')
     }
@@ -199,11 +200,18 @@ onMounted(() => {
                   type="text" 
                   placeholder="e.g. 10.100.0.0/24"
                   class="input input-bordered font-mono"
+                  :disabled="isEdit"
                   required
                 />
                 <label class="label">
                   <span class="label-text-alt">
-                    Defines the IP pool for this network overlay.
+                    <template v-if="isEdit">
+                      Fixed once the network exists. Host certificates carry it, and a change
+                      would leave every host unable to reach its peers. Create a new network instead.
+                    </template>
+                    <template v-else>
+                      Defines the IP pool for this network overlay. It cannot be changed later.
+                    </template>
                   </span>
                 </label>
               </div>

@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=330        # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=320        # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -509,6 +509,13 @@ if [ "$(j "$RBODY" active)" = "true" ]; then
 else
   no "minted Nebula host landed inactive -- every peer will blocklist its certificate"
 fi
+
+# cidr_range is frozen once the network exists: changing it re-signs no host
+# certificate, so every host here would stop routing until renewed one by one.
+req PATCH "/collections/nebula_networks/records/$NET" "$TA" '{"cidr_range":"10.43.0.0/16"}'
+expect "owner cannot change a network CIDR" "403|400|404" "$RCODE" "$RBODY"
+req PATCH "/collections/nebula_networks/records/$NET" "$TA" '{"description":"renamed"}'
+expect "owner CAN edit the same network (description)" 200 "$RCODE" "$RBODY"
 req GET "/collections/nebula_hosts/records/$HOST" "$TB"
 expect "member cannot read a host's config_yaml (it embeds the private key)" "403|400|404" "$RCODE" "$RBODY"
 
@@ -1086,30 +1093,6 @@ if [ "$(j "$RBODY" certificate)" = "$CA_CERT_GUARD" ] && [ -z "$(j "$RBODY" next
 else
   no "cross-tenant rotation reached TestOrg's CA"
 fi
-
-# The certificate audit. pb-nebula signed host certificates at /32 until v0.3.0,
-# which gives a host a route covering only itself: the certificate verifies, the
-# config renders, the handshake completes, and no packet ever crosses the mesh.
-# Answering "is this certificate still right?" needs a Nebula certificate parsed,
-# which the browser cannot do, so the console reads it from here.
-req GET "/org/nebula/cert-audit" "$TA"
-expect "owner CAN read the host certificate audit" 200 "$RCODE" "$RBODY"
-if [ "$(jn "$RBODY" 'Array.isArray(o.stale)?"array":typeof o.stale')" = "array" ]; then
-  ok "cert audit returns stale as an array when empty (not null)"
-else
-  no "cert audit stale should be an array"
-fi
-# Every host here was minted by the running binary, so a non-empty list means
-# this deployment is signing at the wrong mask right now.
-if [ "$(jn "$RBODY" 'o.stale.length')" = "0" ]; then
-  ok "no freshly minted host is stale (this build signs at the network mask)"
-else
-  no "a host minted by this build already fails the /32 audit: $(jn "$RBODY" 'o.stale.join(",")')"
-fi
-req GET "/org/nebula/cert-audit" "$TB"
-expect "member cannot read the certificate audit" "401|403|404" "$RCODE" "$RBODY"
-req GET "/org/nebula/cert-audit" ""
-expect "anonymous cannot read the certificate audit" "401|403|404" "$RCODE" "$RBODY"
 
 echo ""
 echo "=== 14. regression: ordinary tenant reads still work ==="
@@ -2203,75 +2186,6 @@ if [ "$RCODE" = "200" ] && [ "$(jn "$RBODY" 'o.items.length')" = "0" ]; then
   ok "an owner listing org_stats gets no rows"
 else
   no "an owner listing org_stats got HTTP $RCODE: $(head -c 200 <<<"$RBODY")"
-fi
-
-echo ""
-echo "=== 28. the inventory-events pair is scoped to the org it serves ==="
-# plans/inventory-events.md. Every org gets an import of its own events on its
-# own account, and the provider account gets one export per org. The import
-# carries the tenant's organization so its owner can see where the
-# stone-age.inventory.> subjects come from; the export carries the operator's,
-# because it sits on the operator's account and names the tenant's code. No
-# fixture above has an operator org, so make one and re-save TestOrg, which is
-# how a missing pair is provisioned.
-# Its own owner: an org's owner gets a membership in it, and alice holding one in
-# the provider org would make her reads here say nothing about tenant scoping.
-PROV_OWNER=$(mkuser provider@test.local)
-req POST /collections/organizations/records "$SU" \
-  "{\"name\":\"Provider\",\"owner\":\"$PROV_OWNER\",\"active\":true,\"is_operator_org\":true}"
-PROVIDER=$(j "$RBODY" id)
-[ -z "$PROVIDER" ] && die "operator org create failed: $RBODY"
-req PATCH "/collections/organizations/records/$ORG" "$SU" '{"description":"inventory events"}'
-req GET "/collections/nats_account_imports/records?filter=(name='inventory-events'%26%26organization='$ORG')" "$SU"
-INV_IMP=$(jn "$RBODY" 'o.items[0].id')
-req GET "/collections/nats_account_exports/records?filter=(name='inventory-$ORG')" "$SU"
-INV_EXP=$(jn "$RBODY" 'o.items[0].id')
-{ [ -z "$INV_IMP" ] || [ -z "$INV_EXP" ]; } && die "inventory pair not provisioned (import=$INV_IMP export=$INV_EXP); see $WORK/server.log"
-
-req GET "/collections/nats_account_imports/records/$INV_IMP" "$TA"
-expect "owner CAN read the org's inventory import" 200 "$RCODE" "$RBODY"
-req GET "/collections/nats_account_imports/records/$INV_IMP" "$TG"
-expect "dashboard cannot read it (same record)" 404 "$RCODE" "$RBODY"
-req GET "/collections/nats_account_imports/records/$INV_IMP" "$TE"
-expect "another org's owner cannot read it" 404 "$RCODE" "$RBODY"
-req GET "/collections/nats_account_exports/records/$INV_EXP" "$TA"
-expect "the tenant's owner cannot read the provider-side export" 404 "$RCODE" "$RBODY"
-req GET "/collections/nats_account_exports/records/$INV_EXP" "$SU"
-expect "...which exists (superuser reads it)" 200 "$RCODE" "$RBODY"
-
-# The export is private to this tenant's account. A public one let any tenant
-# import another tenant's events by naming the hub key and the victim's code, and
-# an owner may create an import naming any account key. pb-nats signs the token
-# for the accounts allowed_importers lists, and nats-server refuses the rest. A
-# record-level check of the policy; the server's own refusal is pinned in pb-nats.
-INV_PRIVATE=$(jn "$RBODY" 'o.token_req')
-INV_ALLOWED=$(jn "$RBODY" 'JSON.stringify(o.allowed_importers)')
-req GET "/collections/nats_account_imports/records/$INV_IMP" "$SU"
-ORG_ACCT=$(jn "$RBODY" 'o.account_id')
-req GET "/collections/nats_accounts/records/$ORG_ACCT" "$SU"
-ORG_KEY=$(jn "$RBODY" 'o.public_key')
-if [ "$INV_PRIVATE" = "true" ] && [ "$INV_ALLOWED" = "[\"$ORG_KEY\"]" ]; then
-  echo "  PASS  the inventory export is private to the tenant account alone"
-  PASS=$((PASS + 1))
-else
-  echo "  FAIL  the inventory export is not private to the tenant account: token_req=$INV_PRIVATE allowed_importers=$INV_ALLOWED, want true and [\"$ORG_KEY\"]"
-  FAIL=$((FAIL + 1))
-fi
-# ...and the tenant's own signed account JWT carries the activation token pb-nats
-# signed for that grant, or a private export would also cut off the one account
-# meant to receive it. Decoded from the JWT the resolver gets, not the record.
-ORG_JWT=$(jn "$RBODY" 'o.jwt')
-INV_TOKEN_SUB=$(node -e "
-const c=JSON.parse(Buffer.from(process.argv[1].split('.')[1],'base64url'));
-const i=(c.nats.imports||[]).find(i=>i.name==='inventory-events');
-if(!i||!i.token){console.log('');process.exit(0)}
-console.log(JSON.parse(Buffer.from(i.token.split('.')[1],'base64url')).sub);" "$ORG_JWT" 2>/dev/null)
-if [ -n "$ORG_KEY" ] && [ "$INV_TOKEN_SUB" = "$ORG_KEY" ]; then
-  echo "  PASS  the tenant account JWT carries an activation token for its own inventory import"
-  PASS=$((PASS + 1))
-else
-  echo "  FAIL  the tenant account JWT has no activation token for its inventory import (token subject '$INV_TOKEN_SUB', want '$ORG_KEY')"
-  FAIL=$((FAIL + 1))
 fi
 
 # ----------------------------------------------------------------------- result

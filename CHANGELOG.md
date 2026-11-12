@@ -11,6 +11,39 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+### Upgrading
+
+- **`nats.inventory_events_enabled` and `nats.inventory_local_subject` are
+  gone**, and the server ignores them. A deployment that turned inventory
+  events on keeps the `inventory-<org id>` exports, the `inventory-events`
+  imports and the `platform-events` NATS user and role it provisioned. Nothing
+  publishes through them any more; delete them by hand if you want them gone.
+- **`GET /api/org/nebula/cert-audit` is gone**, and so is
+  `stone nebula cert-audit` in stone-cli.
+- **Run `migrate up`** (the container does it on start). It freezes
+  `nebula_networks.cidr_range`; see Changed.
+
+### Changed
+
+- **A Nebula network's `cidr_range` cannot change once the network exists.**
+  pb-nebula regenerates host configs on a CIDR change but re-signs no
+  certificate, and Nebula routes the overlay from the certificate, so the edit
+  left every host in the network unable to reach its peers until each was
+  renewed by hand. The update rule now refuses it, and the network form shows
+  the CIDR read-only when editing. Create a new network instead.
+
+### Removed
+
+- **Inventory events on the bus.** Publishing was best-effort, so a missed
+  event was simply lost, and every consumer still had to poll the list API to
+  be correct. Polling is what remains: `demo/inventory` shows the pattern.
+- **The `/32` certificate audit**: the route, the "Wrong mask" badge on the
+  Nebula host list and the banner on the host page. It found certificates
+  signed by pb-nebula before v0.3.0. pb-nebula re-signs a host when its
+  `overlay_ip` changes. Its own audit still logs a warning naming every active
+  host whose certificate does not match its network, with the fix (`renew`),
+  at start-up.
+
 ## [0.16.0] - 2026-11-05
 
 Three tenant-isolation fixes: the platform's own NATS exports are private to

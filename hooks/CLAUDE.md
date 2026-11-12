@@ -270,18 +270,6 @@ The numbers match the feature index in the root `CLAUDE.md`.
     - `hooks/nebula_routes.go`, `hooks/nebula_rotation_test.go`, and
       `scripts/test-authz.sh` section 13b.
 
-15c. **The `/32` certificate defect** - pb-nebula signed host certificates at
-    `/32` until v0.3.0. Nebula puts a certificate's network straight onto the tun
-    device and installs a link route for it, so the mask **is** the host's route to
-    the overlay: a `/32` verifies, renders, handshakes — and moves no packet.
-    Nothing errors.
-    - **Nothing re-signs automatically, deliberately.** Re-signing moves a
-      fingerprint, and a fingerprint is what `pki.blocklist` revokes, so a sweep
-      would rewrite every peer config in the mesh on the strength of a dependency
-      bump. `GET /api/org/nebula/cert-audit` names the affected hosts (active only);
-      the fix is `renew`, one host at a time, then redeploy that host's config.
-    - `hooks/nebula_routes.go`, `ui/src/utils/nebula.ts`.
-
 15d. **Suspending an organization** - `organizations.active`, operator-only,
     and it means exactly one thing: **the organization's NATS account is
     withdrawn.** `hooks/org_active_flag.go` mirrors the flag onto
@@ -425,10 +413,8 @@ The numbers match the feature index in the root `CLAUDE.md`.
 - `hooks/thing_routes.go` - `POST /api/org/things`: Thing + optional NATS/Nebula identity in one transaction; member-level for inventory, owner/admin for the identity half
 - `hooks/location_path.go` - `locations.path`: computed on every save, subtree rewrite on a move, cycle refusal (ADR 0004)
 - `hooks/codes.go` - generated Thing/Location codes and the separate type-prefix sets (ADR 0003). The one code generator; the UI has none
-- `hooks/nebula_routes.go` - `POST /api/org/nebula-ca/rotate` (owner/admin, three steps) and `GET /api/org/nebula/cert-audit`. Both are routes for the same reason `nats_account_routes.go` is: a PocketBase rule cannot say "this one field and nothing else", and the audit needs a Nebula certificate parsed, which the browser cannot do
+- `hooks/nebula_routes.go` - `POST /api/org/nebula-ca/rotate` (owner/admin, three steps). A route for the same reason `nats_account_routes.go` is: a PocketBase rule cannot say "this one field and nothing else"
 - `hooks/activity.go` - the tenant activity feed. The collection list IS the safety argument (see feature 7b); bound to the request hooks because they are the only layer carrying the actor, and best-effort because an observation must never cost the user their write
-- `hooks/inventory_events.go` - publishes every Thing and Location create, update and delete, as the whole allowlisted record plus a `changed` list, on one `platform-events` connection in the operator account. Reads go through the root app, never `e.App`: a write made in a transaction runs its Success hooks after the commit, when every query on `e.App` fails. A location move rewrites its subtree in raw SQL, so this republishes the subtree itself. No queue, and a failed publish never fails the write. `plans/inventory-events.md`
-- `hooks/inventory_exports.go` - the per-org export/import pair those events travel through, reconciled on org save and swept at serve. Removed BEFORE an org delete, inside its transaction: removing it after the delete is too late, because the import's organization and its account's disagree mid-delete and relation tenancy fails the whole delete
 - `hooks/relation_tenancy.go` - the one hook-based enforcement in the platform: no relation may point into another organization's records. Derived from the schema rather than listing the nineteen relations, bound to the MODEL hooks, and applied to superusers too. See the invariants-vs-permissions bullet in `AUTHORIZATION.md`
 - `hooks/nats_limits.go` - an unset NATS role limit is stored as -1, and a request that sends 0 for a role or account limit is refused with a field error. Two layers because only a request can tell "omitted" from "0". Accounts get only the refusal, edge-keyed, because an account's -1 really is unlimited and a 0 already stored must not block a library's later save. The long form, and why 0 is refused rather than kept: the limits bullet in `AUTHORIZATION.md`
 - `hooks/org_provisioning.go` - every organization's NATS account and Nebula CA. Create-if-missing and bound to update as well as create, so re-saving the organization RETRIES a failed provision; failures are returned rather than logged, and returned AFTER `e.Next()` so a NATS outage cannot cost the owner their membership row

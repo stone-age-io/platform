@@ -95,7 +95,7 @@ onMounted(loadExport)
         </div>
       </div>
 
-      <ManagedRecordNotice v-if="managed" kind="export" :name="exportRecord?.name" />
+      <ManagedRecordNotice v-if="managed" kind="export" />
 
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         <!-- Left Column -->

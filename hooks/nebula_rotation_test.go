@@ -143,11 +143,10 @@ func TestRotationCycleCompletes(t *testing.T) {
 	}
 }
 
-// TestMintedHostCertificateIsNotStale proves the /32 fix is live in THIS
-// deployment. A /32 certificate verifies and handshakes but moves no packet,
-// since Nebula installs the certificate's network as the host's route. The
-// console badges stale hosts with this same predicate (GET
-// /api/org/nebula/cert-audit), so a fresh host must come back clean.
+// TestMintedHostCertificateIsNotStale proves the pb-nebula build in go.mod
+// signs at the network mask. A /32 certificate (pb-nebula before v0.3.0)
+// verifies and handshakes but moves no packet, since Nebula installs the
+// certificate's network as the host's route, and nothing else would notice.
 func TestMintedHostCertificateIsNotStale(t *testing.T) {
 	app, ca := nebulaOrg(t)
 

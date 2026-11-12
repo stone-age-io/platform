@@ -160,7 +160,7 @@ onMounted(async () => {
     </div>
 
     <template v-if="managed">
-      <ManagedRecordNotice kind="export" :name="formData.name" />
+      <ManagedRecordNotice kind="export" />
       <router-link :to="`/nats/exports/${exportId}`" class="btn btn-primary">
         View export
       </router-link>
