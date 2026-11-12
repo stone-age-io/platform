@@ -22,7 +22,7 @@ const orgFieldName = "organization"
 // mint a credential inside another tenant's account. List-scoping hides the
 // id, but id secrecy is not an authorization boundary.
 //
-// It is DERIVED from the schema rather than listing the nineteen relations: if
+// It is DERIVED from the schema rather than a hand-kept list of relations: if
 // a collection has an `organization` field and a relation on it points at
 // another collection that has one, the two records must agree. A hand-kept
 // list would drift from schema.json; a new relation is covered automatically.

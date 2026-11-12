@@ -37,10 +37,9 @@ kv:
   buckets:
     - "tokens"
 
-# PocketBase's perPage ceiling. The default is 100, which would drop every
-# record past the hundredth without a word -- the one limit on this path that
-# is silent. The guard rules catch a truncated poll; this keeps the fan-out from
-# truncating a complete one.
+# PocketBase's perPage ceiling. At the default of 100, a poll of more records
+# fails the whole fan-out and logs "forEach array exceeds limit". The guard
+# rules catch a truncated poll; this keeps a complete one under the limit.
 forEach:
   maxIterations: 1000
 

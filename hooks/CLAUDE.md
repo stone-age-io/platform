@@ -284,11 +284,7 @@ The numbers match the feature index in the root `CLAUDE.md`.
     that JWT whether or not the account is active, so the agent's leaf refresh
     does not carry the suspension. Devices on the leaf keep working locally; the
     gateway's own uplink is in the withdrawn account, so the site is islanded
-    from the hub. The flag enforced **nothing** before this: schema field, form
-    toggle and two red/green badges, and not one line of Go, TypeScript or rule
-    text reading it back. Same shape as the `nats_users.active` checkbox that
-    was removed, and the same lesson — a flag nobody enforces is worse than no
-    flag, because somebody trusts it during an incident.
+    from the hub.
     - **Reversible, which the device-scope flag is not.** This deletes the
       ACCOUNT claim: no revocation cutoff, no `nats_users` row touched, nothing
       re-minted, so every `creds_file` stays valid and simply has nothing to
@@ -417,7 +413,7 @@ The numbers match the feature index in the root `CLAUDE.md`.
 - `hooks/codes.go` - generated Thing/Location codes and the separate type-prefix sets (ADR 0003). The one code generator; the UI has none
 - `hooks/nebula_routes.go` - `POST /api/org/nebula-ca/rotate` (owner/admin, three steps). A route for the same reason `nats_account_routes.go` is: a PocketBase rule cannot say "this one field and nothing else"
 - `hooks/activity.go` - the tenant activity feed. The collection list IS the safety argument (see feature 7b); bound to the request hooks because they are the only layer carrying the actor, and best-effort because an observation must never cost the user their write
-- `hooks/relation_tenancy.go` - the one hook-based enforcement in the platform: no relation may point into another organization's records. Derived from the schema rather than listing the nineteen relations, bound to the MODEL hooks, and applied to superusers too. See the invariants-vs-permissions bullet in `AUTHORIZATION.md`
+- `hooks/relation_tenancy.go` - the one hook-based enforcement in the platform: no relation may point into another organization's records. Derived from the schema rather than a hand-kept list of relations, bound to the MODEL hooks, and applied to superusers too. See the invariants-vs-permissions bullet in `AUTHORIZATION.md`
 - `hooks/nats_limits.go` - an unset NATS role limit is stored as -1, and a request that sends 0 for a role or account limit is refused with a field error. Two layers because only a request can tell "omitted" from "0". Accounts get only the refusal, edge-keyed, because an account's -1 really is unlimited and a 0 already stored must not block a library's later save. The long form, and why 0 is refused rather than kept: the limits bullet in `AUTHORIZATION.md`
 - `hooks/org_provisioning.go` - every organization's NATS account and Nebula CA. Create-if-missing and bound to update as well as create, so re-saving the organization RETRIES a failed provision; failures are returned rather than logged, and returned AFTER `e.Next()` so a NATS outage cannot cost the owner their membership row
 - `hooks/org_active_flag.go` - what `organizations.active` means: the tenant's NATS account is withdrawn, and nothing else. Level-triggered so a reported failure can be retried by re-saving (`Record.Original()` is the last READ, not the last write), and it refuses the flip on the operator and system orgs. The device-scope sibling is `hooks/active_flag.go`, which is edge-keyed and whose revocation is permanent — read both before changing either

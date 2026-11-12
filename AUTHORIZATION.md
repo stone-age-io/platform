@@ -102,8 +102,8 @@ Rules to follow when touching authorization:
   `@request.body.account_id` is a raw submitted string with no target to
   traverse into). pb-nats signs the user JWT with whatever `account_id` names,
   so without it an owner could mint themselves a credential inside another
-  tenant's account. It is DERIVED from the schema rather than listing the
-  nineteen relations, binds the MODEL hooks so it covers `app.Save()` routes as
+  tenant's account. It is DERIVED from the schema rather than a
+  hand-kept list of relations, binds the MODEL hooks so it covers `app.Save()` routes as
   well as REST, and applies to superusers — a cross-tenant relation is corrupt
   data whoever wrote it.
 

@@ -104,10 +104,9 @@ message just does not mention the variable.
 but the fan-out and the guards are core-NATS triggers, served by the router. With
 it off, the polls publish to a subject nobody reads and the log says nothing.
 
-**`forEach.maxIterations` defaults to 100, and it truncates silently.**
-rule-router processes the first hundred items and drops the rest, with no
-error. `rule-router.yaml` raises it to 1000, PocketBase's `perPage` ceiling. The
-guard rules cannot catch this one, because the poll itself was complete.
+**`forEach.maxIterations` defaults to 100.** A longer list fails the whole
+fan-out for that poll and logs `forEach array exceeds limit`.
+`rule-router.yaml` raises it to 1000, PocketBase's `perPage` ceiling.
 
 **One poll is at most 1000 records.** Past that, `totalItems` exceeds `perPage`
 and the guard publishes

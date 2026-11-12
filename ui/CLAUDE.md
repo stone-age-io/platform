@@ -37,7 +37,7 @@ Everything else in `ui/package.json` tracks latest. These two do not, and a
 routine "bump everything" pass must not drag them along:
 
 - **Tailwind 3.x + daisyUI 4.x.** Upgrading is a design-system migration, not a
-  version bump: 376 references across 27 files use the daisyUI v4 form
+  version bump: hundreds of references use the daisyUI v4 form
   `oklch(var(--b1))`, and v5 both renames those vars and changes them from bare
   OKLCH components to complete color values, so every one becomes
   `oklch(oklch(...))` — invalid, and silently falls back. The alpha form
@@ -50,7 +50,7 @@ routine "bump everything" pass must not drag them along:
   human clicking through dashboards, widgets and both themes.
 - **TypeScript 6, not 7.** TS 7 is the native port and no longer exposes the
   `./lib/tsc` subpath that `vue-tsc` resolves at startup, so `npm run build`
-  dies before type checking. `vue-tsc` 3.3.11 still resolves it; its only TS 7
+  dies before type checking. `vue-tsc` 3.3 still resolves it; its only TS 7
   accommodation is aliasing `typescript` to `@typescript/typescript6`, which
   runs the TS 6 compiler under a TS 7 name. 6.0 is the ceiling until the Vue
   tooling type-checks with TS 7 itself.
@@ -189,7 +189,7 @@ from it cannot be added at all.
 
 `/dev/widgets` renders every widget against fixtures
 (`views/dev/widgetFixtures.ts`) with no NATS connection, no login and no
-dashboard. 24,000 of this console's lines are the dashboard and its widgets and
+dashboard. Most of this console is the dashboard and its widgets, and
 CI renders none of them, so this is the closest thing to an eye on them.
 
 The route is registered inside `if (import.meta.env.DEV)` in `router/index.ts`.
@@ -229,7 +229,7 @@ deployment default (this key) → compiled-in `ws://localhost:9222`. Rules:
 
 **The router guard MUST await `authStore.initializeFromAuth()` before reading a
 capability.** `app.use(router)` starts resolving the initial navigation the
-moment the router is installed — before main.go's next line even calls the
+moment the router is installed — before main.ts's next line even calls the
 hydration it deliberately awaits pre-mount. `user` is set synchronously, so
 `isAuthenticated` passed and nobody was bounced to `/login` (which is the bug
 main.ts's comment describes fixing), but `memberships` arrive over the network,

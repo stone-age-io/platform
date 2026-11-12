@@ -154,13 +154,7 @@ echo "=== initialising a throwaway database in $WORK ==="
 
 # A leaf URL, because /api/me/leaf-config refuses to serve without one. Nothing
 # dials it here; check 12 only needs the route to answer.
-#
-# Inventory events on, so section 28 can check the export/import pair they
-# provision. No NATS server is running, so every publish fails and is logged to
-# server.log -- which is also the proof that a failed publish never fails the
-# write, since every Thing and Location check above still passes.
 STONE_AGE_NATS_LEAF_URL="nats-leaf://127.0.0.1:7422" \
-STONE_AGE_NATS_INVENTORY_EVENTS_ENABLED=true \
   "$BIN" serve --http "127.0.0.1:$PORT" --dir "$WORK/pb_data" >"$WORK/server.log" 2>&1 &
 SRV_PID=$!
 
@@ -996,7 +990,7 @@ else
 fi
 
 echo ""
-echo "=== 13b. Nebula CA rotation and the certificate audit are routes ==="
+echo "=== 13b. Nebula CA rotation is a route ==="
 # nebula_ca.updateRule has said since the authz hardening pass: "There is no
 # tenant-triggered CA rotation today because there is no trigger field for one.
 # If that changes, add a route rather than a branch here." pb-nebula v0.3.0 added

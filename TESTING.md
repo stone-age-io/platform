@@ -32,24 +32,14 @@ behind the Go and script suites, and the traps in them.
   the metrics exposition is parsed by **Prometheus's own parser and promlint**
   rather than string-matched, because nothing in CI scrapes it and a malformed
   body looks fine in a terminal.
-- **`gofmt -l .` reports ~25 files on a Windows checkout, and they are all
-  fine.** `core.autocrlf` rewrites `.go` files to CRLF in the worktree while
-  `.gitattributes` (`*.go text eol=lf`) keeps the committed content LF, so gofmt
-  sees line endings git will never store. The CI gate is plain `gofmt -l .`, and
-  it passes because CI checks out LF. To check locally the way CI will, run it
-  against what git STORES rather than the worktree:
-  `git ls-files '*.go' | while read f; do git show ":$f" > /tmp/x.go; gofmt -l /tmp/x.go; done`.
-  Do not "fix" the files `gofmt -l .` lists here, and do not conclude the gate is
-  broken.
+- **If `gofmt -l .` lists files on a Windows checkout, they are CRLF copies from
+  before `.gitattributes` pinned `*.go` to LF.** The pin wins over
+  `core.autocrlf` on every checkout since, so delete the listed files and
+  `git checkout -- <files>` (or re-clone).
 - **A test that reads a UI source file must be line-ending tolerant.**
   `.gitattributes` pins `*.sh`, `*.go`, `Dockerfile`, `*.yaml` and `*.yml` to
   LF and nothing else, so with `core.autocrlf=true` a `.vue` or `.ts` file is
-  **CRLF in a Windows worktree and LF in git**. `TestActivityNounsAllHaveAConsoleRoute`
-  matched `\{\n` against `ActivityView.vue` and therefore could never pass on a
-  Windows checkout and always passed in CI -- the worst pairing available,
-  because a genuinely broken `hooks` package hides behind a red run people have
-  learned to ignore. Fixed with `\r?\n`, and verified against both line endings
-  rather than just the one on this machine. Match `\r?\n`, or strip `\r` before
+  **CRLF in a Windows worktree and LF in git**. Match `\r?\n`, or strip `\r` before
   matching; do not add `*.vue text eol=lf` to `.gitattributes` to dodge it,
   which rewrites every contributor's worktree to fix one regex.
 

@@ -102,14 +102,16 @@ had drifted apart on what a deleted key means — `ui/CLAUDE.md` has the detail.
 ```ts
 mywidget: {
   component: MyWidget, config: ConfigMyWidget,
-  label: 'My Widget', icon: '🧩', description: 'What it shows', category: 'Data Display',
+  label: 'My Widget', icon: Puzzle, description: 'What it shows', category: 'Data Display',
   mobileTitled: false, mobileExpandable: false,
+  mobileWidth: 'half', mobileHeight: 'tile',
   standardDataSource: true, multiSubject: false,
 },
 ```
 
 That one entry is the renderer, the config panel, the Add Widget palette entry,
-the two locked-mobile behaviours and the data-source panel. Declaration order is
+how it sits on a phone (title, expand button, width, height) and the
+data-source panel. `icon` is a lucide component (`import { Puzzle } from '@lucide/vue'`). Declaration order is
 the palette's order.
 
 ### What the compiler then makes you do

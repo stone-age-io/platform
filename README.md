@@ -234,7 +234,7 @@ than stored, so there is no second copy to disagree with the first.
 for reported state flowing edge-to-hub, `twin_desired` for desired state flowing
 hub-to-edge. Drift is shown as the values themselves, not a status word.
 
-**Dashboards.** Grid layout, 16 widget types, three data-source kinds
+**Dashboards.** Grid layout, 18 widget types, three data-source kinds
 (subscription, consumer, KV), variable substitution, and a live NATS WebSocket
 connection straight from the browser.
 

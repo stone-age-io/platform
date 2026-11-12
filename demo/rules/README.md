@@ -94,9 +94,7 @@ every credential below is a signed JWT the platform minted.
 ```
 
 `nats export` writes absolute paths into the generated config, so `serve --nats`
-runs from wherever you like. (It needs pb-nats **v0.2.1 or later**: in v0.2.0 the
-export flag collided with the host's own `--config`, so `-o` printed to stdout and
-wrote nothing at all.)
+runs from wherever you like.
 
 An external `nats-server -c nats-config/nats.conf` works exactly the same way —
 same config, same credentials. Only the process boundary differs.

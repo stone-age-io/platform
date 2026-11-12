@@ -90,9 +90,8 @@ The edge agent is a separate repo — [stone-age-io/agent](https://github.com/st
   `EXPECTED_CHECKS`.
 - `./scripts/check-sort-fields.sh` - after you add a `sortable:` column to a list
   view.
-- On a Windows checkout, `gofmt -l .` lists about 25 files that are fine (CRLF in
-  the worktree, LF in git). Do not "fix" them. `TESTING.md` has the check that
-  matches CI.
+- If `gofmt -l .` lists files on a Windows checkout, they predate the LF pin.
+  `TESTING.md` says how to refresh them.
 
 ## Tech Stack
 
