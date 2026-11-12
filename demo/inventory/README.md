@@ -1,30 +1,13 @@
 # The inventory feed (ADR 0004)
 
-Long-term readings carry only `thing`, a code that never changes. Where a Thing
-is, what it is called and what type it is live in the platform, and they change.
-This directory gets them into the TSDB as two **info series**, so a dashboard can
-join readings against the inventory as it is *now*:
-
-| Series | Labels |
-|---|---|
-| `stone_thing_info` | `thing`, `name`, `thing_type`, `location`, `location_path` |
-| `stone_location_info` | `location`, `name`, `location_type`, `location_path` |
-
-The decision and the reasons are ADR 0004 in platform-docs. This file is how to
-run it.
-
-```
-nats-auth-manager ──► KV tokens.pocketbase           signs in as a viewer, keeps the token fresh
-rule-router, every minute:
-    GET /api/collections/things/records ──► inventory.things
-    GET /api/collections/locations/records ──► inventory.locations
-rule-router, on each: forEach item, merge {"info": 1}
-    ──► inventory.thing.<code> / inventory.location.<code>
-Telegraf ──► VictoriaMetrics                           stone_thing_info, stone_location_info
-```
-
-No platform route, no new credential type, no state. The standard list API, a
-viewer login, and the three tools the tenant already runs.
+Gets each Thing's and Location's current name, type and place into the TSDB as
+two info series, `stone_thing_info` and `stone_location_info`, so dashboards
+can join readings against the inventory as it is now. nats-auth-manager keeps a
+viewer's token in KV, rule-router polls the list API every minute and fans each
+record out to `inventory.thing.<code>` / `inventory.location.<code>`, and
+Telegraf writes the series. What it is for, and its limits:
+[Observability §5](https://github.com/stone-age-io/platform-docs/blob/main/docs/observability.md)
+and ADR 0004.
 
 ## Files
 
@@ -39,9 +22,8 @@ beside the readings it joins against.
 
 ## Run it
 
-One set of processes per organization, for the reason every demo here is one
-process per organization: the NATS account is the tenant, and the token bucket
-lives inside it. Northwind below.
+One set of processes per organization, because the token bucket lives inside
+the account. Northwind below.
 
 **1. The bucket.** nats-auth-manager opens `tokens` and refuses to start without
 it, rather than create one with defaults you did not choose:
@@ -100,10 +82,6 @@ and VictoriaMetrics half has not been run yet; see
 action URL must start with http:// or https://`. That is the right failure; the
 message just does not mention the variable.
 
-**`features.router: true` or nothing happens.** The polls are scheduler rules,
-but the fan-out and the guards are core-NATS triggers, served by the router. With
-it off, the polls publish to a subject nobody reads and the log says nothing.
-
 **`forEach.maxIterations` defaults to 100.** A longer list fails the whole
 fan-out for that poll and logs `forEach array exceeds limit`.
 `rule-router.yaml` raises it to 1000, PocketBase's `perPage` ceiling.
@@ -122,20 +100,12 @@ organization needs it.
 Violation` in the client, `Account fetch failed: fetching jwt timed out` in the
 server log. The account JWT arrives a moment after the server starts. Try again.
 
-## The token is readable, and that is why it is a viewer's
+## The token is a viewer's on purpose
 
-The bucket holds a live PocketBase token. Anything in the account that can read
-`tokens` can use it. In this demo that includes the `gateway`, `application` and
-`console-readonly` roles. `gateway` can also overwrite it, which breaks the feed
-until the next refresh.
-
-A subject deny list does not close this, and so the demo does not add one. A role
-holding `$JS.API.>` can create a stream of its own that sources `KV_tokens`, and
-subject permissions do not apply to sourcing. The roles without `$JS.API.>`
-(`device`) cannot read any KV at all.
-
-What bounds it is what the token can do. It belongs to a **viewer**: it lists the
-organization's inventory and changes nothing. A viewer or dashboard session can
-already read that inventory, so for them it adds nothing. For a gateway or
-application credential it adds read access to the inventory. Never point
-nats-auth-manager at a login that can write.
+Anything in the account that can read `tokens` can use the token: here the
+`gateway`, `application` and `console-readonly` roles, and `gateway` and
+`application` can overwrite it, which breaks the feed until the next refresh. A
+subject deny does not close this, since a role with `$JS.API.>` can source
+`KV_tokens` into a stream of its own. What bounds it is the login: a viewer
+lists inventory and changes nothing. **Never point nats-auth-manager at a login
+that can write.**
