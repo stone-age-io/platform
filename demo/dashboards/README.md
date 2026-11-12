@@ -28,7 +28,8 @@ RR_NATS_CREDSFILE=/path/to/console-dana.creds \
 
 All subscriptions are core NATS (`useJetStream: false`), matching the rules'
 `mode: core`: the seed creates no streams, so there is nothing to replay. Widgets
-start empty and fill as messages arrive. The freezer chart's three-minute window
+start empty and fill as messages arrive. The twin widgets also need the `twin`
+bucket, created as in [../rules](../rules/README.md#the-digital-twin-section). The freezer chart's three-minute window
 is full about three minutes after the page loads.
 
 Change a subject in the rules and this file goes stale with it. The probes, the
