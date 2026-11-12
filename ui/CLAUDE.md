@@ -271,6 +271,19 @@ job: `useNatsKv` (the twin and the KV browser) or `useNatsKvWatcher` (tables and
 maps). It was checked against a real `serve --nats` server rather than a mock,
 since everything it decides depends on what the server sends.
 
+## The activity feed
+
+- **"Open record" is gated on the capability the TARGET route needs**, not the
+  one that opened the feed. The three type collections have no detail view, only
+  an edit form behind `manageDefinitions`, so an ungated link bounces a
+  `viewer` to `/`. `RESOURCE_ROUTES` in `views/activity/ActivityView.vue`
+  maps each noun to a route and capability; `TestActivityNounsAllHaveAConsoleRoute`
+  (Go) reads it so a new feed collection cannot ship without one.
+- `RecordTimestamps.vue` sits on every covered record's detail surface (the
+  Thing and Location detail views, the three type forms). There is no "never
+  edited" marker: PocketBase sets `created` and `updated` separately, so they
+  can differ on an untouched record.
+
 ## Features
 
 The numbers match the feature index in the root `CLAUDE.md`.
