@@ -195,7 +195,7 @@ export function createEmptyFormState(): WidgetFormState {
     switchConfirm: false,
     sliderMode: 'core',
     sliderStateSubject: '',
-    sliderValueTemplate: '{{value}}',
+    sliderValueTemplate: '{value}',
     sliderMin: 0,
     sliderMax: 100,
     sliderStep: 1,

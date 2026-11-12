@@ -361,7 +361,7 @@
             @input="updateSliderField('kvKey', ($event.target as HTMLInputElement).value)"
             type="text"
             class="form-input"
-            placeholder="thing.{thing}.setpoint"
+            :placeholder="perThing ? 'thing.{thing}.setpoint' : 'device.setpoint'"
           />
         </div>
         </template>
@@ -374,7 +374,7 @@
             @input="updateSliderField('publishSubject', ($event.target as HTMLInputElement).value)"
             type="text"
             class="form-input"
-            placeholder="cmd.{thing}.setpoint"
+            :placeholder="perThing ? 'cmd.{thing}.setpoint' : 'device.set_setpoint'"
           />
         </div>
         <div class="form-row">
@@ -447,9 +447,9 @@
             @input="updateSliderField('valueTemplate', ($event.target as HTMLInputElement).value)"
             type="text"
             class="form-input"
-            placeholder="{{value}}"
+            placeholder="{value}"
           />
-          <div class="help-text">Empty publishes the bare number. <code v-pre>{{value}}</code> is replaced.</div>
+          <div class="help-text">Empty publishes the bare number. <code v-pre>{value}</code> is replaced.</div>
         </div>
         <div class="form-row">
           <label>JSONPath (optional)</label>
@@ -505,7 +505,7 @@
             @input="updateGaugeField('kvKey', ($event.target as HTMLInputElement).value)"
             type="text"
             class="form-input"
-            placeholder="thing.{thing}.level"
+            :placeholder="perThing ? 'thing.{thing}.level' : 'device.level'"
           />
         </div>
         </template>
@@ -518,7 +518,7 @@
             @input="updateGaugeField('subject', ($event.target as HTMLInputElement).value)"
             type="text"
             class="form-input"
-            placeholder="sensor.{thing}.level"
+            :placeholder="perThing ? 'sensor.{thing}.level' : 'sensors.level'"
           />
         </div>
         </template>
@@ -588,6 +588,12 @@ import GaugeZoneEditor from '@/components/dashboard/GaugeZoneEditor.vue'
 const props = defineProps<{
   item: MapMarkerItem
   errors?: Record<string, string>
+  /**
+   * True on a floor plan, where one item is applied to every Thing of a type
+   * and `{thing}` is filled in per marker. A map marker is a single place with
+   * no Thing behind it, so its examples must not suggest the token.
+   */
+  perThing?: boolean
 }>()
 
 const emit = defineEmits<{

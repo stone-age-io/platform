@@ -37,6 +37,7 @@ import { useKvKey } from '@/composables/useKvKey'
 import { getSubscriptionManager } from '@/composables/useSubscriptionManager'
 import { encodeString } from '@/utils/encoding'
 import { extractJsonPath } from '@/utils/jsonPath'
+import { fillTemplate } from '@/utils/templates'
 import { resolveTemplate } from '@/utils/variables'
 import { toNumber } from '@/utils/gaugeScale'
 import type { DataSourceConfig, MapItemSliderConfig, MapMarkerItem } from '@/types/dashboard'
@@ -166,7 +167,7 @@ async function publishValue(val: number) {
 
   let payload = String(val)
   if (cfg.value.valueTemplate) {
-    payload = cfg.value.valueTemplate.split('{{value}}').join(String(val))
+    payload = fillTemplate(cfg.value.valueTemplate, { value: String(val) })
     const trimmed = payload.trim()
     if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
       try {

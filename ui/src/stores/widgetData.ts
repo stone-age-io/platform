@@ -58,7 +58,7 @@ export const useWidgetDataStore = defineStore('widgetData', () => {
 
   /**
    * Create the buffer, or keep an existing one warm. If `source` differs from
-   * what filled it (e.g. a variable moved `site.{{device}}.temp` to another
+   * what filled it (e.g. a variable moved `site.{device}.temp` to another
    * device), the old data is dropped.
    */
   function initializeBuffer(widgetId: string, maxCount: number = 100, maxAge?: number, source?: string) {

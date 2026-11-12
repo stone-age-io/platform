@@ -10,7 +10,7 @@
           <option value="kv">Key-Value Store (KV)</option>
         </select>
         <div class="help-text">
-          Data from this source will be available as variables in your markdown (e.g. <code v-pre>{{value}}</code>).
+          Data from this source will be available as variables in your markdown (e.g. <code v-pre>{value}</code>).
         </div>
       </div>
 
@@ -38,7 +38,7 @@
           placeholder="# Hello World"
         />
         <div class="help-text">
-          Supports standard Markdown. You can use dashboard variables like <code v-pre>{{name}}</code>.
+          Supports standard Markdown. You can use dashboard variables like <code v-pre>{name}</code>.
           <br>
           HTML is rendered (be careful with scripts).
         </div>

@@ -145,7 +145,7 @@ function close() {
 }
 
 function formatUsage(name: string) {
-  return `{{${name}}}`
+  return `{${name}}`
 }
 </script>
 

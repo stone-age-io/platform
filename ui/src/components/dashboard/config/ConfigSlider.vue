@@ -59,10 +59,10 @@
         v-model="form.sliderValueTemplate" 
         type="text" 
         class="form-input"
-        placeholder="{{value}}"
+        placeholder="{value}"
       />
       <div class="help-text">
-        Use <span v-pre>{{value}}</span> as placeholder. Example: <span v-pre>{"brightness": {{value}}}</span>
+        Use <span v-pre>{value}</span> as placeholder. Example: <span v-pre>{"brightness": {value}}</span>
       </div>
     </div>
 

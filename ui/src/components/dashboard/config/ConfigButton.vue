@@ -73,7 +73,7 @@
         {{ errors.subject }}
       </div>
       <div v-else class="help-text">
-        Supports variables like <code v-pre>{{device_id}}</code>.
+        Supports variables like <code v-pre>{device_id}</code>.
       </div>
     </div>
 
@@ -90,7 +90,7 @@
         {{ errors.buttonPayload }}
       </div>
       <div v-else class="help-text">
-        Supports variables like <code v-pre>{{device_id}}</code>.
+        Supports variables like <code v-pre>{device_id}</code>.
       </div>
     </div>
   </div>

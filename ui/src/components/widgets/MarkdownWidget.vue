@@ -21,7 +21,7 @@
         @blur="saveChanges" 
       ></textarea>
       <div class="editor-hint">
-        Supports Markdown & Variables (e.g. <code v-pre>{{device_id}}</code>). Blur or click Done to save.
+        Supports Markdown & Variables (e.g. <code v-pre>{device_id}</code>). Blur or click Done to save.
       </div>
     </div>
 

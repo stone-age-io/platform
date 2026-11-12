@@ -136,6 +136,7 @@ import { useNatsStore } from '@/stores/nats'
 import { useAuthStore } from '@/stores/auth'
 import { pb } from '@/utils/pb'
 import { encodeString, decodeBytes } from '@/utils/encoding'
+import { fillTemplate } from '@/utils/templates'
 import type { WidgetConfigOf } from '@/types/dashboard'
 import { evaluateRules } from './scannerRules'
 import { buildScanPublish } from './scannerPublish'
@@ -338,9 +339,7 @@ function reset() {
 // manual field in lowercase still finds the record. Code uniqueness ignores case
 // too, so this can never match two records (ADR 0003).
 function replacePlaceholder(template: string, value: string): string {
-  return template
-    .replace(/\{value:lower\}/g, value.toLowerCase())
-    .replace(/\{value\}/g, value)
+  return fillTemplate(template, { value, 'value:lower': value.toLowerCase() })
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {

@@ -1,7 +1,7 @@
 // Publish one message from a control and flash the result. Shared by
 // ButtonWidget and each key of ButtonPadWidget.
 //
-// Subject and payload are raw config text: `{{variables}}` are resolved here,
+// Subject and payload are raw config text: `{variables}` are resolved here,
 // at click time, against the dashboard's current values.
 
 import { ref, onUnmounted } from 'vue'

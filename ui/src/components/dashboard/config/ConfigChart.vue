@@ -54,7 +54,7 @@
       <div class="help-text">
         Each series reads the whole message. One message can feed every series,
         or each can come from its own subject: set a <strong>subject filter</strong>
-        (exact, variables like <code v-pre>{{device_id}}</code> allowed) when
+        (exact, variables like <code v-pre>{device_id}</code> allowed) when
         several subjects publish the same shape. Blank = every message.
       </div>
     </div>

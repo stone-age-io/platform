@@ -11,7 +11,7 @@
       />
       <div v-if="errors.kvTableBucket" class="error-text">{{ errors.kvTableBucket }}</div>
       <div v-else class="help-text">
-        Supports variables like <code v-pre>{{bucket_name}}</code>
+        Supports variables like <code v-pre>{bucket_name}</code>
       </div>
     </div>
 
@@ -26,7 +26,7 @@
       />
       <div v-if="errors.kvTableKeyPattern" class="error-text">{{ errors.kvTableKeyPattern }}</div>
       <div v-else class="help-text">
-        NATS wildcard pattern. Use <code>></code> for all keys or <code v-pre>{{location}}.></code> for a prefix.
+        NATS wildcard pattern. Use <code>></code> for all keys or <code v-pre>{location}.></code> for a prefix.
       </div>
     </div>
 

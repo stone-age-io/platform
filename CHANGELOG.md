@@ -11,6 +11,26 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+### Changed
+
+- **Dashboard templates are written `{name}`**, the spelling Thing Type
+  prefixes and the rule engine already use. Placeholders, help text, the
+  variable editor and new widgets' defaults show it. `{{name}}` is still read
+  everywhere, so no saved dashboard needs editing.
+- **Either spelling works in every template.** `{{thing}}` resolves in a Thing
+  Type prefix and `{device}` in a widget's subject. A widget whose subject, KV
+  key or payload held a literal `{name}` matching a dashboard variable now has
+  it filled in.
+- **The slider's value template fills every `{value}`**, not only the first.
+
+### Fixed
+
+- **A floor plan item that used a dashboard variable named `org`, `location`,
+  `thing` or `thing_type_code`** resolved to the value wrapped in braces
+  (`{hq}`), and so matched nothing.
+- **A widget form refused a KV key holding a `{name}` token**; only `{{name}}`
+  skipped the check.
+
 ## [0.17.0] - 2026-11-12
 
 Mostly removals. Inventory events, the `/32` certificate audit and ten

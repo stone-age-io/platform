@@ -198,7 +198,7 @@ export function buildFixtures(): Record<WidgetType, DevFixture> {
       title: 'Publish',
     }),
 
-    markdown: make('markdown', 'Static text. {{variable}} tokens resolve against a dashboard, which is absent here.', {
+    markdown: make('markdown', 'Static text. {variable} tokens resolve against a dashboard, which is absent here.', {
       title: 'Notes',
       markdownConfig: {
         content:

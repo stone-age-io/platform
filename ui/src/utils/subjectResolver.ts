@@ -1,6 +1,11 @@
 // Subject template resolver. The only implementation (there is no Go
 // counterpart). The contract is documented in platform-docs:
 // docs/thing-types.md and docs/connectivity.md.
+//
+// Substitution itself is utils/templates.ts. This file only decides which
+// values a Thing, or a role covering every Thing of a type, supplies.
+
+import { fillTemplate } from './templates'
 
 export const VAR_ORG = '{org}'
 export const VAR_LOCATION = '{location}'
@@ -37,24 +42,21 @@ export function join(prefix: string | undefined | null, suffix: string | undefin
   return `${p}.${suffix}`
 }
 
-function applyReplacements(tmpl: string, pairs: Array<[string, string]>): string {
-  return pairs.reduce((acc, [key, val]) => acc.split(key).join(val), tmpl)
-}
-
 // Substitute every reserved variable against a concrete Thing. Unset fields
 // are left as literal template tokens so callers can detect incomplete input.
 export function resolveThing(tmpl: string, ctx: ThingContext): string {
-  const pairs: Array<[string, string]> = []
-  if (ctx.org) pairs.push([VAR_ORG, ctx.org])
-  if (ctx.location) pairs.push([VAR_LOCATION, ctx.location])
-  if (ctx.thing) pairs.push([VAR_THING, ctx.thing])
-  if (ctx.thingTypeCode) pairs.push([VAR_THING_TYPE_CODE, ctx.thingTypeCode])
-  return applyReplacements(tmpl, pairs)
+  return fillTemplate(tmpl, {
+    org: ctx.org || undefined,
+    location: ctx.location || undefined,
+    thing: ctx.thing || undefined,
+    thing_type_code: ctx.thingTypeCode || undefined,
+  })
 }
 
-// A variable token left after resolution. On a Thing's page it means a context
-// value was missing and the subject is unusable; on the type form it is expected.
-const UNRESOLVED = /\{(org|location|thing|thing_type_code)\}/
+// A variable token left after resolution, in either spelling. On a Thing's page
+// it means a context value was missing and the subject is unusable; on the type
+// form it is expected.
+const UNRESOLVED = /\{\s*(org|location|thing|thing_type_code)\s*\}/
 
 export function hasUnresolved(subject: string): boolean {
   return UNRESOLVED.test(subject)
@@ -118,12 +120,10 @@ export function resolveOperationSubjects(
 //   - {location} becomes the supplied value or "*" if empty
 //   - {org} / {thing_type_code} substitute when supplied, else remain literal
 export function resolveRolePattern(tmpl: string, ctx: RolePatternContext = {}): string {
-  const location = ctx.location && ctx.location.length > 0 ? ctx.location : '*'
-  const pairs: Array<[string, string]> = [
-    [VAR_THING, '*'],
-    [VAR_LOCATION, location],
-  ]
-  if (ctx.org) pairs.push([VAR_ORG, ctx.org])
-  if (ctx.thingTypeCode) pairs.push([VAR_THING_TYPE_CODE, ctx.thingTypeCode])
-  return applyReplacements(tmpl, pairs)
+  return fillTemplate(tmpl, {
+    thing: '*',
+    location: ctx.location || '*',
+    org: ctx.org || undefined,
+    thing_type_code: ctx.thingTypeCode || undefined,
+  })
 }

@@ -1,4 +1,5 @@
 import type { ScannerWidgetConfig } from '@/types/dashboard'
+import { fillTemplate } from '@/utils/templates'
 
 export interface ScanContext {
   value: string
@@ -28,7 +29,8 @@ export function buildScanPublish(cfg: ScannerWidgetConfig, ctx: ScanContext): Sc
     reason: ctx.reason,
     ts,
   }
-  const subject = template.replace(/\{(\w+)\}/g, (_m, tok) => subjectTokens[tok] ?? '')
+  // An unknown token becomes empty, not a literal brace in a subject.
+  const subject = fillTemplate(template, subjectTokens, '')
 
   const payload = {
     value: ctx.value,

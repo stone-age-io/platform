@@ -168,6 +168,7 @@
         v-for="(item, index) in binding.items"
         :key="item.id"
         :item="item"
+        per-thing
         @remove="removeItem(index)"
         @update:item="updateItem(index, $event)"
       />

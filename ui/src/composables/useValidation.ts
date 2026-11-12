@@ -1,4 +1,5 @@
 import { JSONPath } from 'jsonpath-plus'
+import { hasToken } from '@/utils/templates'
 
 export interface ValidationResult {
   valid: boolean
@@ -44,8 +45,8 @@ export function useValidation() {
       return { valid: false, error: 'Subject cannot start or end with a dot' }
     }
 
-    // Wildcard placement. Skipped for a {{variable}}, which might resolve to anything.
-    if (!subject.includes('{{')) {
+    // Wildcard placement. Skipped for a {variable}, which might resolve to anything.
+    if (!hasToken(subject)) {
       const parts = subject.split('.')
       const gtIndex = parts.findIndex(p => p.includes('>'))
       if (gtIndex !== -1) {
@@ -82,8 +83,8 @@ export function useValidation() {
       return { valid: true }
     }
 
-    // The parser cannot read {{variables}}, so these are not checked.
-    if (path.includes('{{')) {
+    // The parser cannot read {variables}, so these are not checked.
+    if (hasToken(path)) {
       return { valid: true }
     }
 
@@ -140,7 +141,7 @@ export function useValidation() {
       return { valid: false, error: 'Bucket name cannot exceed 255 characters' }
     }
 
-    // { } for {{variables}}, and A-Z because variable names may be uppercase.
+    // { } for {variables}, and A-Z because variable names may be uppercase.
     const validPattern = /^[a-zA-Z0-9_\-{}]+$/
     if (!validPattern.test(bucket)) {
       return { 
@@ -167,8 +168,8 @@ export function useValidation() {
       return { valid: false, error: 'Key cannot exceed 255 characters' }
     }
 
-    // {{variables}} resolve at render time, so they cannot be checked here.
-    if (key.includes('{{')) {
+    // {variables} resolve at render time, so they cannot be checked here.
+    if (hasToken(key)) {
       return { valid: true }
     }
 
@@ -195,8 +196,8 @@ export function useValidation() {
       return { valid: true }
     }
 
-    // `{"val": {{value}}}` is only JSON once resolved, so skip any {{variable}}.
-    if (jsonString.includes('{{')) {
+    // `{"val": {value}}` is only JSON once resolved, so skip any {variable}.
+    if (hasToken(jsonString)) {
       return { valid: true }
     }
     

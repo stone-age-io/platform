@@ -70,7 +70,7 @@
         <div class="form-group">
           <label for="pad-subject">Subject</label>
           <input id="pad-subject" v-model="selectedCell.subject" type="text" class="form-input" placeholder="cmd.thing.DEVICE_01.key" />
-          <div class="help-text">Supports variables like <code v-pre>{{device_id}}</code>.</div>
+          <div class="help-text">Supports variables like <code v-pre>{device_id}</code>.</div>
         </div>
 
         <div class="form-group">

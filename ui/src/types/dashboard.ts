@@ -135,8 +135,8 @@ export interface ButtonPadCell {
   row: number
   col: number
   label: string
-  subject: string    // supports {{variables}}
-  payload: string    // supports {{variables}}
+  subject: string    // supports {variables}
+  payload: string    // supports {variables}
   color?: string
 }
 
@@ -336,7 +336,7 @@ export interface TableColumn {
 
 export interface KvTableWidgetConfig {
   kvBucket: string
-  keyPattern: string    // e.g., "{{location_code}}.>"
+  keyPattern: string    // e.g., "{location_code}.>"
   columns: TableColumn[]
   defaultSortColumn?: string   // column id
   defaultSortDirection?: 'asc' | 'desc'
@@ -366,8 +366,8 @@ export interface DynamicMarkerPopupField {
 }
 
 export interface DynamicMarkerSource {
-  kvBucket: string          // supports {{variable}}
-  keyPattern: string        // e.g. "vehicles.>" — supports {{variable}}
+  kvBucket: string          // supports {variables}
+  keyPattern: string        // e.g. "vehicles.>" — supports {variables}
   latPath: string           // JSONPath e.g. "$.lat"
   lonPath: string           // JSONPath e.g. "$.lon"
   labelPath: string         // JSONPath or "__key_suffix__"
@@ -417,7 +417,7 @@ export interface MapItemSliderConfig {
   step: number
   defaultValue: number
   unit?: string
-  /** `{{value}}` is replaced. Absent publishes the bare number. */
+  /** `{value}` is replaced. Absent publishes the bare number. */
   valueTemplate?: string
   jsonPath?: string
   confirmOnChange?: boolean
@@ -732,7 +732,7 @@ const WIDGET_DEFAULTS: { [T in WidgetType]: () => WidgetDefaults<T> } = {
       max: 100,
       step: 1,
       defaultValue: 50,
-      valueTemplate: '{{value}}',
+      valueTemplate: '{value}',
       unit: '%',
     },
   }),
@@ -817,7 +817,7 @@ const WIDGET_DEFAULTS: { [T in WidgetType]: () => WidgetDefaults<T> } = {
     // Untitled: the content usually carries its own heading.
     title: '',
     markdownConfig: {
-      content: '### Hello World\n\nThis is a **markdown** widget.\n\nYou can use variables like {{device_id}}.',
+      content: '### Hello World\n\nThis is a **markdown** widget.\n\nYou can use variables like {device_id}.',
     },
   }),
 

@@ -508,7 +508,7 @@ const typeHandlers: WidgetTypeHandlers = {
     hydrate(widget, state) {
       state.sliderMode = widget.sliderConfig?.mode || 'core'
       state.sliderStateSubject = widget.sliderConfig?.stateSubject || ''
-      state.sliderValueTemplate = widget.sliderConfig?.valueTemplate || '{{value}}'
+      state.sliderValueTemplate = widget.sliderConfig?.valueTemplate || '{value}'
       state.sliderMin = widget.sliderConfig?.min ?? 0
       state.sliderMax = widget.sliderConfig?.max ?? 100
       state.sliderStep = widget.sliderConfig?.step || 1
@@ -534,7 +534,7 @@ const typeHandlers: WidgetTypeHandlers = {
     buildUpdates(form) {
       const config: any = {
         mode: form.sliderMode,
-        valueTemplate: form.sliderValueTemplate.trim() || '{{value}}',
+        valueTemplate: form.sliderValueTemplate.trim() || '{value}',
         min: form.sliderMin,
         max: form.sliderMax,
         step: form.sliderStep,

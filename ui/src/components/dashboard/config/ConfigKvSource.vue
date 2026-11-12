@@ -40,7 +40,7 @@
     </div>
 
     <div class="help-text variable-hint">
-      Supports variables like <code v-pre>{{device_id}}</code>.
+      Supports variables like <code v-pre>{device_id}</code>.
     </div>
   </div>
 </template>

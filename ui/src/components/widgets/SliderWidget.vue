@@ -100,6 +100,7 @@ import { useKvKey } from '@/composables/useKvKey'
 import { JSONPath } from 'jsonpath-plus'
 import type { WidgetConfigOf } from '@/types/dashboard'
 import { encodeString, decodeBytes } from '@/utils/encoding'
+import { fillTemplate } from '@/utils/templates'
 import { resolveTemplate } from '@/utils/variables'
 
 const props = withDefaults(defineProps<{
@@ -254,7 +255,7 @@ async function publishValue(val: number) {
 
   let payloadStr = String(val)
   if (cfg.value.valueTemplate) {
-    payloadStr = cfg.value.valueTemplate.replace('{{value}}', String(val))
+    payloadStr = fillTemplate(cfg.value.valueTemplate, { value: String(val) })
   }
 
   if (payloadStr.trim().startsWith('{') || payloadStr.trim().startsWith('[')) {
