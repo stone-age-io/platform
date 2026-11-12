@@ -128,7 +128,7 @@ at 280 characters and lives outside the repository.
 - Anything requiring PocketBase superuser access. A superuser bypasses every API
   rule by design; that account is the platform operator.
 - Missing hardening in a self-hosted deployment that
-  [`operations.md`](https://github.com/stone-age-io/platform-docs) tells you to
+  [`operations.md`](https://github.com/stone-age-io/platform-docs/blob/main/docs/operations.md) tells you to
   configure — for example running without `nats.encryption_key` set, or exposing
   the admin panel to the internet.
 - The public demo instance's data. Its traffic is simulated.
