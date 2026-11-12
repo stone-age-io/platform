@@ -300,7 +300,7 @@ nats-server -c ./nats-config/nats.conf
 That sameness is not a slogan: the parsed config goes straight to
 `nats-server`, so **a `cluster` block works like any other directive** and the
 Control Plane can be one node of a cluster whose other nodes are plain
-`nats-server` processes. `stone_age_nats_cluster_routes` reports the peers.
+`nats-server` processes.
 
 The trade-off to weigh before choosing that: while they share a process,
 restarting the Control Plane restarts the bus — and in a cluster that means
@@ -363,13 +363,13 @@ or as HTTP Basic with any username, covering every scraper in common use.
 | `stone_age_inactive_records{collection}` | Decommissioned things (`active = false`) |
 | `stone_age_nats_users_revoked` | Credentials on their account's revocation list |
 | `stone_age_certificate_expiry_seconds{kind}` | Unix time the **soonest**-expiring Nebula certificate of that kind expires. Alert relative to `time()` |
-| `stone_age_certificates{kind}` | Nebula certificates in service (hosts: active only) |
-| `stone_age_certificates_expired{kind}` / `_expiring{kind}` | Already expired / inside the warning window |
+| `stone_age_certificates_expired{kind}` | Nebula certificates of that kind already expired (hosts: active only) |
 | `stone_age_database_size_bytes` | SQLite plus its WAL, for disk growth |
 | `stone_age_collector_errors` | Collectors that failed *this scrape* — the affected series are missing, not zero |
-| `stone_age_nats_*` | The embedded bus: `_embedded_up`, connections, cluster routes, leaf-node connections, slow consumers, msgs/bytes, JetStream bytes. **Only with `serve --nats`** — absent entirely with an external server, rather than reported as zero |
 
-The standard `go_*` and `process_*` collectors are included too.
+The standard `go_*` and `process_*` collectors are included too. NATS itself,
+embedded or not, is monitored from the server's own monitoring port (`http: 8222`
+in `nats.conf`) with `prometheus-nats-exporter`.
 
 **Nothing here is per-organization, and that is structural rather than a
 simplification.** This process holds the NATS operator and the `$SYS` account

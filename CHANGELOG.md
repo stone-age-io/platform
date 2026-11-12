@@ -22,6 +22,12 @@ and this file starts where the versioned releases do.
   `stone nebula cert-audit` in stone-cli.
 - **Run `migrate up`** (the container does it on start). It freezes
   `nebula_networks.cidr_range`; see Changed.
+- **Ten metric names are gone from `/metrics`**: the eight `stone_age_nats_*`
+  server series (`_embedded_up`, `_connections`, `_cluster_routes`,
+  `_leafnode_connections`, `_slow_consumers_total`, `_msgs_total`,
+  `_bytes_total`, `_jetstream_bytes`), `stone_age_certificates` and
+  `stone_age_certificates_expiring`. Move any dashboard or alert on them; see
+  Removed. `stone_age_nats_users_revoked` stays.
 
 ### Changed
 
@@ -43,6 +49,15 @@ and this file starts where the versioned releases do.
   `overlay_ip` changes. Its own audit still logs a warning naming every active
   host whose certificate does not match its network, with the fix (`renew`),
   at start-up.
+- **The embedded NATS server's metrics.** They copied nats-server's own
+  counters, only with `serve --nats`. Monitor NATS the same way whether it is
+  embedded or not: add `http: 8222` to `nats.conf` and scrape it with
+  `prometheus-nats-exporter`.
+- **`stone_age_certificates` and `stone_age_certificates_expiring`.** The
+  warning window belongs in the alert rule:
+  `stone_age_certificate_expiry_seconds - time() < 30*86400` (90 days for
+  `kind="nebula_ca"`). `stone_age_certificates_expired` and the expiry
+  timestamp remain.
 
 ## [0.16.0] - 2026-11-05
 

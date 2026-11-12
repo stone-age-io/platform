@@ -15,12 +15,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"platform/internal/metrics"
-	"platform/internal/natsd"
 )
 
 // registerPlatformMetrics adds the Control Plane's own collectors to a set:
-// its own HTTP traffic, row counts in its own database, and, with `--nats`, the
-// embedded NATS server's counters. That is all it can observe first-hand.
+// its own HTTP traffic and row counts in its own database. That is all it can
+// observe first-hand. NATS, embedded or not, is scraped from the server's own
+// monitoring port with prometheus-nats-exporter.
 //
 // `stone_age_records{collection="things"}` counts devices CONFIGURED, not
 // online, so an alert on it can never fire. Liveness lives inside each
@@ -30,9 +30,6 @@ import (
 func registerPlatformMetrics(app core.App, set *metrics.Set, opts ObservabilityOptions) {
 	set.Registry.MustRegister(&dbCollector{app: app, opts: opts})
 	set.Registry.MustRegister(&certCollector{app: app, opts: opts})
-	if opts.EmbeddedNATS != nil {
-		set.Registry.MustRegister(&embeddedNATSCollector{server: opts.EmbeddedNATS})
-	}
 }
 
 // --------------------------------------------------------------- database
@@ -183,24 +180,11 @@ var (
 			"cannot join the overlay; a CA here invalidates every certificate under it.",
 		[]string{"kind"}, nil,
 	)
-	descCertExpiring = prometheus.NewDesc(
-		"stone_age_certificates_expiring",
-		"Nebula certificates of this kind expiring within the console's warning window, not counting ones already expired.",
-		[]string{"kind"}, nil,
-	)
-	descCertTotal = prometheus.NewDesc(
-		"stone_age_certificates",
-		"Nebula certificates of this kind that are in service. Host certificates count only active = true rows, "+
-			"since a decommissioned device's lapsed certificate is not a fault.",
-		[]string{"kind"}, nil,
-	)
 )
 
 func (c *certCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- descCertExpiry
 	ch <- descCertExpired
-	ch <- descCertExpiring
-	ch <- descCertTotal
 }
 
 func (c *certCollector) Collect(ch chan<- prometheus.Metric) {
@@ -214,108 +198,12 @@ func (c *certCollector) Collect(ch chan<- prometheus.Metric) {
 		ch <- prometheus.MustNewConstMetric(d, prometheus.GaugeValue, v, kind)
 	}
 	for _, s := range sums {
-		g(descCertTotal, float64(s.Total), s.Kind)
 		g(descCertExpired, float64(s.Expired), s.Kind)
-		g(descCertExpiring, float64(s.Expiring), s.Kind)
 		// Only when there is one: a zero timestamp is 1970, which every
 		// "expires soon" alert would fire on forever.
 		if !s.Earliest.IsZero() {
 			g(descCertExpiry, float64(s.Earliest.Unix()), s.Kind)
 		}
-	}
-}
-
-// ---------------------------------------------------------- embedded NATS
-
-// embeddedNATSCollector exports the in-process NATS server's own counters, and
-// emits nothing when the bus is a separate process: zeros would look like a
-// quiet bus rather than an absent one. Scrape an external server with
-// prometheus-nats-exporter.
-type embeddedNATSCollector struct {
-	server func() *natsd.Server
-}
-
-var (
-	descNATSUp = prometheus.NewDesc(
-		"stone_age_nats_embedded_up",
-		"1 when this process is running the NATS server in-process (serve --nats). Absent entirely with an external server.",
-		nil, nil,
-	)
-	descNATSConns = prometheus.NewDesc(
-		"stone_age_nats_connections",
-		"Client connections to the embedded NATS server.",
-		nil, nil,
-	)
-	descNATSRoutes = prometheus.NewDesc(
-		"stone_age_nats_cluster_routes",
-		"Peer connections to other servers in this NATS cluster. Zero on a single-node deployment, "+
-			"which is the default; non-zero when a `cluster` block in nats.conf peers this Control Plane with other nodes.",
-		nil, nil,
-	)
-	descNATSLeafs = prometheus.NewDesc(
-		"stone_age_nats_leafnode_connections",
-		"Leaf-node CONNECTIONS attached to the embedded NATS server. A TCP session the server can see — "+
-			"across every account, so it is not a per-tenant availability signal. A tenant asks its own "+
-			"account via $SYS.REQ.ACCOUNT.PING.CONNZ.",
-		nil, nil,
-	)
-	descNATSSlow = prometheus.NewDesc(
-		"stone_age_nats_slow_consumers_total",
-		"Slow consumers detected by the embedded NATS server since it started.",
-		nil, nil,
-	)
-	descNATSMsgs = prometheus.NewDesc(
-		"stone_age_nats_msgs_total",
-		"Messages the embedded NATS server has handled, by direction.",
-		[]string{"direction"}, nil,
-	)
-	descNATSBytes = prometheus.NewDesc(
-		"stone_age_nats_bytes_total",
-		"Bytes the embedded NATS server has handled, by direction.",
-		[]string{"direction"}, nil,
-	)
-	descNATSJetStream = prometheus.NewDesc(
-		"stone_age_nats_jetstream_bytes",
-		"JetStream usage on the embedded NATS server, by storage tier.",
-		[]string{"tier"}, nil,
-	)
-)
-
-func (c *embeddedNATSCollector) Describe(ch chan<- *prometheus.Desc) {
-	ch <- descNATSUp
-	ch <- descNATSConns
-	ch <- descNATSRoutes
-	ch <- descNATSLeafs
-	ch <- descNATSSlow
-	ch <- descNATSMsgs
-	ch <- descNATSBytes
-	ch <- descNATSJetStream
-}
-
-func (c *embeddedNATSCollector) Collect(ch chan<- prometheus.Metric) {
-	stats, ok := c.server().Stats()
-	if !ok {
-		return // external bus, or the server has not started yet
-	}
-	g := func(d *prometheus.Desc, v float64, labels ...string) {
-		ch <- prometheus.MustNewConstMetric(d, prometheus.GaugeValue, v, labels...)
-	}
-	cnt := func(d *prometheus.Desc, v float64, labels ...string) {
-		ch <- prometheus.MustNewConstMetric(d, prometheus.CounterValue, v, labels...)
-	}
-
-	g(descNATSUp, 1)
-	g(descNATSConns, float64(stats.Connections))
-	g(descNATSRoutes, float64(stats.Routes))
-	g(descNATSLeafs, float64(stats.Leafnodes))
-	cnt(descNATSSlow, float64(stats.SlowConsumers))
-	cnt(descNATSMsgs, float64(stats.InMsgs), "in")
-	cnt(descNATSMsgs, float64(stats.OutMsgs), "out")
-	cnt(descNATSBytes, float64(stats.InBytes), "in")
-	cnt(descNATSBytes, float64(stats.OutBytes), "out")
-	if stats.JetStreamEnabled {
-		g(descNATSJetStream, float64(stats.JetStreamMemory), "memory")
-		g(descNATSJetStream, float64(stats.JetStreamStore), "file")
 	}
 }
 

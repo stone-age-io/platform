@@ -339,9 +339,7 @@ func TestCertMetricsScrapeCleanly(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		"stone_age_certificates",
 		"stone_age_certificates_expired",
-		"stone_age_certificates_expiring",
 		"stone_age_certificate_expiry_seconds",
 	} {
 		if _, ok := families[want]; !ok {
@@ -392,9 +390,6 @@ func TestCertCheckAndMetricAgree(t *testing.T) {
 	if !strings.Contains(body, `stone_age_certificates_expired{kind="nebula_host"} 1`) {
 		t.Errorf("the check warned about an expired host certificate but the metric does not report one.\n%s",
 			grepLines(body, "stone_age_certificates"))
-	}
-	if !strings.Contains(body, `stone_age_certificates_expiring{kind="nebula_host"} 1`) {
-		t.Errorf("expiring count disagrees with the check.\n%s", grepLines(body, "stone_age_certificates"))
 	}
 
 	// Omit the series rather than emit 0: a zero timestamp is 1970, which every

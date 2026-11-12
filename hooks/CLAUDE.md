@@ -214,8 +214,10 @@ The numbers match the feature index in the root `CLAUDE.md`.
       ranks **below** `ok`. An islanded edge warns rather than failing.
     - **Don't add a check that cannot fail, and don't publish a metric that cannot
       vary — but verify the claim first.** A comment asserting a limitation is not
-      evidence of one; `stone_age_nats_cluster_routes` was nearly cut on one that
-      was wrong.
+      evidence of one.
+    - **NATS server metrics are not ours to export.** Embedded or external, the
+      server is scraped from its own monitoring port with
+      `prometheus-nats-exporter`. One way to monitor the bus, not two.
     - **`stone_age_records{collection="things"}` counts devices CONFIGURED**, not
       online, and an alert on it can never fire. Say so in the HELP text of any
       metric mistakable for a health signal.

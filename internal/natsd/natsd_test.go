@@ -62,29 +62,12 @@ cluster {
 	// Route establishment is asynchronous; poll rather than sleep a fixed span.
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		stats, ok := srvA.Stats()
-		if ok && stats.Routes > 0 {
+		if srvA.ns.NumRoutes() > 0 {
 			return // clustered
 		}
 		if time.Now().After(deadline) {
-			routes := -1
-			if ok {
-				routes = stats.Routes
-			}
-			t.Fatalf("node A never peered with node B (Routes = %d)", routes)
+			t.Fatal("node A never peered with node B")
 		}
 		time.Sleep(100 * time.Millisecond)
-	}
-}
-
-// Stats reports nothing when there is no embedded server, so the caller omits
-// the series rather than publish zeros that read as a quiet bus.
-func TestStatsOnNoServer(t *testing.T) {
-	var nilSrv *Server
-	if _, ok := nilSrv.Stats(); ok {
-		t.Error("Stats on a nil Server should report ok == false")
-	}
-	if _, ok := (&Server{}).Stats(); ok {
-		t.Error("Stats on a zero Server should report ok == false")
 	}
 }

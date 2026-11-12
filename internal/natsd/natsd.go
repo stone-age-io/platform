@@ -164,60 +164,6 @@ func portOf(rawURL string) (string, error) {
 	return "4222", nil // NATS default when the URL omits a port
 }
 
-// Stats is the embedded server's own view of itself, for the metrics endpoint.
-//
-// Everything here is server-level, not account-level, so it needs no credential
-// inside a tenant's account and the Control Plane may publish it.
-//
-// Leafnodes counts leaf connections across every account: a capacity number,
-// not per-tenant availability. A tenant asks about its own sites through
-// $SYS.REQ.ACCOUNT.PING.CONNZ.
-type Stats struct {
-	Connections int
-	Leafnodes   int
-	// Routes is peer connections in the same cluster, non-zero when nats.conf
-	// has a `cluster` block (TestEmbeddedServerClustersWithAPeer).
-	Routes        int
-	SlowConsumers int64
-	InMsgs        int64
-	OutMsgs       int64
-	InBytes       int64
-	OutBytes      int64
-
-	JetStreamEnabled bool
-	JetStreamMemory  uint64
-	JetStreamStore   uint64
-}
-
-// Stats reports the embedded server's counters. The second return is false when
-// no embedded server is running, so the caller can leave the metrics out rather
-// than export zeros that look like an idle server.
-func (s *Server) Stats() (*Stats, bool) {
-	if s == nil || s.ns == nil {
-		return nil, false
-	}
-	vz, err := s.ns.Varz(nil)
-	if err != nil || vz == nil {
-		return nil, false
-	}
-	st := &Stats{
-		Connections:   vz.Connections,
-		Leafnodes:     vz.Leafs,
-		Routes:        vz.Routes,
-		SlowConsumers: vz.SlowConsumers,
-		InMsgs:        vz.InMsgs,
-		OutMsgs:       vz.OutMsgs,
-		InBytes:       vz.InBytes,
-		OutBytes:      vz.OutBytes,
-	}
-	if js := vz.JetStream.Stats; js != nil {
-		st.JetStreamEnabled = true
-		st.JetStreamMemory = js.Memory
-		st.JetStreamStore = js.Store
-	}
-	return st, true
-}
-
 // Stop shuts the server down and waits for it to finish.
 func (s *Server) Stop() {
 	if s == nil || s.ns == nil {

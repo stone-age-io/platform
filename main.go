@@ -495,12 +495,10 @@ func main() {
 		NatsWebsocketURLs:     natsWebsocketURLs,
 		NatsEncryptionKey:     natsOptions.EncryptionKey,
 		NebulaEncryptionKey:   nebulaOptions.EncryptionKey,
-		// A closure: embeddedNATS is assigned later, in OnServe.
-		EmbeddedNATS:   func() *natsd.Server { return embeddedNATS },
-		ProbeInterval:  requireDuration("readiness.interval"),
-		ProbeTimeout:   requireDuration("readiness.timeout"),
-		MetricsEnabled: viper.GetBool("metrics.enabled"),
-		MetricsToken:   viper.GetString("metrics.token"),
+		ProbeInterval:         requireDuration("readiness.interval"),
+		ProbeTimeout:          requireDuration("readiness.timeout"),
+		MetricsEnabled:        viper.GetBool("metrics.enabled"),
+		MetricsToken:          viper.GetString("metrics.token"),
 	})
 
 	// Embedded UI with SPA fallback.

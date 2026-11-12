@@ -9,7 +9,6 @@ import (
 
 	"platform/internal/health"
 	"platform/internal/metrics"
-	"platform/internal/natsd"
 )
 
 // ObservabilityOptions is everything the readiness checks and the metrics
@@ -31,10 +30,6 @@ type ObservabilityOptions struct {
 	// NatsWebsocketURLs is nats.websocket_urls: what a browser dials. Only
 	// checked for being configured; this process often cannot reach it.
 	NatsWebsocketURLs []string
-	// EmbeddedNATS returns the in-process NATS server, or nil when the bus is a
-	// separate process. A func because `serve --nats` starts the server during
-	// OnServe, after this registration runs.
-	EmbeddedNATS func() *natsd.Server
 
 	NatsEncryptionKey   string
 	NebulaEncryptionKey string
