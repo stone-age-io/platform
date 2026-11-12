@@ -11,6 +11,15 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-12
+
+Console only: no schema change, no migration, and nothing to do on upgrade.
+Dashboard templates are written `{name}`, as Thing Type prefixes and rules
+already are, and the old `{{name}}` is still read. A switch, slider or gauge
+row on a map or floor-plan marker is configured with the widget's own form.
+One behaviour to know about: the switch widget now sends a payload that is not
+JSON as typed, where it used to refuse it.
+
 ### Changed
 
 - **Dashboard templates are written `{name}`**, the spelling Thing Type
@@ -3256,7 +3265,8 @@ repository public. Each of these was reproduced before being fixed.
 - `scripts/test-authz.sh` grew from 135 to 147 checks, covering the membership
   lifecycle, the code uniqueness constraint, and the frozen leaf-node code.
 
-[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/stone-age-io/platform/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/stone-age-io/platform/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/stone-age-io/platform/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/stone-age-io/platform/compare/v0.14.0...v0.15.0
