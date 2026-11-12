@@ -26,12 +26,11 @@ touches an API rule, also read `AUTHORIZATION.md` and run
   every one pb-nats uses.** pb-nats creates the collection before
   `schema.json` is imported, so a fresh database gets the library's fields
   regardless; a database older than one of the library's field additions did
-  not, and PocketBase silently drops writes to it. That is how the role form's
-  `allow_response` toggle stored nothing on early deployments. Declare a
+  not, and PocketBase silently drops writes to it. Declare a
   library's field with PocketBase's deterministic id (see the re-import bullet
   below); `migrations/role_response_fields_test.go` shows how to test it,
   since a fresh app passes whether or not the field is declared.
-- **A re-import cannot REMOVE a field, and no migration here could until 2026-09.**
+- **A re-import cannot REMOVE a field.**
   `initial_schema.go` calls `ImportCollectionsByMarshaledJSON` with
   `deleteMissing=false`, and in that mode `core.ImportCollections` walks the live
   collection and re-adds every field the import did not carry by id
@@ -55,10 +54,7 @@ touches an API rule, also read `AUTHORIZATION.md` and run
   the import did not carry by id, and `FieldsList.add` then replaces the
   imported definition with the existing one — so the migration logs ✅ and
   changes nothing. Since every `schema_update_*.go` here is "re-import
-  schema.json", this turns a whole class of migration into a no-op. It has bitten
-  twice: `e72557f` (pb-nats recreated `account_id` as text) and the 25
-  hand-written ids on `nats_account_exports`/`nats_account_imports`, whose
-  definitions had never been applied anywhere. **Use PocketBase's deterministic
+  schema.json", this turns a whole class of migration into a no-op. **Use PocketBase's deterministic
   id — `<type>` + crc32 of the field name — for anything a library also creates,
   and diff a real install before trusting that a re-import migration did what it
   says.** Only field definitions freeze this way; collection rules are applied

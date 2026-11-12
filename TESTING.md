@@ -25,13 +25,9 @@ behind the Go and script suites, and the traps in them.
     full run ever reports a skip, that is the bug — a test that cannot fail.
 - `go test ./...` — everything, ~11min. What CI runs (`hooks` and `migrations`
   have the bulk of them).
-  Two habits worth keeping: the readiness checks that touch NATS are tested
-  against a **real operator-mode `nats-server`** built in the test (see
-  `internal/health/nats_test.go`), because the thing being asserted IS the
-  server's trust decision and a mock only asserts what we believe it to be; and
-  the metrics exposition is parsed by **Prometheus's own parser and promlint**
-  rather than string-matched, because nothing in CI scrapes it and a malformed
-  body looks fine in a terminal.
+  NATS-facing checks are tested against a real operator-mode `nats-server`
+  (`internal/health/nats_test.go`), and the metrics exposition is parsed with
+  Prometheus's own parser and promlint, not string-matched.
 - **If `gofmt -l .` lists files on a Windows checkout, they are CRLF copies from
   before `.gitattributes` pinned `*.go` to LF.** The pin wins over
   `core.autocrlf` on every checkout since, so delete the listed files and
@@ -53,23 +49,9 @@ behind the Go and script suites, and the traps in them.
   rule, and bump `EXPECTED_CHECKS`. Note PocketBase answers 404 (not 403) when an
   update rule rejects, and 400 on a denied create — which is why every "cannot"
   is paired with a "can" on the same record.
-- **Capture "before" state immediately before the action it belongs to.** A check
-  that an operation had an effect is worthless if anything between the two reads
-  could have caused it. `rotation actually re-minted the credential` passed for
-  months against a route that did nothing, because its baseline was captured a
-  section earlier and an intervening `publish_permissions` PATCH re-minted the
-  credential as a side effect. Side-effect assertions need a baseline read on the
-  line above the call.
-- **A re-minted NATS credential is byte-identical within the same second, so a
-  "did it change" assertion is a race.** `regenerateUserJWT` reuses the stored
-  seed, and a user JWT is deterministic apart from `iat`/`exp` — whole seconds
-  (`nats-io/jwt` sets `IssuedAt = time.Now().UTC().Unix()`, hashes the claims into
-  the id with a deliberately "repeatable hash", and signs with Ed25519, which is
-  deterministic). Two mints in one wall-clock second produce the same
-  `creds_file`. `rotation actually re-minted the credential` therefore passed for
-  months and then failed on a commit that touched nothing near it, because the
-  preceding `publish_permissions` PATCH happened to land in the same second. The
-  suite now sleeps past the boundary AND asserts pb-nats cleared `regenerate`,
-  which is the same evidence without a clock in it. Prefer a side-effect
-  assertion that cannot be defeated by timestamp granularity; where the only
-  observable IS a timestamped artifact, separate the two events explicitly.
+- **Capture "before" state on the line above the action it belongs to.** Anything
+  in between can cause the effect you are checking for.
+- **A re-minted NATS credential is byte-identical within the same second**
+  (`regenerateUserJWT` reuses the seed, and `iat` is whole seconds), so "did the
+  creds change" is a race. Assert a side effect with no clock in it instead, such
+  as pb-nats clearing `regenerate`.
