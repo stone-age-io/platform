@@ -11,6 +11,12 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+### Added
+
+- **A FreeBSD release binary**, `stone-age_<version>_freebsd_amd64.tar.gz`.
+  FreeBSD is amd64 only, the same set the agent releases. The build is pure Go
+  with `CGO_ENABLED=0`, like every other target.
+
 ## [0.18.0] - 2026-11-12
 
 Console only: no schema change, no migration, and nothing to do on upgrade.
