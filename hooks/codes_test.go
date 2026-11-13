@@ -149,4 +149,50 @@ func TestCodes(t *testing.T) {
 			}
 		}
 	})
+
+	// Reloaded before every update: the guard is edge-keyed on Original(),
+	// which a record saved twice in memory does not refresh (hooks/CLAUDE.md).
+	t.Run("a thing type in use keeps its subject prefix", func(t *testing.T) {
+		gate := mustSave(t, "gate type", newType("thing_types", "Gate", "gate", "GT", org))
+		reload := func() *core.Record {
+			t.Helper()
+			rec, err := app.FindRecordById("thing_types", gate.Id)
+			if err != nil {
+				t.Fatalf("reload gate type: %v", err)
+			}
+			return rec
+		}
+
+		unused := reload()
+		unused.Set("subject_prefix", "gate.{thing}")
+		mustSave(t, "a prefix on a type no Thing uses", unused)
+
+		thing := newRecord("things")
+		thing.Set("organization", org.Id)
+		thing.Set("name", "North Gate")
+		thing.Set("type", gate.Id)
+		thing.Set("email", "north-gate@codes.thing.local")
+		thing.Set("emailVisibility", true)
+		thing.Set("password", "thing-password-123")
+		mustSave(t, "thing of the gate type", thing)
+
+		used := reload()
+		used.Set("subject_prefix", "door.{thing}")
+		if err := app.Save(used); err == nil {
+			t.Fatal("changed the subject prefix of a type a Thing uses: every subject of that Thing moved")
+		}
+		cleared := reload()
+		cleared.Set("subject_prefix", "")
+		if err := app.Save(cleared); err == nil {
+			t.Fatal("cleared the subject prefix of a type a Thing uses: its subjects moved to the default")
+		}
+
+		// Paired: the same record still takes an edit that moves no subject.
+		renamed := reload()
+		renamed.Set("name", "Gate (north side)")
+		mustSave(t, "a rename of a type in use", renamed)
+		if got := reload().GetString("subject_prefix"); got != "gate.{thing}" {
+			t.Errorf("subject_prefix = %q after the refusals, want gate.{thing}", got)
+		}
+	})
 }

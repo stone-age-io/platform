@@ -215,4 +215,33 @@ func RegisterCodes(app *pocketbase.PocketBase) {
 		app.OnRecordCreate(collection).BindFunc(check)
 		app.OnRecordUpdate(collection).BindFunc(check)
 	}
+
+	// A Thing Type's subject_prefix is fixed while any Thing uses the type. The
+	// prefix is the first half of every subject those Things publish and
+	// subscribe on, so an edit moves all of them at once, and every stream, rule,
+	// permission and subscriber written against the old prefix stops matching
+	// with no error anywhere (ADR 0003, "The sharp edge"). A Thing's type is
+	// frozen too, so a new layout means a new Thing Type.
+	//
+	// A hook, not a rule term: a rule cannot ask whether other records point at
+	// this one. Edge-keyed on Original(), which is safe here because the record
+	// API loads the row before it updates it (hooks/CLAUDE.md).
+	app.OnRecordUpdate(thingTypesCollection).BindFunc(func(e *core.RecordEvent) error {
+		orig := e.Record.Original()
+		if orig == nil || orig.GetString("subject_prefix") == e.Record.GetString("subject_prefix") {
+			return e.Next()
+		}
+		n, err := e.App.CountRecords(thingsCollection, dbx.HashExp{"type": e.Record.Id})
+		if err != nil {
+			// Fail closed: an unchecked edit could move live subjects.
+			return fmt.Errorf("count the Things of type %q: %w", e.Record.GetString("code"), err)
+		}
+		if n > 0 {
+			return apis.NewBadRequestError(fmt.Sprintf(
+				"The subject prefix of Thing Type %q cannot change while %d Thing(s) use it. "+
+					"It would move every subject they use. Create a new Thing Type for the new layout.",
+				e.Record.GetString("code"), n), nil)
+		}
+		return e.Next()
+	})
 }

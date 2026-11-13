@@ -109,8 +109,11 @@ The numbers match the feature index in the root `CLAUDE.md`.
 15. **Decommissioning a device** - `things.active`, owner/admin only, enforced
     in four places: the `authRule`, a `tokenKey` refresh in `active_flag.go`, and
     `active` mirrored onto the linked `nats_user` and `nebula_host`.
-    - **Deactivate, never delete**: revoking a Nebula certificate needs it in the
-      database to fingerprint.
+    - **Deactivate, then delete**: revoking a Nebula certificate needs it in the
+      database to fingerprint, and a delete reaches neither identity. So
+      `guardThingDelete` refuses a Thing delete while its NATS user or Nebula
+      host is active. It checks the identities, not the Thing, because the
+      mirror is best-effort.
     - **It mirrors `active`, not `revoke`.** pb-nats checks `revoke` first, and
       revoke hands back a working replacement.
     - The Nebula half applies on redeploy; Nebula has no CRL.
@@ -141,6 +144,9 @@ The numbers match the feature index in the root `CLAUDE.md`.
       it does not block the save that fixes an already-inactive infrastructure
       org. Both infrastructure orgs are exempt from the mirror and the flip.
     - A new account inherits the org's flag at provisioning time.
+    - **An org is born active** unless the create request sends `active`. A
+      request hook, because only the request can tell an omitted field from an
+      explicit `false`.
 
 16. **Organization code** (ADR 0002 in platform-docs) - **ids for storage, codes
     for addressing.** `organizations.code` is the one globally unique identifier;
@@ -166,6 +172,9 @@ The numbers match the feature index in the root `CLAUDE.md`.
     - **`prefix`** (`^[A-Z]{1,4}$`, editable): Thing and Location prefixes are
       separate sets, enforced across the two tables by a hook.
     - **`type` is frozen once set** on things and locations.
+    - **A Thing Type's `subject_prefix` is frozen while any Thing uses the
+      type**: an edit would move every subject of those Things. A hook, since
+      a rule cannot count the records that point at this one.
     - **The default subject is `{thing_type_code}.{thing}`**
       (`ui/src/utils/subjectResolver.ts`).
 

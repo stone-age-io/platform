@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=320        # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=335        # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -2181,6 +2181,93 @@ if [ "$RCODE" = "200" ] && [ "$(jn "$RBODY" 'o.items.length')" = "0" ]; then
 else
   no "an owner listing org_stats got HTTP $RCODE: $(head -c 200 <<<"$RBODY")"
 fi
+
+echo ""
+echo "=== 28. guards that replaced documented traps ==="
+# Each of these was a warning in the docs before it was a refusal here. Every
+# fixture is new, because the shared ones have been changed by earlier sections.
+
+# 28a. Leaving. Before schema_update_member_leave.go only an owner or admin could
+# delete a membership, so Leave Org failed for every other role. `dashboard`,
+# the zero-authority role, is the probe for both halves.
+LEAVER=$(mkuser leaver@test.local)
+STAYER=$(mkuser stayer@test.local)
+req POST /collections/memberships/records "$SU" \
+  "{\"user\":\"$LEAVER\",\"organization\":\"$ORG\",\"role\":\"dashboard\"}"
+MLEAVER=$(j "$RBODY" id)
+req POST /collections/memberships/records "$SU" \
+  "{\"user\":\"$STAYER\",\"organization\":\"$ORG\",\"role\":\"member\"}"
+MSTAYER=$(j "$RBODY" id)
+{ [ -z "$MLEAVER" ] || [ -z "$MSTAYER" ]; } && die "leave fixtures failed: $RBODY"
+for u in "$LEAVER" "$STAYER"; do
+  req PATCH "/collections/users/records/$u" "$SU" "{\"current_organization\":\"$ORG\"}"
+done
+TLV=$(login leaver@test.local)
+TST=$(login stayer@test.local)
+
+req DELETE "/collections/memberships/records/$MSTAYER" "$TLV"
+expect "dashboard cannot delete another user's membership" "403|400|404" "$RCODE" "$RBODY"
+req DELETE "/collections/memberships/records/$MSTAYER" "$TST"
+expect "...but that member CAN leave (same record, so the deny was authz)" "200|204" "$RCODE" "$RBODY"
+req DELETE "/collections/memberships/records/$MLEAVER" "$TLV"
+expect "dashboard CAN leave the organization" "200|204" "$RCODE" "$RBODY"
+
+# 28b. A REST create that left `active` out stored false, so the tenant was born
+# suspended and its first Thing with a NATS identity failed.
+NEWOWNER=$(mkuser newowner@test.local)
+req POST /collections/organizations/records "$TO" \
+  "{\"name\":\"Born Active\",\"owner\":\"$NEWOWNER\"}"
+expect "operator creates an organization with no active field" 200 "$RCODE" "$RBODY"
+BORN=$(j "$RBODY" id)
+if [ "$(j "$RBODY" active)" = "true" ]; then
+  ok "...and it is born active"
+else
+  no "an organization created with no active field is active=$(j "$RBODY" active), want true"
+fi
+req GET "/collections/nats_accounts/records?filter=(organization='$BORN')" "$SU"
+if [ "$(jn "$RBODY" 'o.items[0].active')" = "true" ]; then
+  ok "...and so is its NATS account (the symptom the default fixes)"
+else
+  no "the new organization's NATS account is active=$(jn "$RBODY" 'o.items[0].active'), want true"
+fi
+req POST /collections/organizations/records "$TO" \
+  "{\"name\":\"Born Suspended\",\"owner\":\"$NEWOWNER\",\"active\":false}"
+expect "operator creates an organization with active=false" 200 "$RCODE" "$RBODY"
+if [ "$(j "$RBODY" active)" = "false" ]; then
+  ok "...and the explicit false is kept (the default fills only an omission)"
+else
+  no "an explicit active=false came back as $(j "$RBODY" active)"
+fi
+
+# 28c. A Thing delete reaches neither identity, so it left the credential
+# working. hooks/active_flag.go guardThingDelete now refuses it.
+GUARD_NATS=$(mknats guard-dev)
+req POST /collections/things/records "$SU" \
+  "{\"email\":\"guard1@test.local\",\"password\":\"Password123!\",\"passwordConfirm\":\"Password123!\",\"emailVisibility\":true,\"name\":\"Guarded\",\"code\":\"GUARD1\",\"organization\":\"$ORG\",\"nats_user\":\"$GUARD_NATS\"}"
+GTHING=$(j "$RBODY" id)
+{ [ -z "$GUARD_NATS" ] || [ -z "$GTHING" ]; } && die "guarded thing fixture failed: $RBODY"
+req DELETE "/collections/things/records/$GTHING" "$TA"
+expect "owner cannot delete a Thing whose NATS identity is active" 400 "$RCODE" "$RBODY"
+req PATCH "/collections/things/records/$GTHING" "$TA" '{"active":false}'
+expect "owner deactivates that Thing" 200 "$RCODE" "$RBODY"
+req DELETE "/collections/things/records/$GTHING" "$TA"
+expect "...then CAN delete it (same record)" "200|204" "$RCODE" "$RBODY"
+
+# 28d. Editing a used Thing Type's subject_prefix moved every subject of its
+# Things. hooks/codes.go now refuses it while a Thing uses the type.
+req POST /collections/thing_types/records "$TA" \
+  "{\"name\":\"Guard Gate\",\"code\":\"guardgate\",\"organization\":\"$ORG\",\"subject_prefix\":\"gate.{thing}\"}"
+expect "owner creates a thing type with a subject prefix" 200 "$RCODE" "$RBODY"
+GTYPE=$(j "$RBODY" id)
+req PATCH "/collections/thing_types/records/$GTYPE" "$TA" '{"subject_prefix":"gates.{thing}"}'
+expect "owner CAN change the prefix while no Thing uses the type" 200 "$RCODE" "$RBODY"
+req POST /collections/things/records "$SU" \
+  "{\"email\":\"gate1@test.local\",\"password\":\"Password123!\",\"passwordConfirm\":\"Password123!\",\"emailVisibility\":true,\"name\":\"Gate 1\",\"code\":\"GATE1\",\"organization\":\"$ORG\",\"type\":\"$GTYPE\"}"
+[ -z "$(j "$RBODY" id)" ] && die "typed thing fixture failed: $RBODY"
+req PATCH "/collections/thing_types/records/$GTYPE" "$TA" '{"subject_prefix":"door.{thing}"}'
+expect "owner cannot change the prefix once a Thing uses the type" 400 "$RCODE" "$RBODY"
+req PATCH "/collections/thing_types/records/$GTYPE" "$TA" '{"name":"Guard Gate (north)"}'
+expect "...but CAN still rename the same type" 200 "$RCODE" "$RBODY"
 
 # ----------------------------------------------------------------------- result
 

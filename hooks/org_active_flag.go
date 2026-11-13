@@ -91,6 +91,25 @@ func RegisterOrgActiveFlag(app *pocketbase.PocketBase, opts OrgActiveFlagOptions
 		return e.Next()
 	})
 
+	// An organization is born active unless the request says otherwise.
+	// PocketBase bools have no schema default, so a REST create that left
+	// `active` out stored false: the tenant started suspended, and its first
+	// `POST /api/org/things` with a NATS identity failed with "no active NATS
+	// account". A request hook, unlike the Thing default in active_flag.go,
+	// because an explicit false is a real choice here (create a tenant
+	// suspended), and only the request can tell it from an omitted field.
+	// Callers of app.Save (bootstrap, demo-seed) set the flag themselves.
+	app.OnRecordCreateRequest(opts.OrgCollection).BindFunc(func(e *core.RecordRequestEvent) error {
+		raw, err := rawRequestBody(e)
+		if err != nil {
+			return err
+		}
+		if leftUnset(raw, "active") {
+			e.Record.Set("active", true)
+		}
+		return e.Next()
+	})
+
 	// The mirror. Registered in main.go AFTER RegisterOrgProvisioning: handlers
 	// run in registration order and provisioning works before e.Next(), so a
 	// missing account exists by the time this runs.

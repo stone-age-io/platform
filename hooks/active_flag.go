@@ -49,7 +49,8 @@ type ActiveFlagOptions struct {
 // Nebula: `active` on nebula_hosts feeds every other host's `pki.blocklist`,
 // because Nebula has no CRL. So it takes effect only when each peer's config is
 // redeployed, and it needs the certificate still in the database to fingerprint
-// it: deactivating a device revokes it, deleting one does not.
+// it: deactivating a device revokes it, deleting one does not. So a Thing with a
+// live identity cannot be deleted at all (guardThingDelete).
 //
 // The cascade is best-effort and logged: a NATS or Nebula hiccup must not roll
 // back the deactivation. The token kill is transactional with the save.
@@ -94,6 +95,61 @@ func RegisterActiveFlag(app *pocketbase.PocketBase, opts ActiveFlagOptions) {
 		"NATS identity", []string{"regenerate", "revoke"})
 	guardLinkedIdentity(app, opts.ThingCollection, opts.NebulaHostCollection, "nebula_host",
 		"Nebula host", []string{"renew"})
+
+	guardThingDelete(app, opts)
+}
+
+// guardThingDelete refuses to delete a Thing while an identity it links is
+// still active. A delete reaches neither identity: the NATS credential keeps
+// working, the Nebula certificate stays trusted, and once the Thing is gone
+// nothing points an operator at either one. Deactivating first revokes both
+// (the mirror above), and then the delete goes through.
+//
+// It checks the identities, not the Thing's own flag. The mirror is
+// best-effort, so a deactivated Thing can still hold a live identity, and a
+// Thing that never had one is a plain inventory row with nothing to revoke.
+//
+// A model hook, so it also holds for app.Delete and the admin UI. Negative
+// priority, so it refuses before any other delete handler acts.
+func guardThingDelete(app *pocketbase.PocketBase, opts ActiveFlagOptions) {
+	linked := []struct{ collection, field, label string }{
+		{opts.NatsUserCollection, "nats_user", "NATS identity"},
+		{opts.NebulaHostCollection, "nebula_host", "Nebula host"},
+	}
+
+	app.OnRecordDelete(opts.ThingCollection).Bind(&hook.Handler[*core.RecordEvent]{
+		Priority: -100,
+		Func: func(e *core.RecordEvent) error {
+			for _, l := range linked {
+				id := e.Record.GetString(l.field)
+				if l.collection == "" || id == "" {
+					continue
+				}
+				identity, err := e.App.FindRecordById(l.collection, id)
+				if errors.Is(err, sql.ErrNoRows) {
+					continue // the relation points at nothing
+				}
+				if err != nil {
+					// Fail closed: this is an enforcement hook.
+					return fmt.Errorf("checking the %s of the Thing: %w", l.label, err)
+				}
+				if !identity.GetBool("active") {
+					continue
+				}
+
+				name := e.Record.GetString("code")
+				if name == "" {
+					name = e.Record.GetString("name")
+				}
+				return apis.NewBadRequestError(
+					"Thing "+name+" still has an active "+l.label+". A delete would leave "+
+						"its credential working. Deactivate the Thing first, then delete it.",
+					nil,
+				)
+			}
+			return e.Next()
+		},
+	})
 }
 
 // guardLinkedIdentity refuses to bring back an identity whose Thing is

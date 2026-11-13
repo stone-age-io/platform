@@ -181,7 +181,9 @@ The browse row is the only one in this table that the API rules do **not**
 enforce — see the read-scope note below. Every other row is a rule.
 
 `owner` and `admin` are deliberately identical in the rules — the only difference
-is that an owner cannot leave their own organization (`ui/src/stores/auth.ts`).
+is that an owner cannot leave their own organization. Every other role can: the
+`memberships` delete rule has a "my own row" branch that names every role but
+`owner`, and the console (`ui/src/stores/auth.ts`) offers no owner the button.
 Editing the **organization record itself is a platform-operator action, not an
 owner one**: it carries the tenancy flags (`managed`, `is_operator_org`,
 `is_system_org`) and drives NATS account and Nebula CA provisioning, so no
@@ -266,7 +268,7 @@ Features with a long note get one line here. The note lives where the code does.
     `twin_desired`. Never merge them. Say `differs`, never `pending` (`ui/CLAUDE.md`)
 14. **Readiness & metrics** - `GET /api/ready` and `/metrics`. A check must be
     answerable first-hand, and there are no per-org labels (`hooks/CLAUDE.md`)
-15. **Decommissioning a device** - `things.active`. Deactivate, never delete (`hooks/CLAUDE.md`)
+15. **Decommissioning a device** - `things.active`. Deactivate, then delete: a delete is refused while an identity is live (`hooks/CLAUDE.md`)
 15b. **Rotating an organization's Nebula CA** - three steps, because the wait
     between them is the feature (`hooks/CLAUDE.md`)
 15d. **Suspending an organization** - `organizations.active` withdraws the NATS

@@ -11,6 +11,37 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+Four traps that the docs used to warn about are now refused or fixed on the
+server. One migration (`schema_update_member_leave.go`) changes the
+`memberships` delete rule. Nothing to do on upgrade, but two behaviours change:
+a Thing with a live identity can no longer be deleted, and a used Thing Type's
+`subject_prefix` can no longer be edited.
+
+### Changed
+
+- **A Thing whose NATS user or Nebula host is still active cannot be
+  deleted.** The delete answers `400` and names the identity. A delete reaches
+  neither identity, so it used to leave the credential working and the
+  certificate trusted. Deactivate the Thing first, then delete it. A Thing with
+  no identity deletes as before. The check is a model hook, so it also holds for
+  the admin UI (`hooks/active_flag.go`, `guardThingDelete`).
+- **A Thing Type's `subject_prefix` cannot change while any Thing uses the
+  type.** The update answers `400` with the count. An edit moved every subject
+  of every Thing of the type at once (ADR 0003, "The sharp edge"). A type that
+  no Thing uses stays editable (`hooks/codes.go`).
+- **An Organization created through the API without `active` is born active.**
+  PocketBase bools have no default, so it used to start suspended, and its first
+  Thing with a NATS identity failed with "no active NATS account". An explicit
+  `"active": false` is kept (`hooks/org_active_flag.go`).
+
+### Fixed
+
+- **Leave Org works for admin, member, viewer and dashboard.** The
+  `memberships` delete rule allowed only an owner or admin, so the console's
+  button always failed for the other roles. A user can now delete their own
+  membership unless it is the owner one. `scripts/test-authz.sh` section 28
+  covers this and the three changes above.
+
 ## [0.18.1] - 2026-11-12
 
 Release packaging only: no code, schema or migration change, and nothing to do

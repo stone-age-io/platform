@@ -187,7 +187,7 @@ func TestDeactivatedThingIdentitiesStayDown(t *testing.T) {
 		}
 	})
 
-	// Last, because it changes the state the refusals above depend on.
+	// After the refusals above, because it changes the state they depend on.
 	t.Run("reactivating the Thing brings both identities back", func(t *testing.T) {
 		setThingActive(true)
 		if !reload("nats_users", linked.Id).GetBool("active") {
@@ -198,4 +198,31 @@ func TestDeactivatedThingIdentitiesStayDown(t *testing.T) {
 		}
 	})
 
+	// Last, because the allowed delete removes the Thing.
+	t.Run("a Thing with a live identity cannot be deleted until it is deactivated", func(t *testing.T) {
+		if err := app.Delete(reload("things", thing.Id)); err == nil {
+			t.Fatal("deleting a Thing whose identities are active was allowed: its credentials would keep working")
+		}
+
+		setThingActive(false)
+		if err := app.Delete(reload("things", thing.Id)); err != nil {
+			t.Fatalf("deleting a deactivated Thing was refused: %v", err)
+		}
+		if reload("nats_users", linked.Id).GetBool("active") {
+			t.Error("the delete went through while the NATS identity was still active")
+		}
+	})
+
+	t.Run("a Thing with no identity can be deleted while active", func(t *testing.T) {
+		plain := newRec("things", map[string]any{
+			"name":            "Shelf 4",
+			"code":            "SHELF-4",
+			"email":           "shelf-4@things.dormant.test",
+			"emailVisibility": true,
+			"password":        "probe-password-123",
+		})
+		if err := app.Delete(reload("things", plain.Id)); err != nil {
+			t.Fatalf("deleting an inventory-only Thing was refused: %v", err)
+		}
+	})
 }
