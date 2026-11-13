@@ -11,6 +11,11 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-11-12
+
+Release packaging only: no code, schema or migration change, and nothing to do
+on upgrade. The release now includes a FreeBSD amd64 binary.
+
 ### Added
 
 - **A FreeBSD release binary**, `stone-age_<version>_freebsd_amd64.tar.gz`.
@@ -3271,7 +3276,8 @@ repository public. Each of these was reproduced before being fixed.
 - `scripts/test-authz.sh` grew from 135 to 147 checks, covering the membership
   lifecycle, the code uniqueness constraint, and the frozen leaf-node code.
 
-[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.18.0...HEAD
+[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.18.1...HEAD
+[0.18.1]: https://github.com/stone-age-io/platform/compare/v0.18.0...v0.18.1
 [0.18.0]: https://github.com/stone-age-io/platform/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/stone-age-io/platform/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/stone-age-io/platform/compare/v0.15.0...v0.16.0
