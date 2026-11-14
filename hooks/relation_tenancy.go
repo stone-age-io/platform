@@ -1,6 +1,10 @@
 package hooks
 
 import (
+	"database/sql"
+	"errors"
+	"fmt"
+
 	"ganigeorgiev.com/pocketbase/pocketbase"
 	"ganigeorgiev.com/pocketbase/pocketbase/apis"
 	"ganigeorgiev.com/pocketbase/pocketbase/core"
@@ -71,7 +75,12 @@ func checkRelationTenancy(app core.App, record *core.Record) error {
 		}
 
 		target, err := app.FindCollectionByNameOrId(rel.CollectionId)
-		if err != nil || target.Fields.GetByName(orgFieldName) == nil {
+		if err != nil {
+			// A relation field always names a collection, so this is a database
+			// error, not an answer. Refuse rather than skip the check.
+			return fmt.Errorf("relation tenancy: look up collection of %s.%s: %w", collection.Name, rel.Name, err)
+		}
+		if target.Fields.GetByName(orgFieldName) == nil {
 			// Points at something unowned (users, for instance). Nothing to compare.
 			continue
 		}
@@ -95,9 +104,14 @@ func checkRelationTenancy(app core.App, record *core.Record) error {
 			}
 
 			related, err := app.FindRecordById(target.Name, id)
-			if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
 				// A dangling id is PocketBase's own relation validation to report.
 				continue
+			}
+			if err != nil {
+				// Any other error is not "not found": skipping here would let a
+				// cross-tenant relation through on a database hiccup.
+				return fmt.Errorf("relation tenancy: look up %s %q: %w", target.Name, id, err)
 			}
 
 			if related.GetString(orgFieldName) != recordOrg {

@@ -19,6 +19,11 @@ and this file starts where the versioned releases do.
   waits and shows the error. Every load, save and limit failure the dashboard
   store records also appears as a dismissible banner on the Visualizer; nothing
   showed them before (`stores/dashboard.ts`, `VisualizerView.vue`).
+- **The cross-organization relation check fails closed on a database error.**
+  `hooks/relation_tenancy.go` skipped a related record whose lookup failed for
+  any reason, so a database error let the check pass. Only "no such record" is
+  skipped now (PocketBase's own validation reports a dangling id); any other
+  error refuses the save, as `hooks/lookup.go` already does elsewhere.
 
 ## [0.19.0] - 2026-11-13
 
