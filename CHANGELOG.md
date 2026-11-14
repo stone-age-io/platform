@@ -11,11 +11,16 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
-Four traps that the docs used to warn about are now refused or fixed on the
-server. One migration (`schema_update_member_leave.go`) changes the
-`memberships` delete rule. Nothing to do on upgrade, but two behaviours change:
-a Thing with a live identity can no longer be deleted, and a used Thing Type's
-`subject_prefix` can no longer be edited.
+## [0.19.0] - 2026-11-13
+
+A minor, server only. Four traps that the docs used to warn about are now
+refused or fixed on the server, deactivating a Thing fails closed, and a
+database error during a lookup is no longer read as "not found". One migration
+(`schema_update_member_leave.go`) changes the `memberships` delete rule.
+Nothing to do on upgrade, but three behaviours change: a Thing with a live
+identity can no longer be deleted, a used Thing Type's `subject_prefix` can no
+longer be edited, and a deactivation whose revoke fails is refused rather than
+saved.
 
 ### Changed
 
@@ -3331,7 +3336,8 @@ repository public. Each of these was reproduced before being fixed.
 - `scripts/test-authz.sh` grew from 135 to 147 checks, covering the membership
   lifecycle, the code uniqueness constraint, and the frozen leaf-node code.
 
-[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.18.1...HEAD
+[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/stone-age-io/platform/compare/v0.18.1...v0.19.0
 [0.18.1]: https://github.com/stone-age-io/platform/compare/v0.18.0...v0.18.1
 [0.18.0]: https://github.com/stone-age-io/platform/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/stone-age-io/platform/compare/v0.16.0...v0.17.0
