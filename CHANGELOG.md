@@ -11,6 +11,17 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+## [0.19.1] - 2026-11-14
+
+A patch, server and console: no schema or migration change, and nothing to do
+on upgrade. Two fixes come from the libraries and act on their own after the
+upgrade. Nebula hosts issued by earlier versions could never start; the nightly
+renewal job re-issues every active one (set `renew` on a host to fix it at
+once). A suspended organization could be put back on the hub by any member, and
+the first start removes any account that got back that way. A failed shared
+dashboard save now says so, the cross-organization relation check fails closed
+on a database error, and `init` reads `STONE_AGE_NATS_EMBEDDED_CONFIG`.
+
 ### Fixed
 
 - **Nebula hosts can start.** Every host certificate the platform issued came
