@@ -468,6 +468,35 @@ describe('shared dashboards', () => {
     expect(store.remoteChanged).toBe(true)
   })
 
+  // The Save button reports what this returns, so a lost conflict must not
+  // read as success.
+  it('reports a revision conflict as a failed save', async () => {
+    const store = connected()
+    await putShared('shared-1', { id: 'remote-1', name: 'Shared' })
+    await store.loadRemoteDashboard('shared-1')
+    await putShared('shared-1', { id: 'remote-1', name: 'From elsewhere' })
+
+    store.renameDashboard('remote-1', 'Mine')
+    expect(await store.saveRemoteDashboard()).toBe(false)
+
+    expect(store.storageError).toMatch(/Conflict/)
+    expect(store.remoteChanged).toBe(true)
+    expect(stored('shared-1').name).toBe('From elsewhere')
+  })
+
+  it('reports a clean save as success and clears an earlier error', async () => {
+    const store = connected()
+    await putShared('shared-1', { id: 'remote-1', name: 'Shared' })
+    await store.loadRemoteDashboard('shared-1')
+    store.storageError = 'Save failed: earlier'
+
+    store.renameDashboard('remote-1', 'Mine')
+    expect(await store.saveRemoteDashboard()).toBe(true)
+
+    expect(store.storageError).toBeNull()
+    expect(stored('shared-1').name).toBe('Mine')
+  })
+
   it('stores a duplicate with new ids and no storage fields', async () => {
     const store = connected()
     const local = seedDashboard(store, 'Source')

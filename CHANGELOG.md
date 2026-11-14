@@ -11,6 +11,15 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A failed dashboard save no longer says "Dashboard saved".** The Save
+  button did not wait for a shared (KV) save and always showed success, so a
+  revision conflict or a lost connection discarded the edit silently. It now
+  waits and shows the error. Every load, save and limit failure the dashboard
+  store records also appears as a dismissible banner on the Visualizer; nothing
+  showed them before (`stores/dashboard.ts`, `VisualizerView.vue`).
+
 ## [0.19.0] - 2026-11-13
 
 A minor, server only. Four traps that the docs used to warn about are now

@@ -148,13 +148,14 @@ function exitFullScreen() {
   fullScreenWidgetId.value = null
 }
 
-function handleSave() {
-  if (dashboardStore.activeDashboard?.storage === 'kv') {
-    dashboardStore.saveRemoteDashboard()
-  } else {
-    dashboardStore.saveToStorage()
-  }
-  toast.success('Dashboard saved')
+// Await the result: a shared save can lose a revision conflict, and claiming
+// success then is how an edit disappears without anyone noticing.
+async function handleSave() {
+  const saved = dashboardStore.activeDashboard?.storage === 'kv'
+    ? await dashboardStore.saveRemoteDashboard()
+    : dashboardStore.saveToStorage()
+  if (saved) toast.success('Dashboard saved')
+  else toast.error(dashboardStore.storageError ?? 'Dashboard not saved')
 }
 
 function handleReloadRemote() {
@@ -362,6 +363,13 @@ watch(() => dashboardStore.currentVariableValues, () => {
            silently stopped updating is the failure this exists for. -->
       <div v-if="!natsStore.isConnected" class="px-4 py-1.5 text-sm border-b border-warning/40 bg-warning/15" role="status">
         {{ natsStore.status === 'disconnected' ? 'Disconnected from NATS' : 'Connecting to NATS…' }}: values are not updating
+      </div>
+
+      <!-- The store records every load, save and limit failure here; nothing
+           else shows it, so without this a failed save is silent. -->
+      <div v-if="dashboardStore.storageError" class="flex items-center gap-2 px-4 py-1.5 text-sm border-b border-error/40 bg-error/15" role="alert">
+        <span class="flex-1">{{ dashboardStore.storageError }}</span>
+        <button class="btn btn-xs btn-ghost btn-square" aria-label="Dismiss storage error" @click="dashboardStore.clearStorageError()"><X :size="14" aria-hidden="true" /></button>
       </div>
 
       <div class="visualizer-content">

@@ -234,7 +234,8 @@ export const useDashboardStore = defineStore('dashboard', () => {
     }
   }
   
-  function saveToStorage() {
+  // Returns whether the write landed. On failure storageError says why.
+  function saveToStorage(): boolean {
     try {
       storageError.value = null
       localStorage.setItem(SETTINGS_KEY, JSON.stringify({
@@ -250,8 +251,10 @@ export const useDashboardStore = defineStore('dashboard', () => {
         activeDashboardId: activeDashboard.value?.storage === 'local' ? activeDashboard.value.id : null,
       }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+      return true
     } catch (err) {
       handleStorageError(err, 'save')
+      return false
     }
   }
 
@@ -338,9 +341,15 @@ export const useDashboardStore = defineStore('dashboard', () => {
     }
   }
 
-  async function saveRemoteDashboard() {
-    if (!activeDashboard.value || activeDashboard.value.storage !== 'kv' || !enableSharedDashboards.value) return
-    
+  // Returns whether the write landed. On failure storageError says why, so a
+  // caller can report a conflict instead of claiming the save worked.
+  async function saveRemoteDashboard(): Promise<boolean> {
+    if (!activeDashboard.value || activeDashboard.value.storage !== 'kv') return false
+    if (!enableSharedDashboards.value) {
+      storageError.value = 'Save failed: shared dashboards are turned off.'
+      return false
+    }
+
     try {
       const kv = await getKv()
       const key = activeDashboard.value.kvKey
@@ -362,8 +371,10 @@ export const useDashboardStore = defineStore('dashboard', () => {
       activeDashboard.value.modified = toSave.modified
       isDirty.value = false
       remoteChanged.value = false
-      
+      storageError.value = null
+
       refreshRemoteKeys()
+      return true
     } catch (err: any) {
       console.error('[Dashboard] Failed to save remote:', err)
       if (err.message?.includes('wrong last sequence')) {
@@ -372,6 +383,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
       } else {
         storageError.value = `Save failed: ${err.message}`
       }
+      return false
     }
   }
 
