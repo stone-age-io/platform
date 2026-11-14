@@ -195,8 +195,9 @@ func main() {
 	)
 
 	// Root persistent flags because PocketBase adds `serve` inside app.Start(),
-	// leaving nowhere to attach a serve-only flag. Only `serve` acts on them.
-	// Bound to viper, so an unset flag falls through to config or env.
+	// leaving nowhere to attach a serve-only flag. `serve` acts on both; `init`
+	// also reads nats.embedded_config, to know where to export and whether it
+	// already ran. Bound to viper, so an unset flag falls through to config or env.
 	app.RootCmd.PersistentFlags().Bool("nats", false,
 		"serve: run a NATS server in this process, using the config from `nats export`")
 	app.RootCmd.PersistentFlags().String("nats-config", natsd.DefaultConfigFile,

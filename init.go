@@ -12,6 +12,7 @@ import (
 	"ganigeorgiev.com/pocketbase/pocketbase/core"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 
 	"platform/internal/natsd"
 )
@@ -48,7 +49,11 @@ config is written where --nats-config points, so 'serve --nats' with the same
 		Example: `  stone-age init --email admin@example.com --operator-org "Acme MSP"
   stone-age serve --nats`,
 		Run: func(cmd *cobra.Command, args []string) {
-			natsConfig, _ := cmd.Flags().GetString("nats-config")
+			// Through viper, not the flag alone, so --nats-config,
+			// STONE_AGE_NATS_EMBEDDED_CONFIG and config.yaml resolve here exactly
+			// as they do for `serve --nats`. Otherwise init could write nats.conf
+			// to one place and serve look for it in another.
+			natsConfig := viper.GetString("nats.embedded_config")
 			// `nats export` always writes <dir>/nats.conf. Any other name means
 			// the marker never appears and every start re-runs init.
 			if filepath.Base(natsConfig) != "nats.conf" {

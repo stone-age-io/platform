@@ -24,6 +24,10 @@ and this file starts where the versioned releases do.
   any reason, so a database error let the check pass. Only "no such record" is
   skipped now (PocketBase's own validation reports a dangling id); any other
   error refuses the save, as `hooks/lookup.go` already does elsewhere.
+- **`init` honours `STONE_AGE_NATS_EMBEDDED_CONFIG` and `nats.embedded_config`.**
+  It read only the `--nats-config` flag, while `serve --nats` reads all three, so
+  setting the variable alone made `init` export to the default path and `serve`
+  look somewhere else.
 
 ## [0.19.0] - 2026-11-13
 
