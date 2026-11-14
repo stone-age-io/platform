@@ -38,8 +38,7 @@ func init() {
 // database has nothing for the check to find.
 func ApplyTypePrefixes(app core.App) error {
 	if len(SchemaJSON) == 0 {
-		log.Println("⚠️ SchemaJSON is empty, skipping type prefixes")
-		return nil
+		return errNoSchema
 	}
 
 	var problems []string

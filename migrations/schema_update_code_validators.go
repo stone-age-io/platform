@@ -43,8 +43,7 @@ var codeValidatorCollections = []string{"things", "locations", "thing_types", "l
 // and proves nothing; the test restores the old shape and calls this directly.
 func ApplyCodeValidators(app core.App) error {
 	if len(SchemaJSON) == 0 {
-		log.Println("⚠️ SchemaJSON is empty, skipping code validators")
-		return nil
+		return errNoSchema
 	}
 
 	if err := app.ImportCollectionsByMarshaledJSON(SchemaJSON, false); err != nil {

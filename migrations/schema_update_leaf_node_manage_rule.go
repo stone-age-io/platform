@@ -14,8 +14,7 @@ import (
 func init() {
 	m.Register(func(app core.App) error {
 		if len(SchemaJSON) == 0 {
-			log.Println("⚠️ SchemaJSON is empty, skipping leaf_nodes manageRule update")
-			return nil
+			return errNoSchema
 		}
 		if err := app.ImportCollectionsByMarshaledJSON(SchemaJSON, false); err != nil {
 			return err

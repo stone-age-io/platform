@@ -36,6 +36,11 @@ a Thing with a live identity can no longer be deleted, and a used Thing Type's
 
 ### Fixed
 
+- **A migration with no embedded schema fails instead of skipping.** Every
+  schema re-import logged a warning and returned success when
+  `migrations.SchemaJSON` was empty, so `migrate up` recorded it as applied
+  having imported nothing, and it never ran again. Only a build that forgot to
+  set the schema could hit this; the shipped binary sets it.
 - **A database error during a lookup is no longer read as "not found".**
   Managed-org exports, Thing creation (code, NATS username, identity email,
   Nebula hostname and overlay IP), invitation accept, organization codes, the

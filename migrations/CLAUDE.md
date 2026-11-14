@@ -5,6 +5,10 @@ Claude Code loads this file when it touches anything under `migrations/`. Every
 touches an API rule, also read `AUTHORIZATION.md` and run
 `./scripts/test-authz.sh`.
 
+- **A migration that re-imports `schema.json` opens with
+  `if len(SchemaJSON) == 0 { return errNoSchema }`.** Never log and return
+  nil: the runner records a nil return as applied, so the import would never
+  run again. `TestMigrateUpFailsWithoutSchema`.
 - **Schema changes need a new `migrations/schema_update_*.go`** — editing
   `schema.json` alone reaches fresh databases only. **A new non-null column with
   a live rule over it needs a backfill in the same migration**: PocketBase bools

@@ -80,8 +80,8 @@ func NewApp(dataDir string) (*pocketbase.PocketBase, error) {
 		return nil, err
 	}
 
-	// migrations/initial_schema.go silently imports nothing when this is empty,
-	// leaving an app with no platform fields and no error.
+	// The migrations fail with errNoSchema when this is empty, rather than
+	// leaving an app with no platform fields.
 	schema, err := os.ReadFile(filepath.Join(root, "schema.json"))
 	if err != nil {
 		return nil, fmt.Errorf("read schema.json: %w", err)

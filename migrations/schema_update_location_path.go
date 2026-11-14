@@ -28,8 +28,7 @@ func init() {
 // database has no locations, so `migrate up` alone backfills nothing.
 func ApplyLocationPath(app core.App) error {
 	if len(SchemaJSON) == 0 {
-		log.Println("⚠️ SchemaJSON is empty, skipping location path")
-		return nil
+		return errNoSchema
 	}
 	if err := app.ImportCollectionsByMarshaledJSON(SchemaJSON, false); err != nil {
 		return err

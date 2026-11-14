@@ -23,8 +23,7 @@ import (
 func init() {
 	m.Register(func(app core.App) error {
 		if len(SchemaJSON) == 0 {
-			log.Println("⚠️ SchemaJSON is empty, skipping device active flag update")
-			return nil
+			return errNoSchema
 		}
 
 		// On a fresh database the column does not exist yet, so a failure here is

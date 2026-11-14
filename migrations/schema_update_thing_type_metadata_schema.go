@@ -21,8 +21,7 @@ import (
 func init() {
 	m.Register(func(app core.App) error {
 		if len(SchemaJSON) == 0 {
-			log.Println("⚠️ SchemaJSON is empty, skipping thing_types.metadata_schema")
-			return nil
+			return errNoSchema
 		}
 
 		if err := app.ImportCollectionsByMarshaledJSON(SchemaJSON, false); err != nil {
