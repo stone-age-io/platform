@@ -36,6 +36,18 @@ a Thing with a live identity can no longer be deleted, and a used Thing Type's
 
 ### Fixed
 
+- **Deactivating a Thing fails closed.** Its NATS user and Nebula host are
+  revoked before the Thing saves, and if either revoke fails the deactivation
+  answers `400` and the Thing stays active. It used to save the Thing as
+  inactive and only log the failure, so the console showed a device as cut off
+  while its credential still worked. An identity revoked before the failure
+  stays revoked. Reactivation is unchanged: best-effort, because a failure
+  there leaves the device off (`hooks/active_flag.go`).
+- **Linking a NATS user or Nebula host to a deactivated Thing revokes it.**
+  The cascade used to run only when the Thing's flag changed, so an identity
+  linked afterwards kept working behind a device the console showed as cut
+  off. Every save that leaves a Thing inactive now revokes what it links, and
+  refuses the save if it cannot.
 - **Leave Org works for admin, member, viewer and dashboard.** The
   `memberships` delete rule allowed only an owner or admin, so the console's
   button always failed for the other roles. A user can now delete their own

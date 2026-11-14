@@ -113,7 +113,14 @@ The numbers match the feature index in the root `CLAUDE.md`.
       database to fingerprint, and a delete reaches neither identity. So
       `guardThingDelete` refuses a Thing delete while its NATS user or Nebula
       host is active. It checks the identities, not the Thing, because the
-      mirror is best-effort.
+      Thing's flag is not proof of what older or hand-edited data holds.
+    - **Deactivation fails closed**: the identities are revoked before the
+      Thing saves, and a failed revoke refuses the save (an identity already
+      revoked stays revoked). Reactivation saves the Thing first and mirrors
+      best-effort, since a failure there leaves the device off.
+    - **The revoke is level-keyed**: every save that leaves a Thing inactive
+      revokes what it links, so linking a live identity to an inactive Thing
+      revokes it. The `tokenKey` refresh and the re-enable stay on the edge.
     - **It mirrors `active`, not `revoke`.** pb-nats checks `revoke` first, and
       revoke hands back a working replacement.
     - The Nebula half applies on redeploy; Nebula has no CRL.

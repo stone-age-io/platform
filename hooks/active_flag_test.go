@@ -198,6 +198,42 @@ func TestDeactivatedThingIdentitiesStayDown(t *testing.T) {
 		}
 	})
 
+	// Deactivation fails closed: if the NATS revoke fails, the Thing must not
+	// read as deactivated while its credential still works. Pointing the user at
+	// an account that does not exist makes the revoke fail (blanking public_key
+	// would not: pb-nats reads that as a user never issued and skips the revoke).
+	// Restored at the end, so the delete cases below start from a Thing with live
+	// identities.
+	t.Run("a failed revoke refuses the deactivation", func(t *testing.T) {
+		before := reload("things", thing.Id)
+		setAccount := func(v string) {
+			t.Helper()
+			if _, err := app.DB().NewQuery("UPDATE nats_users SET account_id = {:a} WHERE id = {:id}").
+				Bind(dbx.Params{"a": v, "id": linked.Id}).Execute(); err != nil {
+				t.Fatalf("set account_id: %v", err)
+			}
+		}
+		setAccount("missingaccount1")
+		defer setAccount(account.Id)
+
+		rec := reload("things", thing.Id)
+		rec.Set("active", false)
+		if err := app.Save(rec); err == nil {
+			t.Fatal("deactivation was saved although the NATS identity could not be revoked")
+		}
+
+		after := reload("things", thing.Id)
+		if !after.GetBool("active") {
+			t.Error("the Thing reads as deactivated while its NATS credential still works")
+		}
+		if after.TokenKey() != before.TokenKey() {
+			t.Error("the refused deactivation still rotated the Thing's tokenKey")
+		}
+		if !reload("nats_users", linked.Id).GetBool("active") {
+			t.Error("the NATS identity whose revoke failed reads as inactive")
+		}
+	})
+
 	// Last, because the allowed delete removes the Thing.
 	t.Run("a Thing with a live identity cannot be deleted until it is deactivated", func(t *testing.T) {
 		if err := app.Delete(reload("things", thing.Id)); err == nil {
@@ -210,6 +246,43 @@ func TestDeactivatedThingIdentitiesStayDown(t *testing.T) {
 		}
 		if reload("nats_users", linked.Id).GetBool("active") {
 			t.Error("the delete went through while the NATS identity was still active")
+		}
+	})
+
+	// Level, not edge: an identity linked to a Thing that is already inactive is
+	// revoked by that save. Paired with an ordinary edit of the same inactive
+	// Thing, which must still save.
+	t.Run("linking a live identity to an inactive Thing revokes it", func(t *testing.T) {
+		gate := newRec("things", map[string]any{
+			"name":            "Gate 2",
+			"code":            "GATE-2",
+			"email":           "gate-2@things.dormant.test",
+			"emailVisibility": true,
+			"password":        "probe-password-123",
+		})
+		rec := reload("things", gate.Id)
+		rec.Set("active", false)
+		if err := app.Save(rec); err != nil {
+			t.Fatalf("deactivate the Thing: %v", err)
+		}
+
+		user := natsUser("gate-2")
+		rec = reload("things", gate.Id)
+		rec.Set("nats_user", user.Id)
+		if err := app.Save(rec); err != nil {
+			t.Fatalf("linking an identity to an inactive Thing was refused: %v", err)
+		}
+		if reload("nats_users", user.Id).GetBool("active") {
+			t.Error("the NATS identity linked to an inactive Thing is still active: its credential works while the console shows the device as cut off")
+		}
+
+		rec = reload("things", gate.Id)
+		rec.Set("name", "Gate 2 (north)")
+		if err := app.Save(rec); err != nil {
+			t.Fatalf("an ordinary edit of an inactive Thing was refused: %v", err)
+		}
+		if err := app.Delete(reload("things", gate.Id)); err != nil {
+			t.Fatalf("the Thing whose identity was revoked by the link could not be deleted: %v", err)
 		}
 	})
 
