@@ -70,6 +70,9 @@ The edge agent is a separate repo — [stone-age-io/agent](https://github.com/st
 - `go test -short ./...` - the pass to run while working (~19s). It skips only
   the tests that boot a real PocketBase. CI runs everything with
   `go test -count=1 ./...` (~11 min).
+- `go test -tags e2e -count=1 ./e2e/` - the built binary against the real NATS
+  server and Nebula's config loader (~2 min). Add a test when a bug gets past
+  the unit tests, not before. `TESTING.md` says how.
 - `cd ui && npm test` - Vitest, pure logic only. Nothing renders a component in
   CI, so you check anything visual by hand.
 - `./scripts/test-authz.sh` - after **any** API-rule change. Add a check and bump

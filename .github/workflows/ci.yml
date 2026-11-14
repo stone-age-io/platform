@@ -189,6 +189,14 @@ jobs:
       - name: Sortable columns resolve
         run: ./scripts/check-sort-fields.sh
 
+      # Builds the binary, runs init and serve --nats, and asks the real NATS
+      # server and Nebula's own config loader whether what the platform issued
+      # works. v0.19.1 fixed two bugs every other step here passed: no issued
+      # Nebula host could start, and a member could undo a suspension. ~2 min,
+      # about 30s of it pb-nats's startup delay (plans/e2e-suite.md).
+      - name: End-to-end
+        run: go test -tags e2e -count=1 ./e2e/
+
       # ---------------------------------------------------------------- image
       # Nothing built the image outside the release workflow until now, so the
       # Dockerfile's first exercise was always a tag push -- which is how v0.3.0

@@ -39,6 +39,30 @@ behind the Go and script suites, and the traps in them.
   matching; do not add `*.vue text eol=lf` to `.gitattributes` to dodge it,
   which rewrites every contributor's worktree to fix one regex.
 
+## `e2e/`
+
+- `go test -tags e2e -count=1 ./e2e/` — **~2min. Builds the binary, runs
+  `init` and `serve --nats`, and asks the real NATS server and Nebula's own
+  config loader whether what the platform issued works.** The build tag keeps
+  it out of `go test ./...`. `E2E_KEEP=1` keeps the temp dir and server log.
+- **It exists because unit tests passed two bugs that shipped**: no Nebula
+  host the platform issued could start, and a member could undo an org's
+  suspension (both fixed in v0.19.1). Run against pb-nats v0.4.0 and pb-nebula
+  v0.5.0, its tests fail on exactly those two.
+- **Add a test here when a bug gets past the unit tests**, and not before. A
+  test for a bug that has not happened is maintenance with no evidence behind
+  it.
+- **Wait with `eventually`, never `time.Sleep`.** pb-nats publishes after a 3s
+  debounce, and in the first ~30s after a start it holds every publish until
+  its queue ticker, which is why `connect` waits 45s. Where the bug is
+  something coming back late, assert with `holds`.
+- **Fixtures go through the path a customer uses**, such as Things through
+  `POST /api/org/things` as the owner. A fixture written with the superuser
+  skips the checks a tenant would hit.
+- The binary runs with `--dev=false`. PocketBase reads a binary under the OS
+  temp dir as `go run`, and dev mode logs every SQL statement, seeds and
+  private keys included.
+
 ## `scripts/test-authz.sh`
 
 - `./scripts/test-authz.sh` — **run after any API-rule change in `schema.json`.**
