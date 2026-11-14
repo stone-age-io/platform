@@ -78,8 +78,10 @@ func RegisterOrgCode(app *pocketbase.PocketBase, orgCollection string) {
 				"No organization code could be derived from the name %q. Set one explicitly: lowercase letters, digits and hyphens, at least two characters.", name), nil)
 		}
 
-		existing, _ := e.App.FindFirstRecordByFilter(
-			orgCollection, "code = {:code}", dbx.Params{"code": code})
+		existing, err := findFirst(e.App, orgCollection, "code = {:code}", dbx.Params{"code": code})
+		if err != nil {
+			return fmt.Errorf("checking organization code %q: %w", code, err)
+		}
 		if existing != nil {
 			if derived {
 				return apis.NewBadRequestError(fmt.Sprintf(

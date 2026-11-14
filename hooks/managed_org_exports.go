@@ -131,7 +131,10 @@ func privateTo(importerPublicKey string) []field {
 // must re-save every managed org, as
 // migrations/schema_update_subject_token_to_code.go did.
 func ensureManagedExports(app core.App, opts ManagedOrgExportsOptions, org *core.Record) error {
-	account, _ := app.FindFirstRecordByFilter(opts.AccountCollection, "organization = {:org}", dbx.Params{"org": org.Id})
+	account, err := findOrgOwned(app, opts.AccountCollection, org.Id)
+	if err != nil {
+		return fmt.Errorf("find NATS account: %w", err)
+	}
 	if account == nil {
 		return fmt.Errorf("no NATS account for organization yet")
 	}
@@ -140,11 +143,17 @@ func ensureManagedExports(app core.App, opts ManagedOrgExportsOptions, org *core
 		return fmt.Errorf("NATS account has no public key yet")
 	}
 
-	operatorOrg, _ := app.FindFirstRecordByFilter(opts.OrgCollection, "is_operator_org = true")
+	operatorOrg, err := findFirst(app, opts.OrgCollection, "is_operator_org = true")
+	if err != nil {
+		return fmt.Errorf("find operator organization: %w", err)
+	}
 	if operatorOrg == nil {
 		return fmt.Errorf("no operator organization exists (re-run bootstrap with --operator-org)")
 	}
-	hubAccount, _ := app.FindFirstRecordByFilter(opts.AccountCollection, "organization = {:org}", dbx.Params{"org": operatorOrg.Id})
+	hubAccount, err := findOrgOwned(app, opts.AccountCollection, operatorOrg.Id)
+	if err != nil {
+		return fmt.Errorf("find operator NATS account: %w", err)
+	}
 	if hubAccount == nil {
 		return fmt.Errorf("operator organization has no NATS account")
 	}
@@ -172,10 +181,13 @@ func ensureManagedExports(app core.App, opts ManagedOrgExportsOptions, org *core
 		{"description", "Service events exported to the operator hub account"},
 	}, privateTo(hubKey)...)
 
-	existingExport, _ := app.FindFirstRecordByFilter(exportCol.Id, "account_id = {:acct} && name = {:name}", dbx.Params{
+	existingExport, err := findFirst(app, exportCol.Id, "account_id = {:acct} && name = {:name}", dbx.Params{
 		"acct": account.Id,
 		"name": managedExportName,
 	})
+	if err != nil {
+		return fmt.Errorf("find export: %w", err)
+	}
 	if existingExport == nil {
 		rec := core.NewRecord(exportCol)
 		rec.Set("account_id", account.Id)
@@ -216,10 +228,13 @@ func ensureManagedExports(app core.App, opts ManagedOrgExportsOptions, org *core
 		{"description", fmt.Sprintf("Service events from managed org '%s'", org.GetString("name"))},
 	}
 
-	existingImport, _ := app.FindFirstRecordByFilter(importCol.Id, "account_id = {:acct} && name = {:name}", dbx.Params{
+	existingImport, err := findFirst(app, importCol.Id, "account_id = {:acct} && name = {:name}", dbx.Params{
 		"acct": hubAccount.Id,
 		"name": importName,
 	})
+	if err != nil {
+		return fmt.Errorf("find hub import: %w", err)
+	}
 	if existingImport == nil {
 		rec := core.NewRecord(importCol)
 		rec.Set("account_id", hubAccount.Id)
@@ -240,13 +255,21 @@ func ensureManagedExports(app core.App, opts ManagedOrgExportsOptions, org *core
 }
 
 // removeManagedExports tears down the export/import pair for an org that is
-// no longer managed (or was deleted). Missing pieces are silently fine.
+// no longer managed (or was deleted). Missing pieces are silently fine; a
+// lookup that fails is logged, since it may leave a piece behind.
 func removeManagedExports(app core.App, opts ManagedOrgExportsOptions, org *core.Record) {
-	if account, _ := app.FindFirstRecordByFilter(opts.AccountCollection, "organization = {:org}", dbx.Params{"org": org.Id}); account != nil {
-		rec, _ := app.FindFirstRecordByFilter(opts.ExportCollection, "account_id = {:acct} && name = {:name}", dbx.Params{
+	account, err := findOrgOwned(app, opts.AccountCollection, org.Id)
+	if err != nil {
+		log.Printf("❌ Failed to look up the NATS account of '%s', its export may remain: %v", org.GetString("name"), err)
+	}
+	if account != nil {
+		rec, err := findFirst(app, opts.ExportCollection, "account_id = {:acct} && name = {:name}", dbx.Params{
 			"acct": account.Id,
 			"name": managedExportName,
 		})
+		if err != nil {
+			log.Printf("❌ Failed to look up the export of '%s', it may remain: %v", org.GetString("name"), err)
+		}
 		if rec != nil {
 			if err := app.Delete(rec); err != nil {
 				log.Printf("❌ Failed to delete export for '%s': %v", org.GetString("name"), err)
@@ -257,7 +280,10 @@ func removeManagedExports(app core.App, opts ManagedOrgExportsOptions, org *core
 	}
 
 	// The import name embeds the org id, so it's findable without the hub account.
-	rec, _ := app.FindFirstRecordByFilter(opts.ImportCollection, "name = {:name}", dbx.Params{"name": hubImportName(org.Id)})
+	rec, err := findFirst(app, opts.ImportCollection, "name = {:name}", dbx.Params{"name": hubImportName(org.Id)})
+	if err != nil {
+		log.Printf("❌ Failed to look up the hub import of '%s', it may remain: %v", org.GetString("name"), err)
+	}
 	if rec != nil {
 		if err := app.Delete(rec); err != nil {
 			log.Printf("❌ Failed to delete hub import for '%s': %v", org.GetString("name"), err)

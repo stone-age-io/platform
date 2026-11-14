@@ -36,6 +36,13 @@ a Thing with a live identity can no longer be deleted, and a used Thing Type's
 
 ### Fixed
 
+- **A database error during a lookup is no longer read as "not found".**
+  Managed-org exports, Thing creation (code, NATS username, identity email,
+  Nebula hostname and overlay IP), invitation accept, organization codes, the
+  owner membership and email-template seeding ignored the error and went on as
+  if the record were absent. Managed-org exports could create a second export
+  and a second hub import that way. Each now stops and reports the error
+  (`hooks/lookup.go`, `findFirst`).
 - **Deactivating a Thing fails closed.** Its NATS user and Nebula host are
   revoked before the Thing saves, and if either revoke fails the deactivation
   answers `400` and the Thing stays active. It used to save the Thing as

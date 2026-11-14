@@ -266,11 +266,14 @@ func resolveInventoryRole(re *core.RequestEvent, opts ThingRoutesOptions) (strin
 // instead of a driver constraint error. Case is ignored, matching the unique
 // index (ADR 0003).
 func assertThingCodeFree(re *core.RequestEvent, opts ThingRoutesOptions, orgID, code string) error {
-	existing, _ := re.App.FindFirstRecordByFilter(
+	existing, err := findFirst(re.App,
 		opts.ThingCollection,
 		"organization = {:org} && code:lower = {:code}",
 		dbx.Params{"org": orgID, "code": strings.ToLower(code)},
 	)
+	if err != nil {
+		return re.InternalServerError("failed to check the thing code", err)
+	}
 	if existing != nil {
 		return re.BadRequestError(fmt.Sprintf("a thing with code %q already exists in this organization", code), nil)
 	}
@@ -352,11 +355,15 @@ func resolveNatsUser(
 	// within its account (the JWT identity is the public key), and a global
 	// check would let one tenant's names block another's. There is no unique
 	// index on the column, so this check is the whole policy.
-	if existing, _ := txApp.FindFirstRecordByFilter(
+	existing, err := findFirst(txApp,
 		opts.NatsUserCollection,
 		"account_id = {:acct} && nats_username = {:u}",
 		dbx.Params{"acct": account.Id, "u": body.Code},
-	); existing != nil {
+	)
+	if err != nil {
+		return "", re.InternalServerError("failed to check the NATS username", err)
+	}
+	if existing != nil {
 		return "", re.BadRequestError(fmt.Sprintf("NATS username %q is already used in this organization", body.Code), nil)
 	}
 
@@ -364,11 +371,15 @@ func resolveNatsUser(
 	// collide, but the local half can if assertThingCodeFree was bypassed, so
 	// this says what happened instead of a bare "failed to create" from Save().
 	email := fmt.Sprintf("%s@%s.nats.local", body.Code, orgSlug)
-	if clash, _ := txApp.FindFirstRecordByFilter(
+	clash, err := findFirst(txApp,
 		opts.NatsUserCollection,
 		"email = {:e}",
 		dbx.Params{"e": email},
-	); clash != nil {
+	)
+	if err != nil {
+		return "", re.InternalServerError("failed to check the NATS identity email", err)
+	}
+	if clash != nil {
 		return "", re.BadRequestError(fmt.Sprintf(
 			"identifier %q is already in use — a Thing with code %q already has a NATS identity in this organization",
 			email, body.Code), nil)
@@ -431,11 +442,15 @@ func resolveNebulaHost(
 		return "", re.BadRequestError("nebula.network_id is not a network in this organization", nil)
 	}
 
-	if existing, _ := txApp.FindFirstRecordByFilter(
+	existing, err := findFirst(txApp,
 		opts.NebulaHostCollection,
 		"network_id = {:n} && (hostname = {:h} || overlay_ip = {:ip})",
 		dbx.Params{"n": body.Nebula.NetworkID, "h": body.Code, "ip": body.Nebula.OverlayIP},
-	); existing != nil {
+	)
+	if err != nil {
+		return "", re.InternalServerError("failed to check the Nebula hostname and overlay IP", err)
+	}
+	if existing != nil {
 		return "", re.BadRequestError(
 			fmt.Sprintf("hostname %q or overlay IP %q is already used on that network", body.Code, body.Nebula.OverlayIP), nil)
 	}

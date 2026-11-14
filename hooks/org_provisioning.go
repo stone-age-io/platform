@@ -1,7 +1,6 @@
 package hooks
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
 	"log"
@@ -195,12 +194,5 @@ func ensureOrgNebulaCA(app core.App, opts OrgProvisioningOptions, org *core.Reco
 // would otherwise create a second NATS account, a second signing identity
 // nothing reconciles.
 func findOrgOwned(app core.App, collection, orgID string) (*core.Record, error) {
-	rec, err := app.FindFirstRecordByFilter(collection, "organization = {:org}", dbx.Params{"org": orgID})
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return rec, nil
+	return findFirst(app, collection, "organization = {:org}", dbx.Params{"org": orgID})
 }

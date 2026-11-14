@@ -99,11 +99,14 @@ func ensureOwnerMembership(app core.App, org *core.Record, opts OrgMembershipOpt
 		return nil
 	}
 
-	membership, _ := app.FindFirstRecordByFilter(
+	membership, err := findFirst(app,
 		opts.MembershipCollection,
 		"user = {:user} && organization = {:org}",
 		dbx.Params{"user": ownerID, "org": org.Id},
 	)
+	if err != nil {
+		return fmt.Errorf("find owner membership: %w", err)
+	}
 
 	if membership == nil {
 		collection, err := app.FindCollectionByNameOrId(opts.MembershipCollection)

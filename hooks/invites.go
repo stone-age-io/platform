@@ -273,11 +273,14 @@ func acceptInvite(e *core.RequestEvent, opts InviteOptions) error {
 
 	orgID := invite.GetString("organization")
 
-	existing, _ := e.App.FindFirstRecordByFilter(
+	existing, err := findFirst(e.App,
 		opts.MembershipCollection,
 		"user = {:user} && organization = {:org}",
 		dbx.Params{"user": authRecord.Id, "org": orgID},
 	)
+	if err != nil {
+		return e.InternalServerError("Could not check your membership. Try again.", err)
+	}
 	if existing != nil {
 		// Already in, usually a double-clicked link: clean up, no error.
 		if err := e.App.Delete(invite); err != nil {

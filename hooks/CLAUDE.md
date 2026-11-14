@@ -200,6 +200,11 @@ The numbers match the feature index in the root `CLAUDE.md`.
 
 ## A few files, in more detail
 
+- `lookup.go` - `findFirst`: no row is `(nil, nil)`, any other error comes
+  back. Never write `x, _ := app.FindFirstRecordByFilter(...)` in server code:
+  it reads a database error as "not found", and the code after it creates a
+  duplicate or skips a check.
+
 - `nats_limits.go` - an unset NATS role limit is stored as -1, and a request
   that sends 0 for a role or account limit is refused. Two layers, because only
   a request can tell omitted from 0. Long form: `AUTHORIZATION.md`.

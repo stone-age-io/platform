@@ -90,11 +90,16 @@ func RegisterEmailTemplates(app *pocketbase.PocketBase, defs ...EmailTemplate) {
 		}
 
 		for _, def := range defs {
-			existing, _ := se.App.FindFirstRecordByFilter(
+			existing, err := findFirst(se.App,
 				EmailTemplatesCollection,
 				"key = {:key}",
 				dbx.Params{"key": def.Key},
 			)
+			if err != nil {
+				se.App.Logger().Warn("could not check email template, not seeding it",
+					"key", def.Key, "error", err)
+				continue
+			}
 			if existing != nil {
 				continue
 			}
