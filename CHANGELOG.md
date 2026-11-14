@@ -13,6 +13,23 @@ and this file starts where the versioned releases do.
 
 ### Fixed
 
+- **Nebula hosts can start.** Every host certificate the platform issued came
+  with a private key that did not belong to it, and Nebula refuses to start on
+  such a pair ("private key is not a pair with public key in nebula cert"), so
+  no host could join the mesh. pb-nebula v0.5.1 issues X25519 key pairs, as
+  `nebula-cert` does. **Existing hosts repair themselves:** the nightly renewal
+  job (03:00) re-issues every active host whose key does not pair, so each
+  device picks up a working `config_yaml` on its next fetch. To fix a host at
+  once, set `renew` on it. Inactive hosts are not touched; reactivating one
+  issues a new pair.
+- **A suspended organization stays off the hub.** Suspension removes the
+  organization's NATS account from the server, but any change to a NATS user in
+  that account put it back. Any member, `dashboard` included, could undo an
+  operator's suspension by rotating their own credentials, and an owner
+  deactivating a device did the same. pb-nats v0.4.1 removes an inactive
+  account instead of publishing it, whatever change queued it. The first start
+  after upgrading also removes any suspended account that reached the hub this
+  way.
 - **A failed dashboard save no longer says "Dashboard saved".** The Save
   button did not wait for a shared (KV) save and always showed success, so a
   revision conflict or a lost connection discarded the edit silently. It now

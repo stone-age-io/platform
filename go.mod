@@ -12,8 +12,8 @@ require (
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/common v0.70.1
 	github.com/skeeeon/pb-audit v0.3.0
-	github.com/skeeeon/pb-nats v0.4.0
-	github.com/skeeeon/pb-nebula v0.5.0
+	github.com/skeeeon/pb-nats v0.4.1
+	github.com/skeeeon/pb-nebula v0.5.1
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/spf13/viper v1.21.0

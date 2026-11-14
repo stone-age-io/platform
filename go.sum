@@ -106,10 +106,10 @@ github.com/sagikazarmark/locafero v0.12.0 h1:/NQhBAkUb4+fH1jivKHWusDYFjMOOKU88ee
 github.com/sagikazarmark/locafero v0.12.0/go.mod h1:sZh36u/YSZ918v0Io+U9ogLYQJ9tLLBmM4eneO6WwsI=
 github.com/skeeeon/pb-audit v0.3.0 h1:K/3jC/jfTlUhZEjruzU15dzmSrH5lmMo9EoeydJQKG0=
 github.com/skeeeon/pb-audit v0.3.0/go.mod h1:hH5C/HvoT+ViQ9J+p8TpwUKE8xk3mjc8YN5QfirbKFQ=
-github.com/skeeeon/pb-nats v0.4.0 h1:RBcuENVb6orEiAsnFUqlD8XhshSRmiP56hqP1ziJ/II=
-github.com/skeeeon/pb-nats v0.4.0/go.mod h1:rEUKks0xl0SdMmOBUpgXaTke3Mms3uNaDUQKPe3+3DU=
-github.com/skeeeon/pb-nebula v0.5.0 h1:r6lD+W5VqBJhqYsc1VZuM7CtQARzBNUP7agRtQLMwMQ=
-github.com/skeeeon/pb-nebula v0.5.0/go.mod h1:UX/8Q7AZdB9vJ202XMU5Q83N7RkYbTbtgsHrpfmQZuI=
+github.com/skeeeon/pb-nats v0.4.1 h1:YNvyVVEdLUy7oGLJqjRmQ+y1iQY9jZNF6yt10k1mQv0=
+github.com/skeeeon/pb-nats v0.4.1/go.mod h1:rEUKks0xl0SdMmOBUpgXaTke3Mms3uNaDUQKPe3+3DU=
+github.com/skeeeon/pb-nebula v0.5.1 h1:U8QUHwaZwNYlnpctTYJhn6xKNhHgjZZmKp6WGmeH3cg=
+github.com/skeeeon/pb-nebula v0.5.1/go.mod h1:lH6exe0pBemdxykHPpOW5QI/MUC2fKv+cF87S6Pmfsc=
 github.com/slackhq/nebula v1.11.0 h1:UVSVPTFw1/QxrfH/MIm27tzxGWn2dSnXZRGh7q0VhsQ=
 github.com/slackhq/nebula v1.11.0/go.mod h1:ASNK6VI3QkMJ1z9fONuu1XUdRMfzop606pYM0yijwRY=
 github.com/spf13/afero v1.15.0 h1:b/YBCLWAJdFWJTN9cLhiXXcD7mzKn9Dm86dNnfyQw1I=
