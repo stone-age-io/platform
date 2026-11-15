@@ -11,6 +11,16 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-11-14
+
+A minor, server and console. Re-issuing a Nebula host certificate now revokes
+the certificate it replaces. Before, the old certificate stayed valid until it
+expired (pb-nebula v0.6.0). There is nothing to run on upgrade: pb-nebula adds
+two columns when it starts. One behaviour changes: a host re-issued on request
+is cut off from each peer that redeploys before the host fetches its new
+config. Certificates replaced before this release were never stored and stay
+valid; the upgrade notes say what to do about one that matters.
+
 ### Upgrading
 
 - **Nothing to run.** pb-nebula adds two columns to `nebula_hosts` on start
@@ -44,6 +54,26 @@ and this file starts where the versioned releases do.
   running on the old certificate. Each such change also regenerates every host
   config under the organization's CA, as deactivating one does. The Re-issue
   dialog and the host form now say so.
+
+### Tests
+
+- **An end-to-end suite runs the built binary** against the real NATS server
+  and Nebula's own config loader (`e2e/`, `go test -tags e2e -count=1 ./e2e/`,
+  a step in CI). It covers five cases:
+  - issued creds connect;
+  - a Thing publishes only where its role allows;
+  - a suspended organization stays off the bus;
+  - a deactivated Thing is disconnected;
+  - Nebula starts on an issued lighthouse config and an issued host config.
+
+  Against pb-nats v0.4.0 and pb-nebula v0.5.0, it fails on both bugs that
+  v0.19.1 fixed.
+- **A CA rotation test opens the tunnels Nebula would at every step**
+  (`hooks/nebula_rotation_e2e_test.go`). It runs with some devices having
+  fetched their new config and some not. After `prepare` and after `commit`,
+  the two groups still reach each other. A device that skipped a wait does
+  not. Deactivated hosts and another organization's hosts are refused
+  throughout.
 
 ## [0.19.1] - 2026-11-14
 
@@ -3416,7 +3446,9 @@ repository public. Each of these was reproduced before being fixed.
 - `scripts/test-authz.sh` grew from 135 to 147 checks, covering the membership
   lifecycle, the code uniqueness constraint, and the frozen leaf-node code.
 
-[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/stone-age-io/platform/compare/v0.19.1...v0.20.0
+[0.19.1]: https://github.com/stone-age-io/platform/compare/v0.19.0...v0.19.1
 [0.19.0]: https://github.com/stone-age-io/platform/compare/v0.18.1...v0.19.0
 [0.18.1]: https://github.com/stone-age-io/platform/compare/v0.18.0...v0.18.1
 [0.18.0]: https://github.com/stone-age-io/platform/compare/v0.17.0...v0.18.0
