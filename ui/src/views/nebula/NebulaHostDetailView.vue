@@ -67,10 +67,13 @@ async function handleDelete() {
  * unknown key such as `regenerate` is silently dropped by PocketBase); pb-nebula
  * acts on the false -> true edge and resets it in the same save.
  *
- * Never on an inactive host: its revocation is the stored certificate's
- * fingerprint in every peer's blocklist, so replacing that certificate would
- * un-revoke the one the device holds. The server refuses it too (pb-nebula
- * v0.3.3+). Reactivating re-issues by itself.
+ * The old certificate is revoked (pb-nebula v0.6.0+): every peer refuses it
+ * once its own config is redeployed. That makes this the leaked-key remedy, and
+ * it cuts the host off until it gets its new config.
+ *
+ * Never on an inactive host: it is revoked, so a new certificate would be
+ * revoked from the start. The server refuses it too (pb-nebula v0.3.3+).
+ * Reactivating re-issues by itself.
  */
 async function confirmRegenerate() {
   if (!host.value || !host.value.active) return
@@ -78,7 +81,7 @@ async function confirmRegenerate() {
   const confirmed = await confirm({
     title: 'Re-issue Certificate',
     message: `Issue a new key pair and certificate for "${host.value.hostname}"?`,
-    details: 'The config is regenerated around them. The host keeps running on its old certificate until the new config is downloaded and deployed to it. The fingerprint changes, and a fingerprint is what peers blocklist when a host is deactivated, so re-issue when you intend to redeploy.',
+    details: 'The old certificate is revoked: every peer refuses it once its own config is redeployed, so this host is cut off from them until its new config is deployed to it. Use this if the key may have leaked, and redeploy the host straight after.',
     confirmText: 'Re-issue',
     variant: 'warning',
   })

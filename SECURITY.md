@@ -88,9 +88,14 @@ different remediation costs:
   deactivation put their key on the revocation list. Reactivating one
   re-signs for the same leaked seed, so set `revoke` on it once it is active
   again.
-- **Nebula**: re-issue *and* blocklist *and* redeliver. There is no CRL, so a
-  revoked certificate is a fingerprint in every peer's `pki.blocklist`, applied
-  when that peer's config is redeployed. This is the expensive half.
+- **Nebula**: re-issue *and* blocklist *and* redeliver. Set `renew` on each
+  `nebula_hosts` row (Re-issue in the console): pb-nebula issues a new key pair
+  and certificate, and puts the old certificate in `pki.blocklist` in every
+  config under the organization's CA. There is no CRL, so the blocklist applies
+  when each peer's config is redeployed, and the host is cut off until its own
+  new config is. This is the expensive half. For a whole organization, rotating
+  its Nebula CA is cheaper: once `finish` runs, nothing the old CA signed
+  verifies, and no blocklist grows.
 
 Treat a `pb_data` compromise as requiring both. The controls that actually
 address it are operational rather than cryptographic — full-disk encryption on

@@ -327,8 +327,8 @@ func TestCARotationKeepsALiveMeshTogether(t *testing.T) {
 	wantShutOut(t, "after commit", retiredCert, lh1, a2, b1)
 	wantShutOut(t, "after commit", stranger, lh1, a2, b1)
 	if got := reloadRecord(t, app, "nebula_hosts", retired.host.Id).GetString("certificate"); got != retiredIssued {
-		t.Error("commit re-signed a deactivated host; its peers blocklist the old fingerprint, " +
-			"so a new certificate would put it back on the mesh")
+		t.Error("commit re-signed a deactivated host; it is revoked, so a new certificate " +
+			"would be revoked from the start and only add to every blocklist")
 	}
 
 	// The second wait: everyone picks up their re-signed certificate.

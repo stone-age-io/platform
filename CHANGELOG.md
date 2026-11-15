@@ -11,6 +11,40 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+### Upgrading
+
+- **Nothing to run.** pb-nebula adds two columns to `nebula_hosts` on start
+  (`revoked_certificates`, `retired_certificates`); there is no migration.
+- **A Nebula certificate replaced before this release stays valid until it
+  expires.** It was never stored, so it cannot be listed. If one matters, such
+  as a host deactivated after a leak and since reactivated, rotate the
+  organization's Nebula CA: once `finish` runs, nothing the old CA signed
+  verifies.
+
+### Security
+
+- **A replaced Nebula certificate is revoked.** Re-issuing a host overwrote its
+  certificate and kept the old one nowhere, and Nebula has no CRL, so the old
+  certificate stayed valid until it expired. A host taken out of a group kept
+  the group in the certificate its device still held. Reactivating a device that
+  had been deactivated after a leak took the leaked certificate off every
+  peer's blocklist. And Re-issue, the remedy `SECURITY.md` names for a leaked
+  key, blocklisted nothing. pb-nebula v0.6.0 keeps each replaced certificate
+  until it expires and lists it in `pki.blocklist` across the organization's CA.
+  A re-issue someone asks for revokes it at once: an edit to a host's name,
+  overlay IP, groups, unsafe networks or validity, Re-issue, or reactivation. A
+  routine one (the nightly renewal, CA rotation) does not, so it cuts no host
+  off, but deactivating the host later refuses that certificate too.
+
+### Changed
+
+- **Re-issuing a Nebula host cuts it off until it is redeployed.** Every peer
+  refuses the old certificate once its own config is redeployed, so until the
+  host gets its new config it reaches only peers that have not. Before, it kept
+  running on the old certificate. Each such change also regenerates every host
+  config under the organization's CA, as deactivating one does. The Re-issue
+  dialog and the host form now say so.
+
 ## [0.19.1] - 2026-11-14
 
 A patch, server and console: no schema or migration change, and nothing to do

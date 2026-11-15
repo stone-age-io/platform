@@ -411,7 +411,9 @@ onMounted(() => {
                 />
                 <label class="label">
                   <span class="label-text-alt">
-                    Comma-separated list of groups for firewall rules
+                    Comma-separated list of groups for firewall rules. Signed into the
+                    certificate: changing them on an existing host re-issues it and
+                    revokes the old one.
                   </span>
                 </label>
               </div>
@@ -543,7 +545,7 @@ onMounted(() => {
                 />
                 <label class="label">
                   <span class="label-text-alt">
-                    Optional (1–10). Leave blank to use the default. Changing it on an existing host re-issues the certificate.
+                    Optional (1–10). Leave blank to use the default. Changing it on an existing host re-issues the certificate and revokes the old one.
                   </span>
                 </label>
               </div>
@@ -576,8 +578,8 @@ onMounted(() => {
                 <span class="label-text-alt">
                   Subnets <strong>this</strong> host routes to, one per line. Signed into
                   the certificate — Nebula authorizes routing on the certificate, not on
-                  config, so saving this re-issues it and the change is inert until the
-                  host picks up the new one.
+                  config, so saving this re-issues it, revokes the old one, and the
+                  change is inert until the host picks up the new one.
                 </span>
               </label>
             </div>
