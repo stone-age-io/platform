@@ -158,8 +158,10 @@ function handleClick(item: T) {
 <template>
   <!-- tabular-nums on the root reaches table and cards; scanned columns are numeric. -->
   <div class="w-full tabular-nums">
-    <!-- Desktop: table -->
-    <div class="hidden lg:block overflow-x-auto">
+    <!-- Desktop: table, from `xl`. Not `lg`: the sidebar opens at `lg` and takes
+         18rem, so at 1024px a five-column list got about 680px and its one free
+         column wrapped a character a line. At `xl` it gets about 930px. -->
+    <div class="hidden xl:block overflow-x-auto">
       <table class="table table-sm w-full table-fixed">
         <thead>
           <tr class="border-b border-base-300">
@@ -214,8 +216,8 @@ function handleClick(item: T) {
       </table>
     </div>
     
-    <!-- Mobile: cards -->
-    <div class="lg:hidden space-y-2">
+    <!-- Phones, tablets and narrow laptops: cards -->
+    <div class="xl:hidden space-y-2">
       <!-- Touch-only sort row, sized up to 44px by `.sort-touch` below. Not `h-11`:
            `select-xs` and `btn-xs` also set `min-height`, which would win. -->
       <div v-if="sortableColumns.length" class="sort-touch flex items-center gap-2 pb-1">

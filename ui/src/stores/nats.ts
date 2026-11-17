@@ -26,7 +26,11 @@ export const useNatsStore = defineStore('nats', () => {
   const nc = shallowRef<NatsConnection | null>(null)
   const status = ref<'disconnected' | 'connecting' | 'connected' | 'reconnecting'>('disconnected')
   const lastError = ref<string | null>(null)
-  const autoConnect = ref(false)
+  // On unless this device turned it off. Every live surface (dashboards, the
+  // Thing page's Live State, the KV browser) needs the connection, so off by
+  // default meant a first login that showed nothing live until the user found
+  // Settings, and a reload that dropped it again.
+  const autoConnect = ref(true)
 
   // Server URLs, in priority order: userUrls (this device's override, in
   // localStorage), defaultUrls (config.yaml via /api/client-config), FALLBACK_URL.
@@ -85,8 +89,9 @@ export const useNatsStore = defineStore('nats', () => {
       ? parsed.filter((u): u is string => typeof u === 'string' && !!u)
       : []
 
+    // An absent key means the default (on); only an explicit 'false' is off.
     const savedAuto = localStorage.getItem(STORAGE_AUTOCONNECT)
-    autoConnect.value = savedAuto === 'true'
+    autoConnect.value = savedAuto !== 'false'
 
     await loadDefaults()
   }

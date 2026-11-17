@@ -11,6 +11,21 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+### Changed
+
+- **The console connects to NATS on login by default.** Auto-connect used to
+  be off until someone ticked it in Settings, so a first login showed an empty
+  dashboard under a "Disconnected" banner, the Thing page's Live State said to
+  go to Settings, and every reload dropped the connection. A device that has
+  turned it off keeps it off.
+
+### Fixed
+
+- **List views show cards below 1280px, not 1024px.** The sidebar opens at
+  1024px, so the table got about 680px there, and on the Things list the
+  Location column wrapped one character a line. Between 1024px and 1279px
+  every list now uses the card layout phones and tablets already had.
+
 ## [0.20.0] - 2026-11-14
 
 A minor, server and console. Re-issuing a Nebula host certificate now revokes
