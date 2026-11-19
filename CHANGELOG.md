@@ -11,6 +11,32 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+### Security
+
+- **Built with Go 1.27.4.** `go.mod` said `go 1.27.0`, and CI and the release
+  build install exactly that version, so every release so far shipped Go
+  1.27.0's standard library. govulncheck finds 14 known vulnerabilities in it
+  that the platform's code reaches: HTTP/1 and HTTP/2 server crashes, memory
+  exhaustion and connection desynchronization in `net/http`, a MIME header
+  memory limit bypass, malformed ECH handling in `crypto/tls`, compromised
+  intermediates `crypto/x509` should distrust, and two context-tracking bugs in
+  `html/template`. Go 1.27.4 fixes all 14. Upgrade every deployment.
+
+### Changed
+
+- **pb-nebula v0.7.0 and Nebula 1.12.0** (from v0.6.0 and 1.11.0). The agent
+  uses the same Nebula version. pb-nebula v0.7.0 changes nothing but the Nebula
+  version it builds against. Nebula 1.12 needs Go 1.27.3 or later. It is stricter about what it
+  loads, and that reaches hosts through the configs the platform issues:
+  - **A firewall rule's `group` must be a string.** A number like `1.10`, or a
+    `null` group with no `host`, other group or `cidr` beside it, makes a 1.12
+    host refuse the config. 1.11 accepted both and quietly turned `1.10` into
+    the group `1.1`. The configs the platform generates by default load; check
+    any host rules entered by hand.
+  - **IPv6 traffic in protocols Nebula does not parse** (SCTP, GRE, IP-in-IP)
+    now needs a `proto: any` rule. It may have been passing only through an
+    IPv6 firewall bypass that Nebula 1.11.1 fixed.
+
 ## [0.20.1] - 2026-11-18
 
 A patch, console and demo seed: no schema or migration change, and nothing to
