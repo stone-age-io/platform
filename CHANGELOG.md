@@ -11,6 +11,15 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+## [0.20.2] - 2026-11-18
+
+A security patch: no schema or migration change, and nothing to run on
+upgrade. Releases are now built with Go 1.27.4, which fixes 14 standard-library
+vulnerabilities the platform's code reaches, so upgrade every deployment. Nebula
+1.12 and pb-nebula v0.7.0 come with it. The configs the platform issues are
+unchanged, but a 1.12 host refuses some firewall rules 1.11 accepted, so check
+any host rules entered by hand.
+
 ### Security
 
 - **Built with Go 1.27.4.** `go.mod` said `go 1.27.0`, and CI and the release
@@ -3506,7 +3515,8 @@ repository public. Each of these was reproduced before being fixed.
 - `scripts/test-authz.sh` grew from 135 to 147 checks, covering the membership
   lifecycle, the code uniqueness constraint, and the frozen leaf-node code.
 
-[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.20.1...HEAD
+[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.20.2...HEAD
+[0.20.2]: https://github.com/stone-age-io/platform/compare/v0.20.1...v0.20.2
 [0.20.1]: https://github.com/stone-age-io/platform/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/stone-age-io/platform/compare/v0.19.1...v0.20.0
 [0.19.1]: https://github.com/stone-age-io/platform/compare/v0.19.0...v0.19.1
