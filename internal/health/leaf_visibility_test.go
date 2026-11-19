@@ -20,6 +20,9 @@ package health
 //     leaf only if the leaf's uplink credential allows $SRV.>, which is why the
 //     gateway role in internal/demoseed/contract.go carries it.
 //     TestServiceDiscoveryCrossesALeafOnlyIfTheUplinkAllowsIt.
+//  5. The same holds for a leaf's own JetStream asked by its domain
+//     ($JS.<code>.API.>), which is why the gateway role carries $JS.*.API.>.
+//     TestLeafJetStreamCrossesTheHubOnlyIfTheUplinkAllowsIt.
 
 import (
 	"encoding/json"
@@ -58,6 +61,14 @@ type leafWorld struct {
 // mintLeafWorld is mintOperatorWorld plus a tenant account.
 func mintLeafWorld(t *testing.T) leafWorld {
 	t.Helper()
+	return mintLeafWorldWith(t, false)
+}
+
+// mintLeafWorldWith is mintLeafWorld with JetStream enabled on the tenant
+// account when jetstream is true, as pb-nats does for an org with a storage
+// plan.
+func mintLeafWorldWith(t *testing.T, jetstream bool) leafWorld {
+	t.Helper()
 
 	okp, err := nkeys.CreateOperator()
 	if err != nil {
@@ -73,6 +84,9 @@ func mintLeafWorld(t *testing.T) leafWorld {
 		// Explicit: a leaf connection limit of 0 would refuse the leaf.
 		ac.Limits.LeafNodeConn = -1
 		ac.Limits.Conn = -1
+		if jetstream && name != "SYS" {
+			ac.Limits.JetStreamLimits = jwt.JetStreamLimits{MemoryStorage: -1, DiskStorage: -1, Streams: -1, Consumer: -1}
+		}
 		encoded, err := ac.Encode(okp)
 		if err != nil {
 			t.Fatalf("encode account %s: %v", name, err)
@@ -156,6 +170,13 @@ func startHubWithLeaf(t *testing.T, w leafWorld) *natsserver.Server {
 // chosen by the caller, returning the leaf as well as the hub.
 func startHubWithLeafAs(t *testing.T, w leafWorld, uplinkCreds string) (hub, leaf *natsserver.Server) {
 	t.Helper()
+	return startHubWithLeafConf(t, w, uplinkCreds, "", "")
+}
+
+// startHubWithLeafConf is startHubWithLeafAs with extra top-level config for
+// the hub and the leaf, such as a jetstream block.
+func startHubWithLeafConf(t *testing.T, w leafWorld, uplinkCreds, hubExtra, leafExtra string) (hub, leaf *natsserver.Server) {
+	t.Helper()
 
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -174,7 +195,8 @@ resolver_preload: {
   %s: %q
 }
 leafnodes { port: %d }
-`, hubServerName, w.opJWT, w.sysPub, w.sysPub, w.sysJWT, w.orgPub, w.orgJWT, leafPort))
+%s
+`, hubServerName, w.opJWT, w.sysPub, w.sysPub, w.sysJWT, w.orgPub, w.orgJWT, leafPort, hubExtra))
 
 	remoteCreds := writeTemp(t, "edge.creds", uplinkCreds)
 	leaf = startFromConf(t, "leaf.conf", fmt.Sprintf(`
@@ -190,7 +212,8 @@ leafnodes {
     { url: "nats-leaf://127.0.0.1:%d", account: %s, credentials: %q }
   ]
 }
-`, leafServerName, w.opJWT, w.orgPub, w.orgJWT, w.sysPub, w.sysJWT, leafPort, w.orgPub, remoteCreds))
+%s
+`, leafServerName, w.opJWT, w.orgPub, w.orgJWT, w.sysPub, w.sysJWT, leafPort, w.orgPub, remoteCreds, leafExtra))
 
 	// Wait for the leaf to be named, not merely attached. NumLeafNodes() counts
 	// the connection before `server_name` arrives, and CONNZ meanwhile shows a
@@ -527,5 +550,99 @@ func TestDenyingAllOfSysBlocksAccountMonitoring(t *testing.T) {
 				t.Errorf("answered = %v, want %v", ok, tc.want)
 			}
 		})
+	}
+}
+
+// TestLeafJetStreamCrossesTheHubOnlyIfTheUplinkAllowsIt: a tenant session at
+// the hub reaches a leaf's own JetStream, through its domain
+// ($JS.<code>.API.>), only when the leaf's uplink credential may subscribe to
+// it. That is why the gateway role in internal/demoseed/contract.go carries
+// $JS.*.API.>, and what `stone js pull --domain <code>` depends on. Without
+// it the hub has no interest to forward along, so the caller gets "no
+// responders" at once rather than a timeout.
+func TestLeafJetStreamCrossesTheHubOnlyIfTheUplinkAllowsIt(t *testing.T) {
+	w := mintLeafWorldWith(t, true)
+
+	// The seeded gateway's subscribe list before $JS.*.API.> was added.
+	gateway := []string{"telemetry.>", "event.>", "status.>", "gateway.>", "acc.>", "kiosk.>", "cmd.>", "config.>", "_INBOX.>", "$SRV.>"}
+	cases := []struct {
+		name      string
+		uplinkSub []string
+		want      bool
+	}{
+		{name: "gateway without the JetStream API", uplinkSub: gateway, want: false},
+		{name: "gateway with the JetStream API", uplinkSub: append(slices.Clone(gateway), "$JS.*.API.>"), want: true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			js := func(domain string) string {
+				return fmt.Sprintf("jetstream { domain: %q, store_dir: %q }", domain, filepath.ToSlash(t.TempDir()))
+			}
+			hub, leaf := startHubWithLeafConf(t, w, uplinkCreds(t, w.orgKP, tc.uplinkSub), js(hubServerName), js(leafServerName))
+
+			// The leaf's JetStream is up, asked on the leaf itself, and a
+			// responder on the leaf answers the hub on a subject the uplink
+			// allows in both cases. So a silence below is the uplink, not a slow
+			// start or a leaf that never attached.
+			local := connectTo(t, leaf, writeTemp(t, "local.creds", userCreds(t, w.orgKP, "local", nil, nil)))
+			if got := jsDomain(t, local, "$JS.API.INFO", 10*time.Second); got != leafServerName {
+				t.Fatalf("the leaf's own JetStream answered with domain %q, want %q", got, leafServerName)
+			}
+			if _, err := local.Subscribe("gateway."+leafServerName+".ping", func(m *nats.Msg) { _ = m.Respond([]byte("pong")) }); err != nil {
+				t.Fatalf("subscribe: %v", err)
+			}
+			if err := local.Flush(); err != nil {
+				t.Fatalf("flush: %v", err)
+			}
+			console := connectTo(t, hub, writeTemp(t, "console.creds", userCreds(t, w.orgKP, "console", nil, nil)))
+			deadline := time.Now().Add(10 * time.Second)
+			for {
+				if _, err := console.Request("gateway."+leafServerName+".ping", nil, 500*time.Millisecond); err == nil {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatal("a request to the leaf never answered from the hub, so the JetStream result below would mean nothing")
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+
+			msg, err := console.Request("$JS."+leafServerName+".API.INFO", nil, 2*time.Second)
+			if answered := err == nil; answered != tc.want {
+				t.Fatalf("$JS.%s.API.INFO from the hub answered = %v (err %v), want %v (uplink subscribe allow: %q)",
+					leafServerName, answered, err, tc.want, tc.uplinkSub)
+			}
+			if err == nil {
+				var info struct {
+					Domain string `json:"domain"`
+				}
+				if err := json.Unmarshal(msg.Data, &info); err != nil || info.Domain != leafServerName {
+					t.Fatalf("answered by domain %q (%v), want the leaf's %q: %s", info.Domain, err, leafServerName, msg.Data)
+				}
+			}
+		})
+	}
+}
+
+// jsDomain asks subj (a JetStream account INFO) until it answers, and returns
+// the domain in the reply.
+func jsDomain(t *testing.T, nc *nats.Conn, subj string, within time.Duration) string {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	for {
+		msg, err := nc.Request(subj, nil, 500*time.Millisecond)
+		if err == nil {
+			var info struct {
+				Domain string `json:"domain"`
+			}
+			if err := json.Unmarshal(msg.Data, &info); err != nil {
+				t.Fatalf("decode %s reply: %v: %s", subj, err, msg.Data)
+			}
+			return info.Domain
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%s never answered: %v", subj, err)
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 }

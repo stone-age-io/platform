@@ -84,6 +84,14 @@ The numbers match the feature index in the root `CLAUDE.md`.
       for leaves, `$SRV.PING.stone-agent` for agents. Discovery needs `$SRV.>` on
       subscribe, and behind a leaf the uplink credential needs it too
       (`TestServiceDiscoveryCrossesALeafOnlyIfTheUplinkAllowsIt`).
+    - **A leaf's own JetStream is reachable from the hub through its domain,
+      `$JS.<code>.API.>`, only if the uplink credential may subscribe to it**
+      (`TestLeafJetStreamCrossesTheHubOnlyIfTheUplinkAllowsIt`). The seeded
+      `gateway` role carries `$JS.*.API.>` for it; that is what
+      `stone js pull/apply --domain` depends on. A role change reaches a
+      connected leaf only when the agent re-fetches its leaf config and
+      reconnects, because the permission travels in the user JWT the leaf
+      presented. Changing the role and waiting is not enough.
     - **Tenant roles carry no `$SYS` publish deny.** The account boundary already
       blocks the operator-wide endpoints, and a DENY beats an ALLOW, so a deny
       kills account monitoring with a bare timeout

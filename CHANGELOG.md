@@ -18,6 +18,17 @@ and this file starts where the versioned releases do.
   dashboard under a "Disconnected" banner, the Thing page's Live State said to
   go to Settings, and every reload dropped the connection. A device that has
   turned it off keeps it off.
+- **The demo seed's `gateway` role lets the hub reach the leaf's JetStream.**
+  Its subscribe list now carries `$JS.*.API.>`. The gateway credential is the
+  leaf's uplink, and the hub forwards to a leaf only what the uplink may
+  subscribe to, so a request to `$JS.<code>.API.>` from the hub (`stone js
+  pull --domain <code>`, say) failed with "no responders". Re-running
+  `demo-seed` updates an existing install's role. A gateway that is already
+  connected picks it up only after its agent re-fetches the leaf config and
+  reconnects. Roles you wrote yourself are not touched; add `$JS.*.API.>` to
+  their subscribe list for the same effect. The `application` role is left
+  as it is (publish `$JS.API.>` only): managing an edge site's JetStream is an
+  operator's job, and an application that needs it can be given it.
 
 ### Fixed
 

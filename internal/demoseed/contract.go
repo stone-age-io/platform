@@ -586,8 +586,24 @@ var roleTemplates = []roleFixture{
 		// Not on `device`: a gateway runs the edge services that own buckets, and
 		// `device` has no JetStream access, so `$KV.>` alone would be half a
 		// permission.
-		Publish:          []string{"telemetry.>", "event.>", "status.>", "gateway.>", "acc.>", "kiosk.>", "_INBOX.>", "$JS.API.>", "$KV.>"},
-		Subscribe:        []string{"telemetry.>", "event.>", "status.>", "gateway.>", "acc.>", "kiosk.>", "cmd.>", "config.>", "_INBOX.>", "$SRV.>"},
+		Publish: []string{"telemetry.>", "event.>", "status.>", "gateway.>", "acc.>", "kiosk.>", "_INBOX.>", "$JS.API.>", "$KV.>"},
+		// `$JS.*.API.>` lets the hub reach the leaf's own JetStream, whose
+		// domain is the Thing's code, as `stone js pull --domain <code>` does
+		// through `$JS.<code>.API.>`. The gateway credential is the
+		// leaf's uplink, and the hub forwards to a leaf only what the uplink may
+		// subscribe to, so without it every such request is "no responders"
+		// (TestLeafJetStreamCrossesTheHubOnlyIfTheUplinkAllowsIt). The replies
+		// go out on `_INBOX.>`, already on publish.
+		//
+		// `*`, not the code: a role is shared by every gateway in the org, and
+		// pb-nats has no per-Thing subject template. It means a client on one
+		// site's leaf could subscribe to another site's JetStream API requests,
+		// which stay inside the org's own account.
+		//
+		// A role change reaches a connected leaf only when the agent re-fetches
+		// /api/me/leaf-config and reconnects: the permission travels in the user
+		// JWT the leaf presented.
+		Subscribe:        []string{"telemetry.>", "event.>", "status.>", "gateway.>", "acc.>", "kiosk.>", "cmd.>", "config.>", "_INBOX.>", "$SRV.>", "$JS.*.API.>"},
 		MaxSubscriptions: 512, MaxPayload: 4194304},
 
 	{Name: "application",

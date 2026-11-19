@@ -928,6 +928,41 @@ func TestGatewayRoleCanRunAKioskNode(t *testing.T) {
 	}
 }
 
+// The gateway credential is also its leaf's uplink, and the hub forwards to a
+// leaf only what the uplink may subscribe to. So for the hub to reach the
+// leaf's own JetStream by its domain, the Thing's code, the role must allow
+// subscribe on $JS.<code>.API.>, and publish on the reply inbox.
+// internal/health's TestLeafJetStreamCrossesTheHubOnlyIfTheUplinkAllowsIt pins
+// the server behaviour; this pins the role.
+func TestGatewayRoleLetsTheHubReachItsLeafJetStream(t *testing.T) {
+	app := sharedApp(t)
+
+	roles, err := app.FindAllRecords("nats_roles", dbx.NewExp("name = 'gateway'"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(roles) == 0 {
+		t.Fatal("gateway role was not seeded")
+	}
+	for _, r := range roles {
+		var pub, sub []string
+		if err := r.UnmarshalJSONField("publish_permissions", &pub); err != nil {
+			t.Fatalf("publish_permissions: %v", err)
+		}
+		if err := r.UnmarshalJSONField("subscribe_permissions", &sub); err != nil {
+			t.Fatalf("subscribe_permissions: %v", err)
+		}
+		for _, subject := range []string{
+			"$JS.GW-KC-01.API.INFO",                // reach the leaf at all
+			"$JS.GW-KC-01.API.STREAM.INFO.KV_twin", // read a bucket's config
+			"$JS.GW-KC-01.API.STREAM.UPDATE.EDGE",  // change a stream's
+		} {
+			requirePermission(t, "gateway role", "leaf JetStream from the hub", "subscribe", subject, sub)
+		}
+		requirePermission(t, "gateway role", "leaf JetStream from the hub", "publish", "_INBOX.abc123", pub)
+	}
+}
+
 // A re-seed has to repair a role whose permissions have fallen behind the
 // fixture (see reconcileRolePermissions), so a fixture change reaches installs
 // that already ran the seed. The bug lives only on the second run, so the test
