@@ -11,6 +11,14 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+## [0.20.1] - 2026-11-18
+
+A patch, console and demo seed: no schema or migration change, and nothing to
+run on upgrade. The console now connects to NATS on login by default, and its
+list views switch to cards below 1280px. The demo seed's `gateway` role now lets
+the hub reach a gateway's own leaf JetStream; re-run `demo-seed` to update an
+existing demo install. Roles you wrote yourself are not touched.
+
 ### Changed
 
 - **The console connects to NATS on login by default.** Auto-connect used to
@@ -3472,7 +3480,8 @@ repository public. Each of these was reproduced before being fixed.
 - `scripts/test-authz.sh` grew from 135 to 147 checks, covering the membership
   lifecycle, the code uniqueness constraint, and the frozen leaf-node code.
 
-[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.20.1...HEAD
+[0.20.1]: https://github.com/stone-age-io/platform/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/stone-age-io/platform/compare/v0.19.1...v0.20.0
 [0.19.1]: https://github.com/stone-age-io/platform/compare/v0.19.0...v0.19.1
 [0.19.0]: https://github.com/stone-age-io/platform/compare/v0.18.1...v0.19.0
