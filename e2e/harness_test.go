@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -79,7 +80,7 @@ type Platform struct {
 func startPlatform(work string) (*Platform, error) {
 	p := &Platform{
 		Dir:     work,
-		bin:     filepath.Join(work, "stone-age"),
+		bin:     filepath.Join(work, "stone-age"+exeSuffix()), // .exe on Windows (see exeSuffix)
 		logPath: filepath.Join(work, "server.log"),
 	}
 
@@ -320,4 +321,13 @@ func freePorts(n int) ([]int, error) {
 		ports = append(ports, l.Addr().(*net.TCPAddr).Port)
 	}
 	return ports, nil
+}
+
+// exeSuffix is ".exe" on Windows: go build adds it, and exec.Command looks for
+// it, so a bare name is not found there.
+func exeSuffix() string {
+	if runtime.GOOS == "windows" {
+		return ".exe"
+	}
+	return ""
 }

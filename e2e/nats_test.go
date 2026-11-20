@@ -13,13 +13,28 @@ import (
 // A Thing's issued creds publish where its role allows and the server refuses
 // them anywhere else. Catches a role rendered into the JWT wrong: an empty
 // allow list (which grants nothing) or a limit of 0 (disconnected on connect).
+//
+// Run twice: with the key the platform generated, and with a key the device
+// made and enrolled itself (device_key), whose .creds the device builds from
+// the JWT the platform signed for it.
 func TestThingPublishesOnlyWhereItsRoleAllows(t *testing.T) {
+	t.Run("platform-held key", func(t *testing.T) { thingPublishesOnlyWhereItsRoleAllows(t, false) })
+	t.Run("device-held key", func(t *testing.T) { thingPublishesOnlyWhereItsRoleAllows(t, true) })
+}
+
+func thingPublishesOnlyWhereItsRoleAllows(t *testing.T, deviceKey bool) {
 	tn := newTenant(t)
 	_, monitorCreds := tn.natsUser(t, tn.role(t, []string{">"}, []string{">"}))
-	thingID := tn.thing(t, map[string]any{
-		"nats":   map[string]any{"mode": "auto", "role_id": tn.role(t, []string{"probe.>"}, []string{"_INBOX.>"})},
-		"nebula": map[string]any{"mode": "none"},
-	})
+	natsBody := map[string]any{"mode": "auto", "role_id": tn.role(t, []string{"probe.>"}, []string{"_INBOX.>"})}
+	var thingCredsPath string
+	if deviceKey {
+		natsBody["device_key"] = true
+		thing := tn.deviceThing(t, map[string]any{"nats": natsBody, "nebula": map[string]any{"mode": "none"}})
+		thingCredsPath = thing.enrollNATS(t)
+	} else {
+		thingID := tn.thing(t, map[string]any{"nats": natsBody, "nebula": map[string]any{"mode": "none"}})
+		thingCredsPath = thingCreds(t, thingID)
+	}
 
 	monitor := connect(t, monitorCreds)
 	seen, err := monitor.SubscribeSync(">")
@@ -31,7 +46,7 @@ func TestThingPublishesOnlyWhereItsRoleAllows(t *testing.T) {
 	}
 
 	violations := make(chan error, 4)
-	thing := connect(t, thingCreds(t, thingID), nats.ErrorHandler(func(_ *nats.Conn, _ *nats.Subscription, err error) {
+	thing := connect(t, thingCredsPath, nats.ErrorHandler(func(_ *nats.Conn, _ *nats.Subscription, err error) {
 		violations <- err
 	}))
 

@@ -62,6 +62,12 @@ behind the Go and script suites, and the traps in them.
 - The binary runs with `--dev=false`. PocketBase reads a binary under the OS
   temp dir as `go run`, and dev mode logs every SQL statement, seeds and
   private keys included.
+- **A Thing's NATS connect and a host's Nebula config run twice**: with the key
+  the platform generated, and with a device-held key the test enrolls through
+  `POST /api/me/keys` as the Thing, building the `.creds` and the key file as
+  the agent does (`e2e/device_key_test.go`). A second key source, not a new
+  test: the last two credential bugs passed every unit test.
+- It runs on Windows too: the harness adds `.exe` to the binary it builds.
 
 ## `scripts/test-authz.sh`
 

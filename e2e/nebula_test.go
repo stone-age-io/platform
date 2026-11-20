@@ -5,8 +5,12 @@ package e2e
 import (
 	"fmt"
 	"io"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	pbnebula "github.com/skeeeon/pb-nebula"
 
 	"github.com/slackhq/nebula"
 	"github.com/slackhq/nebula/config"
@@ -18,6 +22,11 @@ import (
 // not pair with its certificate), the firewall and the lighthouse settings, and
 // stops before it needs a TUN device. Until v0.19.1 every host key failed the
 // pair check, so no host the platform issued could start.
+//
+// The third host holds its own key (device_key): it enrolls the public half
+// through POST /api/me/keys, and its config names a key path, which the test
+// points at the device's key file as the agent does. The pair check then
+// proves the certificate was signed for the key the device holds.
 func TestNebulaStartsOnTheIssuedConfigs(t *testing.T) {
 	tn := newTenant(t)
 	cas := findByOrg(t, "nebula_ca", tn.OrgID)
@@ -53,9 +62,29 @@ func TestNebulaStartsOnTheIssuedConfigs(t *testing.T) {
 		t.Fatal("the Thing has no Nebula host")
 	}
 
-	for name, hostID := range map[string]string{"lighthouse": lighthouse.ID, "host": th.NebulaHost} {
+	device := tn.deviceThing(t, map[string]any{
+		"nats":   map[string]any{"mode": "none"},
+		"nebula": map[string]any{"mode": "auto", "network_id": network.ID, "overlay_ip": "10.42.0.11", "device_key": true},
+	})
+	deviceKeyPath := device.enrollNebula(t)
+	var dth struct {
+		NebulaHost string `json:"nebula_host"`
+	}
+	platform.mustRequest(t, 200, "GET", "/collections/things/records/"+device.ID, platform.SUToken, nil, &dth)
+
+	keyPaths := map[string]string{"device-held host": deviceKeyPath}
+	for name, hostID := range map[string]string{"lighthouse": lighthouse.ID, "host": th.NebulaHost, "device-held host": dth.NebulaHost} {
 		t.Run(name, func(t *testing.T) {
 			yaml := configYAML(t, hostID)
+			if keyPath, ok := keyPaths[name]; ok {
+				if !strings.Contains(yaml, pbnebula.DeviceHostKeyPath) {
+					t.Fatalf("a device-held host's config does not name %s for pki.key:\n%s", pbnebula.DeviceHostKeyPath, yaml)
+				}
+				if strings.Contains(yaml, "PRIVATE KEY") {
+					t.Fatal("a device-held host's config carries a private key")
+				}
+				yaml = strings.ReplaceAll(yaml, pbnebula.DeviceHostKeyPath, filepath.ToSlash(keyPath))
+			}
 			var c config.C
 			if err := c.LoadString(yaml); err != nil {
 				t.Fatalf("config_yaml does not parse: %v\n%s", err, yaml)
