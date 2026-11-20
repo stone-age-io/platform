@@ -10,6 +10,7 @@ import type { NebulaHost } from '@/types/pocketbase'
 import DangerZone from '@/components/common/DangerZone.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import JsonViewer from '@/components/common/JsonViewer.vue'
+import { copyToClipboard } from '@/utils/clipboard'
 
 const router = useRouter()
 const route = useRoute()
@@ -110,11 +111,6 @@ function downloadFile(filename: string, content: string, contentType: string) {
   document.body.removeChild(link)
   URL.revokeObjectURL(url)
   toast.success(`${filename} downloaded`)
-}
-
-function copyToClipboard(text: string, label: string) {
-  navigator.clipboard.writeText(text)
-  toast.success(`${label} copied`)
 }
 
 onMounted(() => {

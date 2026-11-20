@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatAge, formatColumnValue } from './format'
+import { formatAge, formatBytes, formatColumnValue } from './format'
 
 // Timestamp columns in the KV table, stream table and dynamic-marker panel.
 // They must parse like utils/timestamp, and show "-" rather than "just now"
@@ -43,5 +43,15 @@ describe('formatAge', () => {
     [86_400_000, '1d ago'],
   ])('%i ms reads as %s', (ms, want) => {
     expect(formatAge(ms)).toBe(want)
+  })
+})
+
+describe('formatBytes', () => {
+  it('reads -1, the NATS no-limit value, as Unlimited', () => {
+    expect(formatBytes(-1)).toBe('Unlimited')
+  })
+
+  it.each([[0, '0 Bytes'], [512, '512 Bytes'], [1536, '1.5 KB']])('formats %s as %s', (n, want) => {
+    expect(formatBytes(n)).toBe(want)
   })
 })

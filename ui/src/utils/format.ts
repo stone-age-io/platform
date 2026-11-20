@@ -1,7 +1,9 @@
 import { format, formatDistanceToNow } from 'date-fns'
 import { parseTimestamp } from './timestamp'
 
+/** -1 is the NATS and JetStream "no limit" value, so it reads as Unlimited. */
 export function formatBytes(bytes: number, decimals = 2): string {
+  if (bytes === -1) return 'Unlimited'
   if (!+bytes) return '0 Bytes'
 
   const k = 1024

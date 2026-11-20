@@ -243,11 +243,11 @@ useEscapeKey(() => !!selectedMessage.value, () => { selectedMessage.value = null
                 </div>
                 <div>
                   <dt class="text-sm font-medium text-base-content/70">Max Bytes</dt>
-                  <dd class="mt-1 text-sm font-mono">{{ streamInfo.config.max_bytes === -1 ? 'Unlimited' : formatBytes(streamInfo.config.max_bytes) }}</dd>
+                  <dd class="mt-1 text-sm font-mono">{{ formatBytes(streamInfo.config.max_bytes) }}</dd>
                 </div>
                 <div>
                   <dt class="text-sm font-medium text-base-content/70">Max Msg Size</dt>
-                  <dd class="mt-1 text-sm font-mono">{{ streamInfo.config.max_msg_size === -1 ? 'Unlimited' : formatBytes(streamInfo.config.max_msg_size) }}</dd>
+                  <dd class="mt-1 text-sm font-mono">{{ formatBytes(streamInfo.config.max_msg_size) }}</dd>
                 </div>
                 <div>
                   <dt class="text-sm font-medium text-base-content/70">Max Age</dt>

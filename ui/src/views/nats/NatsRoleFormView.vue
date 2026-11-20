@@ -8,6 +8,7 @@ import { useToast } from '@/composables/useToast'
 import { apiErrorMessage } from '@/utils/apiError'
 import type { NatsRole } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
+import { formatForInput, formatForApi } from '@/utils/subjectList'
 
 const props = defineProps<{
   embedded?: boolean
@@ -42,19 +43,6 @@ const formData = ref({
   max_data: '-1',
   max_payload: '-1',
 })
-
-function formatForInput(val: any): string {
-  if (!val) return ''
-  if (Array.isArray(val)) return val.join(', ')
-  return String(val)
-}
-
-function formatForApi(val: string): string[] {
-  if (!val) return []
-  return val.split(',')
-    .map(s => s.trim())
-    .filter(s => s !== '')
-}
 
 async function loadRole() {
   if (!roleId) return

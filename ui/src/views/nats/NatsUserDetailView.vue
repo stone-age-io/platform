@@ -11,6 +11,7 @@ import DangerZone from '@/components/common/DangerZone.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import SubjectChip from '@/components/common/SubjectChip.vue'
 import { findLinkedThing, type LinkedThing } from '@/utils/linkedThing'
+import { copyToClipboard } from '@/utils/clipboard'
 
 const router = useRouter()
 const route = useRoute()
@@ -174,15 +175,6 @@ async function confirmReenable() {
     toast.error(err.message || 'Failed to re-enable user')
   } finally {
     reenabling.value = false
-  }
-}
-
-async function copyToClipboard(text: string, label: string) {
-  try {
-    await navigator.clipboard.writeText(text)
-    toast.success(`${label} copied`)
-  } catch (err) {
-    toast.error('Failed to copy')
   }
 }
 

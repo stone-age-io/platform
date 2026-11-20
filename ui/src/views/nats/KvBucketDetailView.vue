@@ -116,7 +116,7 @@ watch(() => natsStore.isConnected, (connected) => {
         </div>
         <div class="stat-tile">
           <span class="stat-label">Max Bytes</span>
-          <span class="stat-value font-mono">{{ status.max_bytes === -1 ? '∞' : formatBytes(status.max_bytes) }}</span>
+          <span class="stat-value font-mono">{{ formatBytes(status.max_bytes) }}</span>
         </div>
         <div class="stat-tile">
           <span class="stat-label">Max Value</span>

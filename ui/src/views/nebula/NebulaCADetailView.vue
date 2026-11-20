@@ -10,6 +10,7 @@ import { useAuthStore } from '@/stores/auth'
 import type { NebulaCA } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import CaRotationPanel from '@/components/nebula/CaRotationPanel.vue'
+import { copyToClipboard } from '@/utils/clipboard'
 
 const toast = useToast()
 const authStore = useAuthStore()
@@ -55,15 +56,6 @@ async function loadCA() {
     }
   } finally {
     loading.value = false
-  }
-}
-
-async function copyToClipboard(text: string, label: string) {
-  try {
-    await navigator.clipboard.writeText(text)
-    toast.success(`${label} copied`)
-  } catch (err) {
-    toast.error('Failed to copy')
   }
 }
 

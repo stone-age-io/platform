@@ -10,6 +10,7 @@ import DangerZone from '@/components/common/DangerZone.vue'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import ManagedRecordNotice from '@/components/common/ManagedRecordNotice.vue'
 import { isManagedImport } from '@/utils/managedExports'
+import { copyToClipboard } from '@/utils/clipboard'
 
 const router = useRouter()
 const route = useRoute()
@@ -58,15 +59,6 @@ async function handleDelete() {
     toast.error(err.message)
   } finally {
     deleting.value = false
-  }
-}
-
-async function copyToClipboard(text: string, label: string) {
-  try {
-    await navigator.clipboard.writeText(text)
-    toast.success(`${label} copied`)
-  } catch {
-    toast.error('Failed to copy')
   }
 }
 

@@ -92,7 +92,6 @@ function handleRowClick(stream: StreamSummary) {
 }
 
 function formatLimit(used: number, limit: number): string {
-  if (limit === -1) return `${formatBytes(used)} / Unlimited`
   return `${formatBytes(used)} / ${formatBytes(limit)}`
 }
 

@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/auth'
 import type { NatsAccount } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import { useConfirm } from '@/composables/useConfirm'
+import { copyToClipboard } from '@/utils/clipboard'
 
 const toast = useToast()
 const { confirm } = useConfirm()
@@ -44,15 +45,6 @@ function formatLimit(value?: number, isBytes = false) {
   if (value === undefined || value === null) return 'Not set'
   if (value === -1) return 'Unlimited'
   return isBytes ? formatBytes(value) : value.toLocaleString()
-}
-
-async function copyToClipboard(text: string, label: string) {
-  try {
-    await navigator.clipboard.writeText(text)
-    toast.success(`${label} copied`)
-  } catch (err) {
-    toast.error('Failed to copy')
-  }
 }
 
 /**

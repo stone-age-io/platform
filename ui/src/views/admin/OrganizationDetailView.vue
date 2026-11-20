@@ -5,7 +5,7 @@ import { pb } from '@/utils/pb'
 import { useFileUrl } from '@/composables/useFileUrl'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
-import { formatDate } from '@/utils/format'
+import { formatBytes, formatDate } from '@/utils/format'
 import { apiErrorMessage } from '@/utils/apiError'
 import { expiryState, expiryLabel, CA_EXPIRY_WARNING_DAYS } from '@/utils/expiry'
 import { caRotationState } from '@/utils/nebula'
@@ -182,15 +182,6 @@ async function saveLimits() {
 function formatLimit(value: number | undefined): string {
   if (value === undefined || value === -1) return 'Unlimited'
   return value.toLocaleString()
-}
-
-function formatBytes(bytes: number | undefined): string {
-  if (bytes === undefined || bytes === -1) return 'Unlimited'
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
 onMounted(() => loadData())
@@ -406,19 +397,19 @@ onMounted(() => loadData())
               </div>
               <div>
                 <dt class="text-sm font-medium opacity-70">Max Data</dt>
-                <dd class="text-lg font-semibold">{{ formatBytes(natsAccount.max_data) }}</dd>
+                <dd class="text-lg font-semibold">{{ formatBytes(natsAccount.max_data ?? -1) }}</dd>
               </div>
               <div>
                 <dt class="text-sm font-medium opacity-70">Max Payload</dt>
-                <dd class="text-lg font-semibold">{{ formatBytes(natsAccount.max_payload) }}</dd>
+                <dd class="text-lg font-semibold">{{ formatBytes(natsAccount.max_payload ?? -1) }}</dd>
               </div>
               <div>
                 <dt class="text-sm font-medium opacity-70">JetStream Disk</dt>
-                <dd class="text-lg font-semibold">{{ formatBytes(natsAccount.max_jetstream_disk_storage) }}</dd>
+                <dd class="text-lg font-semibold">{{ formatBytes(natsAccount.max_jetstream_disk_storage ?? -1) }}</dd>
               </div>
               <div>
                 <dt class="text-sm font-medium opacity-70">JetStream Memory</dt>
-                <dd class="text-lg font-semibold">{{ formatBytes(natsAccount.max_jetstream_memory_storage) }}</dd>
+                <dd class="text-lg font-semibold">{{ formatBytes(natsAccount.max_jetstream_memory_storage ?? -1) }}</dd>
               </div>
             </div>
 

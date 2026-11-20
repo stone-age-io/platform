@@ -10,6 +10,7 @@ import type { NatsUser, NatsAccount, NatsRole } from '@/types/pocketbase'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import RecordPicker from '@/components/common/RecordPicker.vue'
 import type { PickerOption } from '@/types/picker'
+import { formatForInput, formatForApi } from '@/utils/subjectList'
 
 const props = defineProps<{
   embedded?: boolean
@@ -50,19 +51,6 @@ const formData = ref({
   // Empty = never expires
   jwt_expires_at: '',
 })
-
-function formatForInput(val: any): string {
-  if (!val) return ''
-  if (Array.isArray(val)) return val.join(', ')
-  return String(val)
-}
-
-function formatForApi(val: string): string[] {
-  if (!val) return []
-  return val.split(',')
-    .map(s => s.trim())
-    .filter(s => s !== '')
-}
 
 // PB stores UTC ("2026-12-31 23:59:59.000Z"); datetime-local wants local "yyyy-MM-ddTHH:mm".
 function pbDateToInput(val?: string): string {
