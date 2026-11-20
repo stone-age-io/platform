@@ -1,8 +1,16 @@
 # Plan: device-held keys for Things
 
-Status: **phases 1, 2, 4, 5 and 8 built** (pb-nats, pb-nebula, this repo),
-2026-11-20, on pb-nats v0.5.0 and pb-nebula v0.8.0. Not built: phases 3 and 6
-(agent, stone-cli), phase 7 (e2e).
+Status: **phases 1–6 and 8 built** (pb-nats, pb-nebula, this repo, agent,
+stone-cli), 2026-11-20, on pb-nats v0.5.0 and pb-nebula v0.8.0. Not built:
+phase 7 (e2e).
+
+Agent and stone-cli, against the text below: the NATS seed is the creds path
+with a `.nk` extension and the Nebula key is `nebula-host.key` beside
+`nebula.cache_file`. `LeafConfig` also enrolls on a 409, so `agent -leaf-config`
+works on a box that never ran the credential sync. stone-cli pulls `device_key`
+but not `public_key`, on either collection: applied to a fresh platform, a
+platform-held NATS row's key without its seed is refused, and a device enrolls
+its own key wherever it lands.
 
 What changed while building, against the text below:
 - **A platform-held NATS create may carry `public_key` with its seed**, not
