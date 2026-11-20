@@ -1,8 +1,8 @@
 # Plan: device-held keys for Things
 
-Status: **phases 1–6 and 8 built** (pb-nats, pb-nebula, this repo, agent,
-stone-cli), 2026-11-20, on pb-nats v0.5.0 and pb-nebula v0.8.0. Not built:
-phase 7 (e2e).
+Status: **built**, all eight phases (pb-nats, pb-nebula, this repo, agent,
+stone-cli), 2026-11-20, on pb-nats v0.5.0 and pb-nebula v0.8.0. Shipped in
+platform v0.21.0, agent v0.11.0 and stone v0.11.0.
 
 Agent and stone-cli, against the text below: the NATS seed is the creds path
 with a `.nk` extension and the Nebula key is `nebula-host.key` beside

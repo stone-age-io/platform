@@ -11,6 +11,84 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-11-20
+
+A minor, server, console and schema. **Device-held keys:** a Thing can keep its
+own NATS and Nebula private keys, and the platform holds only the public
+halves, so a stolen database or backup holds no working credential for it.
+It is chosen per Thing when the Thing is provisioned ("Key held by device"),
+and nothing changes for an existing Thing. A device that holds its own key
+needs agent v0.11.0. Run `migrate up` on upgrade.
+
+### Upgrading
+
+- **Run `migrate up`.** `schema_update_device_keys` adds `device_key` to
+  `nats_users` and `nebula_hosts`, `public_key` to `nebula_hosts`, and a unique
+  index on non-empty `nats_users.public_key`. Existing rows read
+  `device_key = false`, which is how they already behave. pb-nats v0.5.0 and
+  pb-nebula v0.8.0 add the same fields when they start.
+- **The unique index cannot be built if two NATS identities share a public
+  key.** The platform never generates one twice, so this means a hand edit;
+  pb-nats then refuses to start and names the collection.
+- **Agent v0.11.0 on any device that holds its own key.** An older agent finds
+  no `creds_file` and stops. Things whose keys the platform holds work with any
+  agent version.
+- **stone v0.11.0** for the CLI flags (`thing provision --nats-device-key`,
+  `--nebula-device-key`, `--public-key`).
+
+### Added
+
+- **Device-held keys for Things** (`plans/device-held-keys.md`). The device
+  makes its own key pairs and enrolls the public halves through
+  `POST /api/me/keys`: Thing auth, no record id, 200 for the key already
+  enrolled, 409 for a different one. pb-nats signs a JWT for the NATS key and
+  stores no seed or `creds_file`; pb-nebula signs a certificate for the X25519
+  key and stores no private key, and the config's `pki.key` is the path
+  `/etc/nebula/host.key`. An owner or admin can paste a key for a device with
+  no agent. The libraries enforce every rule (the flag is frozen at create, a
+  key changes only from empty, an invalid or revoked key is refused), so there
+  is no API rule change.
+- **The console**: a "Key held by device" checkbox in each auto section of the
+  Thing form, and on the NATS user and Nebula host pages a badge, a "Waiting
+  for the device" notice and a field to paste a key. On a device-held NATS
+  identity, Revoke says the device must enroll a new key, and to reset the
+  Thing's password too if the device itself is compromised.
+- **`POST /api/org/things`** takes `device_key` and an optional `public_key` in
+  the `nats` and `nebula` auto sections.
+
+### Changed
+
+- **`GET /api/me/leaf-config` also returns `jwt`**, eleven fields. For a
+  device-held key `creds` is empty and the agent builds it; before the device
+  has enrolled, the route answers 409 naming `POST /api/me/keys`.
+- **`public_key` on a platform-held NATS identity changes only through
+  Revoke** (pb-nats v0.5.0). An owner or admin could overwrite it, and Revoke
+  then revoked the overwritten key rather than the one in the device's hands.
+- **`revoke` on a device-held NATS identity** revokes the key and empties it;
+  the device enrolls a new one. There is no Nebula key reset: deactivate the
+  host and attach a new one.
+
+### Fixed
+
+- **Copy buttons in the console said "copied" when the copy failed** (for
+  example over plain HTTP, where the browser has no clipboard). Five pasted
+  copies are now one helper.
+- **A NATS limit of -1 (unlimited) displayed as "NaN undefined".** It now reads
+  "Unlimited". The role and user forms share one parser for subject lists, so
+  both save the same permissions for the same text.
+
+### Tests
+
+- **The e2e suite runs a Thing's NATS connect and a host's Nebula config a
+  second time with a device-held key**, enrolled through `POST /api/me/keys`
+  as the Thing, with the `.creds` and the key file built as the agent builds
+  them. The harness now runs on Windows.
+- **`scripts/test-authz.sh` section 29** (344 checks): a Thing enrolls its own
+  key and cannot replace it, `dashboard` cannot call the route, an owner cannot
+  change `device_key` and can paste a key a member cannot.
+- **`hooks/key_routes_test.go`** drives the route through the real router
+  against both libraries.
+
 ## [0.20.2] - 2026-11-18
 
 A security patch: no schema or migration change, and nothing to run on
@@ -3515,7 +3593,8 @@ repository public. Each of these was reproduced before being fixed.
 - `scripts/test-authz.sh` grew from 135 to 147 checks, covering the membership
   lifecycle, the code uniqueness constraint, and the frozen leaf-node code.
 
-[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.20.2...HEAD
+[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.21.0...HEAD
+[0.21.0]: https://github.com/stone-age-io/platform/compare/v0.20.2...v0.21.0
 [0.20.2]: https://github.com/stone-age-io/platform/compare/v0.20.1...v0.20.2
 [0.20.1]: https://github.com/stone-age-io/platform/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/stone-age-io/platform/compare/v0.19.1...v0.20.0
