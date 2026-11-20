@@ -1,8 +1,8 @@
 # Plan: device-held keys for Things
 
 Status: **phases 1, 2, 4, 5 and 8 built** (pb-nats, pb-nebula, this repo),
-2026-11-20. Not built: phases 3 and 6 (agent, stone-cli), phase 7 (e2e). The
-libraries are unreleased; `go.mod` points at local checkouts until they are.
+2026-11-20, on pb-nats v0.5.0 and pb-nebula v0.8.0. Not built: phases 3 and 6
+(agent, stone-cli), phase 7 (e2e).
 
 What changed while building, against the text below:
 - **A platform-held NATS create may carry `public_key` with its seed**, not

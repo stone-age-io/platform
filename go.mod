@@ -12,12 +12,13 @@ require (
 	github.com/prometheus/client_golang v1.25.0
 	github.com/prometheus/common v0.72.0
 	github.com/skeeeon/pb-audit v0.3.0
-	github.com/skeeeon/pb-nats v0.4.1
-	github.com/skeeeon/pb-nebula v0.7.0
+	github.com/skeeeon/pb-nats v0.5.0
+	github.com/skeeeon/pb-nebula v0.8.0
 	github.com/slackhq/nebula v1.12.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/spf13/viper v1.21.0
+	golang.org/x/crypto v0.58.0
 	golang.org/x/term v0.47.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -72,7 +73,6 @@ require (
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/vishvananda/netns v0.0.5 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/image v0.47.0 // indirect
 	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/oauth2 v0.37.0 // indirect
@@ -90,7 +90,3 @@ require (
 	modernc.org/memory v1.12.1 // indirect
 	modernc.org/sqlite v1.60.1 // indirect
 )
-
-replace github.com/skeeeon/pb-nats => ../pb-nats
-
-replace github.com/skeeeon/pb-nebula => ../pb-nebula
