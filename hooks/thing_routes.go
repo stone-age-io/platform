@@ -3,6 +3,7 @@ package hooks
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -10,6 +11,8 @@ import (
 	"ganigeorgiev.com/pocketbase/pocketbase"
 	"ganigeorgiev.com/pocketbase/pocketbase/apis"
 	"ganigeorgiev.com/pocketbase/pocketbase/core"
+	pbnats "github.com/skeeeon/pb-nats"
+	pbnebula "github.com/skeeeon/pb-nebula"
 )
 
 // ThingRoutesOptions names the collections involved so a deployment that renamed
@@ -44,6 +47,11 @@ type createThingRequest struct {
 		Mode   string `json:"mode"`
 		UserID string `json:"user_id"` // link
 		RoleID string `json:"role_id"` // auto
+		// auto: the device makes its own key pair (plans/device-held-keys.md).
+		// PublicKey is optional; empty means the device enrolls it later
+		// through POST /api/me/keys.
+		DeviceKey bool   `json:"device_key"`
+		PublicKey string `json:"public_key"`
 	} `json:"nats"`
 
 	Nebula struct {
@@ -51,6 +59,8 @@ type createThingRequest struct {
 		HostID    string `json:"host_id"`    // link
 		NetworkID string `json:"network_id"` // auto
 		OverlayIP string `json:"overlay_ip"` // auto
+		DeviceKey bool   `json:"device_key"` // auto, as for nats
+		PublicKey string `json:"public_key"` // auto: a NEBULA X25519 PUBLIC KEY PEM
 	} `json:"nebula"`
 }
 
@@ -121,6 +131,24 @@ func RegisterThingRoutes(app *pocketbase.PocketBase, opts ThingRoutesOptions) {
 			}
 			if nebulaMode == "" {
 				return re.BadRequestError("nebula.mode must be auto, link, or none", nil)
+			}
+			// device_key is chosen when an identity is made, and frozen after.
+			// Link mode links whatever exists, so the fields mean nothing there,
+			// and a public_key without device_key is a platform-held key with
+			// no seed, which pb-nats refuses with a less useful message.
+			if natsMode != modeAuto && (body.Nats.DeviceKey || body.Nats.PublicKey != "") {
+				return re.BadRequestError("nats.device_key and nats.public_key apply to nats.mode auto only", nil)
+			}
+			if nebulaMode != modeAuto && (body.Nebula.DeviceKey || body.Nebula.PublicKey != "") {
+				return re.BadRequestError("nebula.device_key and nebula.public_key apply to nebula.mode auto only", nil)
+			}
+			body.Nats.PublicKey = strings.TrimSpace(body.Nats.PublicKey)
+			body.Nebula.PublicKey = strings.TrimSpace(body.Nebula.PublicKey)
+			if body.Nats.PublicKey != "" && !body.Nats.DeviceKey {
+				return re.BadRequestError("nats.public_key needs nats.device_key: the platform makes the keys it holds", nil)
+			}
+			if body.Nebula.PublicKey != "" && !body.Nebula.DeviceKey {
+				return re.BadRequestError("nebula.public_key needs nebula.device_key: the platform makes the keys it holds", nil)
 			}
 
 			orgID, role, err := resolveInventoryRole(re, opts)
@@ -403,8 +431,10 @@ func resolveNatsUser(
 	u.Set("role_id", roleID)
 	u.Set("organization", orgID)
 	u.Set("active", true)
+	u.Set("device_key", body.Nats.DeviceKey)
+	u.Set("public_key", body.Nats.PublicKey)
 	if err := txApp.Save(u); err != nil {
-		return "", re.BadRequestError("failed to create NATS identity", err)
+		return "", re.BadRequestError("failed to create NATS identity"+deviceKeyRefusal(err), err)
 	}
 	return u.Id, nil
 }
@@ -473,10 +503,27 @@ func resolveNebulaHost(
 	h.Set("overlay_ip", body.Nebula.OverlayIP)
 	h.Set("organization", orgID)
 	h.Set("active", true)
+	h.Set("device_key", body.Nebula.DeviceKey)
+	h.Set("public_key", body.Nebula.PublicKey)
 	if err := txApp.Save(h); err != nil {
-		return "", re.BadRequestError("failed to create Nebula host", err)
+		return "", re.BadRequestError("failed to create Nebula host"+deviceKeyRefusal(err), err)
 	}
 	return h.Id, nil
+}
+
+// deviceKeyRefusal names a pb-nats or pb-nebula device-key refusal, so a
+// create that sends a bad key says why instead of "failed to create". The
+// sentinels' messages name the rule and carry no secret. "" for anything else.
+func deviceKeyRefusal(err error) string {
+	for _, refusal := range []error{
+		pbnats.ErrInvalidDeviceKey, pbnats.ErrDeviceKeyRevoked, pbnats.ErrPublicKeyWithoutSeed,
+		pbnebula.ErrInvalidDeviceKey, pbnebula.ErrPublicKeyNotDeviceHeld,
+	} {
+		if errors.Is(err, refusal) {
+			return ": " + refusal.Error()
+		}
+	}
+	return ""
 }
 
 // randomSecret returns nBytes of crypto/rand entropy, hex-encoded. Used for

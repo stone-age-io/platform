@@ -20,7 +20,7 @@ touches a file in that directory.
 |---|---|
 | `AUTHORIZATION.md` | an API rule in `schema.json`, a route or hook that writes with `app.Save()`, a credential, a `can.*` gate |
 | `TESTING.md` | Go tests, `scripts/test-authz.sh`, or gofmt on Windows |
-| `hooks/CLAUDE.md` | PocketBase hook mechanics, and features 7, 7b, 11, 12, 14, 15, 15b, 15d, 16–16c |
+| `hooks/CLAUDE.md` | PocketBase hook mechanics, and features 7, 7b, 11, 12, 14, 15, 15b, 15c, 15d, 16–16c |
 | `migrations/CLAUDE.md` | any `schema.json` change or migration |
 | `ui/CLAUDE.md` | the frontend: pinned majors, NATS URL tiers, the router guard, Vitest, and features 5, 13, 17–19 |
 
@@ -274,6 +274,9 @@ Features with a long note get one line here. The note lives where the code does.
 15. **Decommissioning a device** - `things.active`. Deactivate, then delete: a delete is refused while an identity is live (`hooks/CLAUDE.md`)
 15b. **Rotating an organization's Nebula CA** - three steps, because the wait
     between them is the feature (`hooks/CLAUDE.md`)
+15c. **Device-held keys** - `device_key`: the Thing made its keys and the
+    platform holds only the public halves, enrolled through `POST /api/me/keys`.
+    The libraries enforce every invariant (`hooks/CLAUDE.md`)
 15d. **Suspending an organization** - `organizations.active` withdraws the NATS
     account and does nothing else (`hooks/CLAUDE.md`)
 16. **Organization code** - ids for storage, codes for addressing. `code` is
@@ -295,6 +298,7 @@ One line each. The `CLAUDE.md` in each file's directory says more.
 
 - `main.go` - Backend entry, PocketBase setup, hooks, bootstrap command
 - `hooks/leaf_config_routes.go` - `GET /api/me/leaf-config`: everything an edge agent needs; `GET /api/me/account-jwt`: the account JWT alone, which a gateway polls to know when to re-fetch
+- `hooks/key_routes.go` - `POST /api/me/keys`: a Thing enrolls the public keys it made itself (device-held keys)
 - `hooks/thing_routes.go` - `POST /api/org/things`: a Thing and its optional identities in one transaction
 - `hooks/relation_tenancy.go` - the one enforcement hook: no relation may point into another organization
 - `hooks/org_provisioning.go` - every organization's NATS account and Nebula CA

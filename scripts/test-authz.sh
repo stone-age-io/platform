@@ -29,7 +29,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PORT="${PORT:-18099}"
 API="http://127.0.0.1:$PORT/api"
-EXPECTED_CHECKS=335        # bump when you add a check; guards against silent early exits
+EXPECTED_CHECKS=344        # bump when you add a check; guards against silent early exits
 SU_EMAIL="su@authz.test"
 SU_PASS="SuperSecret123!"
 
@@ -2268,6 +2268,82 @@ req PATCH "/collections/thing_types/records/$GTYPE" "$TA" '{"subject_prefix":"do
 expect "owner cannot change the prefix once a Thing uses the type" 400 "$RCODE" "$RBODY"
 req PATCH "/collections/thing_types/records/$GTYPE" "$TA" '{"name":"Guard Gate (north)"}'
 expect "...but CAN still rename the same type" 200 "$RCODE" "$RBODY"
+
+echo ""
+echo "=== 29. device-held keys: a Thing enrolls its own key ==="
+# plans/device-held-keys.md. A device_key identity holds only the public half
+# of its key, and the device enrolls it through POST /api/me/keys. The route
+# writes with app.Save(), so its only checks are the caller lookup (Thing auth,
+# no record id) and the libraries' invariants, which these exercise over HTTP.
+
+# A NATS user public key, as `nk -gen user -pubout` prints it: base32 of the
+# user prefix byte, the raw ed25519 public key and a CRC16 (XMODEM), no padding.
+nkey_user() {
+  node -e '
+    const { generateKeyPairSync } = require("crypto");
+    const raw = Buffer.from(generateKeyPairSync("ed25519").publicKey.export({ format: "jwk" }).x, "base64url");
+    const body = Buffer.concat([Buffer.from([20 << 3]), raw]);
+    let crc = 0;
+    for (const b of body) { crc ^= b << 8; for (let i = 0; i < 8; i++) crc = crc & 0x8000 ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff; }
+    const all = Buffer.concat([body, Buffer.from([crc & 0xff, crc >> 8])]);
+    const A = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"; let bits = 0, val = 0, out = "";
+    for (const b of all) { val = (val << 8) | b; bits += 8; while (bits >= 5) { out += A[(val >>> (bits - 5)) & 31]; bits -= 5; } }
+    if (bits > 0) out += A[(val << (5 - bits)) & 31];
+    process.stdout.write(out);'
+}
+
+req POST "/org/things" "$TA" \
+  "{\"name\":\"Device Key Gateway\",\"code\":\"devkey-1\",\"nats\":{\"mode\":\"auto\",\"role_id\":\"$NROLE\",\"device_key\":true}}"
+expect "owner CAN create a thing whose NATS key the device holds" 200 "$RCODE" "$RBODY"
+DK_EMAIL=$(j "$RBODY" email)
+DK_PASS=$(j "$RBODY" password)
+req POST /collections/things/auth-with-password "" \
+  "{\"identity\":\"$DK_EMAIL\",\"password\":\"$DK_PASS\"}"
+TDK=$(j "$RBODY" token)
+[ -z "$TDK" ] && die "device-key thing login failed: $RBODY"
+
+# Before enrollment there is no JWT, and leaf-config names the route to call.
+req GET "/me/leaf-config" "$TDK"
+expect "leaf-config answers 409 until the device enrolls its key" 409 "$RCODE" "$RBODY"
+
+DK_KEY=$(nkey_user)
+req POST "/me/keys" "$TDK" "{\"nats_public_key\":\"$DK_KEY\"}"
+expect "a thing CAN enroll its own NATS key" 200 "$RCODE" "$RBODY"
+
+# After: the JWT is there and the creds are not. The seed never left the device.
+req GET "/me/leaf-config" "$TDK"
+DK_LC=$(jn "$RBODY" 'o.jwt && !o.creds ? "ok" : "jwt=" + !!o.jwt + " creds=" + !!o.creds')
+if [ "$DK_LC" = "ok" ]; then
+  ok "leaf-config serves the JWT and no creds for a device-held key"
+else
+  no "leaf-config for a device-held key: $DK_LC"
+fi
+
+req POST "/me/keys" "$TDK" "{\"nats_public_key\":\"$(nkey_user)\"}"
+expect "a thing cannot enroll a different key over its enrolled one" 409 "$RCODE" "$RBODY"
+
+# dashboard, the zero-authority probe: a console user is not a Thing.
+req POST "/me/keys" "$TG" "{\"nats_public_key\":\"$(nkey_user)\"}"
+expect "dashboard cannot call /api/me/keys" "401|403" "$RCODE" "$RBODY"
+
+# device_key is frozen at create, by pb-nats, whoever writes.
+req GET "/collections/things/records?filter=(code='devkey-1')" "$SU"
+DK_NATS=$(jn "$RBODY" 'o.items[0].nats_user')
+req PATCH "/collections/nats_users/records/$DK_NATS" "$TA" '{"device_key":false}'
+expect "owner cannot change device_key on an identity" 400 "$RCODE" "$RBODY"
+
+# A device with no agent: an owner pastes the key on a waiting row. The update
+# rule says who (owner/admin), pb-nats says what.
+req POST "/org/things" "$TA" \
+  "{\"name\":\"Device Key Sensor\",\"code\":\"devkey-2\",\"nats\":{\"mode\":\"auto\",\"role_id\":\"$NROLE\",\"device_key\":true}}"
+req GET "/collections/things/records?filter=(code='devkey-2')" "$SU"
+DK_WAITING=$(jn "$RBODY" 'o.items[0].nats_user')
+[ -z "$DK_WAITING" ] && die "waiting device-key identity fixture failed: $RBODY"
+PASTE_KEY=$(nkey_user)
+req PATCH "/collections/nats_users/records/$DK_WAITING" "$TB" "{\"public_key\":\"$PASTE_KEY\"}"
+expect "member cannot paste a key on a waiting identity" "400|403|404" "$RCODE" "$RBODY"
+req PATCH "/collections/nats_users/records/$DK_WAITING" "$TA" "{\"public_key\":\"$PASTE_KEY\"}"
+expect "owner CAN paste a key on a waiting identity (same payload)" 200 "$RCODE" "$RBODY"
 
 # ----------------------------------------------------------------------- result
 

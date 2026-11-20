@@ -69,7 +69,7 @@ The numbers match the feature index in the root `CLAUDE.md`.
       keyed by `org.Id` while the subject uses the code: `managed_org_exports.go`.
 
 12. **Edge sites** - an edge site is a **Thing**. The agent signs in as it and
-    calls `GET /api/me/leaf-config` for everything a leaf needs, in ten named
+    calls `GET /api/me/leaf-config` for everything a leaf needs, in eleven named
     fields, so a gateway has **no read grant on `nats_*` or `nebula_*`**. Extend
     the route rather than add a read branch.
     - **Nothing marks a Thing as a gateway.** Do not write code that assumes a
@@ -143,6 +143,32 @@ The numbers match the feature index in the root `CLAUDE.md`.
     allow one field and forbid the rest. Three steps because the wait between
     them is what keeps the mesh together. `nebula_routes.go`,
     `nebula_rotation_test.go`, `scripts/test-authz.sh` section 13b.
+
+15c. **Device-held keys** - `device_key` on `nats_users` and `nebula_hosts`: the
+    device made the key pair and sent only `public_key`. The platform holds no
+    seed, `creds_file` or Nebula private key for it. Things only, chosen when
+    the identity is made (`POST /api/org/things`, the Thing form), frozen after.
+    - **The libraries hold every invariant**; the platform adds no rule term.
+      pb-nats has one guard (`generateUserJWT`: no key or inactive means no
+      JWT), pb-nebula two (signing, and rendering: no certificate means no
+      `config_yaml`). Do not re-check either in a route.
+    - **`POST /api/me/keys`** (`key_routes.go`) - Thing auth, no record id. It
+      finds the caller's identities, answers 200 for the key already enrolled
+      (a retry after a lost response), and otherwise sets `public_key` and
+      saves. Library refusals map to 409 (a different key is enrolled) or 400.
+      No transaction: a retry re-sends both keys and the first is a 200.
+    - **`leaf-config`** serves `jwt` too. For a device key `creds` is empty
+      (the agent builds it), and before enrollment the route answers 409
+      naming `POST /api/me/keys`.
+    - **An owner or admin pastes a key** for a device with no agent, through
+      the existing update rule; the console's detail views offer the field
+      while a row is waiting.
+    - **`revoke` on a device NATS key** empties `public_key` and `jwt`, and the
+      device enrolls a new one. There is no Nebula key reset: deactivate the
+      host and attach a new one. `guardLinkedIdentity` needs no change: a
+      deactivated Thing's identities are inactive, and neither library signs
+      for an inactive identity.
+    - `hooks/key_routes_test.go`, `scripts/test-authz.sh` section 29.
 
 15d. **Suspending an organization** - `organizations.active`, operator-only.
     `org_active_flag.go` mirrors it onto `nats_accounts.active`, which withdraws

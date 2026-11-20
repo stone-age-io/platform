@@ -83,6 +83,10 @@ const nebulaMode = ref<ProvisionMode>('none')
 const autoNatsRoleId = ref('')
 const autoNebulaNetworkId = ref('')
 const autoNebulaOverlayIp = ref('')
+// "Key held by device": the device makes its own key pair and enrolls the
+// public half through POST /api/me/keys. Chosen here and frozen after.
+const autoNatsDeviceKey = ref(false)
+const autoNebulaDeviceKey = ref(false)
 
 const selectedTypeHint = computed(() => {
   const t = thingTypes.value.find(x => x.id === formData.value.type)
@@ -301,12 +305,14 @@ async function handleCreate() {
           mode: natsMode.value,
           user_id: natsMode.value === 'link' ? formData.value.nats_user : '',
           role_id: natsMode.value === 'auto' ? autoNatsRoleId.value : '',
+          device_key: natsMode.value === 'auto' && autoNatsDeviceKey.value,
         },
         nebula: {
           mode: nebulaMode.value,
           host_id: nebulaMode.value === 'link' ? formData.value.nebula_host : '',
           network_id: nebulaMode.value === 'auto' ? autoNebulaNetworkId.value : '',
           overlay_ip: nebulaMode.value === 'auto' ? autoNebulaOverlayIp.value : '',
+          device_key: nebulaMode.value === 'auto' && autoNebulaDeviceKey.value,
         },
       },
     })
@@ -677,6 +683,15 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
                     empty-text="No NATS roles defined for this organization yet."
                   />
                 </div>
+                <label class="label cursor-pointer justify-start gap-3">
+                  <input v-model="autoNatsDeviceKey" type="checkbox" class="checkbox checkbox-sm" />
+                  <span class="label-text">Key held by device</span>
+                </label>
+                <p v-if="autoNatsDeviceKey" class="text-xs text-base-content/60 -mt-2">
+                  The device makes its own key and enrolls it with <code>POST /api/me/keys</code>.
+                  The platform never sees the private half, and no credential is issued until the key arrives.
+                  This cannot be changed later.
+                </p>
                 <div v-if="formData.code" class="bg-base-200 rounded-lg p-3 space-y-1">
                   <span class="text-xs text-base-content/50 uppercase block">Will Create</span>
                   <div class="text-sm">
@@ -769,6 +784,16 @@ useEscapeKey(showLocationModal, () => { showLocationModal.value = false })
                   <span class="label-text-alt">Must be unique within the selected network.</span>
                 </label>
               </div>
+
+                <label class="label cursor-pointer justify-start gap-3">
+                  <input v-model="autoNebulaDeviceKey" type="checkbox" class="checkbox checkbox-sm" />
+                  <span class="label-text">Key held by device</span>
+                </label>
+                <p v-if="autoNebulaDeviceKey" class="text-xs text-base-content/60 -mt-2">
+                  The device makes its own key and enrolls it with <code>POST /api/me/keys</code>.
+                  The platform never sees the private half, and no certificate is issued until the key arrives.
+                  This cannot be changed later.
+                </p>
 
               <div v-if="formData.code" class="bg-base-200 rounded-lg p-3 space-y-1">
                 <span class="text-xs text-base-content/50 uppercase block">Will Create</span>

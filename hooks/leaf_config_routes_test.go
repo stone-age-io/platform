@@ -20,6 +20,7 @@ func TestLeafConfigFieldNames(t *testing.T) {
 		"domain",
 		"hub_domain",
 		"hub_leaf_url",
+		"jwt",
 		"operator_jwt",
 		"sys_account_jwt",
 		"sys_account_pub",

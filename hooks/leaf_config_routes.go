@@ -40,6 +40,12 @@ type LeafConfigRoutesOptions struct {
 // superuser-only collection. A Thing can already read its own creds_file and
 // Nebula config through the rules; the rest rides along for convenience.
 //
+// A device-held key (nats_users.device_key) changes two fields. `creds` is
+// empty, because the seed never left the device, and the agent builds the
+// .creds from `jwt` and its own seed. Until the device has enrolled its key
+// (POST /api/me/keys) there is no JWT, and the route answers 409 naming that
+// route.
+//
 // It gates on nothing beyond Thing auth, because there is nothing to gate.
 // Everything served is public trust material (operator and account JWTs, which
 // every server verifies) or the caller's own credential. Seeds and signing keys
@@ -74,9 +80,9 @@ func RegisterLeafConfigRoutes(app *pocketbase.PocketBase, opts LeafConfigRoutesO
 			if err != nil {
 				return err
 			}
-			creds := natsUser.GetString("creds_file")
-			if creds == "" {
-				return re.NotFoundError("linked NATS identity has no creds_file (provisioning incomplete)", nil)
+			creds, userJWT, err := callerCredential(re, natsUser)
+			if err != nil {
+				return err
 			}
 			accountJWT := account.GetString("jwt")
 			accountPub := account.GetString("public_key")
@@ -93,6 +99,7 @@ func RegisterLeafConfigRoutes(app *pocketbase.PocketBase, opts LeafConfigRoutesO
 			return re.JSON(200, leafConfigResponse(leafConfig{
 				Code:          code,
 				Creds:         creds,
+				JWT:           userJWT,
 				AccountJWT:    accountJWT,
 				AccountPub:    accountPub,
 				OperatorJWT:   opJWT,
@@ -108,6 +115,8 @@ func RegisterLeafConfigRoutes(app *pocketbase.PocketBase, opts LeafConfigRoutesO
 		// where revocations live, so the agent polls this every few minutes and
 		// fetches leaf-config (which carries the nkey seed) only when the JWT
 		// differs. Comparing the JWT itself means no revision to keep in step.
+		// (For a device-held key leaf-config carries no seed, but polling stays
+		// the same: a revocation still changes the account JWT.)
 		se.Router.GET("/api/me/account-jwt", func(re *core.RequestEvent) error {
 			if err := requireThing(re, opts.ThingCollection); err != nil {
 				return err
@@ -167,6 +176,7 @@ func accountJWTResponse(jwt, pub string) map[string]string {
 type leafConfig struct {
 	Code          string
 	Creds         string
+	JWT           string
 	AccountJWT    string
 	AccountPub    string
 	OperatorJWT   string
@@ -187,6 +197,7 @@ func leafConfigResponse(c leafConfig) map[string]string {
 		"code":            c.Code,
 		"domain":          c.Code,
 		"creds":           c.Creds,
+		"jwt":             c.JWT,
 		"account_jwt":     c.AccountJWT,
 		"account_pub":     c.AccountPub,
 		"operator_jwt":    c.OperatorJWT,
@@ -195,6 +206,34 @@ func leafConfigResponse(c leafConfig) map[string]string {
 		"hub_leaf_url":    c.HubLeafURL,
 		"hub_domain":      c.HubDomain,
 	}
+}
+
+// callerCredential returns the calling Thing's NATS credential: the creds file
+// and the user JWT inside it, or, for a key the device holds, an empty creds
+// file and the JWT alone.
+//
+// A device-held key with no public key yet has no JWT: 409, naming the route
+// that enrolls one, because the agent's next step is to call it. A missing JWT
+// otherwise (provisioning incomplete, or an identity that is suspended) is a
+// 404 as before.
+func callerCredential(re *core.RequestEvent, natsUser *core.Record) (creds, userJWT string, err error) {
+	userJWT = natsUser.GetString("jwt")
+	if natsUser.GetBool("device_key") {
+		if natsUser.GetString("public_key") == "" {
+			return "", "", re.Error(http.StatusConflict,
+				"this thing holds its own NATS key and has not enrolled it yet: POST /api/me/keys with nats_public_key", nil)
+		}
+		if userJWT == "" {
+			return "", "", re.NotFoundError("linked NATS identity has no JWT (is it deactivated?)", nil)
+		}
+		return "", userJWT, nil
+	}
+
+	creds = natsUser.GetString("creds_file")
+	if creds == "" {
+		return "", "", re.NotFoundError("linked NATS identity has no creds_file (provisioning incomplete)", nil)
+	}
+	return creds, userJWT, nil
 }
 
 // hubNotSetUp names the platform setting that keeps edge sites from working, or

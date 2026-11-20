@@ -445,6 +445,13 @@ func main() {
 			"       This is the address an EDGE box dials to reach this hub's leafnode port,\n"+
 			"       not the nats:// address in nats.server_url.", natsLeafURL)
 	}
+	// A Thing enrolls the public keys it made itself (device_key identities).
+	hooks.RegisterKeyRoutes(app, hooks.KeyRoutesOptions{
+		ThingCollection:      "things",
+		NatsUserCollection:   natsOptions.UserCollectionName,
+		NebulaHostCollection: nebulaOptions.HostCollectionName,
+	})
+
 	hooks.RegisterLeafConfigRoutes(app, hooks.LeafConfigRoutesOptions{
 		ThingCollection:       "things",
 		NatsUserCollection:    natsOptions.UserCollectionName,

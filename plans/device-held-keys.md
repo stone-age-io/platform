@@ -1,7 +1,24 @@
 # Plan: device-held keys for Things
 
-Status: **proposed**. Nothing built. Revised 2026-11-20 after a review against
-the code in pb-nats, pb-nebula and this repo.
+Status: **phases 1, 2, 4, 5 and 8 built** (pb-nats, pb-nebula, this repo),
+2026-11-20. Not built: phases 3 and 6 (agent, stone-cli), phase 7 (e2e). The
+libraries are unreleased; `go.mod` points at local checkouts until they are.
+
+What changed while building, against the text below:
+- **A platform-held NATS create may carry `public_key` with its seed**, not
+  never: pb-nats' own system user is created that way. The refusal is a
+  `public_key` without a `seed` (`ErrPublicKeyWithoutSeed`), which was the
+  actual hole. Nebula refuses `public_key` on a platform host outright.
+- **The libraries skip their checks for their own saves.** A record saved in its
+  create hook still has the blank pre-insert `Original()`, where every field
+  looks changed. pb-nats gained a `saveInternal` like pb-nebula's. A consumer
+  that saves a created object twice is handled by reading the stored row.
+- **A Nebula re-sign in the same second is byte-identical** (same key, same
+  validity, deterministic signature), so treating it as a replacement made
+  `renew` straight after enrollment revoke the certificate the host still held.
+  pb-nebula skips the replacement when nothing changed.
+- **An inactive device NATS row gets no JWT, at creation too.** Platform rows
+  keep pb-nats' documented "active governs transitions, not creation".
 
 ## The problem
 
@@ -60,7 +77,8 @@ A rule term would also cover only REST, not an `app.Save()`.
 2. **`public_key` changes only from empty, and only on a `device_key` row.** On
    any save the library did not make itself, `public_key` must equal the
    original, unless the row is `device_key` and the original was empty. A create
-   may set `public_key` only on a `device_key` row.
+   may set `public_key` only on a `device_key` row (built: a platform NATS row
+   may carry it with its seed; see Status).
 3. **The key must be valid** for its upstream: a user nkey for NATS, an X25519
    PEM for Nebula.
 

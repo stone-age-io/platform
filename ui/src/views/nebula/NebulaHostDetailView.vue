@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { DownloadIcon, LighthouseIcon, NetworkIcon, RefreshCw } from '@lucide/vue'
-import { ref, onMounted } from 'vue'
+import { DownloadIcon, KeyRound, LighthouseIcon, NetworkIcon, RefreshCw } from '@lucide/vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
 import { useToast } from '@/composables/useToast'
@@ -21,6 +21,14 @@ const host = ref<NebulaHost | null>(null)
 const loading = ref(true)
 const deleting = ref(false)
 const regenerating = ref(false)
+const enrolling = ref(false)
+const pastedKey = ref('')
+
+// A device-held key: the device made the pair (`nebula-cert keygen`) and the
+// platform has only the public key. No certificate or config until it arrives,
+// and pki.key in the config is a path on the device.
+const deviceKey = computed(() => !!host.value?.device_key)
+const waitingForDevice = computed(() => deviceKey.value && !host.value?.public_key)
 
 const hostId = route.params.id as string
 
@@ -79,10 +87,17 @@ async function handleDelete() {
 async function confirmRegenerate() {
   if (!host.value || !host.value.active) return
 
+  // A device-held key is re-signed, not replaced: Nebula revokes certificates,
+  // never keys, so re-issuing does nothing for a leaked device key. That
+  // remedy is deactivate the host and make a new one.
   const confirmed = await confirm({
     title: 'Re-issue Certificate',
-    message: `Issue a new key pair and certificate for "${host.value.hostname}"?`,
-    details: 'The old certificate is revoked: every peer refuses it once its own config is redeployed, so this host is cut off from them until its new config is deployed to it. Use this if the key may have leaked, and redeploy the host straight after.',
+    message: deviceKey.value
+      ? `Sign a new certificate for "${host.value.hostname}"'s own key?`
+      : `Issue a new key pair and certificate for "${host.value.hostname}"?`,
+    details: deviceKey.value
+      ? "The device keeps its key; only the certificate is new. The old certificate is revoked, so redeploy this host's config straight after. If the device's key leaked, re-issuing does not help: deactivate this host and give the Thing a new one."
+      : 'The old certificate is revoked: every peer refuses it once its own config is redeployed, so this host is cut off from them until its new config is deployed to it. Use this if the key may have leaked, and redeploy the host straight after.',
     confirmText: 'Re-issue',
     variant: 'warning',
   })
@@ -97,6 +112,27 @@ async function confirmRegenerate() {
     toast.error(err.message || 'Failed to re-issue certificate')
   } finally {
     regenerating.value = false
+  }
+}
+
+/**
+ * For a device with no agent: paste host.pub as `nebula-cert keygen` wrote it.
+ * pb-nebula accepts only an X25519 public key and refuses a second one.
+ */
+async function enrollPastedKey() {
+  if (!host.value) return
+  const key = pastedKey.value.trim()
+  if (!key) return
+  enrolling.value = true
+  try {
+    await pb.collection('nebula_hosts').update(host.value.id, { public_key: key })
+    pastedKey.value = ''
+    toast.success(host.value.active ? 'Key enrolled and certificate signed' : 'Key enrolled; it is signed when the host is reactivated')
+    await loadHost()
+  } catch (err: any) {
+    toast.error(err.message || 'Failed to enroll the key')
+  } finally {
+    enrolling.value = false
   }
 }
 
@@ -282,7 +318,7 @@ onMounted(() => {
                   </button>
                   <!-- Not on an inactive host: see confirmRegenerate. -->
                   <button
-                    v-if="host.active"
+                    v-if="host.active && !waitingForDevice"
                     @click="confirmRegenerate"
                     class="btn btn-sm btn-outline"
                     title="Re-issue certificate"
@@ -306,6 +342,47 @@ onMounted(() => {
                   <span class="w-2 h-2 rounded-full bg-error"></span>
                   <span class="font-medium text-sm">Inactive</span>
                 </div>
+              </div>
+
+              <div class="bg-base-200 rounded-lg p-3 border border-base-300">
+                <span class="text-xs text-base-content/50 uppercase block mb-1">Key held by</span>
+                <div class="flex items-center gap-1.5">
+                  <KeyRound :size="14" class="inline-block shrink-0" />
+                  <span class="font-medium text-sm">{{ deviceKey ? 'Device' : 'Platform' }}</span>
+                </div>
+              </div>
+
+              <!-- Waiting for a device-held key -->
+              <div v-if="waitingForDevice" class="space-y-3">
+                <div class="alert alert-info py-2 text-sm">
+                  <KeyRound :size="18" class="inline-block shrink-0" />
+                  <span>
+                    <span class="font-semibold">Waiting for the device.</span>
+                    It makes its own key and enrolls it through <code>POST /api/me/keys</code>.
+                    No certificate or config is issued until then.
+                  </span>
+                </div>
+                <div>
+                  <label class="text-xs font-bold text-base-content/50 uppercase tracking-wider mb-1 block" for="paste-nebula-key">
+                    Device with no agent? Paste its host.pub
+                  </label>
+                  <textarea
+                    id="paste-nebula-key"
+                    v-model="pastedKey"
+                    rows="3"
+                    class="textarea textarea-bordered textarea-sm w-full font-mono text-xs"
+                    placeholder="-----BEGIN NEBULA X25519 PUBLIC KEY-----"
+                    spellcheck="false"
+                  ></textarea>
+                  <button class="btn btn-sm btn-primary mt-2" :disabled="!pastedKey.trim() || enrolling" @click="enrollPastedKey">
+                    Enroll
+                  </button>
+                </div>
+              </div>
+
+              <div v-if="deviceKey && host.config_yaml" class="text-xs text-base-content/60">
+                <code>pki.key</code> in this config is <code>/etc/nebula/host.key</code>: put the
+                device's key there, or let the agent point it at its own copy.
               </div>
 
               <div v-if="host.expires_at">

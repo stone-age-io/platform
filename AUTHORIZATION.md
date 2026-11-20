@@ -72,10 +72,19 @@ platform-docs `authorization.md`.
 - **A rule cannot allow one field and forbid the rest.** Hence
   `POST /api/me/nats-creds/rotate` (`credential_routes.go`) and
   `POST /api/org/nats-account/keys` (`nats_account_routes.go`). Both take no
-  record id and map each action to one field.
+  record id and map each action to one field. `POST /api/me/keys`
+  (`key_routes.go`) is the third: a Thing sets `public_key` on its own
+  `nats_user` / `nebula_host` and nothing else.
+- **Device-held key invariants are the libraries', not a rule's.** pb-nats and
+  pb-nebula refuse, for every write path: a change to `device_key` after
+  create, a `public_key` that changes once set or sits on a platform-held
+  row, an invalid or revoked key, a bearer device key, and a seed or private
+  key on a device row. The update rules only say who may paste a key
+  (owner/admin), so no rule names `device_key`. Do not add a rule term for an
+  invariant a library already holds: a rule covers REST only.
 - **A gateway reads nothing in `nats_*` or `nebula_*` beyond its own identity.**
   Its agent gets the JWTs and its creds from `GET /api/me/leaf-config`
-  (`hooks/leaf_config_routes.go`), which returns ten named fields. Extend the
+  (`hooks/leaf_config_routes.go`), which returns eleven named fields. Extend the
   route rather than add a read branch, so the edge's exposure stays a fixed list.
 - **A route that writes with `app.Save()` bypasses every API rule**, so it
   restates each check. `POST /api/org/things` takes the organization from the
@@ -129,6 +138,12 @@ platform-docs `authorization.md`.
   - **`revoke` is not suspend.** It issues a new key pair and a working
     replacement, and the identity stays active. `regenerate` re-signs the same
     seed, so a leaked file keeps working.
+  - **On a `device_key` identity, `revoke` replaces nothing.** The platform
+    never had the device's key, so pb-nats revokes it and empties
+    `public_key` and `jwt`; the device enrolls a new key before it reconnects.
+    Enrollment (`POST /api/me/keys`, `hooks/key_routes.go`) is trusted on the
+    Thing's sign-in, so if the device itself is compromised, reset the Thing's
+    password too, or whoever holds it enrolls the next key.
   - **Every path that can mint must respect a suspension.** The rotate route
     refuses an inactive identity; a new route that sets `regenerate` needs the
     same check.

@@ -97,6 +97,16 @@ different remediation costs:
   its Nebula CA is cheaper: once `finish` runs, nothing the old CA signed
   verifies, and no blocklist grows.
 
+**Except for a device-held key.** A Thing created with "Key held by device"
+(`device_key` on its `nats_users` and `nebula_hosts` rows) made its own key
+pairs and sent only the public halves (`POST /api/me/keys`). Its row holds no
+seed, no `creds_file` and no Nebula private key, so a stolen database holds no
+usable credential for it, and neither half needs the remediation above. The
+boundary for those devices is the one at-rest encryption was meant to give: a
+thief can mint *new* identities only with the signing keys, and cannot use the
+existing ones. Device-held keys are for Things only; console users keep
+platform-held keys (`plans/device-held-keys.md` says why).
+
 Treat a `pb_data` compromise as requiring both. The controls that actually
 address it are operational rather than cryptographic — full-disk encryption on
 the host, encrypted backups, and for tenants who need the blast radius to be

@@ -185,8 +185,10 @@ describe('ThingFormView submits', () => {
       nats: { mode: 'auto' },
       nebula: { mode: 'none' },
     })
-    expect(Object.keys(init.body.nats).sort()).toEqual(['mode', 'role_id', 'user_id'])
-    expect(Object.keys(init.body.nebula).sort()).toEqual(['host_id', 'mode', 'network_id', 'overlay_ip'])
+    expect(Object.keys(init.body.nats).sort()).toEqual(['device_key', 'mode', 'role_id', 'user_id'])
+    // Unticked by default: a platform-held key unless the operator chooses otherwise.
+    expect(init.body.nats.device_key).toBe(false)
+    expect(Object.keys(init.body.nebula).sort()).toEqual(['device_key', 'host_id', 'mode', 'network_id', 'overlay_ip'])
   })
 
   it('does not open the credentials dialog when the route withholds the password', async () => {

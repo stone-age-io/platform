@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowDownToLine, ArrowUpFromLine, Ban, CircleCheck, Download, RadioTower, RefreshCw, Shield } from '@lucide/vue'
+import { ArrowDownToLine, ArrowUpFromLine, Ban, CircleCheck, Download, KeyRound, RadioTower, RefreshCw, Shield } from '@lucide/vue'
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { pb } from '@/utils/pb'
@@ -24,6 +24,13 @@ const deleting = ref(false)
 const regenerating = ref(false)
 const revoking = ref(false)
 const reenabling = ref(false)
+const enrolling = ref(false)
+const pastedKey = ref('')
+
+// A device-held key: the device made the pair and the platform has only the
+// public key. No .creds to download; the device builds its own from the JWT.
+const deviceKey = computed(() => !!user.value?.device_key)
+const waitingForDevice = computed(() => deviceKey.value && !user.value?.public_key)
 
 function getSubjectArray(val: any): string[] {
   if (!val) return []
@@ -104,8 +111,12 @@ async function confirmRegenerate() {
 
   const confirmed = await confirm({
     title: 'Regenerate Credentials',
-    message: `Issue a fresh .creds file for "${user.value.nats_username}"?`,
-    details: 'This does not invalidate the current file: every copy keeps working, because the key does not change. If the credentials leaked, use Revoke instead.',
+    message: deviceKey.value
+      ? `Issue a fresh JWT for "${user.value.nats_username}"?`
+      : `Issue a fresh .creds file for "${user.value.nats_username}"?`,
+    details: deviceKey.value
+      ? "The key is the device's and does not change, so the current JWT keeps working too. If the device's key leaked, use Revoke instead."
+      : 'This does not invalidate the current file: every copy keeps working, because the key does not change. If the credentials leaked, use Revoke instead.',
     confirmText: 'Regenerate',
     variant: 'warning',
   })
@@ -131,7 +142,17 @@ async function confirmRegenerate() {
 async function confirmRevoke() {
   if (!user.value) return
 
-  const confirmed = await confirm({
+  // A device-held key cannot be replaced by the platform, which never had it:
+  // revoke empties the row and the device must enroll a new key. Enrollment is
+  // trusted on the Thing's sign-in, so if the device itself is compromised,
+  // whoever can sign in as it enrolls the next key.
+  const confirmed = await confirm(deviceKey.value ? {
+    title: 'Revoke Device Key',
+    message: `Reject the key "${user.value.nats_username}" holds?`,
+    details: "The device's key goes onto the account revocation list, permanently. The platform cannot issue a replacement for a key it never had: the device must generate and enroll a new key before it reconnects. If the device itself is compromised, reset the Thing's password too, or whoever holds it enrolls the next key.",
+    confirmText: 'Revoke',
+    variant: 'danger',
+  } : {
     title: 'Revoke Credentials',
     message: `Reject every copy of the current .creds file for "${user.value.nats_username}"?`,
     details: 'Its key goes onto the account revocation list, so NATS rejects every copy of the existing file, permanently. A new key and a new .creds file are issued in the same step and the user stays active: deliver the new file to whoever should hold it. This does not take the identity out of service.',
@@ -143,7 +164,7 @@ async function confirmRevoke() {
   revoking.value = true
   try {
     await pb.collection('nats_users').update(user.value.id, { revoke: true })
-    toast.success('Credentials revoked and replaced')
+    toast.success(deviceKey.value ? 'Device key revoked; the device must enroll a new one' : 'Credentials revoked and replaced')
     await loadUser()
   } catch (err: any) {
     toast.error(err.message || 'Failed to revoke credentials')
@@ -175,6 +196,28 @@ async function confirmReenable() {
     toast.error(err.message || 'Failed to re-enable user')
   } finally {
     reenabling.value = false
+  }
+}
+
+/**
+ * For a device with no agent: paste what `nk -gen user -pubout` printed.
+ * pb-nats checks the key (a user nkey, not revoked, not held by another
+ * identity) and refuses a second one; its message says which rule.
+ */
+async function enrollPastedKey() {
+  if (!user.value) return
+  const key = pastedKey.value.trim()
+  if (!key) return
+  enrolling.value = true
+  try {
+    await pb.collection('nats_users').update(user.value.id, { public_key: key })
+    pastedKey.value = ''
+    toast.success('Key enrolled')
+    await loadUser()
+  } catch (err: any) {
+    toast.error(err.message || 'Failed to enroll the key')
+  } finally {
+    enrolling.value = false
   }
 }
 
@@ -345,14 +388,16 @@ onMounted(() => {
                       .creds
                     </button>
                     <button
+                      v-if="!waitingForDevice"
                       @click="confirmRegenerate"
                       class="btn btn-sm btn-outline"
-                      title="Issue a fresh .creds file"
+                      :title="deviceKey ? 'Issue a fresh JWT for the same key' : 'Issue a fresh .creds file'"
                     >
                       <RefreshCw :size="18" class="inline-block shrink-0" />
                       Regenerate
                     </button>
                     <button
+                      v-if="!waitingForDevice"
                       @click="confirmRevoke"
                       class="btn btn-sm btn-outline btn-error"
                       title="Reject the current credentials and issue replacements"
@@ -391,9 +436,48 @@ onMounted(() => {
                 </div>
                 
                 <div class="bg-base-200 rounded-lg p-2 border border-base-300">
+                  <span class="text-xs text-base-content/50 uppercase block mb-1">Key held by</span>
+                  <div class="flex items-center gap-1.5">
+                    <KeyRound :size="14" class="inline-block shrink-0" />
+                    <span class="font-medium text-sm">{{ deviceKey ? 'Device' : 'Platform' }}</span>
+                  </div>
+                </div>
+
+                <div v-if="!deviceKey" class="bg-base-200 rounded-lg p-2 border border-base-300">
                   <span class="text-xs text-base-content/50 uppercase block mb-1">Bearer Token</span>
                   <div class="flex items-center gap-1.5">
                     <span class="font-medium text-sm">{{ user.bearer_token ? 'Enabled' : 'Disabled' }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Waiting for a device-held key -->
+              <div v-if="waitingForDevice" class="space-y-3">
+                <div class="alert alert-info py-2 text-sm">
+                  <KeyRound :size="18" class="inline-block shrink-0" />
+                  <span>
+                    <span class="font-semibold">Waiting for the device.</span>
+                    It makes its own key and enrolls it through <code>POST /api/me/keys</code>.
+                    No JWT is issued until then.
+                  </span>
+                </div>
+                <div>
+                  <label class="text-xs font-bold text-base-content/50 uppercase tracking-wider mb-1 block" for="paste-nats-key">
+                    Device with no agent? Paste its public key
+                  </label>
+                  <div class="flex gap-2">
+                    <input
+                      id="paste-nats-key"
+                      v-model="pastedKey"
+                      type="text"
+                      class="input input-bordered input-sm flex-1 font-mono"
+                      placeholder="U... (from nk -gen user -pubout)"
+                      autocomplete="off"
+                      spellcheck="false"
+                    />
+                    <button class="btn btn-sm btn-primary" :disabled="!pastedKey.trim() || enrolling" @click="enrollPastedKey">
+                      Enroll
+                    </button>
                   </div>
                 </div>
               </div>

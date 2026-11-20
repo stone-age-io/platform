@@ -176,6 +176,9 @@ export interface NatsUser extends AuthRecord {
   jwt?: string
   creds_file?: string
   bearer_token?: boolean
+  // The device made this key pair and sent only public_key. No seed and no
+  // creds_file: the device builds its own .creds from jwt. Frozen at create.
+  device_key?: boolean
   jwt_expires_at?: string
   regenerate?: boolean
   revoke?: boolean
@@ -273,6 +276,11 @@ export interface NebulaHost extends AuthRecord {
   public_host_port?: string
   certificate?: string
   private_key?: string
+  // The device made this key pair (`nebula-cert keygen`) and sent only
+  // public_key, its PEM. No private_key; pki.key in config_yaml is a path.
+  // Empty public_key: waiting for the device. Frozen at create.
+  device_key?: boolean
+  public_key?: string
   ca_certificate?: string
   config_yaml?: string
   firewall_outbound?: Record<string, any>

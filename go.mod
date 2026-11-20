@@ -90,3 +90,7 @@ require (
 	modernc.org/memory v1.12.1 // indirect
 	modernc.org/sqlite v1.60.1 // indirect
 )
+
+replace github.com/skeeeon/pb-nats => ../pb-nats
+
+replace github.com/skeeeon/pb-nebula => ../pb-nebula
