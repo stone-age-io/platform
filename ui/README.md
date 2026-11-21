@@ -32,7 +32,7 @@ src/
 │   ├── locations/     # LocationMapViz, LocationMapDrawer
 │   ├── map/           # FloorPlanMap (image-overlay indoor positioning)
 │   ├── nats/          # KvDashboard
-│   ├── things/        # SchemaBuilder (visual JSON Schema editor used by MessageSchemaFormView)
+│   ├── things/        # SchemaBuilder (visual JSON Schema editor for a type's metadata_schema)
 │   ├── ui/            # Generic UI (BaseCard, ResponsiveList)
 │   └── widgets/       # Visualizer widget implementations
 │       └── map/       # Marker editors & detail panels for the MapWidget
@@ -61,7 +61,7 @@ src/
     ├── nebula/        # CA, Networks, Hosts
     ├── organization/  # Members, Invitations, Member detail
     ├── settings/      # User profile & NATS connection config
-    └── things/        # Things, Thing Types, Operations, Message Schemas
+    └── things/        # Things, Thing Types, Operations
 ```
 
 ---
@@ -85,12 +85,11 @@ We manage the connectivity layer as first-class entities:
 *   **Edge sites:** there is no screen for these, deliberately. A site is a Thing, so its page is the Thing page. A `leaf_nodes` collection and a `leaf_status` heartbeat bucket used to back a separate screen family; both are gone. The heartbeat travelled over the very link whose failure it reported, so a missing beat could not tell "edge box down" from "WAN down" from "agent crashed" — the hub always knows which leaves it holds. To ask it, point a Publisher or Button widget at `$SYS.REQ.ACCOUNT.PING.CONNZ` with a `{}` payload: the reply names each leaf connection by the leaf server's `server_name`, which the agent sets to the Thing's `code`. That is a dashboard recipe rather than a built-in view because nothing in the schema marks which Things are gateways, so a badge could only render on every device and say "no leaf node attached" about temperature probes.
 
 ### 3. Thing Modeling
-Things aren't just inventory records — they declare a messaging contract via three related collections managed under `views/things/`:
+Things aren't just inventory records — they declare a messaging contract via two related collections managed under `views/things/`:
 
 *   **Thing Types** (`ThingTypeFormView` / `ThingTypeListView`) own a subject prefix template (supporting `{org}`, `{location}`, `{thing}`, `{thing_type_code}` tokens) and a list of Operations.
-*   **Operations** (`ThingTypeOperationFormView` / `ThingTypeOperationListView`) declare a capability (`publish` / `subscribe` / `request` / `reply`), a subject suffix appended to the Thing Type's prefix, and an optional Message Schema describing the payload.
-*   **Message Schemas** (`MessageSchemaFormView` / `MessageSchemaListView`) are versioned JSON Schema documents identified by `namespace`, `name`, and semver `version` — each version is a separate record. The form offers a **SchemaBuilder** visual editor, a raw JSON view, and an **Infer from sample** action that generates a starting schema from a pasted example message.
-*   **Quick-add flow:** Related-record selects (Operations on a Thing Type; Message Schema on an Operation) expose a `+` button that opens the target form in an embedded modal, so you can author the full graph without leaving the page.
+*   **Operations** (`ThingTypeOperationFormView` / `ThingTypeOperationListView`) declare a capability (`publish` / `subscribe` / `request` / `reply`) and a subject suffix appended to the Thing Type's prefix. They say where a participant publishes and subscribes, not what the payload looks like: there is no payload schema.
+*   **Quick-add flow:** Related-record selects (Operations on a Thing Type) expose a `+` button that opens the target form in an embedded modal, so you can author the full graph without leaving the page.
 
 ### 4. Live State / Digital Twin
 We bridge the gap between **SQL Metadata** (PocketBase) and **Live State** (NATS JetStream).

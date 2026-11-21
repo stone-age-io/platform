@@ -58,7 +58,8 @@ unattended screens, NATS roles and signed identities, a Nebula network, edge
 sites, and members holding all five roles.
 
 ```bash
-./stone-age demo-seed --confirm
+docker exec stone-age stone-age demo-seed --confirm --dir /data/pb_data   # the container
+./stone-age demo-seed --confirm                                         # from source
 ```
 
 Every login is `demo1234`; start with `dana@northwind.example`, or

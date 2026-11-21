@@ -23,6 +23,18 @@ and this file starts where the versioned releases do.
   organization to open the Visualizer in a browser take over the dashboards it
   already held, once; on a single-user browser or a wall screen that is the
   person who made them.
+- **The console signed you out whenever it could not reach the server at
+  startup.** Any failed session check counted as an invalid session, so a
+  server restart or a network blip signed out every open tab, including an
+  unattended dashboard screen that nobody was there to sign back in. Only a
+  4xx answer now signs you out. On a network error or a 5xx the console keeps
+  the session and retries (1s, then up to every 30s), and the loading screen
+  says it cannot reach the server.
+- **The README gave the from-source `demo-seed` command right after the
+  container instructions**, where it does not work. It now gives
+  `docker exec stone-age stone-age demo-seed --confirm --dir /data/pb_data`
+  for the container. `demo-seed --help` no longer lists message schemas,
+  which it has not seeded since they were removed.
 
 ## [0.21.0] - 2026-11-20
 

@@ -21,8 +21,8 @@ func RegisterCommand(app *pocketbase.PocketBase) {
 	cmd := &cobra.Command{
 		Use:   "demo-seed",
 		Short: "Populate this deployment with demo/showcase data (idempotent)",
-		Long: "Seeds three organizations — each with locations, a type taxonomy, message " +
-			"schemas, operations, things spanning devices, gateways, applications and " +
+		Long: "Seeds three organizations — each with locations, a type taxonomy, " +
+			"operations, things spanning devices, gateways, applications and " +
 			"appliances, NATS roles and identities, a Nebula network with a lighthouse, " +
 			"edge sites, and members covering all five console roles.\n\n" +
 			"Runs offline: NATS account and user JWTs are signed locally and the claim " +
