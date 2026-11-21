@@ -1,8 +1,14 @@
 # Plan: align the apps with the platform, and give them one shared kit
 
-Status: **not started.** Revised 2026-11-21 to add the alignment work: one
-subject grammar, one event shape, a platform identity for every app process,
-and a decision on reading inventory from the platform.
+Status: **phases 0 and 1 done**, 2026-11-21. access-control and kiosk import
+the official PocketBase v0.41.1. Decisions A to D are ADR 0008 in
+platform-docs (numbers 0005 to 0007 belong to the services repo), alongside
+the message-design changes and `building-an-app.md`. Phase 2 waits on open
+question 1, the repo name.
+
+Writing ADR 0008 changed decision C: ADR 0007 rejected a platform client
+inside each service, so every app gets its creds through creds-keeper, and the
+kit has no `platform` package.
 
 It touches six repos: access-control, kiosk, helpdesk, services, platform-docs
 and a new `stone-age-io/kit`. No phase changes the platform's schema, an API
@@ -135,7 +141,7 @@ These are settled. Do not re-open them while implementing.
 
 ## Decisions this plan asks for
 
-These are proposals. Phase 1 writes each one into ADR 0005 once it is decided.
+A to D are decided and recorded in ADR 0008. E waits on stone-cli.
 
 ### A. One subject grammar for applications
 
@@ -184,12 +190,12 @@ The per-app renames are in phase 3. The Agent already fits and doesn't change.
 ### C. Every app process is a platform Thing
 
 accessd, access-controller, the kiosk node and controller, helpdesk, the
-watchdog: each one gets a Thing of its own type. It signs in with that Thing's
-login (or a device-held key, `POST /api/me/keys`) and fetches its own creds
-file from `nats_user.creds_file`. It registers a NATS micro service with
-`metadata.code` set to that Thing's code. This is the device sign-in path that
-`stability.md` already lists as stable, and creds-keeper already implements it.
-The kit makes it a library call instead of a sidecar.
+watchdog: each one gets a Thing of its own type. creds-keeper runs beside it,
+signs in as that Thing and keeps its creds file current. The app connects with
+`IgnoreAuthErrorAbort()`, so the next reconnect reads the new file after a
+Revoke, and it registers a NATS micro service with `metadata.code` set to that
+Thing's code. ADR 0007 rejected building a platform client into each service,
+and the reasons hold for the apps, so the kit does not contain one.
 
 What it gets the operator:
 - Regenerate and Revoke reach the apps.
@@ -258,9 +264,9 @@ This doesn't depend on anything else here, and it is the most urgent item.
 - One commit per repo. Done when `go build ./...` and `go test ./...` pass and
   `grep -r github.com/pocketbase` finds nothing.
 
-## Phase 1: ADR 0005 and the docs
+## Phase 1: ADR 0008 and the docs (done)
 
-- **`platform-docs/docs/decisions/0005-application-namespace.md`**, scoped to
+- **`platform-docs/docs/decisions/0008-application-namespace.md`**, scoped to
   the whole ecosystem the way ADR 0002 is. It records decisions A to D as
   decided, and it gives the ADR 0002 disjointness rule its owner.
 - **`concepts/message-design.md`**: the channel table, `ts` with no exceptions,
@@ -279,8 +285,9 @@ This doesn't depend on anything else here, and it is the most urgent item.
   7. The process contract: `/api/ready` and `/metrics`.
   8. The contract folder (decision E).
 
-Done when the ADR is accepted and each app's README links to the page instead
-of explaining the same thing again.
+Done when the ADR is accepted. The link from each app's README to the page
+goes in that app's contract PR in phase 3. The contract folder (item 8) waits
+for phase 5, so the page doesn't describe it yet.
 
 ## Phase 2: the kit
 
@@ -329,16 +336,9 @@ wire format. It uses only the standard library.
 **`codes`**: `OrgPattern` (pinned by a test to `platform/hooks/org_code.go`),
 `ValidOrg`, `Equal` (ignores case), and `ValidThing` (the ADR 0003 pattern).
 
-**`platform`**: the Thing identity client, lifted from
-`services/credskeeper/keeper.go`. It uses only the standard library and HTTP,
-with no PocketBase.
-- `SignIn(ctx, url, identity, password)` and refreshing the auth token.
-- `Creds(ctx)` returns the current `creds_file` and its `updated`.
-- `Keep(ctx, path string, every time.Duration)` writes the creds file when it
-  changes, which `natsx.Connect` reads again on the next reconnect.
-- `EnrollKeys(ctx, natsPub, nebulaPub string)` calls `POST /api/me/keys`.
-- `Ready() health.Func`.
-- creds-keeper becomes a thin `main` around this package.
+**No `platform` package.** Identity comes from creds-keeper running beside the
+app (ADR 0007, ADR 0008 rule 4). `natsx.Connect` is the only part of it that
+lives in the kit.
 
 **`version`**: `Build`, `Semver` and `Dependency`, all from
 `debug.ReadBuildInfo`.
@@ -365,8 +365,8 @@ that a subject regression and a plumbing regression can't hide in one diff.
 The order runs from closest to the kit to furthest.
 
 **1. services**
-- Kit PR: `internal/health`, `internal/natsconn` and the core of
-  `credskeeper` become the kit. The watchdog signs in as a Thing.
+- Kit PR: `internal/health` and `internal/natsconn` become the kit.
+  creds-keeper stays as it is.
 
 **2. helpdesk**
 - Contract PR:
@@ -385,13 +385,13 @@ The order runs from closest to the kit to furthest.
 **3. access-control**
 - Contract PR:
   - `acc.{location}.ctrl.{code}.health` → `acc.{location}.ctrl.{code}.cmd.health`.
-  - The fire alarm gets a three-token scope like every other event. If it
-    comes from an aux input, that is `acc.{location}.auxin.{code}.evt.fire`.
-    Confirm this against the protocol doc before choosing. `EventsWildcards`
-    then becomes the single filter `acc.*.*.*.evt.>`.
+  - `acc.{location}.evt.fire` → `acc.{location}.site.{location}.evt.fire`
+    (ADR 0008). Fire is a location's state that every controller there
+    applies, so it isn't keyed by the aux input. `EventsWildcards` then becomes
+    the single filter `acc.*.*.*.evt.>`.
   - `Nats-Msg-Id` on every event.
-  - accessd and every controller sign in as Things.
-- Kit PR: adopt `natsx`, `subjects`, `platform` and `version`. **Add**
+  - accessd and every controller get a Thing and run beside creds-keeper.
+- Kit PR: adopt `natsx`, `subjects` and `version`. **Add**
   `/api/ready` and `/metrics`. Rename `internal/health` (the heartbeat monitor)
   to `internal/liveness`.
 
@@ -400,8 +400,8 @@ The order runs from closest to the kit to furthest.
   - `kiosk.{code}.event.…` → `kiosk.{code}.evt.…`.
   - `occurred_at` → `ts`.
   - `Nats-Msg-Id` on every event.
-  - The node and the controller sign in as Things.
-- Kit PR: adopt `natsx`, `subjects`, `platform` and `authfix`, and add
+  - The node and the controller get a Thing and run beside creds-keeper.
+- Kit PR: adopt `natsx`, `subjects` and `authfix`, and add
   `/api/ready`.
 
 Each kit PR is done when the app's tests pass, `healthtest.Conform` passes
@@ -450,7 +450,7 @@ and `building-an-app.md` documents onboarding an organization as one
 ## Size, honestly
 
 The kit removes roughly 2,500 to 3,500 duplicated lines from four apps and adds
-about 2,000 to 2,500 in one place, the identity client included. It doesn't
+about 1,500 to 2,000 in one place. It doesn't
 shrink the products. What it buys:
 - one readiness format
 - one reconnect behaviour after a Revoke
