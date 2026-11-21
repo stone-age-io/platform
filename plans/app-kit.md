@@ -3,8 +3,15 @@
 Status: **phases 0 and 1 done**, 2026-11-21. access-control and kiosk import
 the official PocketBase v0.41.1. Decisions A to D are ADR 0008 in
 platform-docs (numbers 0005 to 0007 belong to the services repo), alongside
-the message-design changes and `building-an-app.md`. Phase 2 waits on open
-question 1, the repo name.
+the message-design changes and `building-an-app.md`.
+
+Phase 2 is built and untagged: `stone-age-io/kit` at d73ab98, CI green for both
+modules. Where it differs from the text below: no `EnsureStream`, `EnsureKV` or
+`KV` (each is one call in `nats.go/jetstream`); `natsx.Ready` holds the NATS
+check instead of `health`; `pbx` adds `ServeReady` and `ServeMetrics`; and
+`pbx.Branding` was kept, since helpdesk and access-control serve the overlay
+identically and only kiosk differs. `pbx` requires the root module at a
+pseudo-version until the first tags.
 
 Writing ADR 0008 changed decision C: ADR 0007 rejected a platform client
 inside each service, so every app gets its creds through creds-keeper, and the
@@ -400,7 +407,7 @@ The order runs from closest to the kit to furthest.
   `/api/ready` and `/metrics`. Rename `internal/health` (the heartbeat monitor)
   to `internal/liveness`.
 
-**4. kiosk** (waits on open question 2)
+**4. kiosk** (waits on open question 1)
 - Contract PR:
   - `kiosk.{code}.event.…` → `kiosk.{code}.evt.…`.
   - `occurred_at` → `ts`.
@@ -443,12 +450,10 @@ and `building-an-app.md` documents onboarding an organization as one
 
 ## Open questions
 
-1. **The repo name.** It has to be chosen before phase 2, because a Go module
-   path is hard to change later.
-2. **Is kiosk in scope?** It lives under `skeeeon`, not `stone-age-io`, and
+1. **Is kiosk in scope?** It lives under `skeeeon`, not `stone-age-io`, and
    presents itself as standalone. Phase 0 applies either way. Phase 3 for kiosk
    is a product decision.
-3. **Should the platform import `kit/codes`?** It would keep the code pattern
+2. **Should the platform import `kit/codes`?** It would keep the code pattern
    in one place, at the cost of a dependency on a repo the platform doesn't
    release. It can wait until after phase 2.
 
