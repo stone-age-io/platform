@@ -6,6 +6,23 @@ import { useToast } from '@/composables/useToast'
 import type { User, Membership, Organization, SuperUser, NatsUser } from '@/types/pocketbase'
 import type { AuthProviderInfo } from 'pocketbase'
 
+/**
+ * Whether a failed session check means the session is gone (log out) rather
+ * than that the server could not be asked (try again). Only a 4xx answer is a
+ * rejection: an expired or revoked token, or a deleted user. A network failure
+ * (status 0), a timeout, rate limiting or a 5xx says nothing about the session.
+ * Logging out on those signed out an unattended dashboard screen whenever the
+ * server restarted, and nobody is there to type the password back in.
+ */
+export function isSessionRejected(err: unknown): boolean {
+  const status = (err as { status?: unknown } | null)?.status
+  if (typeof status !== 'number') return false
+  return status >= 400 && status < 500 && status !== 408 && status !== 429
+}
+
+// Seconds between hydration attempts while the server cannot be reached.
+const HYDRATION_RETRY_DELAYS = [1, 2, 4, 8, 15, 30]
+
 export interface ExtendedMembership extends Membership {
   expand?: {
     organization: Organization
@@ -240,19 +257,36 @@ export const useAuthStore = defineStore('auth', () => {
     return hydration
   }
 
+  // Failed attempts so far while the server could not be reached; main.ts
+  // shows it on the pre-mount loader.
+  const hydrationRetries = ref(0)
+
   async function hydrate() {
-    if (pb.authStore.isValid && pb.authStore.model) {
-      user.value = pb.authStore.model as unknown as User
-      isSuperAdmin.value = pb.authStore.model.collectionName === '_superusers'
+    if (!pb.authStore.isValid || !pb.authStore.model) return
+    user.value = pb.authStore.model as unknown as User
+    isSuperAdmin.value = pb.authStore.model.collectionName === '_superusers'
+    const collection = isSuperAdmin.value ? '_superusers' : 'users'
+
+    // Retried until the server answers, behind the loader: mounting without
+    // memberships would show every role a console with no capabilities.
+    for (;;) {
       try {
         // Verify the stored token server-side before trusting it.
-        const collection = isSuperAdmin.value ? '_superusers' : 'users'
         const authData = await pb.collection(collection).authRefresh()
         user.value = authData.record as unknown as User
         await loadContext()
+        hydrationRetries.value = 0
+        return
       } catch (error) {
-        console.warn('Session invalid, logging out...')
-        await logout()
+        if (isSessionRejected(error)) {
+          console.warn('Session rejected by the server, logging out...')
+          await logout()
+          return
+        }
+        const delay = HYDRATION_RETRY_DELAYS[Math.min(hydrationRetries.value, HYDRATION_RETRY_DELAYS.length - 1)]
+        hydrationRetries.value++
+        console.warn(`Could not reach the server to check the session, retrying in ${delay}s:`, error)
+        await new Promise(resolve => setTimeout(resolve, delay * 1000))
       }
     }
   }
@@ -263,6 +297,7 @@ export const useAuthStore = defineStore('auth', () => {
     currentOrgId,
     isSuperAdmin,
     authProviders,
+    hydrationRetries,
 
     isAuthenticated,
     currentMembership,

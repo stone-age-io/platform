@@ -1,7 +1,9 @@
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ClientResponseError } from 'pocketbase'
 
-import { useAuthStore } from './auth'
+import { pb } from '@/utils/pb'
+import { isSessionRejected, useAuthStore } from './auth'
 
 // The `can` map mirrors the API rules in schema.json by hand; scripts/test-authz.sh
 // covers the server half. The matrix below is the role table in the root
@@ -148,5 +150,74 @@ describe('userRole', () => {
 
     expect(auth.userRole).toBe('owner')
     expect(auth.can.manageMembers).toBe(true)
+  })
+})
+
+// Startup checks the stored session with the server. Only the server saying no
+// may sign the user out: an unattended dashboard screen that lost its session
+// to a server restart stays signed out until someone types the password.
+describe('isSessionRejected', () => {
+  it.each([
+    [400, true], [401, true], [403, true], [404, true],
+    [0, false], [408, false], [429, false], [500, false], [502, false], [503, false],
+  ])('status %i -> %s', (status, rejected) => {
+    expect(isSessionRejected(new ClientResponseError({ status }))).toBe(rejected)
+  })
+
+  it('is false for an error with no status', () => {
+    expect(isSessionRejected(new Error('boom'))).toBe(false)
+    expect(isSessionRejected(null)).toBe(false)
+  })
+})
+
+describe('hydrating a stored session', () => {
+  function storedSession() {
+    const b64 = (o: object) => btoa(JSON.stringify(o)).replace(/=+$/, '')
+    const token = `${b64({ alg: 'HS256' })}.${b64({ exp: Math.floor(Date.now() / 1000) + 3600 })}.sig`
+    pb.authStore.save(token, { id: 'u1', collectionName: 'users' } as never)
+    return token
+  }
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    storedSession()
+    vi.spyOn(pb.collection('memberships'), 'getFullList').mockResolvedValue([] as never)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+    pb.authStore.clear()
+  })
+
+  it('keeps the session and retries while the server cannot be reached', async () => {
+    const refresh = vi.spyOn(pb.collection('users'), 'authRefresh')
+      .mockRejectedValueOnce(new ClientResponseError({ status: 0 }))
+      .mockRejectedValueOnce(new ClientResponseError({ status: 502 }))
+      .mockResolvedValueOnce({ token: 't', record: { id: 'u1' } } as never)
+    const auth = useAuthStore()
+
+    const done = auth.initializeFromAuth()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(auth.hydrationRetries).toBe(1)
+    expect(auth.isAuthenticated).toBe(true)
+
+    await vi.advanceTimersByTimeAsync(3000)
+    await done
+    expect(refresh).toHaveBeenCalledTimes(3)
+    expect(auth.isAuthenticated).toBe(true)
+    expect(auth.hydrationRetries).toBe(0)
+    expect(pb.authStore.isValid).toBe(true)
+  })
+
+  it('signs out when the server rejects the token', async () => {
+    vi.spyOn(pb.collection('users'), 'authRefresh')
+      .mockRejectedValueOnce(new ClientResponseError({ status: 401 }))
+    const auth = useAuthStore()
+
+    await auth.initializeFromAuth()
+    expect(auth.isAuthenticated).toBe(false)
+    expect(pb.authStore.isValid).toBe(false)
   })
 })

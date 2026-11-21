@@ -1,4 +1,4 @@
-import { createApp } from 'vue'
+import { createApp, watch } from 'vue'
 import { createPinia } from 'pinia'
 import router, { applyDocumentTitle } from './router'
 import App from './App.vue'
@@ -21,10 +21,16 @@ app.use(router)
  * tab). The router guard also awaits it; the call is memoized.
  *
  * Each promise has its own catch so one failure cannot block mount;
- * initializeFromAuth calls logout() on a bad token.
+ * initializeFromAuth calls logout() on a token the server rejects, and retries
+ * while the server cannot be reached, so the loader says so.
  */
 const brandingStore = useBrandingStore()
 const authStore = useAuthStore()
+
+watch(() => authStore.hydrationRetries, retries => {
+  const text = document.querySelector('#app-loader .app-loader-text')
+  if (text) text.textContent = retries > 0 ? 'Cannot reach the server · retrying' : 'Loading'
+})
 
 Promise.all([
   brandingStore.load().catch(err => console.error('Branding load failed:', err)),
