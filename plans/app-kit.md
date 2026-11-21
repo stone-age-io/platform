@@ -151,8 +151,9 @@ A to D are decided and recorded in ADR 0008. E waits on stone-cli.
 ```
 
 - **`{scope}` is a fixed number of tokens for each app**, and every one is a
-  code. For kiosk and the Agent it is the instance's Thing code (one token).
-  For access-control it is `{location}.{type}.{thing}` (three tokens). The
+  code. For kiosk and the Agent it is the instance's Thing code. For
+  access-control it is the location code, with the portal type and code after
+  the channel (decided 2026-11-21, so the fire alarm needs no padding). The
   helpdesk has no scope inside a tenant account, and at the hub the org is
   its scope. Fixing the count is what lets one filter cover a whole channel.
 - **`{channel}` is the kind of message, from a short fixed list**, taken from
@@ -328,7 +329,7 @@ wire format. It uses only the standard library.
 - `Join(tokens ...string) (string, error)`: refuses an empty token, `.`, `*`,
   `>` and whitespace.
 - `Filter(app string, scopeTokens int, channel string) string`: for example
-  `acc.*.*.*.evt.>`.
+  `acc.*.evt.>`.
 - `Split(subject, app string, scopeTokens int) (scope []string, channel string, rest []string, ok bool)`.
 - A test helper, `Disjoint(t, filters ...string)`, generalizing the helpdesk's
   `TestStreamsDisjoint`.
@@ -384,11 +385,15 @@ The order runs from closest to the kit to furthest.
 
 **3. access-control**
 - Contract PR:
-  - `acc.{location}.ctrl.{code}.health` → `acc.{location}.ctrl.{code}.cmd.health`.
-  - `acc.{location}.evt.fire` → `acc.{location}.site.{location}.evt.fire`
-    (ADR 0008). Fire is a location's state that every controller there
-    applies, so it isn't keyed by the aux input. `EventsWildcards` then becomes
-    the single filter `acc.*.*.*.evt.>`.
+  - Every subject moves the channel to right after the location, per the
+    before-and-after table in ADR 0008: `acc.{location}.{type}.{thing}.evt.tap`
+    → `acc.{location}.evt.{type}.{thing}.tap`, and the same for `cmd`, `tap`
+    and the controller's `heartbeat` and `health`. The fire alarm,
+    `acc.{location}.evt.fire`, stays as it is. `EventsWildcards` becomes the
+    single filter `acc.*.evt.>`, and the notify consumer's filters become
+    `acc.*.evt.*.*.alarm`, `acc.*.evt.fire` and `acc.*.evt.ctrl.*.state`.
+  - The vendored protocol doc, the demo rules and every subject test change
+    with it.
   - `Nats-Msg-Id` on every event.
   - accessd and every controller get a Thing and run beside creds-keeper.
 - Kit PR: adopt `natsx`, `subjects` and `version`. **Add**
