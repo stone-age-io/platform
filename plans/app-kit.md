@@ -1,0 +1,462 @@
+# Plan: align the apps with the platform, and give them one shared kit
+
+Status: **not started.** Revised 2026-11-21 to add the alignment work: one
+subject grammar, one event shape, a platform identity for every app process,
+and a decision on reading inventory from the platform.
+
+It touches six repos: access-control, kiosk, helpdesk, services, platform-docs
+and a new `stone-age-io/kit`. No phase changes the platform's schema, an API
+rule or a stable surface (`platform-docs/docs/stability.md`).
+
+**None of the apps is in production.** That makes the breaking changes in this
+plan cheap now, and it will never be this cheap again. ADR 0003 made the same
+argument for the platform's own default subject.
+
+## The problem
+
+helpdesk, access-control, kiosk and services connect to the platform the same
+way: a NATS creds file, subjects named by organization and Thing codes, NATS
+micro services, JetStream and KV, an embedded PocketBase and a Vue console.
+None of them calls the platform's HTTP API except creds-keeper. Each app wrote
+the plumbing again, and the apps differ from each other and from the
+platform's conventions in four ways.
+
+### 1. Duplicated plumbing
+
+| Concept | Copies | Drift |
+|---|---|---|
+| Readiness and metrics contract (`GET /api/ready`, `GET /metrics`) | platform `internal/health` (1,655 lines), agent (689), helpdesk (555), services (122) | Three different Go APIs. helpdesk sends `checked` as a string and always sends `detail`. **access-control and kiosk do not serve `/api/ready` at all.** access-control's `internal/health` is a heartbeat monitor with the same name. |
+| Metrics scrape token (Basic or Bearer, constant time) | platform, agent, helpdesk | Same behaviour, written twice: helpdesk parses the header itself |
+| NATS connect | helpdesk `natsx` (265), access-control `natsx` (372), kiosk `internal/events` (part), services `natsconn` (178) | Only services sets `IgnoreAuthErrorAbort`. The others stop reconnecting after two auth errors, so after a Revoke a fresh creds file does not bring them back (services ADR 0007 §4). |
+| `EnsureStream`, `EnsureKVBucket`, `RegisterService` | helpdesk, access-control | Different signatures. helpdesk's service carries no metadata. |
+| Version string | platform, helpdesk, access-control | Three functions, three names |
+| PocketBase auth fixes (`EnforceEmailVisibility`) | helpdesk, kiosk | Same hook, different collections |
+| PocketBase import | helpdesk on `ganigeorgiev.com` v0.41.1 | **access-control on `github.com/pocketbase` v0.39.4, kiosk on v0.38.1**: the archived upstream, which the platform's `CLAUDE.md` forbids. 288 files between them. |
+
+### 2. Subjects
+
+The platform already says what a subject looks like. ADR 0002 gives the hub
+form `{app}.{org}.…` and the rule that an app's inbound and outbound streams
+differ at one token. ADR 0003 rule 6 gives token 0 as the kind, token 1 as the
+code, and everything after as belonging to the kind.
+`concepts/message-design.md` names the kinds of message: event, command,
+request, liveness. Every app follows the outline, and each one spells it
+differently:
+
+| | Shape | Event token | Request | Liveness |
+|---|---|---|---|---|
+| Agent | `agents.{code}.{channel}.…` | `telemetry` | `agents.{code}.cmd.health` | `agents.{code}.heartbeat` |
+| kiosk | `kiosk.{code}.event.{domain}.{verb}` | **`event`** | none | `kiosk.{code}.heartbeat` |
+| access-control | `acc.{location}.{type}.{thing}.evt.{kind}`, and `acc.{location}.evt.fire` | `evt` | **`acc.{location}.ctrl.{code}.health`** | `acc.{location}.ctrl.{code}.heartbeat` |
+| helpdesk | `helpdesk.tickets.create`, which arrives at the hub as `helpdesk.{org}.tickets.create`; out: `helpdesk.{org}.events.{type}` | **`events`** | none | none |
+
+ADR 0002 says the stream-disjointness token "needs an owner before a third app
+picks a token". Two more apps picked one since then, and each picked a
+different word.
+
+access-control puts the location in its subjects. That is deliberate and
+allowed: ADR 0003 keeps `{location}` for fixed equipment and for site-scoped
+NATS permissions, and a door controller needs exactly that. The real problem
+is narrower. The fire alarm has a shorter scope than every other event, so the
+events stream needs two filters of different length (`EventsWildcards`).
+
+### 3. Event payloads
+
+`message-design.md` §4 asks for an RFC 3339 UTC `ts`. The Agent and
+access-control send `ts`. kiosk and helpdesk send `occurred_at`. Only the
+helpdesk sets `Nats-Msg-Id` on what it publishes to a stream, so the stream
+discards duplicates only there. kiosk's controller handles duplicates itself,
+using a key in the payload (`source_line_id`). access-control events carry no
+id at all.
+
+### 4. Identity and inventory
+
+- **Identity.** Every app process is configured with a creds file that someone
+  made by hand. Except for creds-keeper, nothing is a platform Thing that signs
+  in and fetches its own credential. Because of that, Regenerate and Revoke in
+  the console don't reach the apps, and the console's Services page can't link
+  an app's process to its Thing.
+- **Inventory.** The helpdesk keeps its own `things`, `locations`,
+  `thing_types` and `location_types`, which it describes as "a subset of the
+  platform's". access-control keeps its own `locations`. kiosk keeps `kiosks`
+  with a `location_code`. They join to the platform by code, and the codes are
+  typed in twice. The helpdesk's data model says there can be no live sync,
+  because "the platform publishes no event stream for things, and the only read
+  paths are a control-plane credential or an edge KV mirror".
+
+## What this is not
+
+- **Not a template or starter repo.** A template is copied once and drifts
+  from then on, which is how the first table above happened.
+- **Not a monorepo of the apps.** It would move the repos into one place
+  without making them smaller.
+- **Not a framework.** The kit has no app lifecycle, no plugin registry, no
+  config loader and no `kit.Run()`. Each package is a few functions an app
+  calls from its own `main`.
+- **Not each app's subject builders.** The kit has the grammar: the channel
+  words, a token check and a way to build stream filters. `Tap`, `TicketCreate`
+  and the rest are an app's contract, and they stay in the app.
+- **Not a platform event stream.** The platform does not publish inventory on
+  NATS. See the decision below.
+- **Not shared logins.** Staff sign in to each app with that app's own
+  accounts. The platform is not an OAuth2 or OIDC provider, and making it one
+  would be a separate project. See *Later*.
+- **Not projections or KV snapshot sync, yet.** See *Later*.
+- **Not the frontends.** See *Later*.
+- **Not a dependency of the platform or the agent.** See the decisions below.
+
+## Decisions already made
+
+These are settled. Do not re-open them while implementing.
+
+- **The platform and the agent keep their own `health` package.** Their
+  package comment records a decision: two small copies that drift are cheaper
+  than a third repo, and if they need to agree, write a test on each side. That
+  decision still stands for those two. It does not cover the apps, which now
+  have five copies, three APIs and two missing implementations. The kit ships
+  a **conformance test** (`healthtest`) that the platform and the agent can run
+  without importing anything else from the kit.
+- **The wire formats are the platform's.** `kit/health` comes from
+  `platform/internal/health`. The event rules come from `message-design.md`.
+  Where an app differs, the app changes.
+- **The Control Plane stays an admin-only NATS client.** It holds no credential
+  in a tenant account and publishes nothing on tenant subjects
+  (`architecture.md` §2, the comment in `platform/internal/health/health.go`).
+  So inventory never reaches the apps over NATS from the platform.
+- **Only code that is copied in three places or more, and that implements a
+  contract, goes in the kit.** "Might be useful" is not enough to get a package
+  in.
+- **Two Go modules in one repo**: `github.com/stone-age-io/kit` (no PocketBase)
+  and `github.com/stone-age-io/kit/pbx` (PocketBase). services uses no
+  PocketBase and must not get it in its `go.mod`.
+- **The kit is pre-1.0 and tags `v0.x`.** Each app pins a version, and
+  Dependabot opens the bumps. `kit/pbx` pins the one PocketBase version every
+  app uses.
+
+## Decisions this plan asks for
+
+These are proposals. Phase 1 writes each one into ADR 0005 once it is decided.
+
+### A. One subject grammar for applications
+
+```
+{app}.{scope}.{channel}.{rest}        inside a tenant account (relative)
+{app}.{org}.{scope}.{channel}.{rest}  at the hub, after a managed-org import
+```
+
+- **`{scope}` is a fixed number of tokens for each app**, and every one is a
+  code. For kiosk and the Agent it is the instance's Thing code (one token).
+  For access-control it is `{location}.{type}.{thing}` (three tokens). The
+  helpdesk has no scope inside a tenant account, and at the hub the org is
+  its scope. Fixing the count is what lets one filter cover a whole channel.
+- **`{channel}` is the kind of message, from a short fixed list**, taken from
+  `message-design.md` §1:
+
+  | Channel | Kind | Transport | Stored |
+  |---|---|---|---|
+  | `evt` | Event: something happened | Publish | Yes, the app's stream |
+  | `cmd` | Command or request | Core publish, or request and reply | No |
+  | `heartbeat` | Liveness | Core publish | Never |
+  | `telemetry` | Measurement | Publish | Yes |
+
+  An app may add its own channel for raw input (access-control's `tap`) as long
+  as no stream filter on `evt` captures it.
+- **The ADR 0002 disjointness rule becomes a consequence.** A stream captures
+  `{app}.*…*.evt.>`, with one `*` per scope token, and an inbound command
+  stream captures `cmd`. Two channels never overlap, so no app has to choose a
+  token for it again.
+
+The per-app renames are in phase 3. The Agent already fits and doesn't change.
+
+### B. One event shape
+
+- **`ts`**, RFC 3339 in UTC, in every event payload. `occurred_at` goes.
+- **`Nats-Msg-Id` on every publish to a stream**, set to a stable id from the
+  producer. Apps that also handle duplicates in the consumer (kiosk) keep
+  doing it, because the stream's duplicate window is finite.
+- **The payload names things by code** (`code`, `location`, `thing_code`), as
+  `message-design.md` §3 already says. Nothing new here.
+- **No envelope wrapper.** Metadata goes in headers and the facts in the body,
+  so a stored event still makes sense on its own and no consumer has to unwrap
+  anything. The helpdesk's `schema` and version fields stay, as the documented
+  way to version a contract (§5).
+
+### C. Every app process is a platform Thing
+
+accessd, access-controller, the kiosk node and controller, helpdesk, the
+watchdog: each one gets a Thing of its own type. It signs in with that Thing's
+login (or a device-held key, `POST /api/me/keys`) and fetches its own creds
+file from `nats_user.creds_file`. It registers a NATS micro service with
+`metadata.code` set to that Thing's code. This is the device sign-in path that
+`stability.md` already lists as stable, and creds-keeper already implements it.
+The kit makes it a library call instead of a sidecar.
+
+What it gets the operator:
+- Regenerate and Revoke reach the apps.
+- Deactivating the Thing stops the app's process.
+- The console's Services and Thing pages show the app
+  (`plans/thing-services.md` joins on `metadata.code`).
+- A creds file on disk becomes the fallback for development, not the way
+  production works.
+
+### D. Reading inventory from the platform: the code join, for now
+
+**Decided 2026-11-21: option 1.** The apps keep the code join, loaded by an
+operator's export then seed. Option 3 is deferred to *Later* and needs its own
+platform plan when an app needs live inventory. The rest of this section is
+the reasoning, kept for when that comes up.
+
+The apps join to the
+platform by code today, and the codes are typed in twice. There are three ways
+to read inventory instead, and none of them involves the platform publishing
+on NATS:
+
+| | How | Platform change | Fits |
+|---|---|---|---|
+| **1. Keep the code join** (today) | An operator exports and seeds. Codes are entered in both places. | None | Every app, including the helpdesk across many organizations |
+| **2. A `viewer` membership for the app** | The app signs in as a platform user with the `viewer` role and polls `things`, `locations` and the type collections. | None | Single-org apps. It gives a machine a person's login, which works against "a Thing is the login". |
+| **3. `GET /api/me/inventory` for a Thing** | A route returns the caller's organization's locations, things and types, as codes, names, type codes, location codes and `active`, and never a credential. Only a Thing whose type allows it may call it. | A route, a flag on `thing_types`, and checks in `test-authz.sh` | Single-org apps, once phase C has given them a Thing |
+
+**Recommendation: option 1 now, and option 3 only when an app needs it.**
+Option 3 follows the platform's existing rule for machines: a gateway gets
+`GET /api/me/leaf-config` instead of a read branch in the rules. It needs its
+own platform plan, because it is an authorization change. Its first user would
+be access-control's `locations`.
+
+Whichever option is used, the app's copy is a read-only cache keyed by the
+platform record id and addressed by code. It is refreshed by a periodic full
+pull and diff, with no realtime stream, because a full pull also sees deletes
+and a few thousand rows is cheap. The app keeps its own fields (a portal's
+schedule, a kiosk's catalog) in its own collections, joined by code. Rows that
+exist only in the app (the helpdesk's gear that was never onboarded) have a
+blank platform id and are left alone by the sync.
+
+The helpdesk stays on option 1 under every choice. It serves many
+organizations from the operator's org, and no read path crosses organizations.
+The only cross-org channel is the managed-org export, and that carries events,
+not inventory.
+
+### E. An app's contract is a `stone` workspace
+
+Each app ships a `contract/` folder: its Thing Types, operations and NATS role,
+as the YAML `stone pull` writes. Onboarding an organization to an app means
+applying that folder. This needs `stone apply --template` for one tenant,
+which the November review already deferred as an open stone-cli item. The kit
+doesn't depend on it, so it comes last.
+
+## Phase 0: access-control and kiosk onto the official PocketBase
+
+This doesn't depend on anything else here, and it is the most urgent item.
+
+- Replace `github.com/pocketbase/pocketbase` and `github.com/pocketbase/dbx`
+  with the `ganigeorgiev.com/pocketbase/...` paths, at pocketbase v0.41.1 and
+  dbx v1.13.0 (the versions helpdesk and the platform use). Go treats the old
+  path as an unrelated module, so this rewrites every import. It is not a
+  version bump.
+- Read the PocketBase changelog from v0.38 and v0.39 up to v0.41 for breaking
+  changes before running the tests.
+- One commit per repo. Done when `go build ./...` and `go test ./...` pass and
+  `grep -r github.com/pocketbase` finds nothing.
+
+## Phase 1: ADR 0005 and the docs
+
+- **`platform-docs/docs/decisions/0005-application-namespace.md`**, scoped to
+  the whole ecosystem the way ADR 0002 is. It records decisions A to D as
+  decided, and it gives the ADR 0002 disjointness rule its owner.
+- **`concepts/message-design.md`**: the channel table, `ts` with no exceptions,
+  and `Nats-Msg-Id` on every publish to a stream. Remove the "the helpdesk
+  (`occurred_at`)" exception from §4.
+- **`building-an-app.md`**, one owning page. It covers what message-design
+  doesn't, and links to it for the rest:
+  1. Identity: the app is a Thing (decision C).
+  2. Codes: address by code, compare ignoring case (ADR 0002, ADR 0003).
+  3. Inventory: the code join, loaded by export then seed (decision D).
+  4. Services: register with `metadata.code`.
+  5. JetStream and KV: when to use a stream and when a bucket, one writer per
+     key.
+  6. Projections: kiosk's controller and access-control's `mirror` as worked
+     examples, and how they differ.
+  7. The process contract: `/api/ready` and `/metrics`.
+  8. The contract folder (decision E).
+
+Done when the ADR is accepted and each app's README links to the page instead
+of explaining the same thing again.
+
+## Phase 2: the kit
+
+New repo `stone-age-io/kit`, MIT, with CI running `go test ./...` and
+`gofmt -l .` in both modules.
+
+### Module `github.com/stone-age-io/kit`
+
+**`health`**: lifted from `platform/internal/health/{health,prober}.go`.
+- `State` (`ok`, `warn`, `fail`, `skipped`), `Result`, `OK`, `Warn`, `Fail`,
+  `Skip`, `Func`, `Registry`, `Report`, and `Prober` with `OnRefresh`. A
+  panicking check becomes a failure. Checks run concurrently under the caller's
+  deadline.
+- `Handler(p *Prober) http.Handler`: `GET /api/ready`, which returns `503` only
+  on `fail`, and `503` before the first probe.
+- `Metrics(g prometheus.Gatherer, token string) http.Handler`: the platform's
+  `requireToken`.
+- `NATS(nc func() *nats.Conn) Func`: connected or not.
+- Not lifted: the platform's NATS and leaf checks. They ask questions only the
+  Control Plane can answer.
+
+**`health/healthtest`**: `Conform(t *testing.T, h http.Handler)` asserts the
+wire format. It uses only the standard library.
+
+**`natsx`**: lifted from `services/internal/natsconn`, plus helpers from
+`access-control/internal/natsx`.
+- `Connect(o Options)`. It always sets `MaxReconnects(-1)` and
+  `IgnoreAuthErrorAbort()`, and logs through `log/slog`.
+- `EnsureStream`, `EnsureKV`, `KV`.
+- `RegisterService(nc, name, description, code string, meta map[string]string)`.
+  `code` is required and goes into `metadata.code`, with the build version
+  added (decision C). It works before NATS is reachable.
+- `PublishEvent(ctx, js, subject, id string, v any)`: marshals `v`, sets
+  `Nats-Msg-Id` to `id`, and refuses a payload with no `ts` field (decision B).
+
+**`subjects`**: the grammar (decision A), not any app's subjects.
+- The channel constants `Evt`, `Cmd`, `Heartbeat`, `Telemetry`.
+- `Join(tokens ...string) (string, error)`: refuses an empty token, `.`, `*`,
+  `>` and whitespace.
+- `Filter(app string, scopeTokens int, channel string) string`: for example
+  `acc.*.*.*.evt.>`.
+- `Split(subject, app string, scopeTokens int) (scope []string, channel string, rest []string, ok bool)`.
+- A test helper, `Disjoint(t, filters ...string)`, generalizing the helpdesk's
+  `TestStreamsDisjoint`.
+
+**`codes`**: `OrgPattern` (pinned by a test to `platform/hooks/org_code.go`),
+`ValidOrg`, `Equal` (ignores case), and `ValidThing` (the ADR 0003 pattern).
+
+**`platform`**: the Thing identity client, lifted from
+`services/credskeeper/keeper.go`. It uses only the standard library and HTTP,
+with no PocketBase.
+- `SignIn(ctx, url, identity, password)` and refreshing the auth token.
+- `Creds(ctx)` returns the current `creds_file` and its `updated`.
+- `Keep(ctx, path string, every time.Duration)` writes the creds file when it
+  changes, which `natsx.Connect` reads again on the next reconnect.
+- `EnrollKeys(ctx, natsPub, nebulaPub string)` calls `POST /api/me/keys`.
+- `Ready() health.Func`.
+- creds-keeper becomes a thin `main` around this package.
+
+**`version`**: `Build`, `Semver` and `Dependency`, all from
+`debug.ReadBuildInfo`.
+
+### Module `github.com/stone-age-io/kit/pbx`
+
+- `EnforceEmailVisibility(app, collections ...string)`.
+- `health.Func` builders: `Database`, `Schema`, `SchemaVersion`.
+- `ServeSPA(se, fsys)`, which must not shadow `/api/` or `/_/`.
+- `Branding(se, dir)`: compare the three apps' overlays first. If they don't
+  agree on what an overlay may replace, leave branding out and write down why.
+- `go.mod` pins `ganigeorgiev.com/pocketbase/pocketbase` at the version from
+  phase 0.
+
+Done when both modules are tagged `v0.1.0` and `kit/health` passes
+`healthtest`.
+
+## Phase 3: each app, two PRs
+
+For each app, the **contract PR** makes the breaking changes from decisions A
+to C and says so at the top of its CHANGELOG. The **kit PR** then adopts the
+kit and deletes the app's own copies in the same change. They are separate so
+that a subject regression and a plumbing regression can't hide in one diff.
+The order runs from closest to the kit to furthest.
+
+**1. services**
+- Kit PR: `internal/health`, `internal/natsconn` and the core of
+  `credskeeper` become the kit. The watchdog signs in as a Thing.
+
+**2. helpdesk**
+- Contract PR:
+  - `helpdesk.tickets.create` → `helpdesk.cmd.tickets.create`, which arrives
+    at the hub as `helpdesk.{org}.cmd.tickets.create`.
+  - `helpdesk.{org}.events.{type}` → `helpdesk.{org}.evt.{type}`.
+  - `occurred_at` → `ts`.
+  - The managed-org export maps the whole of `helpdesk.>`, so the platform
+    doesn't change. The rule-router demo rules and the vendored protocol docs
+    do.
+- Kit PR: delete `internal/health` (keep the SMTP, inbound email and
+  application URL checks as `health.Func` values in the app), `natsx`,
+  `version` and `authfix`. Its `/api/ready` moves to the platform's wire
+  format.
+
+**3. access-control**
+- Contract PR:
+  - `acc.{location}.ctrl.{code}.health` → `acc.{location}.ctrl.{code}.cmd.health`.
+  - The fire alarm gets a three-token scope like every other event. If it
+    comes from an aux input, that is `acc.{location}.auxin.{code}.evt.fire`.
+    Confirm this against the protocol doc before choosing. `EventsWildcards`
+    then becomes the single filter `acc.*.*.*.evt.>`.
+  - `Nats-Msg-Id` on every event.
+  - accessd and every controller sign in as Things.
+- Kit PR: adopt `natsx`, `subjects`, `platform` and `version`. **Add**
+  `/api/ready` and `/metrics`. Rename `internal/health` (the heartbeat monitor)
+  to `internal/liveness`.
+
+**4. kiosk** (waits on open question 2)
+- Contract PR:
+  - `kiosk.{code}.event.…` → `kiosk.{code}.evt.…`.
+  - `occurred_at` → `ts`.
+  - `Nats-Msg-Id` on every event.
+  - The node and the controller sign in as Things.
+- Kit PR: adopt `natsx`, `subjects`, `platform` and `authfix`, and add
+  `/api/ready`.
+
+Each kit PR is done when the app's tests pass, `healthtest.Conform` passes
+against its readiness handler, `subjects.Disjoint` passes against its stream
+filters, and the PR description states the line count it removes.
+
+## Phase 4: the platform and the agent run the conformance test
+
+One test file in each: `healthtest.Conform` against the real readiness
+handler. This adds the kit as a test-only import, and nothing else changes.
+
+## Phase 5: contract folders
+
+Once stone-cli has `apply --template`, each app ships `contract/` (decision E),
+and `building-an-app.md` documents onboarding an organization as one
+`stone apply`.
+
+## Later, with the conditions that start it
+
+- **`GET /api/me/inventory`** (decision D, option 3, deferred on
+  2026-11-21): its own platform plan, started when an app needs live inventory. access-control's `locations` is the
+  likely first. A `kit/pbx/inventory` package (pull, diff and upsert into a
+  read-only collection) follows the route, not before it.
+- **Projections.** Extract when a third app builds a read model from a durable
+  consumer in the same shape as one of the two today.
+- **KV snapshot down.** Same condition.
+- **Staff logins through the platform.** This needs the platform to become an
+  OAuth2 or OIDC provider. Worth considering only if operators complain about
+  keeping separate staff accounts in each app.
+- **Frontends.** First align the versions: the PocketBase JS SDK is 0.26.8 in
+  helpdesk and access-control and 0.27 elsewhere, and kiosk moved to Tailwind 4
+  with no daisyUI. A shared package comes after that.
+- **demoseed.** Extract only if a helper appears unchanged in three of them.
+
+## Open questions
+
+1. **The repo name.** It has to be chosen before phase 2, because a Go module
+   path is hard to change later.
+2. **Is kiosk in scope?** It lives under `skeeeon`, not `stone-age-io`, and
+   presents itself as standalone. Phase 0 applies either way. Phase 3 for kiosk
+   is a product decision.
+3. **Should the platform import `kit/codes`?** It would keep the code pattern
+   in one place, at the cost of a dependency on a repo the platform doesn't
+   release. It can wait until after phase 2.
+
+## Size, honestly
+
+The kit removes roughly 2,500 to 3,500 duplicated lines from four apps and adds
+about 2,000 to 2,500 in one place, the identity client included. It doesn't
+shrink the products. What it buys:
+- one readiness format
+- one reconnect behaviour after a Revoke
+- one PocketBase version
+- one subject grammar
+- every app process visible, and revocable, as a Thing
+
+The alignment work in phases 1 and 3 is worth more than the kit itself, and
+it's the part that gets more expensive once anything is in production.
