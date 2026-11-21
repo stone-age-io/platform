@@ -124,7 +124,7 @@ func privateTo(importerPublicKey string) []field {
 // Reconcile rather than create-if-missing, because every value in the pair can
 // change: the export subject comes from config, the imported account key can
 // rotate, and the descriptions embed a renameable org name. A stale
-// local_subject is a silent outage: a consumer's helpdesk.*.tickets.> filter
+// local_subject is a silent outage: a consumer's helpdesk.*.cmd.tickets.> filter
 // keeps matching a subject that no longer carries traffic.
 //
 // Reconciliation only runs when this hook fires, so a change to the token shape

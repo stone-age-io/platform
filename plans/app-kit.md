@@ -12,6 +12,15 @@ check instead of `health`; `pbx` adds `ServeReady` and `ServeMetrics`; and
 `pbx.Branding` was kept, since helpdesk and access-control serve the overlay
 identically and only kiosk differs. `pbx/v0.1.0` requires `kit v0.1.0`.
 
+Phase 3 is under way:
+- **services** is on the kit (services `2a54e71`). Its readiness checks still
+  run on each request, as its ADR 0005 decided, through `Registry.Run` and
+  `WriteJSON` rather than the prober. `METRICS_TOKEN` is new.
+- **The helpdesk contract change** is done (helpdesk `c55c57c`). The envelope is
+  `version: 2`. Streams and the ingest consumer are CreateOrUpdate, so the new
+  subjects need no manual step on an existing deployment. No rule-router demo
+  rule published to the helpdesk, so none changed.
+
 Writing ADR 0008 changed decision C: ADR 0007 rejected a platform client
 inside each service, so every app gets its creds through creds-keeper, and the
 kit has no `platform` package.
