@@ -3,8 +3,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createDefaultWidget } from '@/types/dashboard'
 import { decodeBytes, encodeString } from '@/utils/encoding'
+import { useAuthStore } from './auth'
 import { useDashboardStore } from './dashboard'
 import { useNatsStore } from './nats'
+
+// Local dashboards are kept per user and per organization.
+function signIn(user = 'u1', org = 'o1') {
+  const auth = useAuthStore()
+  auth.user = { id: user } as never
+  auth.currentOrgId = org
+  return auth
+}
+const DASHBOARDS = 'stoneage:dashboards:u1:o1'
+const SETTINGS = 'stoneage:dashboard_settings:u1:o1'
 
 // An in-memory KV bucket: enough of @nats-io/kv for the shared-dashboard paths.
 // Only the KV tests below reach it; the rest never connect.
@@ -71,7 +82,9 @@ function stubLocalStorage() {
 function freshStore() {
   setActivePinia(createPinia())
   stubLocalStorage()
+  signIn()
   const store = useDashboardStore()
+  store.loadFromStorage() // so saves have a scope to land in
   store.localDashboards = []
   store.activeDashboard = null
   return store
@@ -275,6 +288,7 @@ describe('which dashboard opens on load', () => {
   function reload(storage: Map<string, string>) {
     setActivePinia(createPinia())
     ;(globalThis as any).localStorage.getItem = (k: string) => storage.get(k) ?? null
+    signIn()
     const store = useDashboardStore()
     store.loadFromStorage()
     return store
@@ -282,8 +296,8 @@ describe('which dashboard opens on load', () => {
 
   function saved(local: { id: string; name: string }[], settings: Record<string, unknown>) {
     const storage = stubLocalStorage()
-    storage.set('nats_dashboards', JSON.stringify({ dashboards: local.map(d => ({ ...d, widgets: [] })) }))
-    storage.set('nats_dashboard_settings', JSON.stringify(settings))
+    storage.set(DASHBOARDS, JSON.stringify({ dashboards: local.map(d => ({ ...d, widgets: [] })) }))
+    storage.set(SETTINGS, JSON.stringify(settings))
     return storage
   }
 
@@ -301,7 +315,7 @@ describe('which dashboard opens on load', () => {
     const store = reload(storage)
     // No local dashboard opens, so lastSelected still points the watcher at the shared one.
     expect(store.activeDashboard).toBeNull()
-    expect(JSON.parse(storage.get('nats_dashboard_settings')!).lastSelectedDashboard)
+    expect(JSON.parse(storage.get(SETTINGS)!).lastSelectedDashboard)
       .toEqual({ id: 'northwind', storage: 'kv' })
   })
 
@@ -318,6 +332,117 @@ describe('which dashboard opens on load', () => {
       lastSelectedDashboard: { id: 'b', storage: 'local' },
     })
     expect(reload(storage).activeDashboard?.id).toBe('a')
+  })
+})
+
+// One browser is shared by people and by organizations, so local dashboards
+// are kept per user and per org.
+describe('local dashboards per user and organization', () => {
+  function names(storage: Map<string, string>, key: string): string[] {
+    const raw = storage.get(key)
+    return raw ? JSON.parse(raw).dashboards.map((d: { name: string }) => d.name) : []
+  }
+
+  it('shows another organization or another user none of them', () => {
+    const storage = stubLocalStorage()
+    setActivePinia(createPinia())
+    const auth = signIn('u1', 'o1')
+    const store = useDashboardStore()
+    store.loadFromStorage()
+    store.createDashboard('Org one wall')
+
+    auth.currentOrgId = 'o2'
+    store.loadFromStorage()
+    expect(store.localDashboards.map(d => d.name)).not.toContain('Org one wall')
+
+    signIn('u2', 'o1')
+    store.loadFromStorage()
+    expect(store.localDashboards.map(d => d.name)).not.toContain('Org one wall')
+
+    signIn('u1', 'o1')
+    store.loadFromStorage()
+    expect(store.localDashboards.map(d => d.name)).toContain('Org one wall')
+    expect(names(storage, 'stoneage:dashboards:u1:o2')).not.toContain('Org one wall')
+  })
+
+  it('saves to the organization it loaded from, when the switch lands before the reload', () => {
+    const storage = stubLocalStorage()
+    setActivePinia(createPinia())
+    const auth = signIn('u1', 'o1')
+    const store = useDashboardStore()
+    store.loadFromStorage()
+    store.createDashboard('Org one wall')
+
+    // App.vue's switch handler saves before the Visualizer remounts.
+    auth.currentOrgId = 'o2'
+    store.leaveRemoteDashboard()
+    store.saveToStorage()
+
+    expect(storage.has('stoneage:dashboards:u1:o2')).toBe(false)
+    expect(names(storage, DASHBOARDS)).toContain('Org one wall')
+  })
+
+  it('opens the new organization pinned startup dashboard after a switch', () => {
+    const storage = stubLocalStorage()
+    storage.set('stoneage:dashboards:u1:o2', JSON.stringify({
+      dashboards: [{ id: 'a', name: 'A', widgets: [] }, { id: 'b', name: 'B', widgets: [] }],
+    }))
+    storage.set('stoneage:dashboard_settings:u1:o2', JSON.stringify({
+      startupDashboard: { id: 'b', storage: 'local' },
+      lastSelectedDashboard: { id: 'a', storage: 'local' },
+    }))
+    setActivePinia(createPinia())
+    const auth = signIn('u1', 'o1')
+    const store = useDashboardStore()
+    store.loadFromStorage()
+
+    auth.currentOrgId = 'o2'
+    store.loadFromStorage()
+    expect(store.activeDashboard?.id).toBe('b')
+  })
+
+  it('gives the old shared keys to the first scope that loads, once', () => {
+    const storage = stubLocalStorage()
+    storage.set('nats_dashboards', JSON.stringify({ dashboards: [{ id: 'old', name: 'Old wall', widgets: [] }] }))
+    storage.set('nats_dashboard_settings', JSON.stringify({ startupDashboard: { id: 'old', storage: 'local' } }))
+    setActivePinia(createPinia())
+    const auth = signIn('u1', 'o1')
+    const store = useDashboardStore()
+    store.loadFromStorage()
+
+    expect(store.activeDashboard?.id).toBe('old')
+    expect(storage.has('nats_dashboards')).toBe(false)
+    expect(storage.has('nats_dashboard_settings')).toBe(false)
+    expect(names(storage, DASHBOARDS)).toContain('Old wall')
+
+    auth.currentOrgId = 'o2'
+    store.loadFromStorage()
+    expect(store.localDashboards.map(d => d.name)).not.toContain('Old wall')
+  })
+
+  it('does not overwrite a scope that already has its own with the shared keys', () => {
+    const storage = stubLocalStorage()
+    storage.set(DASHBOARDS, JSON.stringify({ dashboards: [{ id: 'mine', name: 'Mine', widgets: [] }] }))
+    storage.set('nats_dashboards', JSON.stringify({ dashboards: [{ id: 'old', name: 'Old wall', widgets: [] }] }))
+    setActivePinia(createPinia())
+    signIn('u1', 'o1')
+    const store = useDashboardStore()
+    store.loadFromStorage()
+
+    expect(store.localDashboards.map(d => d.name)).toEqual(['Mine'])
+    expect(storage.has('nats_dashboards')).toBe(false)
+  })
+
+  it('writes nothing with no organization', () => {
+    const storage = stubLocalStorage()
+    setActivePinia(createPinia())
+    useAuthStore().user = { id: 'u1' } as never
+    const store = useDashboardStore()
+    store.loadFromStorage()
+
+    expect(store.activeDashboard).not.toBeNull()
+    expect(store.saveToStorage()).toBe(false)
+    expect(storage.size).toBe(0)
   })
 })
 
@@ -365,7 +490,7 @@ describe('locking', () => {
     d.isLocked = true // as an older version left it
     store.toggleLock()
     store.saveToStorage()
-    const saved = JSON.parse(storage.get('nats_dashboards')!).dashboards.find((x: any) => x.id === d.id)
+    const saved = JSON.parse(storage.get(DASHBOARDS)!).dashboards.find((x: any) => x.id === d.id)
     expect(saved).not.toHaveProperty('isLocked')
     expect(JSON.parse(store.exportDashboards([d.id])).dashboards[0]).not.toHaveProperty('isLocked')
   })

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { useNatsStore } from './nats'
+import { useAuthStore } from './auth'
 import { Kvm, type KV } from '@nats-io/kv'
 import { decodeBytes, encodeString } from '@/utils/encoding'
 import type { Dashboard, WidgetConfig, StorageType, DashboardVariable } from '@/types/dashboard'
@@ -57,11 +58,27 @@ export const useDashboardStore = defineStore('dashboard', () => {
   const remoteChanged = ref(false)
   
   const MAX_DASHBOARDS = 25
-  const STORAGE_KEY = 'nats_dashboards'
-  const SETTINGS_KEY = 'nats_dashboard_settings'
+
+  // Local dashboards and their settings are kept per user and per organization:
+  // one browser is shared by people and by orgs, and a dashboard's widgets name
+  // subjects and buckets that exist only in its own org's NATS account. The
+  // settings are scoped too, because the startup and last-open ids and the KV
+  // bucket name mean nothing in another org.
+  const dashboardsKey = (scope: string) => `stoneage:dashboards:${scope}`
+  const settingsKey = (scope: string) => `stoneage:dashboard_settings:${scope}`
+  // Until per-scope keys, one browser had one pair of keys for everyone. The first scope
+  // to load takes them over (see adoptLegacyStorage).
+  const LEGACY_STORAGE_KEY = 'nats_dashboards'
+  const LEGACY_SETTINGS_KEY = 'nats_dashboard_settings'
+
+  // The scope the dashboards in memory were read from, and the only one they
+  // are ever written to. Not the current scope: an org switch changes
+  // currentOrgId before the Visualizer remounts and reloads, and App.vue's
+  // switch handler saves in between (leaveRemoteDashboard -> setActiveDashboard),
+  // which would write org A's dashboards under org B's key.
+  let loadedScope: string | null = null
 
   let activeWatcher: any = null
-  let hasInitializedOnce = false
 
   const activeDashboardId = computed(() => activeDashboard.value?.id || null)
   const activeWidgets = computed<WidgetConfig[]>(() => activeDashboard.value?.widgets || [])
@@ -168,13 +185,67 @@ export const useDashboardStore = defineStore('dashboard', () => {
   }
 
   // Local Storage
+
+  // `<user id>:<org id>`, or null with no user or no organization.
+  function currentScope(): string | null {
+    const auth = useAuthStore()
+    if (!auth.user?.id || !auth.currentOrgId) return null
+    return `${auth.user.id}:${auth.currentOrgId}`
+  }
+
+  // Hands the old shared keys to the first scope that loads with none of
+  // its own, then deletes them, so they are adopted once and by one scope. On a
+  // single-user browser or a wall screen that is the person who saved them.
+  function adoptLegacyStorage(scope: string) {
+    const legacy = localStorage.getItem(LEGACY_STORAGE_KEY)
+    if (legacy === null) return
+    if (localStorage.getItem(dashboardsKey(scope)) === null) {
+      localStorage.setItem(dashboardsKey(scope), legacy)
+      const legacySettings = localStorage.getItem(LEGACY_SETTINGS_KEY)
+      if (legacySettings !== null) localStorage.setItem(settingsKey(scope), legacySettings)
+    }
+    localStorage.removeItem(LEGACY_STORAGE_KEY)
+    localStorage.removeItem(LEGACY_SETTINGS_KEY)
+  }
+
   function loadFromStorage() {
-    const isInitialLoad = !hasInitializedOnce
-    hasInitializedOnce = true
+    const scope = currentScope()
+    // A first load in this scope (app start, another org, another user) opens
+    // the pinned startup dashboard; a reload in the same scope (navigating back
+    // to the Visualizer) reopens the last one.
+    const isInitialLoad = scope !== loadedScope
+    loadedScope = scope
+
+    // Nothing from the previous scope may survive into this one. Only on a scope
+    // change: a reload in the same scope can be waiting on, or already showing,
+    // a shared dashboard that the NATS-connect watcher opened.
+    if (isInitialLoad) {
+      if (activeWatcher) {
+        try { activeWatcher.stop() } catch {}
+        activeWatcher = null
+      }
+      localDashboards.value = []
+      activeDashboard.value = null
+      kvBucketName.value = 'dashboards'
+      enableSharedDashboards.value = true
+      startupDashboard.value = null
+      lastSelectedDashboard.value = null
+    }
+
+    if (!scope) {
+      // No organization to keep them under: one dashboard, in memory only.
+      if (localDashboards.value.length === 0) {
+        const defaultDash = createDefaultDashboard('My Dashboard')
+        localDashboards.value = [defaultDash]
+        setActiveDashboard(defaultDash, { unlocked: true })
+      }
+      return
+    }
 
     try {
       storageError.value = null
-      const storedSettings = localStorage.getItem(SETTINGS_KEY)
+      adoptLegacyStorage(scope)
+      const storedSettings = localStorage.getItem(settingsKey(scope))
       if (storedSettings) {
         const parsed = JSON.parse(storedSettings)
         kvBucketName.value = parsed.kvBucketName || 'dashboards'
@@ -183,7 +254,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
         lastSelectedDashboard.value = parsed.lastSelectedDashboard || null
       }
 
-      const stored = localStorage.getItem(STORAGE_KEY)
+      const stored = localStorage.getItem(dashboardsKey(scope))
       if (stored) {
         const parsed = JSON.parse(stored)
         localDashboards.value = parsed.dashboards || []
@@ -234,11 +305,14 @@ export const useDashboardStore = defineStore('dashboard', () => {
     }
   }
   
-  // Returns whether the write landed. On failure storageError says why.
+  // Returns whether the write landed. On failure storageError says why, except
+  // before any load or with no organization, where there is no key to write.
   function saveToStorage(): boolean {
+    const scope = loadedScope
+    if (!scope) return false
     try {
       storageError.value = null
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+      localStorage.setItem(settingsKey(scope), JSON.stringify({
         kvBucketName: kvBucketName.value,
         enableSharedDashboards: enableSharedDashboards.value,
         startupDashboard: startupDashboard.value,
@@ -250,7 +324,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
         dashboards: localDashboards.value.map(({ isLocked: _, ...d }) => d),
         activeDashboardId: activeDashboard.value?.storage === 'local' ? activeDashboard.value.id : null,
       }
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+      localStorage.setItem(dashboardsKey(scope), JSON.stringify(data))
       return true
     } catch (err) {
       handleStorageError(err, 'save')

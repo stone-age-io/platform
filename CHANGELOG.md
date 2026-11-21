@@ -11,6 +11,19 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Local dashboards were shared by everyone who used one browser, in every
+  organization.** They were saved under one fixed `localStorage` key, so the
+  next person to sign in, or the same person in another organization, opened
+  the previous one's dashboards, whose widgets named subjects and buckets in
+  another org's account. They are now kept per user and per organization, with
+  their settings (startup dashboard, KV bucket). Switching organization opens
+  that organization's pinned startup dashboard. On upgrade, the first user and
+  organization to open the Visualizer in a browser take over the dashboards it
+  already held, once; on a single-user browser or a wall screen that is the
+  person who made them.
+
 ## [0.21.0] - 2026-11-20
 
 A minor, server, console and schema. **Device-held keys:** a Thing can keep its

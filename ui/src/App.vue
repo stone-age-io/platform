@@ -46,8 +46,10 @@ watch(() => authStore.isAuthenticated, async (isAuth) => {
 // Immediate, so a session restored pre-mount still auto-connects.
 //
 // On a real switch (prev is undefined only on the first run) reset the stores
-// that outlive the page: widget buffers and local dashboards use the same keys
-// in every org, so org A's values would keep drawing in org B.
+// that outlive the page: widget buffers use the same keys in every org, so org
+// A's values would keep drawing in org B, and a shared dashboard belongs to the
+// org being left. Local dashboards are kept per org and reload when the
+// Visualizer remounts (stores/dashboard.ts, loadedScope).
 watch(() => authStore.currentOrgId, async (orgId, prev) => {
   if (prev !== undefined) {
     useWidgetDataStore().clearAllBuffers()
