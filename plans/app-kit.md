@@ -5,13 +5,12 @@ the official PocketBase v0.41.1. Decisions A to D are ADR 0008 in
 platform-docs (numbers 0005 to 0007 belong to the services repo), alongside
 the message-design changes and `building-an-app.md`.
 
-Phase 2 is built and untagged: `stone-age-io/kit` at d73ab98, CI green for both
+Phase 2 is done: `stone-age-io/kit` is tagged `v0.1.0` and `pbx/v0.1.0`, CI green for both
 modules. Where it differs from the text below: no `EnsureStream`, `EnsureKV` or
 `KV` (each is one call in `nats.go/jetstream`); `natsx.Ready` holds the NATS
 check instead of `health`; `pbx` adds `ServeReady` and `ServeMetrics`; and
 `pbx.Branding` was kept, since helpdesk and access-control serve the overlay
-identically and only kiosk differs. `pbx` requires the root module at a
-pseudo-version until the first tags.
+identically and only kiosk differs. `pbx/v0.1.0` requires `kit v0.1.0`.
 
 Writing ADR 0008 changed decision C: ADR 0007 rejected a platform client
 inside each service, so every app gets its creds through creds-keeper, and the
