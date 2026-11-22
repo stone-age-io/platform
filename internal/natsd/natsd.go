@@ -39,7 +39,8 @@ const (
 
 // Server wraps an embedded nats-server.
 type Server struct {
-	ns *natsserver.Server
+	ns       *natsserver.Server
+	confPath string
 }
 
 // Start loads confPath, starts a NATS server from it, and waits for it to
@@ -64,13 +65,10 @@ func Start(confPath, clientURL, clientURLSetting string) (*Server, error) {
 		return nil, fmt.Errorf("cannot read NATS config %s: %w", confPath, err)
 	}
 
-	opts, err := natsserver.ProcessConfigFile(confPath)
+	opts, err := loadOptions(confPath)
 	if err != nil {
-		return nil, fmt.Errorf("invalid NATS config %s: %w", confPath, err)
+		return nil, err
 	}
-
-	// PocketBase owns SIGINT/SIGTERM; otherwise the two fight over shutdown.
-	opts.NoSigs = true
 
 	ns, err := natsserver.NewServer(opts)
 	if err != nil {
@@ -97,7 +95,45 @@ func Start(confPath, clientURL, clientURLSetting string) (*Server, error) {
 	}
 
 	log.Printf("✅ Embedded NATS server listening on %s (config: %s)", ns.ClientURL(), confPath)
-	return &Server{ns: ns}, nil
+	return &Server{ns: ns, confPath: confPath}, nil
+}
+
+// loadOptions reads confPath as nats-server would. Start and Reload both use
+// it, so a reload applies exactly what a fresh start would.
+func loadOptions(confPath string) (*natsserver.Options, error) {
+	opts, err := natsserver.ProcessConfigFile(confPath)
+	if err != nil {
+		return nil, fmt.Errorf("invalid NATS config %s: %w", confPath, err)
+	}
+	// PocketBase owns SIGINT/SIGTERM; otherwise the two fight over shutdown.
+	// nats-server wires signals once, at start, and ignores this on a reload;
+	// it is set here too so a reload's options match a start's.
+	opts.NoSigs = true
+	return opts, nil
+}
+
+// Reload re-reads the config file Start loaded and applies it to the running
+// server, as `nats-server --signal reload` does (ADR 0001 step 3).
+//
+// It is all or nothing. nats-server refuses a change it cannot make live,
+// such as the client port, the server name or the JetStream store directory,
+// and then keeps running on the config it had; the error names the option.
+// A file that does not parse is refused the same way. Accounts and users
+// never need this: their JWTs reach the server over $SYS, and the full
+// resolver keeps them in its directory across a reload.
+func (s *Server) Reload() error {
+	if s == nil || s.ns == nil {
+		return fmt.Errorf("no embedded NATS server is running")
+	}
+	opts, err := loadOptions(s.confPath)
+	if err != nil {
+		return err
+	}
+	if err := s.ns.ReloadOptions(opts); err != nil {
+		return fmt.Errorf("NATS config %s not applied, the server keeps its current config: %w", s.confPath, err)
+	}
+	log.Printf("✅ Embedded NATS server reloaded %s", s.confPath)
+	return nil
 }
 
 // waitReady blocks until the server accepts connections, or fails.

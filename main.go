@@ -5,7 +5,9 @@ import (
 	"io/fs"
 	"log"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"ganigeorgiev.com/pocketbase/pocketbase"
@@ -465,6 +467,10 @@ func main() {
 	// The JWT publisher then spends a few seconds in bootstrap mode; its queue
 	// drains on connect.
 	var embeddedNATS *natsd.Server
+	// SIGHUP reloads nats.conf into the embedded server, as it does for a
+	// stock nats-server (ADR 0001 step 3). Registered only when the server is
+	// embedded: without it, SIGHUP keeps its default meaning.
+	reloadSignal := make(chan os.Signal, 1)
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 		if !viper.GetBool("nats.embedded") {
 			return e.Next()
@@ -479,10 +485,21 @@ func main() {
 			return err
 		}
 		embeddedNATS = srv
+
+		signal.Notify(reloadSignal, syscall.SIGHUP)
+		go func() {
+			for range reloadSignal {
+				log.Println("ℹ️ SIGHUP: reloading the embedded NATS server config")
+				if err := srv.Reload(); err != nil {
+					log.Printf("❌ %v", err)
+				}
+			}
+		}()
 		return e.Next()
 	})
 
 	app.OnTerminate().BindFunc(func(e *core.TerminateEvent) error {
+		signal.Stop(reloadSignal)
 		embeddedNATS.Stop() // no-op when nil
 		return e.Next()
 	})

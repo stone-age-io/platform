@@ -11,6 +11,17 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+### Added
+
+- **`SIGHUP` reloads `nats.conf` under `serve --nats`** (ADR 0001 step 3).
+  An edited config now applies to the embedded server without a restart, and
+  connections stay up: `kill -HUP`, `docker kill --signal=HUP stone-age`, or
+  systemd's `ExecReload`. It is nats-server's own reload, so it is all or
+  nothing: a change nats-server cannot make live, such as the client port, is
+  refused, logged, and the server keeps the config it had. Accounts and users
+  never needed it; their JWTs still arrive over `$SYS`. Windows has no
+  `SIGHUP`, so there a change still needs a restart.
+
 ### Changed
 
 - **The demo's kiosk operations follow the kiosk's new subjects** (ADR 0008):
