@@ -35,6 +35,16 @@ Phase 3 is under way:
   followed (platform `25407b6`): their prefix is now `acc.{location}` and each
   operation suffix carries the channel, type and `{thing}`, because the channel
   now sits between the location and the type.
+- **Access control is on the kit** (access-control `9bc06f4`). The connection,
+  discovery and version are the kit's; its own `internal/natsx` keeps the
+  NKey, token, password and TLS options and the KV and stream helpers, which
+  the kit deliberately does not carry. A controller registers with
+  `controller.code`, accessd with the new `accessd.code`. accessd serves
+  `/api/ready` and `/metrics` on its PocketBase port, and its side metrics
+  listener is gone; the controller keeps its own, and has no `/api/ready`,
+  since it has no HTTP server of its own beyond the opt-in diagnostics page.
+  `internal/health` is `internal/liveness`. Net Go lines are about even: the
+  new readiness and tests offset what was deleted.
 
 Writing ADR 0008 changed decision C: ADR 0007 rejected a platform client
 inside each service, so every app gets its creds through creds-keeper, and the
