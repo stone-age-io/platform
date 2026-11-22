@@ -1,6 +1,6 @@
 # Plan: align the apps with the platform, and give them one shared kit
 
-Status: **phases 0 to 4 done**, 2026-11-21; phase 5 waits on stone-cli. access-control and kiosk import
+Status: **all five phases done**, 2026-11-21. access-control and kiosk import
 the official PocketBase v0.41.1. Decisions A to D are ADR 0008 in
 platform-docs (numbers 0005 to 0007 belong to the services repo), alongside
 the message-design changes and `building-an-app.md`.
@@ -65,6 +65,18 @@ not-yet-probed, ready, warning, failing, skipped-only and a panicking check,
 and runs `healthtest.Conform` on each answer. The kit is a test-only import
 in both; their health engines are unchanged. The Agent serves the same body
 on `/ready` rather than `/api/ready`; Conform checks the body, not the path.
+
+Phase 5 is done. stone-cli has `apply --template <dir>`: records are matched
+by key in the current organization, relations hold keys, collections go in
+dependency order, nothing is written back or deleted, and only definitions
+(Thing Types, operations, NATS roles, Location Types) may be in a template.
+access-control, kiosk, helpdesk and services each ship `contract/` with their
+Thing Types, operations and one NATS role per kind of process, the roles
+derived from the code (an edge controller reads ACC_POLICY and cannot write
+it). All four applied to a demo organization on a throwaway platform and came
+back unchanged on a second run; the kiosk and access Thing Types match the
+demo seed's exactly. The roles were accepted by pb-nats on create but have not
+yet run under a live process. `building-an-app.md` §9 documents it.
 
 Writing ADR 0008 changed decision C: ADR 0007 rejected a platform client
 inside each service, so every app gets its creds through creds-keeper, and the
