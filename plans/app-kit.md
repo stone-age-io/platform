@@ -97,8 +97,14 @@ Adopting the keeper, app by app (ADR 0009 §2):
   30s for a first file then exits; a controller waits without a bound. Run
   against a local platform from its `contract/`, including the `accessd`
   role's JetStream setup and a Revoke reaching a running controller.
-- **kiosk**: not yet. It needs the same few lines, including creating the
-  credential directory, which the keeper leaves to the application.
+- **kiosk**: done (kiosk `f0fa847`), in the node, the timeclock and the
+  controller, through `events.StartKeeper`, only for `serve`. Run against a
+  local platform from its `contract/`. Found: the `kiosk-controller` role's
+  user JWT (4,745 bytes) exceeds nats-server's default `max_control_line`
+  (4,096), so the connect is refused. Open: trim the role, or have
+  `nats export` raise the limit.
+
+Every application now gets its credentials through the keeper.
 
 It touches six repos: access-control, kiosk, helpdesk, services, platform-docs
 and a new `stone-age-io/kit`. No phase changes the platform's schema, an API
