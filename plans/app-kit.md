@@ -296,6 +296,8 @@ signs in as that Thing and keeps its creds file current. The app connects with
 Revoke, and it registers a NATS micro service with `metadata.code` set to that
 Thing's code. ADR 0007 rejected building a platform client into each service,
 and the reasons hold for the apps, so the kit does not contain one.
+*Superseded by ADR 0009: the keeper is `kit/credskeeper`, run in the app's
+process, not beside it.*
 
 What it gets the operator:
 - Regenerate and Revoke reach the apps.
@@ -495,7 +497,8 @@ The order runs from closest to the kit to furthest.
   - The vendored protocol doc, the demo rules and every subject test change
     with it.
   - `Nats-Msg-Id` on every event.
-  - accessd and every controller get a Thing and run beside creds-keeper.
+  - accessd and every controller get a Thing and run the keeper in-process
+    (`kit/credskeeper`, ADR 0009).
 - Kit PR: adopt `natsx`, `subjects` and `version`. **Add**
   `/api/ready` and `/metrics`. Rename `internal/health` (the heartbeat monitor)
   to `internal/liveness`.
@@ -505,7 +508,8 @@ The order runs from closest to the kit to furthest.
   - `kiosk.{code}.event.…` → `kiosk.{code}.evt.…`.
   - `occurred_at` → `ts`.
   - `Nats-Msg-Id` on every event.
-  - The node and the controller get a Thing and run beside creds-keeper.
+  - The node, the timeclock and the controller get a Thing and run the keeper
+    in-process (`kit/credskeeper`, ADR 0009).
 - Kit PR: adopt `natsx`, `subjects` and `authfix`, and add
   `/api/ready`.
 
