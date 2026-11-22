@@ -11,6 +11,25 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-11-22
+
+A minor, server and console. **`SIGHUP` reloads `nats.conf`** under
+`serve --nats`, so an edited config applies to the embedded NATS server without
+a restart. The demo's kiosk and access-control Thing types follow the ADR 0008
+subjects, and the console keeps local dashboards per user and per organization.
+No schema change and no API change.
+
+### Upgrading
+
+- **Nothing to migrate.** No `migrate up` is needed, and no agent, stone,
+  pb-nats or pb-nebula version moves.
+- **A demo database keeps its old kiosk and access-control Thing types.** The
+  seed only creates what is missing; seed a fresh one for the new subjects.
+- **Local dashboards move to the first user and organization** to open the
+  Visualizer in each browser, once (see Fixed).
+- **systemd**: `ExecReload=/bin/kill -HUP $MAINPID` now reloads the embedded
+  server's config under `serve --nats`.
+
 ### Added
 
 - **`SIGHUP` reloads `nats.conf` under `serve --nats`** (ADR 0001 step 3).
@@ -61,6 +80,19 @@ and this file starts where the versioned releases do.
   `docker exec stone-age stone-age demo-seed --confirm --dir /data/pb_data`
   for the container. `demo-seed --help` no longer lists message schemas,
   which it has not seeded since they were removed.
+
+### Tests
+
+- **`e2e/credskeeper_test.go`** runs the kit's `credskeeper` (kit v0.2.0, ADR
+  0009 in platform-docs) against the built binary and the real NATS server in
+  both key modes, and shows a copied session outliving a Revoke until the
+  Thing is deactivated.
+- **`e2e/reload_test.go`**: `SIGHUP` applies an edited `max_payload`, and an
+  open connection and an account pushed over `$SYS` survive it. The
+  `internal/natsd` tests cover a refused port change and a file that does not
+  parse.
+- **`internal/health/conform_test.go`** checks every `GET /api/ready` state
+  with the kit's `healthtest.Conform`. The kit is a test-only import.
 
 ## [0.21.0] - 2026-11-20
 
@@ -3644,7 +3676,8 @@ repository public. Each of these was reproduced before being fixed.
 - `scripts/test-authz.sh` grew from 135 to 147 checks, covering the membership
   lifecycle, the code uniqueness constraint, and the frozen leaf-node code.
 
-[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.21.0...HEAD
+[Unreleased]: https://github.com/stone-age-io/platform/compare/v0.22.0...HEAD
+[0.22.0]: https://github.com/stone-age-io/platform/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/stone-age-io/platform/compare/v0.20.2...v0.21.0
 [0.20.2]: https://github.com/stone-age-io/platform/compare/v0.20.1...v0.20.2
 [0.20.1]: https://github.com/stone-age-io/platform/compare/v0.20.0...v0.20.1
