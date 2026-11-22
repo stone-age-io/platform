@@ -67,7 +67,7 @@ Every login is `demo1234`; start with `dana@northwind.example`, or
 `--things 400` gives a bigger fleet. The tenants share their codes with the
 demos in [helpdesk](https://github.com/stone-age-io/helpdesk),
 [access-control](https://github.com/stone-age-io/access-control) and
-[kiosk](https://github.com/skeeeon/kiosk), so a door in one app and a Thing here
+[kiosk](https://github.com/stone-age-io/kiosk), so a door in one app and a Thing here
 are the same door. `--confirm` is required because the command writes real
 signed credentials into whatever deployment it runs against.
 

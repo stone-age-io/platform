@@ -75,45 +75,45 @@ var operations = []operationFixture{
 	// Northwind: the tool crib (the kiosk app).
 	//
 	// The suffixes are the real ones from kiosk/internal/events/subjects.go; keep
-	// them in step. The grammar is <prefix>.<kiosk_code>.<family>.<...>, and the
-	// family decides transport: the controller's stream binds only
-	// `kiosk.*.event.>`, so an `event.` subject is durable and nothing else is.
+	// them in step. The grammar is ADR 0008's, <prefix>.<kiosk_code>.<channel>.<...>, and the
+	// channel decides transport: the controller's stream binds only
+	// `kiosk.*.evt.>`, so an `evt.` subject is durable and nothing else is.
 	//
-	// Three item actions, not `event.item.>`: a publish operation must name a
+	// Three item actions, not `evt.item.>`: a publish operation must name a
 	// subject something publishes on. An admin close publishes only
-	// `event.checkout.admin_close`, so reports can tell a return from a write-off.
-	{Org: "northwind", Name: "publish_kiosk_transaction", Capability: "publish", SubjectSuffix: "event.transaction.complete",
+	// `evt.checkout.admin_close`, so reports can tell a return from a write-off.
+	{Org: "northwind", Name: "publish_kiosk_transaction", Capability: "publish", SubjectSuffix: "evt.transaction.complete",
 		Description: "A committed transaction. The ledger's unit of record, and the only event that registers a kiosk in the fleet."},
-	{Org: "northwind", Name: "publish_kiosk_checkout", Capability: "publish", SubjectSuffix: "event.item.checkout",
+	{Org: "northwind", Name: "publish_kiosk_checkout", Capability: "publish", SubjectSuffix: "evt.item.checkout",
 		Description: "One line: a tool taken out."},
-	{Org: "northwind", Name: "publish_kiosk_return", Capability: "publish", SubjectSuffix: "event.item.return",
+	{Org: "northwind", Name: "publish_kiosk_return", Capability: "publish", SubjectSuffix: "evt.item.return",
 		Description: "One line: a tool brought back."},
-	{Org: "northwind", Name: "publish_kiosk_consume", Capability: "publish", SubjectSuffix: "event.item.consume",
+	{Org: "northwind", Name: "publish_kiosk_consume", Capability: "publish", SubjectSuffix: "evt.item.consume",
 		Description: "One line: a consumable drawn down. Never becomes an open checkout."},
-	{Org: "northwind", Name: "publish_kiosk_admin_close", Capability: "publish", SubjectSuffix: "event.checkout.admin_close",
+	{Org: "northwind", Name: "publish_kiosk_admin_close", Capability: "publish", SubjectSuffix: "evt.checkout.admin_close",
 		Description: "An admin wrote off an open checkout as lost or damaged. One per row closed."},
-	{Org: "northwind", Name: "publish_kiosk_inventory", Capability: "publish", SubjectSuffix: "event.inventory.adjust",
+	{Org: "northwind", Name: "publish_kiosk_inventory", Capability: "publish", SubjectSuffix: "evt.inventory.adjust",
 		Description: "A stock count changed by hand rather than by a transaction. Carries the adjustment id the controller dedupes on."},
-	{Org: "northwind", Name: "publish_kiosk_instance", Capability: "publish", SubjectSuffix: "event.instance.lifecycle",
+	{Org: "northwind", Name: "publish_kiosk_instance", Capability: "publish", SubjectSuffix: "evt.instance.lifecycle",
 		Description: "A serialized unit was created or changed status: in_service, maintenance, retired."},
-	{Org: "northwind", Name: "publish_kiosk_punch", Capability: "publish", SubjectSuffix: "event.timeclock.punch",
+	{Org: "northwind", Name: "publish_kiosk_punch", Capability: "publish", SubjectSuffix: "evt.timeclock.punch",
 		Description: "An accepted clock-in or clock-out. Kiosks are the only writers of the punch ledger."},
-	{Org: "northwind", Name: "publish_kiosk_receipt", Capability: "publish", SubjectSuffix: "event.receipt.transaction",
+	{Org: "northwind", Name: "publish_kiosk_receipt", Capability: "publish", SubjectSuffix: "evt.receipt.transaction",
 		Description: "Rendering context for a transaction receipt. The kiosk supplies the facts; the controller owns the template and the SMTP."},
-	{Org: "northwind", Name: "publish_kiosk_lowstock", Capability: "publish", SubjectSuffix: "event.alert.lowstock",
+	{Org: "northwind", Name: "publish_kiosk_lowstock", Capability: "publish", SubjectSuffix: "evt.alert.lowstock",
 		Description: "A SKU crossed its reorder threshold. The kiosk owns the detection because the kiosk owns the count."},
-	{Org: "northwind", Name: "publish_kiosk_maintenance", Capability: "publish", SubjectSuffix: "event.alert.maintenance",
+	{Org: "northwind", Name: "publish_kiosk_maintenance", Capability: "publish", SubjectSuffix: "evt.alert.maintenance",
 		Description: "A return routed one or more units into maintenance. Batched one per transaction."},
-	{Org: "northwind", Name: "publish_kiosk_integrity", Capability: "publish", SubjectSuffix: "event.integrity.rebuild",
+	{Org: "northwind", Name: "publish_kiosk_integrity", Capability: "publish", SubjectSuffix: "evt.integrity.rebuild",
 		Description: "An operator rebuilt the open-checkouts view from the ledger. Rare, destructive, and worth auditing."},
-	{Org: "northwind", Name: "publish_kiosk_rfid_read", Capability: "publish", SubjectSuffix: "event.scan.rfid.observed",
+	{Org: "northwind", Name: "publish_kiosk_rfid_read", Capability: "publish", SubjectSuffix: "evt.scan.rfid.observed",
 		Description: "Every EPC seen in one RFID read window. Observability only — nothing projects it today."},
 	{Org: "northwind", Name: "publish_kiosk_heartbeat", Capability: "publish", SubjectSuffix: "heartbeat",
 		Description: "45s liveness beat, outside the stream. Last-write-wins on purpose: durability here would hide the very signal it carries."},
 	// A wildcard suffix is right here: it is a subscription pattern. The kiosk
 	// subscribes its whole command subtree and routes on the leaf name; listing
 	// the leaves here would be a second registry that drifts from the kiosk's.
-	{Org: "northwind", Name: "reply_kiosk_command", Capability: "reply", SubjectSuffix: "command.>",
+	{Org: "northwind", Name: "reply_kiosk_command", Capability: "reply", SubjectSuffix: "cmd.>",
 		Description: "Answer any command the controller sends: inventory, instances, checkouts, timeclock, RFID. Single attempt, 5s budget — a handler that cannot do the work must still reply, or the controller renders the kiosk as offline."},
 	{Org: "northwind", Name: "subscribe_kiosk_sighting", Capability: "subscribe", SubjectSuffix: "sighting.raw",
 		Description: "Advisory tag sightings from an off-platform gateway. Raw: it carries a tag id, never a resolved unit, and the subscriber resolves it."},
@@ -325,7 +325,7 @@ var thingTypes = []thingTypeFixture{
 	//
 	// The prefix is the kiosk app's real subject hierarchy. It has no {location}
 	// segment: the kiosk's code is the routing token (the stream binds
-	// `kiosk.*.event.>`, commands address `kiosk.<code>.command.<name>`).
+	// `kiosk.*.evt.>`, commands address `kiosk.<code>.cmd.<name>`).
 	//
 	// The app that puts a code on the wire mints it, and the inventory follows:
 	// kiosk codes are uppercase, stone-access codes lowercase. Site codes go the
@@ -625,7 +625,7 @@ var roleTemplates = []roleFixture{
 	{Name: "application",
 		Description: "A software participant: publishes on its own app subtree and on the operator service contract, reads broadly.",
 		// `kiosk.>` and `$KV.>` are for the kiosk controller, which works outside
-		// its own subtree: it requests on `kiosk.<code>.command.<name>` and writes
+		// its own subtree: it requests on `kiosk.<code>.cmd.<name>` and writes
 		// the catalogue and fleet state into KV (`$KV.catalog_items.<kiosk>.<sku>`
 		// is a plain publish, as on `gateway`).
 		Publish:   []string{"app.>", "cmd.>", "helpdesk.>", "kiosk.>", "$JS.API.>", "$KV.>"},

@@ -45,6 +45,19 @@ Phase 3 is under way:
   since it has no HTTP server of its own beyond the opt-in diagnostics page.
   `internal/health` is `internal/liveness`. Net Go lines are about even: the
   new readiness and tests offset what was deleted.
+- **Kiosk is in scope, moved and done.** The repository moved to
+  `stone-age-io/kiosk` (module path renamed, kiosk `c14392e`). Contract (kiosk
+  `de860fc`): `event` → `evt`, and also `command` → `cmd`, which rule 2 asks
+  for though the ADR's kiosk row had left it out. Kiosk events had no `ts`, so
+  every payload gained one from its own time, and the punch's `occurred_at` is
+  its `ts`. `Nats-Msg-Id` is `<kind>:<record id>` where a record identifies
+  the event, so a `ledger.republish` is stored once. Kit (kiosk `3b10d98`):
+  connection, discovery (new optional `nats.code`, falling back to
+  `kiosk.code`), `/api/ready` on all three binaries, and `pbx` for email
+  visibility. Kiosk's branding and SPA routes really are different and stay.
+  The platform demo's kiosk operations followed. Verified on nats-server 2.14
+  that a stream and its filtered consumers move to new subjects in place with
+  messages stored, which every app's upgrade note relies on.
 
 Writing ADR 0008 changed decision C: ADR 0007 rejected a platform client
 inside each service, so every app gets its creds through creds-keeper, and the
@@ -483,9 +496,8 @@ and `building-an-app.md` documents onboarding an organization as one
 
 ## Open questions
 
-1. **Is kiosk in scope?** It lives under `skeeeon`, not `stone-age-io`, and
-   presents itself as standalone. Phase 0 applies either way. Phase 3 for kiosk
-   is a product decision.
+1. ~~**Is kiosk in scope?**~~ Yes (2026-11-21): moved to `stone-age-io/kiosk`
+   and unified in phase 3.
 2. **Should the platform import `kit/codes`?** It would keep the code pattern
    in one place, at the cost of a dependency on a repo the platform doesn't
    release. It can wait until after phase 2.

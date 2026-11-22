@@ -130,7 +130,7 @@ var things = []thingFixture{
 	// Every code below is also a `kiosks` row in the kiosk app; change both
 	// sides together. kiosk/internal/demoseed/data.go is the other side. They
 	// are uppercase because the kiosk app mints them that way for
-	// `kiosk.<code>.event.…`.
+	// `kiosk.<code>.evt.…`.
 	//
 	// Every node gets a Nebula host: a kiosk is a mini-PC with its own database
 	// that an administrator must reach when the bus is down.

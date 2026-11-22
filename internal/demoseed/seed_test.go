@@ -638,7 +638,7 @@ func TestTheKioskEstateIsPresentAndJoinable(t *testing.T) {
 
 // A kiosk's subject prefix has to compose to what a kiosk publishes on:
 // kiosk.{kiosk_code}.{family}.{...}, with no location segment. The code is the
-// routing token, and the controller's stream binds `kiosk.*.event.>`.
+// routing token, and the controller's stream binds `kiosk.*.evt.>`.
 func TestKioskSubjectPrefixesMatchTheWireFormat(t *testing.T) {
 	app := sharedApp(t)
 
@@ -918,9 +918,9 @@ func TestApplicationRoleCanRunTheKioskController(t *testing.T) {
 			t.Fatalf("publish_permissions: %v", err)
 		}
 		for _, subject := range []string{
-			"kiosk.KC-DC1-CRIB.command.inventory.adjust", // drive a node
-			"$JS.API.STREAM.INFO.KIOSK_EVENTS",           // bind the ledger stream
-			"$KV.catalog_items.KC-DC1-CRIB.HT-1010",      // fan the catalogue out
+			"kiosk.KC-DC1-CRIB.cmd.inventory.adjust", // drive a node
+			"$JS.API.STREAM.INFO.KIOSK_EVENTS",       // bind the ledger stream
+			"$KV.catalog_items.KC-DC1-CRIB.HT-1010",  // fan the catalogue out
 		} {
 			requirePermission(t, "application role", "kiosk controller", "publish", subject, pub)
 		}
@@ -949,11 +949,11 @@ func TestGatewayRoleCanRunAKioskNode(t *testing.T) {
 			t.Fatalf("subscribe_permissions: %v", err)
 		}
 		requirePermission(t, "gateway role", "kiosk node", "publish",
-			"kiosk.KC-DC1-CRIB.event.transaction.complete", pub)
+			"kiosk.KC-DC1-CRIB.evt.transaction.complete", pub)
 		requirePermission(t, "gateway role", "kiosk node", "publish",
 			"kiosk.KC-DC1-CRIB.heartbeat", pub)
 		requirePermission(t, "gateway role", "kiosk node", "subscribe",
-			"kiosk.KC-DC1-CRIB.command.inventory.adjust", sub)
+			"kiosk.KC-DC1-CRIB.cmd.inventory.adjust", sub)
 		requirePermission(t, "gateway role", "kiosk node", "subscribe",
 			"kiosk.KC-DC1-CRIB.sighting.raw", sub)
 	}
@@ -1032,7 +1032,7 @@ func TestReseedRepairsARoleThatFellBehind(t *testing.T) {
 	// The three the kiosk controller cannot work without, per
 	// TestApplicationRoleCanRunTheKioskController.
 	for _, subject := range []string{
-		"kiosk.KC-DC1-CRIB.command.inventory.adjust",
+		"kiosk.KC-DC1-CRIB.cmd.inventory.adjust",
 		"$KV.catalog_items.KC-DC1-CRIB.HT-1010",
 		"$JS.API.STREAM.INFO.KIOSK_EVENTS",
 	} {

@@ -13,6 +13,11 @@ and this file starts where the versioned releases do.
 
 ### Changed
 
+- **The demo's kiosk operations follow the kiosk's new subjects** (ADR 0008):
+  `evt.…` for its events and `cmd.>` for its commands, where they were
+  `event.…` and `command.>`. The kiosk moved to
+  [stone-age-io/kiosk](https://github.com/stone-age-io/kiosk). As with the
+  access Thing types, an existing demo database keeps the old operations.
 - **The demo's access-control Thing types follow access-control's new
   subjects** (ADR 0008 in platform-docs). Their prefix is `acc.{location}`, and
   each operation carries the channel, the portal type and `{thing}`, such as
