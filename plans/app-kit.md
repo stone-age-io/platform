@@ -26,6 +26,15 @@ Phase 3 is under way:
   `internal/streams`. A Thing code is the new optional `nats.code`; the kit's
   `RegisterService` refuses to register without one, so discovery is skipped
   while it is empty.
+- **The access-control contract change** is done (access-control `13fa863`).
+  Subjects follow the ADR table, `ACC_EVENTS` is `acc.*.evt.>`, and
+  `subjects.EventMsg` puts a `Nats-Msg-Id` on every event. `heartbeat` became a
+  reserved keyword. Not done here: giving accessd and each controller a Thing.
+  That moves to the kit change, where `natsx.RegisterService` first needs the
+  code, as it did for the helpdesk. The platform demo's access Thing types
+  followed (platform `25407b6`): their prefix is now `acc.{location}` and each
+  operation suffix carries the channel, type and `{thing}`, because the channel
+  now sits between the location and the type.
 
 Writing ADR 0008 changed decision C: ADR 0007 rejected a platform client
 inside each service, so every app gets its creds through creds-keeper, and the
