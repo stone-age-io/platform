@@ -80,7 +80,9 @@ yet run under a live process. `building-an-app.md` §9 documents it.
 
 Writing ADR 0008 changed decision C: ADR 0007 rejected a platform client
 inside each service, so every app gets its creds through creds-keeper, and the
-kit has no `platform` package.
+kit has no `platform` package. ADR 0009 (2026-11-22) amended it again: the
+keeper's package moved to `kit/credskeeper` and every app runs it in its own
+process. It is still not a dependency of the Agent.
 
 It touches six repos: access-control, kiosk, helpdesk, services, platform-docs
 and a new `stone-age-io/kit`. No phase changes the platform's schema, an API
@@ -411,7 +413,8 @@ wire format. It uses only the standard library.
 
 **No `platform` package.** Identity comes from creds-keeper running beside the
 app (ADR 0007, ADR 0008 rule 4). `natsx.Connect` is the only part of it that
-lives in the kit.
+lives in the kit. *Superseded by ADR 0009: `kit/credskeeper` is the keeper,
+run in the app's process.*
 
 **`version`**: `Build`, `Semver` and `Dependency`, all from
 `debug.ReadBuildInfo`.
