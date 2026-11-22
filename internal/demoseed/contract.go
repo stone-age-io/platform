@@ -40,23 +40,37 @@ var operations = []operationFixture{
 
 	// Northwind: stone-access.
 	//
-	// The suffixes are the real ones from access-control/internal/subjects; keep
-	// them in step. `.tap` is the reader's input (a credential presentation);
-	// `.evt.tap` is the decision the controller emits, and only it is audited.
-	{Org: "northwind", Name: "publish_access_decision", Capability: "publish", SubjectSuffix: "evt.tap",
-		Description: "The decision on a credential presentation."},
-	{Org: "northwind", Name: "publish_access_alarm", Capability: "publish", SubjectSuffix: "evt.alarm",
+	// The subjects are the real ones from access-control/internal/subjects; keep
+	// them in step. They follow ADR 0008, acc.{location}.{channel}.{type}.{thing},
+	// so the thing type's prefix is acc.{location} and each suffix carries the
+	// channel, the portal type and {thing}. The type is a literal token, so door
+	// and gate need operations of their own. `tap` is the reader's input (a
+	// credential presentation); `evt` is what the controller emits, and only it
+	// is audited.
+	{Org: "northwind", Name: "publish_door_decision", Capability: "publish", SubjectSuffix: "evt.door.{thing}.tap",
+		Description: "The decision on a credential presentation at a door."},
+	{Org: "northwind", Name: "publish_door_alarm", Capability: "publish", SubjectSuffix: "evt.door.{thing}.alarm",
 		Description: "Door forced or held open past its threshold."},
-	{Org: "northwind", Name: "publish_access_state", Capability: "publish", SubjectSuffix: "evt.state",
-		Description: "Effective-posture change on a portal."},
-	{Org: "northwind", Name: "subscribe_access_tap", Capability: "subscribe", SubjectSuffix: "tap",
-		Description: "A credential presentation arriving from a reader. The controller's input, not its output."},
-	{Org: "northwind", Name: "subscribe_access_grant", Capability: "subscribe", SubjectSuffix: "cmd.grant",
-		Description: "Operator-initiated momentary unlock."},
-	{Org: "northwind", Name: "subscribe_access_posture", Capability: "subscribe", SubjectSuffix: "cmd.posture",
-		Description: "Set or clear a runtime posture override on a portal."},
-	{Org: "northwind", Name: "publish_controller_heartbeat", Capability: "publish", SubjectSuffix: "heartbeat",
-		Description: "Controller liveness beat, outside the audited .evt subtree."},
+	{Org: "northwind", Name: "publish_door_state", Capability: "publish", SubjectSuffix: "evt.door.{thing}.state",
+		Description: "Effective-posture change on a door."},
+	{Org: "northwind", Name: "subscribe_door_tap", Capability: "subscribe", SubjectSuffix: "tap.door.{thing}",
+		Description: "A credential presentation arriving from a door's reader. The controller's input, not its output."},
+	{Org: "northwind", Name: "subscribe_door_grant", Capability: "subscribe", SubjectSuffix: "cmd.door.{thing}.grant",
+		Description: "Operator-initiated momentary unlock of a door."},
+	{Org: "northwind", Name: "subscribe_door_posture", Capability: "subscribe", SubjectSuffix: "cmd.door.{thing}.posture",
+		Description: "Set or clear a runtime posture override on a door."},
+	{Org: "northwind", Name: "publish_gate_decision", Capability: "publish", SubjectSuffix: "evt.gate.{thing}.tap",
+		Description: "The decision on a credential presentation at a gate."},
+	{Org: "northwind", Name: "publish_gate_alarm", Capability: "publish", SubjectSuffix: "evt.gate.{thing}.alarm",
+		Description: "Gate forced or held open past its threshold."},
+	{Org: "northwind", Name: "subscribe_gate_tap", Capability: "subscribe", SubjectSuffix: "tap.gate.{thing}",
+		Description: "A credential presentation arriving from a gate's reader."},
+	{Org: "northwind", Name: "subscribe_gate_grant", Capability: "subscribe", SubjectSuffix: "cmd.gate.{thing}.grant",
+		Description: "Operator-initiated momentary opening of a gate."},
+	{Org: "northwind", Name: "publish_controller_heartbeat", Capability: "publish", SubjectSuffix: "heartbeat.ctrl.{thing}",
+		Description: "Controller liveness beat, on the heartbeat channel and outside the audited evt channel."},
+	{Org: "northwind", Name: "publish_controller_state", Capability: "publish", SubjectSuffix: "evt.ctrl.{thing}.state",
+		Description: "Controller online/offline transition, published by accessd."},
 
 	// Northwind: the tool crib (the kiosk app).
 	//
@@ -248,14 +262,16 @@ var thingTypes = []thingTypeFixture{
 
 	// Northwind: stone-access hardware.
 	//
-	// The prefixes are stone-access's real subject hierarchy:
-	// acc.{location}.{type}.{thing} for a portal, acc.{location}.ctrl.{code} for
-	// a controller (`ctrl` is reserved, not a portal type). The portal type is a
-	// subject token, so door and gate need one thing type each.
+	// stone-access's scope is the location, and the channel follows it (ADR
+	// 0008), so every one of these thing types has the prefix acc.{location} and
+	// its operations carry the rest: acc.{location}.evt.door.{thing}.tap for a
+	// door's decision, acc.{location}.heartbeat.ctrl.{thing} for a controller
+	// (`ctrl` is reserved, not a portal type). The portal type is a subject
+	// token, so door and gate need one thing type each.
 	{Org: "northwind", Code: "access-controller", Name: "Access Controller", Kind: kindGateway,
 		Description:   "A stone-access edge controller. Decides credential presentations locally against a mirrored policy graph, and keeps deciding when the WAN is down.",
-		SubjectPrefix: "acc.{location}.ctrl.{thing}",
-		Operations:    []string{"publish_controller_heartbeat", "publish_access_state"},
+		SubjectPrefix: "acc.{location}",
+		Operations:    []string{"publish_controller_heartbeat", "publish_controller_state"},
 		Role:          "gateway",
 		Schema: objSchema(map[string]any{
 			"model":      enum("Board", "kincony-server-mini", "kincony-pi5r8"),
@@ -268,9 +284,9 @@ var thingTypes = []thingTypeFixture{
 
 	{Org: "northwind", Code: "access-door", Name: "Access-Controlled Door", Kind: kindDevice,
 		Description:   "A door with a reader, a strike or maglock, and door-position monitoring. Its code is the portal code in stone-access.",
-		SubjectPrefix: "acc.{location}.door.{thing}",
-		Operations: []string{"publish_access_decision", "publish_access_alarm", "publish_access_state",
-			"subscribe_access_tap", "subscribe_access_grant", "subscribe_access_posture"},
+		SubjectPrefix: "acc.{location}",
+		Operations: []string{"publish_door_decision", "publish_door_alarm", "publish_door_state",
+			"subscribe_door_tap", "subscribe_door_grant", "subscribe_door_posture"},
 		Role: "device",
 		Schema: objSchema(map[string]any{
 			"lock_type":         enum("Lock", "strike", "maglock"),
@@ -283,9 +299,9 @@ var thingTypes = []thingTypeFixture{
 
 	{Org: "northwind", Code: "access-gate", Name: "Access-Controlled Gate", Kind: kindDevice,
 		Description:   "A vehicle gate on the same controller as the doors, with a much longer held-open threshold.",
-		SubjectPrefix: "acc.{location}.gate.{thing}",
-		Operations: []string{"publish_access_decision", "publish_access_alarm",
-			"subscribe_access_tap", "subscribe_access_grant"},
+		SubjectPrefix: "acc.{location}",
+		Operations: []string{"publish_gate_decision", "publish_gate_alarm",
+			"subscribe_gate_tap", "subscribe_gate_grant"},
 		Role: "device",
 		Schema: objSchema(map[string]any{
 			"operator_make":     str("Gate operator make"),
@@ -541,7 +557,7 @@ type roleFixture struct {
 var roleTemplates = []roleFixture{
 	// `acc.>` is on both lists here and on `gateway` for stone-access, whose
 	// doors default to `device` and controllers to `gateway`. It is on
-	// subscribe because a door listens on `acc.{location}.{type}.{thing}.cmd.grant`,
+	// subscribe because a door listens on `acc.{location}.cmd.{type}.{thing}.grant`,
 	// not `cmd.>`.
 	//
 	// Invariant: the publish and subscribe lists cover the same subtrees. A thing

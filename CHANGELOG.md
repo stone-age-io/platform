@@ -11,6 +11,16 @@ and this file starts where the versioned releases do.
 
 ## [Unreleased]
 
+### Changed
+
+- **The demo's access-control Thing types follow access-control's new
+  subjects** (ADR 0008 in platform-docs). Their prefix is `acc.{location}`, and
+  each operation carries the channel, the portal type and `{thing}`, such as
+  `evt.door.{thing}.tap`. Door and gate now have operations of their own, since
+  the portal type is a literal token. The seed only creates what is missing, so
+  an existing demo database keeps the old Thing types: seed a fresh one to get
+  the new shape.
+
 ### Fixed
 
 - **Local dashboards were shared by everyone who used one browser, in every

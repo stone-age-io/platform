@@ -517,22 +517,53 @@ func TestTheAccessControlEstateIsPresentAndJoinable(t *testing.T) {
 	}
 }
 
-// A portal's subject prefix has to compose to what a controller publishes on:
-// acc.{location}.{type}.{thing}. A wrong one still renders a plausible subject.
-func TestAccessSubjectPrefixesMatchTheWireFormat(t *testing.T) {
+// A portal's prefix and operations have to compose to what a controller
+// actually uses (access-control's internal/subjects, ADR 0008): the channel
+// right after the location. A wrong one still renders a plausible subject.
+func TestAccessSubjectsMatchTheWireFormat(t *testing.T) {
 	app := sharedApp(t)
 
-	for _, tc := range []struct{ code, want string }{
-		{"access-controller", "acc.{location}.ctrl.{thing}"},
-		{"access-door", "acc.{location}.door.{thing}"},
-		{"access-gate", "acc.{location}.gate.{thing}"},
+	for _, tc := range []struct {
+		code string
+		want []string
+	}{
+		{"access-controller", []string{
+			"acc.{location}.heartbeat.ctrl.{thing}",
+			"acc.{location}.evt.ctrl.{thing}.state",
+		}},
+		{"access-door", []string{
+			"acc.{location}.evt.door.{thing}.tap",
+			"acc.{location}.evt.door.{thing}.alarm",
+			"acc.{location}.evt.door.{thing}.state",
+			"acc.{location}.tap.door.{thing}",
+			"acc.{location}.cmd.door.{thing}.grant",
+			"acc.{location}.cmd.door.{thing}.posture",
+		}},
+		{"access-gate", []string{
+			"acc.{location}.evt.gate.{thing}.tap",
+			"acc.{location}.evt.gate.{thing}.alarm",
+			"acc.{location}.tap.gate.{thing}",
+			"acc.{location}.cmd.gate.{thing}.grant",
+		}},
 	} {
 		tt, err := app.FindFirstRecordByFilter("thing_types", "code = {:c}", dbx.Params{"c": tc.code})
 		if err != nil {
 			t.Fatalf("thing type %q: %v", tc.code, err)
 		}
-		if got := tt.GetString("subject_prefix"); got != tc.want {
-			t.Errorf("%s subject_prefix = %q, want %q", tc.code, got, tc.want)
+		if errs := app.ExpandRecord(tt, []string{"operations"}, nil); len(errs) > 0 {
+			t.Fatalf("expand %s operations: %v", tc.code, errs)
+		}
+		got := map[string]bool{}
+		for _, op := range tt.ExpandedAll("operations") {
+			got[tt.GetString("subject_prefix")+"."+op.GetString("subject_suffix")] = true
+		}
+		if len(got) != len(tc.want) {
+			t.Errorf("%s composes %d subjects, want %d: %v", tc.code, len(got), len(tc.want), got)
+		}
+		for _, w := range tc.want {
+			if !got[w] {
+				t.Errorf("%s does not compose %s; it composes %v", tc.code, w, got)
+			}
 		}
 	}
 }
