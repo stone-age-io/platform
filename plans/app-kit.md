@@ -84,6 +84,18 @@ kit has no `platform` package. ADR 0009 (2026-11-22) amended it again: the
 keeper's package moved to `kit/credskeeper` and every app runs it in its own
 process. It is still not a dependency of the Agent.
 
+Adopting the keeper, app by app (ADR 0009 §2):
+- **services**: the watchdog runs it when `PLATFORM_URL` is set (services
+  v0.5.0).
+- **helpdesk**: done (helpdesk `4c9b915`). A `platform:` block in
+  `helpdesk.yaml`, the creds file outside `data_dir` (refused inside it), a
+  `/creds` volume in the image. Run against a local platform from its
+  `contract/`: first start, restart without the password, and a Revoke
+  reaching the running process.
+- **access-control** and **kiosk**: not yet. Each needs the same few lines,
+  including creating the credential directory, which the keeper leaves to the
+  application.
+
 It touches six repos: access-control, kiosk, helpdesk, services, platform-docs
 and a new `stone-age-io/kit`. No phase changes the platform's schema, an API
 rule or a stable surface (`platform-docs/docs/stability.md`).
