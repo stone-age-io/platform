@@ -1,6 +1,6 @@
 # Plan: align the apps with the platform, and give them one shared kit
 
-Status: **phases 0 and 1 done**, 2026-11-21. access-control and kiosk import
+Status: **phases 0 to 4 done**, 2026-11-21; phase 5 waits on stone-cli. access-control and kiosk import
 the official PocketBase v0.41.1. Decisions A to D are ADR 0008 in
 platform-docs (numbers 0005 to 0007 belong to the services repo), alongside
 the message-design changes and `building-an-app.md`.
@@ -12,7 +12,7 @@ check instead of `health`; `pbx` adds `ServeReady` and `ServeMetrics`; and
 `pbx.Branding` was kept, since helpdesk and access-control serve the overlay
 identically and only kiosk differs. `pbx/v0.1.0` requires `kit v0.1.0`.
 
-Phase 3 is under way:
+Phase 3 is done:
 - **services** is on the kit (services `2a54e71`). Its readiness checks still
   run on each request, as its ADR 0005 decided, through `Registry.Run` and
   `WriteJSON` rather than the prober. `METRICS_TOKEN` is new.
@@ -58,6 +58,13 @@ Phase 3 is under way:
   The platform demo's kiosk operations followed. Verified on nats-server 2.14
   that a stream and its filtered consumers move to new subjects in place with
   messages stored, which every app's upgrade note relies on.
+
+Phase 4 is done: the platform and the Agent each have
+`internal/health/conform_test.go`, which drives their own prober through
+not-yet-probed, ready, warning, failing, skipped-only and a panicking check,
+and runs `healthtest.Conform` on each answer. The kit is a test-only import
+in both; their health engines are unchanged. The Agent serves the same body
+on `/ready` rather than `/api/ready`; Conform checks the body, not the path.
 
 Writing ADR 0008 changed decision C: ADR 0007 rejected a platform client
 inside each service, so every app gets its creds through creds-keeper, and the
