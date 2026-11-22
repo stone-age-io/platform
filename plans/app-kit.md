@@ -100,9 +100,12 @@ Adopting the keeper, app by app (ADR 0009 §2):
 - **kiosk**: done (kiosk `f0fa847`), in the node, the timeclock and the
   controller, through `events.StartKeeper`, only for `serve`. Run against a
   local platform from its `contract/`. Found: the `kiosk-controller` role's
-  user JWT (4,745 bytes) exceeds nats-server's default `max_control_line`
-  (4,096), so the connect is refused. Open: trim the role, or have
-  `nats export` raise the limit.
+  user JWT (4,745 bytes) exceeded nats-server's default `max_control_line`
+  (4,096), so the connect was refused. Fixed in kiosk `0cb9895`: six KV
+  buckets became two with key families (`KIOSK_CATALOG`, `KIOSK_STATE`), as
+  accessd keeps `ACC_POLICY`, and the roles were trimmed; the JWT is 1,886
+  bytes. Open: nothing checks a role's JWT size, so the next role past 4 KB
+  fails only at its first connect.
 
 Every application now gets its credentials through the keeper.
 
