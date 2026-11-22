@@ -92,9 +92,13 @@ Adopting the keeper, app by app (ADR 0009 §2):
   `/creds` volume in the image. Run against a local platform from its
   `contract/`: first start, restart without the password, and a Revoke
   reaching the running process.
-- **access-control** and **kiosk**: not yet. Each needs the same few lines,
-  including creating the credential directory, which the keeper leaves to the
-  application.
+- **access-control**: done (access-control `1a9e180`), in accessd and the
+  controller, each its own Thing, through `natsx.StartKeeper`. accessd waits
+  30s for a first file then exits; a controller waits without a bound. Run
+  against a local platform from its `contract/`, including the `accessd`
+  role's JetStream setup and a Revoke reaching a running controller.
+- **kiosk**: not yet. It needs the same few lines, including creating the
+  credential directory, which the keeper leaves to the application.
 
 It touches six repos: access-control, kiosk, helpdesk, services, platform-docs
 and a new `stone-age-io/kit`. No phase changes the platform's schema, an API
